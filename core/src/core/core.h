@@ -1,0 +1,306 @@
+#ifndef CORE_H
+#define CORE_H
+
+#include <stdalign.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef uint8_t bool;
+typedef uint8_t bool8;
+
+#define true (bool)(1)
+#define false (bool)(0)
+
+#define DEBUG_BREAK() __debugbreak()
+
+#define HAS_FLAG(flag_set, flag) (((flag_set) & (flag)) == (flag))
+#define HAS_ANY_FLAG(flag_set, flag) (((flag_set) & (flag)) != 0)
+
+#define assert(expression) if (!(expression)) { \
+	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m", \
+			__FILE__, \
+			__LINE__, \
+	#expression); \
+	DEBUG_BREAK(); }
+
+#define unreachable() { printf("%s:%u: Reached unreachable statement.\n", __FILE__, __LINE__); DEBUG_BREAK(); }
+#define unreachable_msg(msg) { printf("%s:%u: %s\n", __FILE__, __LINE__, msg); DEBUG_BREAK(); }
+
+#define debug_log_info(...) { printf("%s:%u: \033[32;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
+#define debug_log_warn(...) { printf("%s:%u: \033[33;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
+#define debug_log_error(...) { printf("%s:%u: \033[31;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
+
+inline size_t align(size_t value, size_t alignment) {
+	return (value + alignment - 1) / alignment * alignment;
+}
+
+size_t align_to_page_size(size_t bytes);
+
+//
+// Arena
+//
+
+typedef struct {
+	size_t capacity;
+	size_t commited;
+	size_t allocated;
+	uint8_t* base;
+} Arena;
+
+void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment);
+
+inline void arena_reset(Arena* arena) {
+	arena->allocated = 0;
+}
+
+void arena_release(Arena* arena);
+
+#define arena_alloc(arena, type) (type*)arena_alloc_aligned(arena, sizeof(type), alignof(type))
+#define arena_alloc_array(arena, type, count) (type*)arena_alloc_aligned(arena, sizeof(type) * count, alignof(type))
+
+//
+// Temporary Arena allocations
+//
+
+typedef struct {
+	Arena* arena;
+	size_t allocated_state;
+} ArenaSavePoint;
+
+inline ArenaSavePoint arena_begin_temp(Arena* arena) {
+	return (ArenaSavePoint) { .arena = arena, .allocated_state = arena->allocated };
+}
+
+inline void arena_end_temp(ArenaSavePoint save_point) {
+	save_point.arena->allocated = save_point.allocated_state;
+}
+
+void* allocate_executable(size_t size);
+void free_executable(void* ptr, size_t size);
+
+//
+// String
+//
+
+typedef struct {
+	const char* v;
+	size_t length;
+} String;
+
+inline String str_from_cstr(const char* cstr) {
+	return (String) { .v = cstr, .length = strlen(cstr) };
+}
+
+inline const char* str_to_cstr(String string, Arena* allocator) {
+	char* cstring = arena_alloc_array(allocator, char, string.length + 1);
+	memcpy(cstring, string.v, string.length);
+	cstring[string.length] = 0;
+	return cstring;
+}
+
+inline String sub_str(String str, size_t start, size_t length) {
+	assert(start + length <= str.length);
+	return (String) { .v = str.v + start, .length = length };
+}
+
+#if 0
+inline bool str_equal(String str, const char* cstr) {
+	if (str.v == cstr) {
+		size_t cstr_length = strlen(cstr);
+		return cstr_length == str.length;
+	}
+
+	size_t i = 0;
+	for (i = 0; i < str.length; i++) {
+		if (cstr[i] != str.v[i]) {
+			return false;
+		}
+	}
+
+	// The both strings seem to be equal, so check whether ends of both strings were reached
+	return cstr[i] == 0;
+}
+#endif
+
+inline bool str_equal(String str, String other) {
+	if (str.length != other.length) {
+		return false;
+	}
+
+	for (size_t i = 0; i < str.length; i++) {
+		if (str.v[i] != other.v[i]) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+//
+// String Builder
+//
+
+typedef struct {
+	Arena* arena;
+	String string;
+} StringBuilder;
+
+inline void str_builder_append(StringBuilder* builder, String string) {
+	char* buffer = arena_alloc_array(builder->arena, char, string.length);
+	memcpy(buffer, string.v, sizeof(char) * string.length);
+
+	builder->string.length += string.length;
+
+	if (!builder->string.v) {
+		builder->string.v = buffer;
+	}
+}
+
+inline void str_builder_append_cstr(StringBuilder* builder, const char* string) {
+	str_builder_append(builder, str_from_cstr(string));
+}
+
+inline void str_builder_append_char(StringBuilder* builder, char c) {
+	str_builder_append(builder, (String) { .v = &c, .length = 1 });
+}
+
+void str_builder_append_int(StringBuilder* builder, uint64_t value);
+
+//
+// File IO
+//
+
+String read_entire_file_to_str(const char* file_path, Arena* arena);
+
+//
+// Hashing
+//
+
+inline uint64_t murmur_hash_64(const void* key, size_t len, uint64_t seed)
+{
+    const uint64_t m = 0xc6a4a7935bd1e995ULL;
+    const int r = 47;
+
+    uint64_t h = seed ^ (len * m);
+
+    const uint64_t* data = (const uint64_t *)key;
+    const uint64_t* end = data + (len/8);
+
+    while (data != end)
+    {
+        uint64_t k = *data++;
+
+        k *= m;
+        k ^= k >> r;
+        k *= m;
+
+        h ^= k;
+        h *= m;
+    }
+
+    const unsigned char * data2 = (const unsigned char*)data;
+
+    switch (len & 7)
+    {
+    case 7:
+        h ^= (uint64_t)(data2[6]) << 48;
+    case 6:
+        h ^= (uint64_t)(data2[5]) << 40;
+    case 5:
+        h ^= (uint64_t)(data2[4]) << 32;
+    case 4:
+        h ^= (uint64_t)(data2[3]) << 24;
+    case 3:
+        h ^= (uint64_t)(data2[2]) << 16;
+    case 2:
+        h ^= (uint64_t)(data2[1]) << 8;
+    case 1:
+        h ^= (uint64_t)(data2[0]);
+        h *= m;
+    };
+
+    h ^= h >> r;
+    h *= m;
+    h ^= h >> r;
+
+    return h;
+}
+
+inline size_t hash_bytes(const void* bytes, size_t length) {
+	return murmur_hash_64(bytes, length, 0x771238);
+}
+
+inline size_t hash_string(String string) {
+	return hash_bytes(string.v, string.length);
+}
+
+//
+// Bit Array
+//
+
+typedef struct {
+	uint8_t* values;
+	size_t bit_count;
+} BitArray;
+
+inline BitArray bit_array_alloc(Arena* arena, size_t bit_count) {
+	BitArray bit_array = {};
+	static_assert(sizeof(*bit_array.values) == sizeof(uint8_t), "");
+
+	size_t byte_count = (bit_count + 7) / 8;
+
+	bit_array.values = arena_alloc_array(arena, uint8_t, byte_count);
+	bit_array.bit_count = bit_count;
+
+	return bit_array;
+}
+
+inline void bit_array_clear(BitArray* array) {
+	memset(array->values, 0, (array->bit_count + 7) / 8);
+}
+
+inline bool bit_array_get(const BitArray* array, size_t index) {
+	assert(index < array->bit_count);
+	static_assert(sizeof(*array->values) == sizeof(uint8_t), "");
+
+	size_t element_index = index / 8;
+	size_t bit_index = index % 8;
+
+	uint8_t mask = (uint8_t)(1 << bit_index);
+	return (array->values[element_index] & mask) != 0;
+}
+
+inline void bit_array_set(const BitArray* array, size_t index, bool value) {
+	assert(index < array->bit_count);
+	static_assert(sizeof(*array->values) == sizeof(uint8_t), "");
+
+	size_t element_index = index / 8;
+	size_t bit_index = index % 8;
+
+	uint8_t mask = (uint8_t)(1 << bit_index);
+	if (value) {
+		array->values[element_index] |= mask;
+	} else {
+		array->values[element_index] &= ~mask;
+	}
+}
+
+inline void bit_array_and(const BitArray* a, const BitArray* b, BitArray* out) {
+	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
+
+	for (size_t i = 0; i < a->bit_count; i++) {
+		out->values[i] = a->values[i] & b->values[i];
+	}
+}
+
+inline void bit_array_or(const BitArray* a, const BitArray* b, BitArray* out) {
+	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
+
+	for (size_t i = 0; i < a->bit_count; i++) {
+		out->values[i] = a->values[i] | b->values[i];
+	}
+}
+
+#endif

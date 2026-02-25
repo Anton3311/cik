@@ -21,6 +21,10 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 	size_t token_start = tokenizer->read_position;
 
 	while (true) {
+		if (tokenizer_is_end(tokenizer)) {
+			break;
+		}
+
 		char32_t current_char = tokenizer_get_char(tokenizer);
 		if ((current_char >= 'a' && current_char <= 'z')
 				|| (current_char >= 'A' && current_char <= 'Z')

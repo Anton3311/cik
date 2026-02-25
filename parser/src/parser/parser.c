@@ -97,6 +97,41 @@ StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
 	return STR_TOKEN_RESULT_NONE;
 }
 
+Token _tokenizer_try_create_double_char_token(Tokenizer* tokenizer,
+		char32_t first_char,
+		char32_t second_char,
+		TokenKind single_type,
+		TokenKind double_type) {
+	size_t token_start = tokenizer->read_position;
+	char32_t c = tokenizer_get_char(tokenizer);
+	tokenizer->read_position += 1;
+	assert(c == first_char);
+
+	if (!tokenizer_is_end(tokenizer)) {
+		char32_t c2 = tokenizer_get_char(tokenizer);
+		if (c2 == second_char) {
+			tokenizer->read_position += 1;
+			return (Token) {
+				.source_range = (SourceRange) {
+					.start = token_start,
+					.end = tokenizer->read_position,
+				},
+				.string = sub_str(tokenizer->source_code, token_start, tokenizer->read_position - token_start),
+				.kind = double_type,
+			};
+		}
+	}
+
+	return (Token) {
+		.source_range = (SourceRange) {
+			.start = token_start,
+			.end = tokenizer->read_position,
+		},
+		.string = sub_str(tokenizer->source_code, token_start, tokenizer->read_position - token_start),
+		.kind = single_type,
+	};
+}
+
 Token tokenizer_next_token(Tokenizer* tokenizer) {
 	char32_t current_char = 0;
 	while (true) {
@@ -123,6 +158,26 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 	switch (current_char) {
 	case '#':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_HASH);
+	case '*':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_ASTERISK);
+	case ',':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_COMMA);
+	case '.':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_DOT);
+	case '=':
+		return _tokenizer_try_create_double_char_token(tokenizer, '=', '=', TOKEN_EXCLAMATION_MARK, TOKEN_DOUBLE_EQUAL);
+	case ':':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_COLON);
+	case ';':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_SEMICOLON);
+	case '&':
+		return _tokenizer_try_create_double_char_token(tokenizer, '&', '&', TOKEN_AMPERSAND, TOKEN_LOGIC_AND);
+	case '!':
+		return _tokenizer_try_create_double_char_token(tokenizer, '!', '=', TOKEN_EXCLAMATION_MARK, TOKEN_NOT_EQUAL);
+	case '+':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_PLUS);
+	case '-':
+		return _tokenizer_try_create_double_char_token(tokenizer, '-', '>', TOKEN_MINUS, TOKEN_ARROW);
 
 	case '(':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_LEFT_PAREN);

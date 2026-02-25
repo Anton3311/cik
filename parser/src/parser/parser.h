@@ -12,6 +12,7 @@ typedef enum {
 	TOKEN_EOF,
 
 	TOKEN_IDENT,
+	TOKEN_STRING,
 
 	TOKEN_HASH,
 
@@ -42,6 +43,13 @@ typedef struct {
 	String string;
 	TokenKind kind;
 } Token;
+
+typedef enum {
+	STR_TOKEN_RESULT_NONE,
+	STR_TOKEN_RESULT_NO_CLOSING_CHAR,
+	STR_TOKEN_RESULT_NEWLINE_REACHED,
+	STR_TOKEN_RESULT_EOF_REACHED,
+} StringTokenizerResult;
 
 inline bool tokenizer_is_end(const Tokenizer* tokenizer) {
 	return tokenizer->read_position == tokenizer->source_code.length;

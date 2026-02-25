@@ -20,6 +20,7 @@ typedef enum {
 	TOKEN_COLON,
 	TOKEN_SEMICOLON,
 	TOKEN_AMPERSAND,
+	TOKEN_PIPE,
 	TOKEN_EXCLAMATION_MARK,
 	TOKEN_ARROW,
 
@@ -49,6 +50,7 @@ typedef enum {
 
 	// Logic
 	TOKEN_LOGIC_AND,
+	TOKEN_LOGIC_OR,
 } TokenKind;
 
 typedef struct {

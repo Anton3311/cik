@@ -180,6 +180,8 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_SEMICOLON);
 	case '&':
 		return _tokenizer_try_create_double_char_token(tokenizer, '&', '&', TOKEN_AMPERSAND, TOKEN_LOGIC_AND);
+	case '|':
+		return _tokenizer_try_create_double_char_token(tokenizer, '|', '|', TOKEN_PIPE, TOKEN_LOGIC_OR);
 	case '!':
 		return _tokenizer_try_create_double_char_token(tokenizer, '!', '=', TOKEN_EXCLAMATION_MARK, TOKEN_NOT_EQUAL);
 	case '+':

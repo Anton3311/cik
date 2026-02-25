@@ -9,6 +9,7 @@
 
 typedef uint8_t bool;
 typedef uint8_t bool8;
+typedef uint32_t char32_t;
 
 #define true (bool)(1)
 #define false (bool)(0)
@@ -67,13 +68,13 @@ void arena_release(Arena* arena);
 typedef struct {
 	Arena* arena;
 	size_t allocated_state;
-} ArenaSavePoint;
+} ArenaRegion;
 
-inline ArenaSavePoint arena_begin_temp(Arena* arena) {
-	return (ArenaSavePoint) { .arena = arena, .allocated_state = arena->allocated };
+inline ArenaRegion arena_begin_temp(Arena* arena) {
+	return (ArenaRegion) { .arena = arena, .allocated_state = arena->allocated };
 }
 
-inline void arena_end_temp(ArenaSavePoint save_point) {
+inline void arena_end_temp(ArenaRegion save_point) {
 	save_point.arena->allocated = save_point.allocated_state;
 }
 
@@ -88,6 +89,9 @@ typedef struct {
 	const char* v;
 	size_t length;
 } String;
+
+#define STR_FMT(string) (int)(string).length, (string).v
+#define STR_LIT(string) (String) { .v = string, length = sizeof(string) }
 
 inline String str_from_cstr(const char* cstr) {
 	return (String) { .v = cstr, .length = strlen(cstr) };

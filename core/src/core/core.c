@@ -150,7 +150,6 @@ String read_entire_file_to_str(const char* file_path, Arena* arena) {
 
 	if (!f || error == EINVAL) {
 		// Failed to read
-		fclose(f);
 		return (String) {};
 	}
 

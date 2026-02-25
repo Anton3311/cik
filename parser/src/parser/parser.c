@@ -20,9 +20,9 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 
 	while (true) {
 		char32_t current_char = tokenizer_get_char(tokenizer);
-		if (current_char >= 'a' && current_char <= 'z'
-				|| current_char >= 'A' && current_char <= 'Z'
-				|| current_char >= '0' && current_char <= '9'
+		if ((current_char >= 'a' && current_char <= 'z')
+				|| (current_char >= 'A' && current_char <= 'Z')
+				|| (current_char >= '0' && current_char <= '9')
 				|| current_char == '_') {
 			tokenizer->read_position += 1;
 		} else {

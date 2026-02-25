@@ -22,6 +22,12 @@ int main(int argc, char *argv[]) {
 
 		while (true) {
 			Token token = tokenizer_next_token(&tokenizer);
+			String source_range = sub_str(source_code,
+					token.source_range.start,
+					token.source_range.end - token.source_range.start);
+
+			assert(str_equal(token.string, source_range));
+
 			printf("%.*s\n", STR_FMT(token.string));
 			if (token.kind == TOKEN_EOF) {
 				break;

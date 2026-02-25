@@ -132,6 +132,14 @@ Token _tokenizer_try_create_double_char_token(Tokenizer* tokenizer,
 	};
 }
 
+inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
+	if (tokenizer_is_end(tokenizer)) {
+		return false;
+	}
+
+	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
+}
+
 Token tokenizer_next_token(Tokenizer* tokenizer) {
 	char32_t current_char = 0;
 	while (true) {
@@ -194,7 +202,23 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 	case '}':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_RIGHT_BRACE);
 
+	case '>':
+		return _tokenizer_try_create_double_char_token(tokenizer, '>', '=', TOKEN_GREATER, TOKEN_GREATER_OR_EQUAL);
 	case '<': {
+		if (_tokenizer_has_next_char(tokenizer, '=')) {
+			size_t token_start = tokenizer->read_position;
+			tokenizer->read_position += 1; // consume current char
+			tokenizer->read_position += 1; // consume next char
+			return (Token) {
+				.source_range = (SourceRange) {
+					.start = token_start,
+					.end = tokenizer->read_position,
+				},
+				.string = sub_str(tokenizer->source_code, token_start, 2),
+				.kind = TOKEN_LESS_OR_EQUAL,
+			};
+		}
+
 		Token string_token = {};
 		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '<', '>', &string_token);
 		assert(result == STR_TOKEN_RESULT_NONE);

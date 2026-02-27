@@ -2,30 +2,15 @@
 #define PREPROCESSOR_H
 
 #include "parser/tokenizer.h"
-
-//
-// LineInfo
-//
-
-typedef struct {
-	uint32_t line;
-	uint32_t column;
-} SourceLocation;
-
-typedef struct {
-	uint32_t line_count;
-	uint32_t* line_starts;
-} LineInfo;
-
-LineInfo line_info_from_source(Arena* allocator, String source);
-SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_t string_pos);
-String line_info_get_line_string(const LineInfo* line_info, String source_code, size_t line_index);
+#include "parser/source_info.h"
+#include "parser/diagnostics.h"
 
 //
 // Preprocessor
 //
 
 typedef struct {
+	Diagnostics* diagnostics;
 	Tokenizer tokenizer;
 	LineInfo line_info;
 } Preprocessor;
@@ -54,6 +39,8 @@ inline Token preprocessor_next_token(Preprocessor* state) {
 		next_token = tokenizer_next_token(&state->tokenizer);
 		if (next_token.kind == TOKEN_HASH) {
 			preprocessor_skip_derective(state);
+		} else {
+			break;
 		}
 	}
 

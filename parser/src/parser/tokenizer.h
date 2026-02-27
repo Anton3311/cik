@@ -2,11 +2,7 @@
 #define PARSER_H
 
 #include "core/core.h"
-
-typedef struct {
-	size_t start;
-	size_t end;
-} SourceRange;
+#include "parser/source_info.h"
 
 typedef enum {
 	TOKEN_EOF,

@@ -4,6 +4,8 @@
 #include "core/core.h"
 #include "parser/preprocessor.h"
 
+#define HELLo
+
 int main(int argc, char *argv[]) {
 	Arena arena = {};
 	arena.capacity = align_to_page_size(512 * 4096);
@@ -18,6 +20,14 @@ int main(int argc, char *argv[]) {
 		Preprocessor preprocessor = {};
 		preprocessor_init(&preprocessor, source_code, &temp_arena);
 
+		Diagnostics diagnostics = (Diagnostics) {
+			.allocator = &arena,
+			.source_code = source_code,
+			.line_info = preprocessor.line_info,
+		};
+
+		preprocessor.diagnostics = &diagnostics;
+
 		while (true) {
 			Token token = preprocessor_next_token(&preprocessor);
 			String source_range = sub_str(source_code,
@@ -31,6 +41,8 @@ int main(int argc, char *argv[]) {
 				break;
 			}
 		}
+
+		diagnostics_print(&diagnostics);
 	} else {
 		printf("Usage: c <path_to_source_file>\n");
 	}

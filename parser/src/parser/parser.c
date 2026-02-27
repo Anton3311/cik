@@ -71,6 +71,30 @@ StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
 		}
 
 		char32_t current_char = tokenizer_get_char(tokenizer);
+		if (current_char == '\\') {
+			tokenizer->read_position += 1;
+			if (tokenizer_is_end(tokenizer)) {
+				return STR_TOKEN_RESULT_EOF_REACHED;
+			}
+
+			char32_t escaped_char = tokenizer_get_char(tokenizer);
+			switch (escaped_char) {
+			case '\'':
+			case '\"':
+			case '\\':
+			case 'n':
+			case 'r':
+			case 't':
+				break;
+			default:
+				return STR_TOKEN_RESULT_INVALID_ESCAPE_CHAR;
+			}
+
+			// consume escaped char
+			tokenizer->read_position += 1;
+			continue;
+		}
+
 		if (current_char == string_closing_char) {
 			tokenizer->read_position += 1;
 

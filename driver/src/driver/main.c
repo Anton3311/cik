@@ -15,12 +15,8 @@ int main(int argc, char *argv[]) {
 		String source_code = read_entire_file_to_str(argv[1], &temp_arena);
 		assert(source_code.v != NULL);
 
-		Preprocessor preprocessor = (Preprocessor) {
-			.tokenizer = (Tokenizer) {
-				.source_code = source_code,
-				.read_position = 0,
-			}
-		};
+		Preprocessor preprocessor = {};
+		preprocessor_init(&preprocessor, source_code, &temp_arena);
 
 		while (true) {
 			Token token = preprocessor_next_token(&preprocessor);

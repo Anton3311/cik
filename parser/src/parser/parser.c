@@ -140,6 +140,56 @@ inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
 	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
 }
 
+/*
+   Skips both single-line and multi-line comments.
+*/
+bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
+	char32_t current_char = tokenizer_get_char(tokenizer);
+	if (current_char != '/') {
+		return false;
+	}
+
+	bool is_single_line_comment = _tokenizer_has_next_char(tokenizer, '/');
+	bool is_multi_line_comment = _tokenizer_has_next_char(tokenizer, '*');
+
+	tokenizer->read_position += 1; // consume '/'
+
+	if (is_single_line_comment) {
+		tokenizer->read_position += 1; // consume '/'
+
+		// Single line comments ends at newline
+		while (!tokenizer_is_end(tokenizer)) {
+			char32_t c = tokenizer_get_char(tokenizer);
+			if (c == '\n') {
+				tokenizer->read_position += 1; // consume newline
+				return true;
+			} else {
+				tokenizer->read_position += 1;
+			}
+		}
+	} else if (is_multi_line_comment) {
+		tokenizer->read_position += 1; // consume '*'
+		while (true) {
+			if (tokenizer_is_end(tokenizer)) {
+				// NOTE: EOF reached, but the comment wasn't terminated
+				break;
+			}
+
+			char32_t c = tokenizer_get_char(tokenizer);
+			if (c == '*') {
+				if (_tokenizer_has_next_char(tokenizer, '/')) {
+					tokenizer->read_position += 2; // consume */
+					return true;
+				}
+			} else {
+				tokenizer->read_position += 1;
+			}
+		}
+	}
+
+	return false;
+}
+
 Token tokenizer_next_token(Tokenizer* tokenizer) {
 	char32_t current_char = 0;
 	while (true) {
@@ -154,6 +204,12 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			};
 		}
 
+		while (true) {
+			bool skipped = _tokenizer_try_skip_comment(tokenizer);
+			if (!skipped) {
+				break;
+			}
+		}
 
 		current_char = tokenizer_get_char(tokenizer);
 		if (!isspace(current_char)) {

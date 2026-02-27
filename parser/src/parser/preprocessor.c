@@ -12,6 +12,32 @@ void preprocessor_init(Preprocessor* state, String source_code, Arena* allocator
 	};
 }
 
+void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
+	macro->tokens = arena_alloc_array(state->allocator, Token, 0);
+
+	SourceRange macro_name_range = source_range_from_sub_string(state->tokenizer.source_code, macro->name);
+	uint32_t macro_definition_line = line_info_pos_to_source_location(&state->line_info, macro_name_range.start).line;
+
+	while (true) {
+		if (tokenizer_is_end(&state->tokenizer)) {
+			break;
+		}
+
+		Token token = tokenizer_view_next(&state->tokenizer);
+		uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line;
+		if (token_line == macro_definition_line) {
+			// Token is one the same line as the macro definition,
+			// so it belongs to the token stream of this macro
+			*arena_alloc(state->allocator, Token) = token;
+			macro->token_count += 1;
+
+			tokenizer_reset_to_token(&state->tokenizer, token);
+		} else {
+			break;
+		}
+	}
+}
+
 bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	ArenaRegion temp_region = arena_begin_temp(state->allocator);
 
@@ -59,6 +85,7 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 		}
 	}
 
+	_preprocessor_parse_macro_token_stream(state, macro);
 	return true;
 }
 

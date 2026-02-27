@@ -1,5 +1,22 @@
 #include "preprocessor.h"
 
+void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
+	assert(table->count < table->capacity);
+
+	table->macros[table->count] = *macro;
+	table->count += 1;
+}
+
+const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
+	for (size_t i = 0; i < table->count; i += 1) {
+		if (str_equal(table->macros[i].name, name)) {
+			return &table->macros[i];
+		}
+	}
+
+	return NULL;
+}
+
 //
 // Preprocessor
 //
@@ -10,6 +27,17 @@ void preprocessor_init(Preprocessor* state, String source_code, Arena* allocator
 		.source_code = source_code,
 		.read_position = 0,
 	};
+
+	state->macro_table = (MacroTable) {
+		.capacity = 128,
+		.count = 0,
+	};
+
+	state->macro_table.macros = arena_alloc_array(allocator, MacroDefinition, state->macro_table.capacity);
+
+	state->macro_call_stack_capacity = 32;
+	state->macro_call_stack_depth = 0;
+	state->macro_call_stack = arena_alloc_array(allocator, MacroCallState, state->macro_call_stack_capacity);
 }
 
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
@@ -47,10 +75,12 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 		return false;
 	}
 
+	macro->style = MACRO_STYLE_DEFAULT;
 	macro->name = name_token.string;
 
 	Token maybe_paren = tokenizer_view_next(&state->tokenizer);
 	if (maybe_paren.kind == TOKEN_LEFT_PAREN) {
+		macro->style = MACRO_STYLE_FUNCTION;
 		// We have a function style macro => parse paremeter names
 		tokenizer_reset_to_token(&state->tokenizer, maybe_paren);
 
@@ -110,7 +140,7 @@ void preprocessor_skip_derective(Preprocessor* state) {
 	} else if (str_equal(next_token.string, STR_LIT("define"))) {
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
-
+			macro_table_append(&state->macro_table, &macro);
 		}
 	} else {
 		StringBuilder builder = { .arena = state->diagnostics->allocator };

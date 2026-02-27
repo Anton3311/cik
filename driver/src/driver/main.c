@@ -2,26 +2,28 @@
 #include <stdlib.h>
 
 #include "core/core.h"
-#include "parser/parser.h"
+#include "parser/preprocessor.h"
 
 int main(int argc, char *argv[]) {
 	Arena arena = {};
-	arena.capacity = align_to_page_size(16 * 4096);
+	arena.capacity = align_to_page_size(512 * 4096);
 
 	Arena temp_arena = {};
-	temp_arena.capacity = align_to_page_size(16 * 4096);
+	temp_arena.capacity = align_to_page_size(512 * 4096);
 
 	if (argc == 2) {
 		String source_code = read_entire_file_to_str(argv[1], &temp_arena);
 		assert(source_code.v != NULL);
 
-		Tokenizer tokenizer = (Tokenizer) {
-			.source_code = source_code,
-			.read_position = 0,
+		Preprocessor preprocessor = (Preprocessor) {
+			.tokenizer = (Tokenizer) {
+				.source_code = source_code,
+				.read_position = 0,
+			}
 		};
 
 		while (true) {
-			Token token = tokenizer_next_token(&tokenizer);
+			Token token = preprocessor_next_token(&preprocessor);
 			String source_range = sub_str(source_code,
 					token.source_range.start,
 					token.source_range.end - token.source_range.start);

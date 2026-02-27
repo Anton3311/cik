@@ -81,6 +81,21 @@ inline char32_t tokenizer_get_char(const Tokenizer* tokenizer) {
 	return (char32_t)tokenizer->source_code.v[tokenizer->read_position];
 }
 
+inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
+	if (tokenizer_is_end(tokenizer)) {
+		return false;
+	}
+
+	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
+}
+
+void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer);
+
+StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
+		char32_t string_opening_char,
+		char32_t string_closing_char,
+		Token* out_token);
+
 Token tokenizer_next_token(Tokenizer* tokenizer);
 
 #endif

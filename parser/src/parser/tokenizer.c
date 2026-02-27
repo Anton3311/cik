@@ -1,6 +1,8 @@
-#include "parser.h"
+#include "tokenizer.h"
 
 #include <ctype.h>
+
+bool _tokenizer_try_skip_comment(Tokenizer* tokenizer);
 
 inline Token _tokenizer_create_single_char_token(Tokenizer* tokenizer, TokenKind kind) {
 	size_t position = tokenizer->read_position;
@@ -50,6 +52,28 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		.kind = TOKEN_IDENT,
 	};
 	return true;
+}
+
+void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer) {
+	while (true) {
+		if (tokenizer_is_end(tokenizer)) {
+			break;
+		}
+
+		while (true) {
+			bool skipped = _tokenizer_try_skip_comment(tokenizer);
+			if (!skipped) {
+				break;
+			}
+		}
+
+		char32_t current_char = tokenizer_get_char(tokenizer);
+		if (!isspace(current_char)) {
+			break;
+		} else {
+			tokenizer->read_position += 1;
+		}
+	}
 }
 
 // NOTE: Returnd token includes quotation marks
@@ -156,14 +180,6 @@ Token _tokenizer_try_create_double_char_token(Tokenizer* tokenizer,
 	};
 }
 
-inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
-	if (tokenizer_is_end(tokenizer)) {
-		return false;
-	}
-
-	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
-}
-
 /*
    Skips both single-line and multi-line comments.
 */
@@ -223,8 +239,8 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 					.start = tokenizer->read_position,
 						.end = tokenizer->read_position,
 				},
-					.string = (String) {},
-					.kind = TOKEN_EOF,
+				.string = (String) {},
+				.kind = TOKEN_EOF,
 			};
 		}
 
@@ -286,26 +302,8 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 
 	case '>':
 		return _tokenizer_try_create_double_char_token(tokenizer, '>', '=', TOKEN_GREATER, TOKEN_GREATER_OR_EQUAL);
-	case '<': {
-		if (_tokenizer_has_next_char(tokenizer, '=')) {
-			size_t token_start = tokenizer->read_position;
-			tokenizer->read_position += 1; // consume current char
-			tokenizer->read_position += 1; // consume next char
-			return (Token) {
-				.source_range = (SourceRange) {
-					.start = token_start,
-					.end = tokenizer->read_position,
-				},
-				.string = sub_str(tokenizer->source_code, token_start, 2),
-				.kind = TOKEN_LESS_OR_EQUAL,
-			};
-		}
-
-		Token string_token = {};
-		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '<', '>', &string_token);
-		assert(result == STR_TOKEN_RESULT_NONE);
-		return string_token;
-	}
+	case '<':
+		return _tokenizer_try_create_double_char_token(tokenizer, '<', '=', TOKEN_LESS, TOKEN_LESS_OR_EQUAL);
 	case '"': {
 		Token string_token = {};
 		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '"', '"', &string_token);

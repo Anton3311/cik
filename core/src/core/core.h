@@ -91,7 +91,7 @@ typedef struct {
 } String;
 
 #define STR_FMT(string) (int)(string).length, (string).v
-#define STR_LIT(string) (String) { .v = string, length = sizeof(string) }
+#define STR_LIT(string) (String) { .v = string, .length = sizeof(string) - 1 }
 
 inline String str_from_cstr(const char* cstr) {
 	return (String) { .v = cstr, .length = strlen(cstr) };

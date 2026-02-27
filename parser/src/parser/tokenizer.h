@@ -98,4 +98,11 @@ StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
 
 Token tokenizer_next_token(Tokenizer* tokenizer);
 
+inline Token tokenizer_view_next(Tokenizer* tokenizer) {
+	Tokenizer saved_tokenizer = *tokenizer;
+	Token next_token = tokenizer_next_token(tokenizer);
+	*tokenizer = saved_tokenizer;
+	return next_token;
+}
+
 #endif

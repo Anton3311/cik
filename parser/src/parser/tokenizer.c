@@ -109,6 +109,7 @@ StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
 			case 'n':
 			case 'r':
 			case 't':
+			case '0':
 				break;
 			default:
 				return STR_TOKEN_RESULT_INVALID_ESCAPE_CHAR;
@@ -264,6 +265,8 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_HASH);
 	case '*':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_ASTERISK);
+	case '%':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_PERCENT);
 	case ',':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_COMMA);
 	case '.':
@@ -278,8 +281,12 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_try_create_double_char_token(tokenizer, '&', '&', TOKEN_AMPERSAND, TOKEN_LOGIC_AND);
 	case '|':
 		return _tokenizer_try_create_double_char_token(tokenizer, '|', '|', TOKEN_PIPE, TOKEN_LOGIC_OR);
+	case '^':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_BITWISE_XOR);
 	case '!':
 		return _tokenizer_try_create_double_char_token(tokenizer, '!', '=', TOKEN_EXCLAMATION_MARK, TOKEN_NOT_EQUAL);
+	case '?':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_QUESTION_MARK);
 	case '+':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_PLUS);
 	case '-':

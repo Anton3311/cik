@@ -18,6 +18,7 @@ typedef enum {
 	TOKEN_AMPERSAND,
 	TOKEN_PIPE,
 	TOKEN_EXCLAMATION_MARK,
+	TOKEN_QUESTION_MARK,
 	TOKEN_ARROW,
 
 	// Parens & friends
@@ -34,6 +35,7 @@ typedef enum {
 	TOKEN_PLUS,
 	TOKEN_MINUS,
 	TOKEN_ASTERISK,
+	TOKEN_PERCENT,
 
 	// Comparison
 	TOKEN_LESS,
@@ -47,6 +49,9 @@ typedef enum {
 	// Logic
 	TOKEN_LOGIC_AND,
 	TOKEN_LOGIC_OR,
+
+	// Bitwise
+	TOKEN_BITWISE_XOR,
 } TokenKind;
 
 typedef struct {

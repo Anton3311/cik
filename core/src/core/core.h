@@ -19,6 +19,8 @@ typedef uint32_t char32_t;
 #define HAS_FLAG(flag_set, flag) (((flag_set) & (flag)) == (flag))
 #define HAS_ANY_FLAG(flag_set, flag) (((flag_set) & (flag)) != 0)
 
+#define array_size(array) ((sizeof(array)) / sizeof(*(array)))
+
 #define assert(expression) if (!(expression)) { \
 	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m", \
 			__FILE__, \

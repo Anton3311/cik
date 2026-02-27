@@ -40,3 +40,33 @@ void diagnostics_report_error(Diagnostics* diagnostics, SourceRange source_range
 		diagnostics->first = entry;
 	}
 }
+
+void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
+		Token actual_token,
+		TokenKind* expected_kinds,
+		size_t expected_kind_count) {
+	StringBuilder builder = { .arena = diagnostics->allocator };
+	str_builder_append(&builder, STR_LIT("Unexpected token '"));
+	str_builder_append(&builder, actual_token.string);
+
+	str_builder_append(&builder, STR_LIT("'. Expected: "));
+	if (expected_kind_count == 1) {
+		str_builder_append(&builder, token_kind_to_string(expected_kinds[0]));
+	} else if (expected_kind_count == 2) {
+		str_builder_append(&builder, token_kind_to_string(expected_kinds[0]));
+		str_builder_append(&builder, STR_LIT(" or "));
+		str_builder_append(&builder, token_kind_to_string(expected_kinds[1]));
+	} else {
+		for (size_t i = 0; i < expected_kind_count - 2; i += 1) {
+			str_builder_append(&builder, token_kind_to_string(expected_kinds[i]));
+			str_builder_append(&builder, STR_LIT(", "));
+		}
+
+		str_builder_append(&builder, token_kind_to_string(expected_kinds[expected_kind_count - 2]));
+		str_builder_append(&builder, STR_LIT(" or "));
+		str_builder_append(&builder, token_kind_to_string(expected_kinds[expected_kind_count - 1]));
+	}
+
+	diagnostics_report_error(diagnostics, actual_token.source_range, builder.string);
+}
+

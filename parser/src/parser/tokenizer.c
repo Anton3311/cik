@@ -2,6 +2,60 @@
 
 #include <ctype.h>
 
+static String s_token_kind_to_string[TOKEN_COUNT] = {
+	[TOKEN_EOF] = STR_LIT("<eof>"),
+
+	[TOKEN_IDENT] = STR_LIT("<identifier>"),
+	[TOKEN_STRING] = STR_LIT("<string>"),
+
+	[TOKEN_HASH] = STR_LIT("#"),
+	[TOKEN_COMMA] = STR_LIT(","),
+	[TOKEN_DOT] = STR_LIT("."),
+	[TOKEN_COLON] = STR_LIT(":"),
+	[TOKEN_SEMICOLON] = STR_LIT(";"),
+	[TOKEN_AMPERSAND] = STR_LIT("&"),
+	[TOKEN_PIPE] = STR_LIT("|"),
+	[TOKEN_EXCLAMATION_MARK] = STR_LIT("!"),
+	[TOKEN_QUESTION_MARK] = STR_LIT("?"),
+	[TOKEN_ARROW] = STR_LIT("->"),
+
+	// Parens & friends
+	[TOKEN_LEFT_PAREN] = STR_LIT("("),
+	[TOKEN_RIGHT_PAREN] = STR_LIT(")"),
+
+	[TOKEN_LEFT_BRACE] = STR_LIT("{"),
+	[TOKEN_RIGHT_BRACE] = STR_LIT("}"),
+
+	[TOKEN_LEFT_BRACKET] = STR_LIT("["),
+	[TOKEN_RIGHT_BRACKET] = STR_LIT("]"),
+
+	// Arithmetics
+	[TOKEN_PLUS] = STR_LIT("+"),
+	[TOKEN_MINUS] = STR_LIT("-"),
+	[TOKEN_ASTERISK] = STR_LIT("*"),
+	[TOKEN_PERCENT] = STR_LIT("%"),
+
+	// Comparison
+	[TOKEN_LESS] = STR_LIT("<"),
+	[TOKEN_GREATER] = STR_LIT(">"),
+	[TOKEN_LESS_OR_EQUAL] = STR_LIT("<="),
+	[TOKEN_GREATER_OR_EQUAL] = STR_LIT(">="),
+	[TOKEN_EQUAL] = STR_LIT("="),
+	[TOKEN_NOT_EQUAL] = STR_LIT("!="),
+	[TOKEN_DOUBLE_EQUAL] = STR_LIT("=="),
+
+	// Logic
+	[TOKEN_LOGIC_AND] = STR_LIT("&"),
+	[TOKEN_LOGIC_OR] = STR_LIT("|"),
+
+	// Bitwise
+	[TOKEN_BITWISE_XOR] = STR_LIT("^"),
+};
+
+String token_kind_to_string(TokenKind kind) {
+	return s_token_kind_to_string[kind];
+}
+
 bool _tokenizer_try_skip_comment(Tokenizer* tokenizer);
 
 inline Token _tokenizer_create_single_char_token(Tokenizer* tokenizer, TokenKind kind) {

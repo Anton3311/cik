@@ -3,6 +3,7 @@
 
 #include "core/core.h"
 #include "parser/source_info.h"
+#include "parser/tokenizer.h"
 
 typedef enum {
 	DIAGNOSTICS_ENTRY_ERROR,
@@ -34,5 +35,9 @@ typedef struct {
 
 void diagnostics_print(const Diagnostics* diagnostics);
 void diagnostics_report_error(Diagnostics* diagnostics, SourceRange source_range, String message);
+void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
+		Token actual_token,
+		TokenKind* expected_kinds,
+		size_t expected_kind_count);
 
 #endif

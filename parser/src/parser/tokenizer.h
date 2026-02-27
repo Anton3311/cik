@@ -52,7 +52,11 @@ typedef enum {
 
 	// Bitwise
 	TOKEN_BITWISE_XOR,
+
+	TOKEN_COUNT,
 } TokenKind;
+
+String token_kind_to_string(TokenKind kind);
 
 typedef struct {
 	String source_code;
@@ -104,6 +108,10 @@ inline Token tokenizer_view_next(Tokenizer* tokenizer) {
 	Token next_token = tokenizer_next_token(tokenizer);
 	*tokenizer = saved_tokenizer;
 	return next_token;
+}
+
+inline void tokenizer_reset_to_token(Tokenizer* tokenizer, Token token) {
+	tokenizer->read_position = token.source_range.end;
 }
 
 #endif

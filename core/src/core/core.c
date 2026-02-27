@@ -37,6 +37,7 @@ void _arena_reserve(Arena* arena, size_t initial_size) {
 	_query_system_memory_spec();
 
 	size_t aligned_allocation = align(initial_size, s_sys_mem_spec.page_size);
+	aligned_allocation = max(s_sys_mem_spec.page_size, aligned_allocation);
 
 	arena->base = (uint8_t*)VirtualAlloc(NULL,
 			(SIZE_T)align(arena->capacity, s_sys_mem_spec.page_size),

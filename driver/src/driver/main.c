@@ -10,6 +10,9 @@ int main(int argc, char *argv[]) {
 	Arena arena = {};
 	arena.capacity = align_to_page_size(512 * 4096);
 
+	Arena diagnostics_arena = {};
+	diagnostics_arena .capacity = align_to_page_size(512 * 4096);
+
 	Arena temp_arena = {};
 	temp_arena.capacity = align_to_page_size(512 * 4096);
 
@@ -21,11 +24,12 @@ int main(int argc, char *argv[]) {
 		preprocessor_init(&preprocessor, source_code, &temp_arena);
 
 		Diagnostics diagnostics = (Diagnostics) {
-			.allocator = &arena,
+			.allocator = &diagnostics_arena,
 			.source_code = source_code,
 			.line_info = preprocessor.line_info,
 		};
 
+		preprocessor.allocator = &arena;
 		preprocessor.diagnostics = &diagnostics;
 
 		while (true) {
@@ -48,6 +52,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	arena_release(&arena);
+	arena_release(&diagnostics_arena);
 	arena_release(&temp_arena);
 
 	return EXIT_SUCCESS;

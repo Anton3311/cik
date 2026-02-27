@@ -10,6 +10,7 @@
 //
 
 typedef struct {
+	Arena* allocator;
 	Diagnostics* diagnostics;
 	Tokenizer tokenizer;
 	LineInfo line_info;

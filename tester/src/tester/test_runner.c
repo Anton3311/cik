@@ -103,58 +103,84 @@ bool create_process_and_capture_stdout(const char* executable,
 	return true;
 }
 
+bool run_tester(String args, Arena* arena, Arena* temp_arena, String* out_stdout) {
+	ArenaRegion temp = arena_begin_temp(temp_arena);
+
+	StringBuilder builder = { .arena = temp_arena };
+	str_builder_append(&builder, STR_LIT("tester.exe "));
+	str_builder_append(&builder, args);
+	const char* command_line_args = str_builder_to_cstr(&builder);
+
+	bool result = create_process_and_capture_stdout("bin/tester.exe", NULL, (char*)command_line_args, arena, out_stdout);
+
+	arena_end_temp(temp);
+
+	return result;
+}
+
 typedef struct {
-	String source;
-	size_t read_position;
-} LineIterator;
+	String* suite_names;
+	StringArray* suite_tests;
+	size_t suite_count;
+} TestStorage;
 
-bool line_iterator_next(LineIterator* iter, String* out_line) {
-	if (iter->read_position >= iter->source.length) {
-		return false;
-	}
-
-	size_t line_start = iter->read_position;
-	size_t line_end = line_start;
-	while (iter->read_position != iter->source.length) {
-		char current_char = iter->source.v[iter->read_position];
-		line_end = iter->read_position;
-		iter->read_position += 1;
-
-		// skip \r\n
-		if (current_char == '\r') {
-			if (iter->read_position < iter->source.length && iter->source.v[iter->read_position] == '\n') {
-				iter->read_position += 1;
-			}
-
-			break;
+bool extract_test_suites(TestStorage* storage, Arena* arena, Arena* temp_arena) {
+	{
+		String all_test_suites = {};
+		if (!run_tester(STR_LIT("1"), arena, temp_arena, &all_test_suites)) {
+			return false;
 		}
 
-		if (current_char == '\n') {
-			break;
-		}
+		StringArray test_suites = string_to_lines(all_test_suites, arena);
+		storage->suite_names = test_suites.values;
+		storage->suite_count = test_suites.count;
 	}
 
-	String line = sub_str(iter->source, line_start, line_end - line_start);
-	*out_line = line;
+	storage->suite_tests = arena_alloc_array(arena, StringArray, storage->suite_count);
+
+	for (size_t test_suite_index = 0; test_suite_index < storage->suite_count; test_suite_index += 1) {
+		ArenaRegion temp = arena_begin_temp(temp_arena);
+
+		StringBuilder builder = { .arena = temp_arena };
+		str_builder_append_int(&builder, TEST_CMD_GET_TEST_NAMES);
+		str_builder_append_char(&builder, ' ');
+		str_builder_append_int(&builder, test_suite_index);
+
+		String test_case_names = {};
+		bool result = run_tester(builder.string, arena, temp_arena, &test_case_names);
+
+		arena_end_temp(temp);
+
+		if (!result) {
+			return false;
+		}
+
+		storage->suite_tests[test_suite_index] = string_to_lines(test_case_names, arena);
+	}
+
 	return true;
 }
 
 int main(int argc, char* argv[]) {
 	Arena arena = { .capacity = 128 * 4096 };
-	char* tester_executable = "bin/tester.exe";
+	Arena temp_arena = { .capacity = 128 * 4096 };
 
-	String test_suites = {};
-	if (!create_process_and_capture_stdout(tester_executable, NULL, "tester.exe 1", &arena, &test_suites)) {
-		fprintf(stderr, "Failed to get test suites\n");
+	TestStorage test_storage = {};
+	if (!extract_test_suites(&test_storage, &arena, &temp_arena)) {
+		fprintf(stderr, "Failed to extract test cases\n");
 		return EXIT_FAILURE;
 	}
 
-	LineIterator line_iter = { .source = test_suites, .read_position = 0 };
-	String line = {};
-	while (line_iterator_next(&line_iter, &line)) {
-		printf("%.*s\n", STR_FMT(line));
+	for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
+		printf("%.*s:\n", STR_FMT(test_storage.suite_names[suite_index]));
+
+		StringArray tests = test_storage.suite_tests[suite_index];
+		for (size_t test_index = 0; test_index < tests.count; test_index += 1) {
+			printf("\t%.*s\n", STR_FMT(tests.values[test_index]));
+		}
 	}
 
+	arena_release(&temp_arena);
 	arena_release(&arena);
 	return 0;
 }

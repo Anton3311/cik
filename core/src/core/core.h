@@ -92,6 +92,11 @@ typedef struct {
 	size_t length;
 } String;
 
+typedef struct {
+	String* values;
+	size_t count;
+} StringArray;
+
 #define STR_FMT(string) (int)(string).length, (string).v
 #define STR_LIT(string) (String) { .v = string, .length = sizeof(string) - 1 }
 
@@ -172,7 +177,25 @@ inline void str_builder_append_char(StringBuilder* builder, char c) {
 	str_builder_append(builder, (String) { .v = &c, .length = 1 });
 }
 
+inline const char* str_builder_to_cstr(StringBuilder* builder) {
+	char terminator = 0;
+	str_builder_append(builder, (String) { .v = &terminator, .length = 1 });
+	return builder->string.v;
+}
+
 void str_builder_append_int(StringBuilder* builder, uint64_t value);
+
+//
+// Line Iterator
+//
+
+typedef struct {
+	String source;
+	size_t read_position;
+} LineIterator;
+
+bool line_iterator_next(LineIterator* iter, String* out_line);
+StringArray string_to_lines(String string, Arena* allocator);
 
 //
 // File IO

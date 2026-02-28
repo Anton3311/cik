@@ -142,6 +142,54 @@ void str_builder_append_int(StringBuilder* builder, uint64_t value) {
 }
 
 //
+// Line Iterator
+// 
+
+bool line_iterator_next(LineIterator* iter, String* out_line) {
+	if (iter->read_position >= iter->source.length) {
+		return false;
+	}
+
+	size_t line_start = iter->read_position;
+	size_t line_end = line_start;
+	while (iter->read_position < iter->source.length) {
+		char current_char = iter->source.v[iter->read_position];
+		line_end = iter->read_position;
+		iter->read_position += 1;
+
+		// skip \r\n
+		if (current_char == '\r') {
+			if (iter->read_position < iter->source.length && iter->source.v[iter->read_position] == '\n') {
+				iter->read_position += 1;
+			}
+
+			break;
+		}
+
+		if (current_char == '\n') {
+			break;
+		}
+	}
+
+	String line = sub_str(iter->source, line_start, line_end - line_start);
+	*out_line = line;
+	return true;
+}
+
+StringArray string_to_lines(String string, Arena* allocator) {
+	StringArray array = { .values = arena_alloc_array(allocator, String, 0), .count = 0 };
+
+	LineIterator iter = { .source = string };
+	String line = {};
+	while (line_iterator_next(&iter, &line)) {
+		*arena_alloc(allocator, String) = line;
+		array.count += 1;
+	}
+
+	return array;
+}
+
+//
 // File IO
 //
 

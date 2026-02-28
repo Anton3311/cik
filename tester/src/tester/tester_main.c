@@ -6,7 +6,15 @@
 typedef struct TestContext TestContext;
 
 void test_non_function_style_macro_expansion(TestContext* context) {
+	assert(true);
+}
+
+void test_fail(TestContext* context) {
 	assert(false);
+}
+
+void test_success(TestContext* context) {
+	assert(true);
 }
 
 struct TestContext {
@@ -35,6 +43,8 @@ typedef struct {
 
 static TestCase preprocessor_tests[] = {
 	test(test_non_function_style_macro_expansion),
+	test(test_fail),
+	test(test_success),
 };
 
 static TestCase parser_tests[] = {
@@ -176,7 +186,7 @@ int main(int argc, char* argv[]) {
 				return EXIT_FAILURE;
 			}
 
-			if (test_index >= test_suite_count) {
+			if (test_index >= suite->case_count) {
 				fprintf(stderr, "Test index out of range: [0; %zu]", suite->case_count - 1);
 				return EXIT_FAILURE;
 			}

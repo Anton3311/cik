@@ -39,7 +39,8 @@ bool create_process_and_capture_stdout(const char* executable,
 		const char* working_dir,
 		char* args,
 		Arena* allocator,
-		String* out_stdout) {
+		String* out_stdout,
+		int32_t* exit_code) {
 
 	StdoutPipe pipe = {};
 	if (!stdout_pipe_create(&pipe)) {
@@ -75,6 +76,12 @@ bool create_process_and_capture_stdout(const char* executable,
 
 	WaitForSingleObject(process_info.hProcess, INFINITE);
 
+	if (exit_code) {
+		DWORD code = 0;
+		GetExitCodeProcess(process_info.hProcess, &code);
+		*exit_code = (int32_t)code;
+	}
+
 	CloseHandle(process_info.hProcess);
 	CloseHandle(process_info.hThread);
 	CloseHandle(pipe.write);
@@ -103,7 +110,7 @@ bool create_process_and_capture_stdout(const char* executable,
 	return true;
 }
 
-bool run_tester(String args, Arena* arena, Arena* temp_arena, String* out_stdout) {
+bool run_tester(String args, Arena* arena, Arena* temp_arena, String* out_stdout, int32_t* exit_code) {
 	ArenaRegion temp = arena_begin_temp(temp_arena);
 
 	StringBuilder builder = { .arena = temp_arena };
@@ -111,7 +118,12 @@ bool run_tester(String args, Arena* arena, Arena* temp_arena, String* out_stdout
 	str_builder_append(&builder, args);
 	const char* command_line_args = str_builder_to_cstr(&builder);
 
-	bool result = create_process_and_capture_stdout("bin/tester.exe", NULL, (char*)command_line_args, arena, out_stdout);
+	bool result = create_process_and_capture_stdout("bin/tester.exe",
+			NULL,
+			(char*)command_line_args,
+			arena,
+			out_stdout,
+			exit_code);
 
 	arena_end_temp(temp);
 
@@ -127,7 +139,7 @@ typedef struct {
 bool extract_test_suites(TestStorage* storage, Arena* arena, Arena* temp_arena) {
 	{
 		String all_test_suites = {};
-		if (!run_tester(STR_LIT("1"), arena, temp_arena, &all_test_suites)) {
+		if (!run_tester(STR_LIT("1"), arena, temp_arena, &all_test_suites, NULL)) {
 			return false;
 		}
 
@@ -147,7 +159,7 @@ bool extract_test_suites(TestStorage* storage, Arena* arena, Arena* temp_arena) 
 		str_builder_append_int(&builder, test_suite_index);
 
 		String test_case_names = {};
-		bool result = run_tester(builder.string, arena, temp_arena, &test_case_names);
+		bool result = run_tester(builder.string, arena, temp_arena, &test_case_names, NULL);
 
 		arena_end_temp(temp);
 
@@ -176,7 +188,43 @@ int main(int argc, char* argv[]) {
 
 		StringArray tests = test_storage.suite_tests[suite_index];
 		for (size_t test_index = 0; test_index < tests.count; test_index += 1) {
-			printf("\t%.*s\n", STR_FMT(tests.values[test_index]));
+			String test_name = tests.values[test_index];
+
+			ArenaRegion temp = arena_begin_temp(&temp_arena);
+
+			StringBuilder builder = { .arena = &temp_arena };
+			str_builder_append_int(&builder, TEST_CMD_RUN_TEST);
+			str_builder_append_char(&builder, ' ');
+			str_builder_append_int(&builder, suite_index);
+			str_builder_append_char(&builder, ' ');
+			str_builder_append_int(&builder, test_index);
+
+			String test_output = {};
+			int32_t exit_code = 0;
+			bool result = run_tester(builder.string, &arena, &temp_arena, &test_output, &exit_code);
+
+			arena_end_temp(temp);
+
+			bool pass = result && exit_code == 0;
+
+			const char* status_string = pass ? "PASS" : "FAIL";
+
+			const char* message = "";
+			if (!result) {
+				message = " - Failed to launch the test";
+			}
+
+			if (pass) {
+				printf("\x1b[1;32m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+			} else {
+				printf("\x1b[1;31m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+			}
+
+			if (exit_code != 0) {
+				printf("stdout:\n");
+				printf("%.*s", STR_FMT(test_output));
+				printf("exit code: %d\n", exit_code);
+			}
 		}
 	}
 

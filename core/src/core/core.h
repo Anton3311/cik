@@ -22,7 +22,7 @@ typedef uint32_t char32_t;
 #define array_size(array) ((sizeof(array)) / sizeof(*(array)))
 
 #define assert(expression) if (!(expression)) { \
-	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m", \
+	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m\n", \
 			__FILE__, \
 			__LINE__, \
 	#expression); \

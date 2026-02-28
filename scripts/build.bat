@@ -3,6 +3,7 @@ clang driver\src\driver\main.c core\src\core\core.c parser\src\parser\tokenizer.
 clang ^
 	core\src\core\core.c ^
 	tester\src\tester\tester_main.c ^
+	tester\src\tester\tests.c ^
 	-g -m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\
 
 clang ^

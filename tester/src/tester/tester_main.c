@@ -2,44 +2,7 @@
 
 #include "core/core.h"
 #include "tester/tester_core.h"
-
-typedef struct TestContext TestContext;
-
-void test_non_function_style_macro_expansion(TestContext* context) {
-	assert(true);
-}
-
-void test_fail(TestContext* context) {
-	assert(false);
-}
-
-void test_success(TestContext* context) {
-	assert(true);
-}
-
-struct TestContext {
-
-};
-
-typedef void(*TestFunction)(TestContext* context);
-
-typedef struct {
-	String name;
-	TestFunction function;
-} TestCase;
-
-typedef struct {
-	String name;
-	TestCase* cases;
-	size_t case_count;
-} TestSuite;
-
-#define test(test_name) (TestCase) { .name = STR_LIT(#test_name), .function = test_name }
-#define test_suite(suite_name) (TestSuite) { \
-	.name = STR_LIT(#suite_name), \
-	.cases = suite_name, \
-	.case_count = array_size(suite_name) \
-}
+#include "tester/tests.h"
 
 static TestCase preprocessor_tests[] = {
 	test(test_non_function_style_macro_expansion),

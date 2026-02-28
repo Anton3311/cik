@@ -4,8 +4,6 @@
 #include "core/core.h"
 #include "parser/preprocessor.h"
 
-#define HELLo
-
 int main(int argc, char *argv[]) {
 	Arena arena = {};
 	arena.capacity = align_to_page_size(512 * 4096);

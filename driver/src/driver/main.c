@@ -18,17 +18,16 @@ int main(int argc, char *argv[]) {
 		String source_code = read_entire_file_to_str(argv[1], &temp_arena);
 		assert(source_code.v != NULL);
 
-		Preprocessor preprocessor = {};
-		preprocessor_init(&preprocessor, source_code, &temp_arena);
+		LineInfo line_info = line_info_from_source(&arena, source_code);
 
 		Diagnostics diagnostics = (Diagnostics) {
 			.allocator = &diagnostics_arena,
 			.source_code = source_code,
-			.line_info = preprocessor.line_info,
+			.line_info = line_info,
 		};
 
-		preprocessor.allocator = &arena;
-		preprocessor.diagnostics = &diagnostics;
+		Preprocessor preprocessor = {};
+		preprocessor_init(&preprocessor, source_code, &line_info, &diagnostics, &arena);
 
 		while (true) {
 			Token token = preprocessor_next_token(&preprocessor);

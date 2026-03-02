@@ -54,7 +54,12 @@ struct MacroDefinition {
 	size_t token_count;
 };
 
-void preprocessor_init(Preprocessor* state, String source_code, Arena* allocator);
+void preprocessor_init(Preprocessor* state,
+		String source_code,
+		const LineInfo* line_info,
+		Diagnostics* diagnostics,
+		Arena* allocator);
+
 void preprocessor_skip_derective(Preprocessor* state);
 
 inline Token preprocessor_next_token(Preprocessor* state) {

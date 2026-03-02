@@ -21,8 +21,14 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 // Preprocessor
 //
 
-void preprocessor_init(Preprocessor* state, String source_code, Arena* allocator) {
-	state->line_info = line_info_from_source(allocator, source_code);
+void preprocessor_init(Preprocessor* state,
+		String source_code,
+		const LineInfo* line_info,
+		Diagnostics* diagnostics,
+		Arena* allocator) {
+	state->line_info = *line_info;
+	state->diagnostics = diagnostics;
+	state->allocator = allocator;
 	state->tokenizer = (Tokenizer) {
 		.source_code = source_code,
 		.read_position = 0,
@@ -33,11 +39,11 @@ void preprocessor_init(Preprocessor* state, String source_code, Arena* allocator
 		.count = 0,
 	};
 
-	state->macro_table.macros = arena_alloc_array(allocator, MacroDefinition, state->macro_table.capacity);
+	state->macro_table.macros = arena_alloc_array(state->allocator, MacroDefinition, state->macro_table.capacity);
 
 	state->macro_call_stack_capacity = 32;
 	state->macro_call_stack_depth = 0;
-	state->macro_call_stack = arena_alloc_array(allocator, MacroCallState, state->macro_call_stack_capacity);
+	state->macro_call_stack = arena_alloc_array(state->allocator, MacroCallState, state->macro_call_stack_capacity);
 }
 
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {

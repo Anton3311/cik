@@ -11,7 +11,6 @@ static TestCase preprocessor_tests[] = {
 };
 
 static TestCase parser_tests[] = {
-	test(test_non_function_style_macro_expansion),
 };
 
 static TestSuite s_test_suites[] = {
@@ -154,9 +153,15 @@ int main(int argc, char* argv[]) {
 				return EXIT_FAILURE;
 			}
 
+			Arena arena = { .capacity = 128 * 4096 };
+			Arena temp_arena = { .capacity = 128 * 4096 };
+
 			const TestCase* test = &suite->cases[test_index];
-			TestContext context = {};
+			TestContext context = { .arena = &arena, .temp_arena = &temp_arena };
 			test->function(&context);
+
+			arena_release(&temp_arena);
+			arena_release(&arena);
 			return 0;
 		case TEST_CMD_COUNT:
 			unreachable();

@@ -15,7 +15,10 @@ typedef enum {
 	TEST_CMD_COUNT,
 } TestCommandKind;
 
-typedef struct {} TestContext;
+typedef struct {
+	Arena* arena;
+	Arena* temp_arena;
+} TestContext;
 
 typedef void(*TestFunction)(TestContext* context);
 

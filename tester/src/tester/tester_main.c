@@ -11,8 +11,7 @@ static TestCase source_info_tests[] = {
 
 static TestCase preprocessor_tests[] = {
 	test(test_non_function_style_macro_expansion),
-	test(test_fail),
-	test(test_success),
+	test(test_expand_function_style_macro_with_no_params),
 };
 
 static TestCase parser_tests[] = {

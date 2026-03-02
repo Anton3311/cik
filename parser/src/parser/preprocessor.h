@@ -21,12 +21,25 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name);
 //
 
 typedef struct {
+	Token* tokens;
+	size_t count;
+} MacroArgumentTokens;
+
+typedef struct {
 	const MacroDefinition* macro;
 	size_t token_index;
+
+	// Which macro call argument is being expanding
+	size_t argument_index;
+	size_t argument_token_index;
+
+	// Size matches the number of macro parameters
+	MacroArgumentTokens* argument_tokens;
 } MacroCallState;
 
 typedef struct {
 	Arena* allocator;
+	Arena* temp_allocator;
 	Diagnostics* diagnostics;
 	Tokenizer tokenizer;
 	LineInfo line_info;
@@ -42,6 +55,20 @@ typedef enum {
 	MACRO_STYLE_FUNCTION,
 } MacroStyle;
 
+// Tells the preprocessor how to interpret the identifier token
+// in the defintion of the macro
+typedef enum {
+	MACRO_TOKEN_HINT_NONE,
+	MACRO_TOKEN_HINT_PARAMETER,
+} MacroTokenHintKind;
+
+typedef struct {
+	MacroTokenHintKind kind;
+	union {
+		size_t parameter_index;
+	};
+} MacroTokenHint;
+
 struct MacroDefinition {
 	String name;
 
@@ -51,74 +78,24 @@ struct MacroDefinition {
 	size_t parameter_count;
 	
 	Token* tokens;
+	MacroTokenHint* token_hints;
 	size_t token_count;
 };
+
+// Returns SIZE_MAX when not found
+size_t macro_find_param_by_name(const MacroDefinition* macro, String param_name);
 
 void preprocessor_init(Preprocessor* state,
 		String source_code,
 		const LineInfo* line_info,
 		Diagnostics* diagnostics,
-		Arena* allocator);
+		Arena* allocator,
+		Arena* temp_allocator);
 
 void preprocessor_skip_derective(Preprocessor* state);
+bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token);
+MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro);
 
-inline Token preprocessor_next_token(Preprocessor* state) {
-	if (state->macro_call_stack_depth > 0) {
-		// NOTE: Inside an unwrapping macro call.
-		//       Instead of getting tokens from the tokenizer
-		//       return the onces from the macro.
-		//
-		//       In that way the call gets replaced with whatever code was defined in the macro.
-		MacroCallState* macro_call = NULL;
-
-		// NOTE: Pop finished macro calls off of the stack
-		while (state->macro_call_stack_depth > 0) {
-			macro_call = &state->macro_call_stack[state->macro_call_stack_depth - 1];
-			if (macro_call->token_index == macro_call->macro->token_count) {
-				state->macro_call_stack_depth -= 1;
-				macro_call = NULL;
-			} else {
-				break;
-			}
-		}
-
-		if (macro_call) {
-			Token next_token = macro_call->macro->tokens[macro_call->token_index];
-			macro_call->token_index += 1;
-			return next_token;
-		}
-	}
-
-	Token next_token = {};
-	while (true) {
-		next_token = tokenizer_next_token(&state->tokenizer);
-		if (next_token.kind == TOKEN_HASH) {
-			preprocessor_skip_derective(state);
-		} else if (next_token.kind == TOKEN_IDENT) {
-			const MacroDefinition* macro = macro_table_find(&state->macro_table, next_token.string);
-			if (macro) {
-				assert(macro->style == MACRO_STYLE_DEFAULT);
-				if (macro->token_count == 0) {
-					break;
-				}
-
-				assert(state->macro_call_stack_depth < state->macro_call_stack_capacity);
-
-				MacroCallState* macro_call = &state->macro_call_stack[state->macro_call_stack_depth];
-				state->macro_call_stack_depth += 1;
-
-				macro_call->macro = macro;
-				macro_call->token_index = 1; // first token is returned immediately
-				return macro->tokens[0];
-			}
-
-			break;
-		} else {
-			break;
-		}
-	}
-
-	return next_token;
-}
+Token preprocessor_next_token(Preprocessor* state);
 
 #endif

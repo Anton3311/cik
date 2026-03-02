@@ -27,7 +27,12 @@ int main(int argc, char *argv[]) {
 		};
 
 		Preprocessor preprocessor = {};
-		preprocessor_init(&preprocessor, source_code, &line_info, &diagnostics, &arena);
+		preprocessor_init(&preprocessor,
+				source_code,
+				&line_info,
+				&diagnostics,
+				&arena,
+				&temp_arena);
 
 		while (true) {
 			Token token = preprocessor_next_token(&preprocessor);

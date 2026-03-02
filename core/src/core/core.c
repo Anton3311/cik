@@ -5,6 +5,10 @@
 
 #include <windows.h>
 
+bool is_debugger_connected() {
+	return IsDebuggerPresent();
+}
+
 typedef struct {
 	size_t page_size;
 } SystemMemorysSpec;

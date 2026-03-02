@@ -11,10 +11,13 @@ typedef uint8_t bool;
 typedef uint8_t bool8;
 typedef uint32_t char32_t;
 
+bool is_debugger_connected();
+
 #define true (bool)(1)
 #define false (bool)(0)
 
-#define DEBUG_BREAK() __debugbreak()
+#define debug_break() __debugbreak()
+#define crash() if (is_debugger_connected()) { debug_break(); } else { exit(EXIT_FAILURE); }
 
 #define HAS_FLAG(flag_set, flag) (((flag_set) & (flag)) == (flag))
 #define HAS_ANY_FLAG(flag_set, flag) (((flag_set) & (flag)) != 0)
@@ -26,10 +29,10 @@ typedef uint32_t char32_t;
 			__FILE__, \
 			__LINE__, \
 	#expression); \
-	DEBUG_BREAK(); }
+	crash(); }
 
-#define unreachable() { printf("%s:%u: Reached unreachable statement.\n", __FILE__, __LINE__); DEBUG_BREAK(); }
-#define unreachable_msg(msg) { printf("%s:%u: %s\n", __FILE__, __LINE__, msg); DEBUG_BREAK(); }
+#define unreachable() { printf("%s:%u: Reached unreachable statement.\n", __FILE__, __LINE__); crash(); }
+#define unreachable_msg(msg) { printf("%s:%u: %s\n", __FILE__, __LINE__, msg); crash(); }
 
 #define debug_log_info(...) { printf("%s:%u: \033[32;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
 #define debug_log_warn(...) { printf("%s:%u: \033[33;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }

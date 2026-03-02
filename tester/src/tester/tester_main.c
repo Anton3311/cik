@@ -5,7 +5,8 @@
 #include "tester/tests.h"
 
 static TestCase source_info_tests[] = {
-	test(test_text_position_to_line_column),
+	test(test_text_start_position_to_source_location),
+	test(test_last_line_postion_to_source_location),
 };
 
 static TestCase preprocessor_tests[] = {

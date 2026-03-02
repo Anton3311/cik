@@ -2,8 +2,22 @@
 
 #include "parser/preprocessor.h"
 
+void test_text_position_to_line_column(TestContext* context) {
+	String source_code = STR_LIT("#define hello 100 + 100\nhello");
+
+	LineInfo line_info = line_info_from_source(context->arena, source_code);
+
+	SourceLocation position = line_info_pos_to_source_location(&line_info, 0);
+	assert(position.line == 0);
+	assert(position.column == 0);
+
+	SourceLocation position1 = line_info_pos_to_source_location(&line_info, 26);
+	assert(position1.line == 1);
+	assert(position1.column == 2);
+}
+
 void test_non_function_style_macro_expansion(TestContext* context) {
-	String source_code = STR_LIT("#define hello 100 + 100\nhello\n");
+	String source_code = STR_LIT("#define hello 100 + 100\nhello");
 	String expected_source_code = STR_LIT("100 + 100");
 
 	LineInfo line_info = line_info_from_source(context->arena, source_code);

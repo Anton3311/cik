@@ -20,6 +20,7 @@ typedef struct {
 typedef struct {
 	uint32_t line_count;
 	uint32_t* line_starts;
+	size_t source_length;
 } LineInfo;
 
 LineInfo line_info_from_source(Arena* allocator, String source);

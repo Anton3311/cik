@@ -20,18 +20,17 @@ LineInfo line_info_from_source(Arena* allocator, String source) {
 	}
 
 	arena_alloc(allocator, uint32_t);
-	line_info.line_starts[line_info.line_count] = (uint32_t)source.length;
+	line_info.line_starts[line_info.line_count] = (uint32_t)line_start;
+	line_info.source_length = source.length;
 
 	return line_info;
 }
 
 SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_t string_pos) {
-	if (string_pos >= line_info->line_starts[line_info->line_count]) {
-		return (SourceLocation) {};
-	}
+	assert(string_pos <= line_info->source_length);
 
 	uint32_t left = 0;
-	uint32_t right = line_info->line_count;
+	uint32_t right = line_info->line_count + 1;
 
 	while (right - left > 1) {
 		uint32_t mid = (right + left) / 2;

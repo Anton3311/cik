@@ -4,6 +4,10 @@
 #include "tester/tester_core.h"
 #include "tester/tests.h"
 
+static TestCase source_info_tests[] = {
+	test(test_text_position_to_line_column),
+};
+
 static TestCase preprocessor_tests[] = {
 	test(test_non_function_style_macro_expansion),
 	test(test_fail),
@@ -14,6 +18,7 @@ static TestCase parser_tests[] = {
 };
 
 static TestSuite s_test_suites[] = {
+	test_suite(source_info_tests),
 	test_suite(parser_tests),
 	test_suite(preprocessor_tests),
 };

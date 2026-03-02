@@ -164,3 +164,24 @@ void test_expand_empty_style_macro(TestContext* context) {
 	Token token = preprocessor_next_token(&preprocessor);
 	assert(token.kind == TOKEN_EOF);
 }
+
+void test_macro_call_with_not_enough_args_fails(TestContext* context) {
+	String source_code = STR_LIT(
+			"#define many_args(a, b, c, d) a + b + c + d\n"
+			"many_args(10, 1)");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	preprocessor_next_token(&preprocessor);
+
+	assert(diagnostics.first != NULL);
+
+	String expected_error_message = STR_LIT("Not enough arguments during a call of macro called 'many_args'. "
+			"Expected 4 but only 2 were provided.");
+
+	assert(str_equal(diagnostics.first->message, expected_error_message));
+}

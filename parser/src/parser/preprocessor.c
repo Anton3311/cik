@@ -318,7 +318,23 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 			}
 
 			if (end_argument_list) {
-				assert(arg_index == macro->parameter_count - 1);
+				if (arg_index != macro->parameter_count - 1) {
+					// Not enough macro arguments
+					StringBuilder builder = { state->diagnostics->allocator };
+					str_builder_append(&builder, STR_LIT("Not enough arguments during a call of macro called '"));
+					str_builder_append(&builder, macro->name);
+					str_builder_append(&builder, STR_LIT("'. Expected "));
+					str_builder_append_int(&builder, macro->parameter_count);
+					str_builder_append(&builder, STR_LIT(" but only "));
+					str_builder_append_int(&builder, arg_index + 1);
+					str_builder_append(&builder, STR_LIT(" were provided."));
+
+					diagnostics_report_error(state->diagnostics,
+							source_range_from_sub_string(state->tokenizer.source_code, macro->name),
+							builder.string);
+					return NULL;
+				}
+
 				break;
 			}
 		}

@@ -15,6 +15,7 @@ static TestCase preprocessor_tests[] = {
 	test(test_expand_function_style_macro_without_params),
 	test(test_expand_empty_function_style_macro),
 	test(test_expand_empty_style_macro),
+	test(test_macro_call_with_not_enough_args_fails),
 };
 
 static TestCase parser_tests[] = {

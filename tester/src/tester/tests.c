@@ -106,6 +106,35 @@ void test_expand_function_style_macro_with_two_params(TestContext* context) {
 	}
 }
 
+void test_expand_function_style_macro_without_params(TestContext* context) {
+	String source_code = STR_LIT(
+			"#define hello() token\n"
+			"hello()");
+	String expected_source_code = STR_LIT("token");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Tokenizer expected_source_tokenizer = (Tokenizer) {
+		.source_code = expected_source_code,
+	};
+
+	while (true) {
+		Token token = preprocessor_next_token(&preprocessor);
+		Token expected_token = tokenizer_next_token(&expected_source_tokenizer);
+
+		assert(token.kind == expected_token.kind);
+		assert(str_equal(token.string, expected_token.string));
+
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+	}
+}
+
 void test_expand_empty_function_style_macro(TestContext* context) {
 	String source_code = STR_LIT(
 			"#define ignore(a)\n"

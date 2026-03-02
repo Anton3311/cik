@@ -379,7 +379,9 @@ Token preprocessor_next_token(Preprocessor* state) {
 			}
 
 			MacroCallState* macro_call = preprocessor_init_macro_call(state, macro);
-			assert(macro_call != NULL);
+			if (macro_call == NULL) {
+				continue;
+			}
 
 			Token token = {};
 			bool has_first_token = preprocessor_get_next_macro_expantion_token(state, &token);

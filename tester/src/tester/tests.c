@@ -49,7 +49,9 @@ static void init_preprocessor_test(TestContext* context,
 }
 
 void test_non_function_style_macro_expansion(TestContext* context) {
-	String source_code = STR_LIT("#define hello 100 + 100\nhello");
+	String source_code = STR_LIT(
+			"#define hello 100 + 100\n"
+			"hello");
 	String expected_source_code = STR_LIT("100 + 100");
 
 	LineInfo line_info = {};
@@ -75,8 +77,10 @@ void test_non_function_style_macro_expansion(TestContext* context) {
 	}
 }
 
-void test_expand_function_style_macro_with_no_params(TestContext* context) {
-	String source_code = STR_LIT("#define hello(a, b) a + b\nhello(10, 10)");
+void test_expand_function_style_macro_with_two_params(TestContext* context) {
+	String source_code = STR_LIT(
+			"#define hello(a, b) a + b\n"
+			"hello(10, 10)");
 	String expected_source_code = STR_LIT("10 + 10");
 
 	LineInfo line_info = {};
@@ -102,3 +106,32 @@ void test_expand_function_style_macro_with_no_params(TestContext* context) {
 	}
 }
 
+void test_expand_empty_function_style_macro(TestContext* context) {
+	String source_code = STR_LIT(
+			"#define ignore(a)\n"
+			"ignore(10)");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Token token = preprocessor_next_token(&preprocessor);
+	assert(token.kind == TOKEN_EOF);
+}
+
+void test_expand_empty_style_macro(TestContext* context) {
+	String source_code = STR_LIT(
+			"#define empty\n"
+			"empty");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Token token = preprocessor_next_token(&preprocessor);
+	assert(token.kind == TOKEN_EOF);
+}

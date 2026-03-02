@@ -94,6 +94,8 @@ void preprocessor_init(Preprocessor* state,
 
 void preprocessor_skip_derective(Preprocessor* state);
 bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token);
+
+// NOTE: Returns null in case a call to a macro doesn't produce any tokens
 MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro);
 
 Token preprocessor_next_token(Preprocessor* state);

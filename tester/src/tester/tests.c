@@ -22,25 +22,41 @@ void test_last_line_postion_to_source_location(TestContext* context) {
 	assert(position.column == 2);
 }
 
+//
+// Preprocessor
+//
+
+static void init_preprocessor_test(TestContext* context,
+		String source_code,
+		Preprocessor* out_preprocessor,
+		Diagnostics* out_diagnostics,
+		LineInfo* out_line_info) {
+
+	*out_line_info = line_info_from_source(context->arena, source_code);
+
+	*out_diagnostics = (Diagnostics) {
+		.allocator = context->arena,
+		.source_code = source_code,
+		.line_info = *out_line_info,
+	};
+	
+	preprocessor_init(out_preprocessor,
+			source_code,
+			out_line_info,
+			out_diagnostics,
+			context->arena,
+			context->temp_arena);
+}
+
 void test_non_function_style_macro_expansion(TestContext* context) {
 	String source_code = STR_LIT("#define hello 100 + 100\nhello");
 	String expected_source_code = STR_LIT("100 + 100");
 
-	LineInfo line_info = line_info_from_source(context->arena, source_code);
-
-	Diagnostics diagnostics = (Diagnostics) {
-		.allocator = context->arena,
-		.source_code = source_code,
-		.line_info = line_info,
-	};
-	
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
 	Preprocessor preprocessor = {};
-	preprocessor_init(&preprocessor,
-			source_code,
-			&line_info,
-			&diagnostics,
-			context->arena,
-			context->temp_arena);
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
 
 	Tokenizer expected_source_tokenizer = (Tokenizer) {
 		.source_code = expected_source_code,
@@ -63,21 +79,11 @@ void test_expand_function_style_macro_with_no_params(TestContext* context) {
 	String source_code = STR_LIT("#define hello(a, b) a + b\nhello(10, 10)");
 	String expected_source_code = STR_LIT("10 + 10");
 
-	LineInfo line_info = line_info_from_source(context->arena, source_code);
-
-	Diagnostics diagnostics = (Diagnostics) {
-		.allocator = context->arena,
-		.source_code = source_code,
-		.line_info = line_info,
-	};
-	
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
 	Preprocessor preprocessor = {};
-	preprocessor_init(&preprocessor,
-			source_code,
-			&line_info,
-			&diagnostics,
-			context->arena,
-			context->temp_arena);
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
 
 	Tokenizer expected_source_tokenizer = (Tokenizer) {
 		.source_code = expected_source_code,

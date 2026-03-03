@@ -99,7 +99,7 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 
 	Token name_token = tokenizer_next_token(&state->tokenizer);
 	if (name_token.kind != TOKEN_IDENT) {
-		diagnostics_report_error(state->diagnostics, name_token.source_range, STR_LIT("Expected macro name"));
+		diagnostics_report_error(state->diagnostics, name_token.source_range, STR_LIT("Expected macro name"), NULL);
 		return false;
 	}
 
@@ -189,7 +189,8 @@ void preprocessor_skip_derective(Preprocessor* state) {
 
 		diagnostics_report_error(state->diagnostics,
 				next_token.source_range,
-				builder.string);
+				builder.string,
+				NULL);
 	}
 }
 
@@ -285,8 +286,51 @@ Token _preprocessor_next_macro_or_source_token(Preprocessor* state) {
 	return tokenizer_next_token(&state->tokenizer);
 }
 
-MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro) {
+void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,
+		size_t call_index,
+		DiagnosticsEntry* root_error) {
+	assert(root_error != NULL);
+	assert(call_index < state->macro_call_stack_depth);
+
+	const MacroCallState* call = &state->macro_call_stack[call_index];
+	const MacroDefinition* macro = call->macro;
+
+	StringBuilder builder = { .arena = state->diagnostics->allocator };
+
+	str_builder_append(&builder, STR_LIT("Expended from macro '"));
+	str_builder_append(&builder, call->macro->name);
+	str_builder_append(&builder, STR_LIT("'\n"));
+
+	for (size_t param_index = 0; param_index < macro->parameter_count; param_index += 1) {
+		str_builder_append_char(&builder, '\t');
+		str_builder_append(&builder, macro->parameter_names[param_index]);
+		str_builder_append(&builder, STR_LIT(" = "));
+
+		for (size_t token_index = 0; token_index < call->argument_tokens[param_index].count; token_index += 1) {
+			Token token = call->argument_tokens[param_index].tokens[token_index];
+			str_builder_append(&builder, token.string);
+			str_builder_append_char(&builder, ' ');
+		}
+
+		str_builder_append_char(&builder, '\n');
+	}
+
+	diagnostics_report_error(state->diagnostics,
+			call->call_source_range,
+			builder.string,
+			root_error);
+}
+
+void _preprocessor_macro_call_stack_to_diagnostics(const Preprocessor* state, DiagnosticsEntry* root_error) {
+	for (size_t call_index = 0; call_index < state->macro_call_stack_depth; call_index += 1) {
+		_preprocessor_macro_call_to_diagnostics(state, call_index, root_error);
+	}
+}
+
+MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
 	MacroArgumentTokens* argument_tokens = NULL;
+
+	SourceRange call_source_range = macro_call_ident.source_range;
 
 	if (macro->style == MACRO_STYLE_FUNCTION) {
 		// Parse macro arguments
@@ -318,6 +362,7 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 					break;
 				} else if (token.kind == TOKEN_RIGHT_PAREN) {
 					end_argument_list = true;
+					call_source_range.end = token.source_range.end;
 					break;
 				}
 
@@ -339,9 +384,12 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 					str_builder_append_int(&builder, arg_index + 1);
 					str_builder_append(&builder, STR_LIT(" were provided."));
 
-					diagnostics_report_error(state->diagnostics,
+					DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
 							source_range_from_sub_string(state->tokenizer.source_code, macro->name),
-							builder.string);
+							builder.string,
+							NULL);
+
+					_preprocessor_macro_call_stack_to_diagnostics(state, error);
 					return NULL;
 				}
 
@@ -359,6 +407,8 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 						array_size(expected_tokens));
 				return NULL;
 			}
+
+			call_source_range.end = maybe_right_paren.source_range.end;
 		}
 	}
 
@@ -374,6 +424,7 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 	memset(macro_call, 0, sizeof(*macro_call));
 	
 	macro_call->macro = macro;
+	macro_call->call_source_range = call_source_range;
 	macro_call->argument_tokens = argument_tokens;
 	macro_call->argument_index = SIZE_MAX;
 	macro_call->argument_token_index = SIZE_MAX;
@@ -406,7 +457,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 				return next_token;
 			}
 
-			preprocessor_init_macro_call(state, macro);
+			preprocessor_init_macro_call(state, macro, next_token);
 
 			// NOTE: Possible cases:
 			//       1. The macro call started successfully, because the it produces tokens.

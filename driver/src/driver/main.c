@@ -42,7 +42,6 @@ int main(int argc, char *argv[]) {
 
 			assert(str_equal(token.string, source_range));
 
-			printf("%.*s\n", STR_FMT(token.string));
 			if (token.kind == TOKEN_EOF) {
 				break;
 			}

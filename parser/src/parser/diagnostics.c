@@ -1,9 +1,7 @@
 #include "diagnostics.h"
 
-void diagnostics_print(const Diagnostics* diagnostics) {
-	DiagnosticsEntry* entry = diagnostics->first;
+void _diagnostics_print_entry(const Diagnostics* diagnostics, const DiagnosticsEntry* entry) {
 	while (entry != NULL) {
-
 		uint32_t start_line = entry->start_line;
 		if (start_line > 0) {
 			start_line -= 1;
@@ -12,16 +10,28 @@ void diagnostics_print(const Diagnostics* diagnostics) {
 		uint32_t end_line = min(entry->end_line + 1, diagnostics->line_info.line_count - 1);
 		for (uint32_t line = start_line; line <= end_line; line += 1) {
 			String source_line = line_info_get_line_string(&diagnostics->line_info, diagnostics->source_code, line);
-			printf("\t%u: %.*s\n", line, STR_FMT(source_line));
+			printf("\t%u: %.*s\n", line + 1, STR_FMT(source_line));
 		}
 
-		printf("%.*s\n\n", STR_FMT(entry->message));
+		printf("%.*s\n", STR_FMT(entry->message));
+
+		if (entry->first_child) {
+			_diagnostics_print_entry(diagnostics, entry->first_child);
+		}
 
 		entry = entry->next;
 	}
 }
 
-void diagnostics_report_error(Diagnostics* diagnostics, SourceRange source_range, String message) {
+void diagnostics_print(const Diagnostics* diagnostics) {
+	DiagnosticsEntry* entry = diagnostics->first;
+	_diagnostics_print_entry(diagnostics, entry);
+}
+
+DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
+		SourceRange source_range,
+		String message,
+		DiagnosticsEntry* parent) {
 	DiagnosticsEntry* entry = arena_alloc(diagnostics->allocator, DiagnosticsEntry);
 	entry->start_line = line_info_pos_to_source_location(&diagnostics->line_info, source_range.start).line;
 	entry->end_line = line_info_pos_to_source_location(&diagnostics->line_info, source_range.end).line;
@@ -32,13 +42,31 @@ void diagnostics_report_error(Diagnostics* diagnostics, SourceRange source_range
 
 	entry->message = message;
 
-	entry->prev = diagnostics->last;
-	entry->next = NULL;
+	if (parent == NULL) {
+		entry->next = NULL;
 
-	diagnostics->last = entry;
-	if (diagnostics->first == NULL) {
-		diagnostics->first = entry;
+		if (diagnostics->first == NULL) {
+			diagnostics->first = entry;
+			diagnostics->last = entry;
+		} else {
+			assert(diagnostics->last);
+			diagnostics->last->next = entry;
+		}
+
+		diagnostics->last = entry;
+	} else {
+		entry->next = NULL;
+
+		if (parent->first_child == NULL) {
+			parent->first_child = entry;
+			parent->last_child = entry;
+		} else {
+			assert(parent->last_child);
+			parent->last_child->next = entry;
+		}
 	}
+
+	return entry;
 }
 
 void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
@@ -67,6 +95,6 @@ void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 		str_builder_append(&builder, token_kind_to_string(expected_kinds[expected_kind_count - 1]));
 	}
 
-	diagnostics_report_error(diagnostics, actual_token.source_range, builder.string);
+	diagnostics_report_error(diagnostics, actual_token.source_range, builder.string, NULL);
 }
 

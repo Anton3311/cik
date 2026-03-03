@@ -19,7 +19,9 @@ struct DiagnosticsEntry {
 	DiagnosticsEntryKind kind;
 	String message;
 
-	DiagnosticsEntry* prev;
+	DiagnosticsEntry* first_child;
+	DiagnosticsEntry* last_child;
+
 	DiagnosticsEntry* next;
 };
 
@@ -34,7 +36,12 @@ typedef struct {
 } Diagnostics;
 
 void diagnostics_print(const Diagnostics* diagnostics);
-void diagnostics_report_error(Diagnostics* diagnostics, SourceRange source_range, String message);
+
+DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
+		SourceRange source_range,
+		String message,
+		DiagnosticsEntry* parent);
+
 void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 		Token actual_token,
 		TokenKind* expected_kinds,

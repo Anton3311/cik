@@ -24,6 +24,14 @@ bool is_debugger_connected();
 
 #define array_size(array) ((sizeof(array)) / sizeof(*(array)))
 
+#define assert_msg(expression, fmt, ...) if (!(expression)) { \
+	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m: ", \
+			__FILE__, \
+			__LINE__, \
+	#expression); \
+	printf(fmt, __VA_ARGS__); \
+	crash(); }
+
 #define assert(expression) if (!(expression)) { \
 	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m\n", \
 			__FILE__, \

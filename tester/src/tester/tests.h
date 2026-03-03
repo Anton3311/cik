@@ -6,6 +6,9 @@
 void test_text_start_position_to_source_location(TestContext* context);
 void test_last_line_postion_to_source_location(TestContext* context);
 
+void test_token_has_valid_string_represenation(TestContext* context);
+void test_token_source_range_matches_token_string(TestContext* context);
+
 void test_non_function_style_macro_expansion(TestContext* context);
 void test_expand_function_style_macro_with_two_params(TestContext* context);
 void test_expand_function_style_macro_without_params(TestContext* context);

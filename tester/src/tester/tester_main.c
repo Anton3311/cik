@@ -9,6 +9,11 @@ static TestCase source_info_tests[] = {
 	test(test_last_line_postion_to_source_location),
 };
 
+static TestCase tokenizer_tests[] = { 
+	test(test_token_has_valid_string_represenation),
+	test(test_token_source_range_matches_token_string),
+};
+
 static TestCase preprocessor_tests[] = {
 	test(test_non_function_style_macro_expansion),
 	test(test_expand_function_style_macro_with_two_params),
@@ -27,6 +32,7 @@ static TestCase parser_tests[] = {
 
 static TestSuite s_test_suites[] = {
 	test_suite(source_info_tests),
+	test_suite(tokenizer_tests),
 	test_suite(parser_tests),
 	test_suite(preprocessor_tests),
 };
@@ -63,6 +69,8 @@ bool test_cmd_parse(const char* string, TestCommandKind* kind) {
 }
 
 int main(int argc, char* argv[]) {
+	srand(2153);
+
 	if (argc > 1) {
 		TestCommandKind cmd = TEST_CMD_COUNT;
 		if (!test_cmd_parse(argv[1], &cmd)) {

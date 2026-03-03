@@ -2,6 +2,10 @@
 
 #include "parser/preprocessor.h"
 
+//
+// Source Info
+//
+
 void test_text_start_position_to_source_location(TestContext* context) {
 	String source_code = STR_LIT("#define hello 100 + 100\nhello");
 
@@ -20,6 +24,75 @@ void test_last_line_postion_to_source_location(TestContext* context) {
 	SourceLocation position = line_info_pos_to_source_location(&line_info, 26);
 	assert(position.line == 1);
 	assert(position.column == 2);
+}
+
+//
+// Tokenizer
+//
+
+void test_token_has_valid_string_represenation(TestContext* context) {
+	for (size_t i = 0; i < TOKEN_COUNT; i += 1) {
+		String string = token_kind_to_string((TokenKind)i);
+		assert(string.v != NULL);
+		assert(string.length > 0);
+	}
+}
+
+void test_token_source_range_matches_token_string(TestContext* context) {
+	assert(TOKEN_EOF == 0);
+
+	size_t token_count = 4096;
+	size_t acceptable_token_count = TOKEN_COUNT - 1; // - 1 because TOKEN_EOF is exluded
+
+	StringBuilder builder = { .arena = context->temp_arena };
+	for (size_t i = 0; i < token_count; i += 1) {
+		size_t token_index = (size_t)rand() % acceptable_token_count;
+		
+		TokenKind token_kind = (TokenKind)(1 + token_index);
+		assert(token_kind != TOKEN_EOF);
+
+		String token_string = {};
+		switch (token_kind) {
+		case TOKEN_IDENT:
+			token_string = STR_LIT("ident");
+			break;
+		case TOKEN_STRING:
+			token_string = STR_LIT("\"hello world\"");
+			break;
+		default:
+			token_string = token_kind_to_string(token_kind);
+			if (token_string.length >= 2) {
+				assert_msg(
+						token_string.v[0] != '<' || token_string.v[token_string.length - 1] != '>',
+						"Some tokens that don't have an explicit string representation were not handled");
+			}
+		}
+
+		str_builder_append(&builder, token_string);
+		str_builder_append_char(&builder, '\n');
+	}
+
+	Tokenizer tokenizer = {
+		.source_code = builder.string,
+	};
+
+	size_t generated_token_count = 0;
+	while (true) {
+		Token token = tokenizer_next_token(&tokenizer);
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+
+		generated_token_count += 1;
+
+		String source_sub_str = sub_str(builder.string,
+				token.source_range.start,
+				token.source_range.end - token.source_range.start);
+
+		assert(str_equal(source_sub_str, token.string));
+	}
+
+	assert(generated_token_count == token_count);
 }
 
 //

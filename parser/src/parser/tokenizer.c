@@ -292,7 +292,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			return (Token) {
 				.source_range = (SourceRange) {
 					.start = tokenizer->read_position,
-						.end = tokenizer->read_position,
+					.end = tokenizer->read_position,
 				},
 				.string = (String) {},
 				.kind = TOKEN_EOF,

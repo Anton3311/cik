@@ -5,7 +5,7 @@ clang ^
 	parser\src\parser\preprocessor.c ^
 	parser\src\parser\source_info.c ^
 	parser\src\parser\diagnostics.c ^
-	-g -m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\
+	-g -lDbghelp.lib -m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\
 
 clang ^
 	core\src\core\core.c ^
@@ -15,9 +15,9 @@ clang ^
 	parser\src\parser\preprocessor.c ^
 	parser\src\parser\source_info.c ^
 	parser\src\parser\diagnostics.c ^
-	-g -m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src
+	-g -lDbghelp.lib -m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src
 
 clang ^
 	core\src\core\core.c ^
 	tester\src\tester\test_runner.c ^
-	-g -m64 -Wall -o bin\test_runner.exe -Icore\src\ -Itester\src\
+	-g -lDbghelp.lib -m64 -Wall -o bin\test_runner.exe -Icore\src\ -Itester\src\

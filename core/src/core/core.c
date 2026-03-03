@@ -4,9 +4,76 @@
 #include <stdio.h>
 
 #include <windows.h>
+#include <dbghelp.h>
 
 bool is_debugger_connected() {
 	return IsDebuggerPresent();
+}
+
+HANDLE _duplicate_process_handle(HANDLE process_handle)
+{
+	HANDLE process = NULL;
+	if (!DuplicateHandle(process_handle, process_handle, process_handle, &process, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+		return NULL;
+	}
+
+	return process;
+}
+
+bool try_print_stack_trace(size_t skipped_frame_count) {
+	HANDLE process_handle = _duplicate_process_handle(GetCurrentProcess());
+	if (process_handle == NULL) {
+		return false;
+	}
+
+	SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME);
+
+	if (!SymInitialize(process_handle, NULL, TRUE)) {
+		return false;
+	}
+
+	const size_t STACK_TRACE_BUFFER_SIZE = 64;
+	void* stack_trace_buffer[STACK_TRACE_BUFFER_SIZE];
+
+	const size_t MAX_NAME_LENGTH = 256;
+	alignas(8) char symbol_buffer[sizeof(SYMBOL_INFO) + (MAX_NAME_LENGTH - 1) * sizeof(TCHAR)];
+
+	size_t frame_count = CaptureStackBackTrace(
+			skipped_frame_count,
+			STACK_TRACE_BUFFER_SIZE,
+			stack_trace_buffer,
+			NULL);
+
+	for (size_t i = 0; i < frame_count; i += 1) {
+		size_t frame_index = frame_count - 1 - i;
+		void* address = stack_trace_buffer[frame_index];
+
+		PSYMBOL_INFO symbol_info = (PSYMBOL_INFO)symbol_buffer;
+		symbol_info->SizeOfStruct = sizeof(SYMBOL_INFO);
+		symbol_info->MaxNameLen = MAX_NAME_LENGTH;
+
+		DWORD64 displacement = 0;
+		if (SymFromAddr(process_handle, (DWORD64)address, &displacement, symbol_info)) {
+			String symbol_name = (String) { symbol_info->Name, symbol_info->NameLen };
+			printf("\t%zu: %p - %.*s\n", frame_index + 1, address, STR_FMT(symbol_name));
+		} else {
+			printf("\t%zu: %p\n", frame_index + 1, address);
+		}
+	}
+
+	if (!SymCleanup(process_handle)) {
+		// NOTE: SymCleanup failed, but we got the stack trace
+	}
+
+	return true;
+}
+
+void print_assertion_stack_trace() {
+	bool result = try_print_stack_trace(2); // skip: `print_assertion_stack_trace` and `try_print_stack_trace`
+
+	if (!result) {
+		printf("\033[1;31mFailed to capture stack trace\033[0m");
+	}
 }
 
 typedef struct {

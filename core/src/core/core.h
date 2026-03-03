@@ -12,6 +12,8 @@ typedef uint8_t bool8;
 typedef uint32_t char32_t;
 
 bool is_debugger_connected();
+bool try_print_stack_trace(size_t skipped_frame_count);
+void print_assertion_stack_trace();
 
 #define true (bool)(1)
 #define false (bool)(0)
@@ -25,6 +27,7 @@ bool is_debugger_connected();
 #define array_size(array) ((sizeof(array)) / sizeof(*(array)))
 
 #define assert_msg(expression, fmt, ...) if (!(expression)) { \
+	print_assertion_stack_trace(); \
 	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m: ", \
 			__FILE__, \
 			__LINE__, \
@@ -33,14 +36,22 @@ bool is_debugger_connected();
 	crash(); }
 
 #define assert(expression) if (!(expression)) { \
+	print_assertion_stack_trace(); \
 	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m\n", \
 			__FILE__, \
 			__LINE__, \
 	#expression); \
 	crash(); }
 
-#define unreachable() { printf("%s:%u: Reached unreachable statement.\n", __FILE__, __LINE__); crash(); }
-#define unreachable_msg(msg) { printf("%s:%u: %s\n", __FILE__, __LINE__, msg); crash(); }
+#define unreachable() \
+	print_assertion_stack_trace(); \
+	printf("%s:%u: Reached unreachable statement.\n", __FILE__, __LINE__); \
+	crash();
+
+#define unreachable_msg(msg) \
+	print_assertion_stack_trace(); \
+	printf("%s:%u: %s\n", __FILE__, __LINE__, msg); \
+	crash();
 
 #define debug_log_info(...) { printf("%s:%u: \033[32;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
 #define debug_log_warn(...) { printf("%s:%u: \033[33;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }

@@ -28,6 +28,7 @@ int main(int argc, char *argv[]) {
 
 		Preprocessor preprocessor = {};
 		preprocessor_init(&preprocessor,
+				str_from_cstr(argv[1]),
 				source_code,
 				&line_info,
 				&diagnostics,

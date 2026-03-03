@@ -39,6 +39,8 @@ typedef struct {
 } MacroCallState;
 
 typedef struct {
+	String source_path;
+
 	Arena* allocator;
 	Arena* temp_allocator;
 	Arena* generated_tokens_allocator;
@@ -95,6 +97,7 @@ struct MacroDefinition {
 size_t macro_find_param_by_name(const MacroDefinition* macro, String param_name);
 
 void preprocessor_init(Preprocessor* state,
+		String source_path,
 		String source_code,
 		const LineInfo* line_info,
 		Diagnostics* diagnostics,

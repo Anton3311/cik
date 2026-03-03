@@ -22,6 +22,7 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 //
 
 void preprocessor_init(Preprocessor* state,
+		String source_path,
 		String source_code,
 		const LineInfo* line_info,
 		Diagnostics* diagnostics,
@@ -32,6 +33,7 @@ void preprocessor_init(Preprocessor* state,
 	state->temp_allocator = temp_allocator;
 	state->generated_tokens_allocator = generated_tokens_allocator;
 
+	state->source_path = source_path;
 	state->line_info = *line_info;
 	state->diagnostics = diagnostics;
 	state->tokenizer = (Tokenizer) {
@@ -308,6 +310,27 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 			};
 
 			// Macro call finished
+			macro_call->token_index = macro->token_count;
+
+			*out_token = generated_token;
+			return true;
+		}
+		case BUILTIN_MACRO_FILE: {
+			assert(state->macro_call_stack_depth > 0);
+			SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
+
+			StringBuilder builder = { .arena = state->generated_tokens_allocator };
+			str_builder_append_char(&builder, '"');
+			str_builder_append(&builder, state->source_path);
+			str_builder_append_char(&builder, '"');
+
+			Token generated_token = (Token) {
+				.kind = TOKEN_STRING,
+				.source_range = first_call_range,
+				.string = builder.string,
+			};
+
+			// Mark the call as finished
 			macro_call->token_index = macro->token_count;
 
 			*out_token = generated_token;

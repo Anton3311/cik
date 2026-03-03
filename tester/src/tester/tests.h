@@ -15,5 +15,6 @@ void test_macro_call_with_not_enough_args_fails(TestContext* context);
 void test_nested_macro(TestContext* context);
 void test_nested_macro_2(TestContext* context);
 void test_builtin_line_macro_expantion(TestContext* context);
+void test_assert_macro_expantion(TestContext* context);
 
 #endif

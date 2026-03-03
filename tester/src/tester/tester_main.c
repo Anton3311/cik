@@ -19,6 +19,7 @@ static TestCase preprocessor_tests[] = {
 	test(test_nested_macro),
 	test(test_nested_macro_2),
 	test(test_builtin_line_macro_expantion),
+	test(test_assert_macro_expantion),
 };
 
 static TestCase parser_tests[] = {

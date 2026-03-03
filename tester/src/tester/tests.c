@@ -185,3 +185,70 @@ void test_macro_call_with_not_enough_args_fails(TestContext* context) {
 
 	assert(str_equal(diagnostics.first->message, expected_error_message));
 }
+
+void test_nested_macro(TestContext* context) {
+	String source_code = STR_LIT(
+			"#define inner(a, b) a + b\n"
+			"#define outer(a, b, c) (inner(a, b)) * c\n"
+			"outer(1, 2, 3)");
+
+	String expected_source_code = STR_LIT("(1 + 2) * 3");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Tokenizer expected_source_tokenizer = (Tokenizer) {
+		.source_code = expected_source_code,
+	};
+
+	while (true) {
+		Token token = preprocessor_next_token(&preprocessor);
+		Token expected_token = tokenizer_next_token(&expected_source_tokenizer);
+
+		printf("%.*s %.*s\n", STR_FMT(token.string), STR_FMT(expected_token.string));
+
+		assert(token.kind == expected_token.kind);
+		assert(str_equal(token.string, expected_token.string));
+
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+	}
+}
+
+void test_nested_macro_2(TestContext* context) {
+	String source_code = STR_LIT(
+			"#define inner(a, b) a + b\n"
+			"#define inner2(a, b) inner(a, b) + b\n"
+			"#define outer(a, b, c) (inner2(a, b) + inner2(b, a)) * c\n"
+			"outer(1, 2, 3)");
+
+	String expected_source_code = STR_LIT("(1 + 2 + 2 + 2 + 1 + 1) * 3");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Tokenizer expected_source_tokenizer = (Tokenizer) {
+		.source_code = expected_source_code,
+	};
+
+	while (true) {
+		Token token = preprocessor_next_token(&preprocessor);
+		Token expected_token = tokenizer_next_token(&expected_source_tokenizer);
+
+		printf("%.*s %.*s\n", STR_FMT(token.string), STR_FMT(expected_token.string));
+
+		assert(token.kind == expected_token.kind);
+		assert(str_equal(token.string, expected_token.string));
+
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+	}
+}

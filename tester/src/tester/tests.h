@@ -12,5 +12,7 @@ void test_expand_function_style_macro_without_params(TestContext* context);
 void test_expand_empty_function_style_macro(TestContext* context);
 void test_expand_empty_style_macro(TestContext* context);
 void test_macro_call_with_not_enough_args_fails(TestContext* context);
+void test_nested_macro(TestContext* context);
+void test_nested_macro_2(TestContext* context);
 
 #endif

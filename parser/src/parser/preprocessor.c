@@ -270,12 +270,27 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 	return false;
 }
 
+// Returns the next token from the macro call expantion
+// (Uses `preprocessor_get_next_macro_expantion_token` for that).
+//
+// In case `preprocessor_get_next_macro_expantion_token` fails
+// (when the preprocessor isn't expanding a macro)
+// falls back to the source tokenizer.
+Token _preprocessor_next_macro_or_source_token(Preprocessor* state) {
+	Token token = {};
+	if (state->macro_call_stack_depth > 0 && preprocessor_get_next_macro_expantion_token(state, &token)) {
+		return token;
+	}
+
+	return tokenizer_next_token(&state->tokenizer);
+}
+
 MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro) {
 	MacroArgumentTokens* argument_tokens = NULL;
 
 	if (macro->style == MACRO_STYLE_FUNCTION) {
 		// Parse macro arguments
-		Token maybe_left_paren = tokenizer_next_token(&state->tokenizer);
+		Token maybe_left_paren = _preprocessor_next_macro_or_source_token(state);
 		if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
 			TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
 			diagnostics_report_unexpected_token(state->diagnostics,
@@ -298,18 +313,13 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 			tokens->tokens = arena_alloc_array(state->temp_allocator, Token, 0);
 			
 			while (true) {
-				Token token = tokenizer_view_next(&state->tokenizer);
+				Token token = _preprocessor_next_macro_or_source_token(state);
 				if (token.kind == TOKEN_COMMA) {
-					tokenizer_reset_to_token(&state->tokenizer, token);
 					break;
 				} else if (token.kind == TOKEN_RIGHT_PAREN) {
 					end_argument_list = true;
 					break;
 				}
-
-				// consume the current token and put it in list of tokens
-				// of the current argument
-				tokenizer_reset_to_token(&state->tokenizer, token);
 
 				arena_alloc(state->temp_allocator, Token);
 
@@ -339,14 +349,16 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 			}
 		}
 
-		Token maybe_right_paren = tokenizer_next_token(&state->tokenizer);
-		if (maybe_right_paren.kind != TOKEN_RIGHT_PAREN) {
-			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
-			diagnostics_report_unexpected_token(state->diagnostics,
-					maybe_right_paren,
-					expected_tokens,
-					array_size(expected_tokens));
-			return NULL;
+		if (!end_argument_list) {
+			Token maybe_right_paren = _preprocessor_next_macro_or_source_token(state);
+			if (maybe_right_paren.kind != TOKEN_RIGHT_PAREN) {
+				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+				diagnostics_report_unexpected_token(state->diagnostics,
+						maybe_right_paren,
+						expected_tokens,
+						array_size(expected_tokens));
+				return NULL;
+			}
 		}
 	}
 
@@ -370,44 +382,48 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 }
 
 Token preprocessor_next_token(Preprocessor* state) {
-	if (state->macro_call_stack_depth > 0) {
-		// NOTE: Inside an expanding macro call.
-		//       Instead of getting tokens from the tokenizer
-		//       return the onces from the macro.
-		//
-		//       In that way the call gets replaced with whatever code was defined in the macro.
-
-		Token token = {};
-		if (preprocessor_get_next_macro_expantion_token(state, &token)) {
-			return token;
-		}
-	}
-
-	Token next_token = {};
 	while (true) {
-		next_token = tokenizer_next_token(&state->tokenizer);
+		Token next_token = { .kind = TOKEN_COUNT };
+		if (state->macro_call_stack_depth > 0) {
+			// NOTE: Inside an expanding macro call.
+			//       Instead of getting tokens from the tokenizer
+			//       return the onces from the macro.
+			//
+			//       In that way the call gets replaced with whatever code was defined in the macro.
+
+			preprocessor_get_next_macro_expantion_token(state, &next_token);
+		}
+		
+		if (next_token.kind == TOKEN_COUNT) {
+			next_token = tokenizer_next_token(&state->tokenizer);
+		}
+
 		if (next_token.kind == TOKEN_HASH) {
 			preprocessor_skip_derective(state);
 		} else if (next_token.kind == TOKEN_IDENT) {
 			const MacroDefinition* macro = macro_table_find(&state->macro_table, next_token.string);
 			if (macro == NULL) {
-				break;
+				return next_token;
 			}
 
-			MacroCallState* macro_call = preprocessor_init_macro_call(state, macro);
-			if (macro_call == NULL) {
-				continue;
-			}
+			preprocessor_init_macro_call(state, macro);
 
-			Token token = {};
-			bool has_first_token = preprocessor_get_next_macro_expantion_token(state, &token);
-			assert(has_first_token);
-
-			return token;
+			// NOTE: Possible cases:
+			//       1. The macro call started successfully, because the it produces tokens.
+			//       2. The macro call was skipped, since it doesn't produce any tokens.
+			//       3. Macro call failed.
+			//
+			//       In the first case continueing goes to start of the loop and
+			//       retreives the first token from the macro call.
+			//
+			//       In the second case it will find and process the next token
+			//       after the macro call.
+			continue;
 		} else {
-			break;
+			return next_token;
 		}
 	}
 
-	return next_token;
+	unreachable();
+	return (Token) {};
 }

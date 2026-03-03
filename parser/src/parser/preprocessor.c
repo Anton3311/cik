@@ -262,7 +262,7 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 			macro_call->argument_token_index = 0;
 
 			bool has_first_token = _preprocessor_try_expand_macro_argument(state, out_token);
-			assert(has_first_token);
+			assert_msg(has_first_token, "Macro call argument does has 0 tokens");
 			return true;
 		}
 		}

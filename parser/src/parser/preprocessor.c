@@ -26,11 +26,14 @@ void preprocessor_init(Preprocessor* state,
 		const LineInfo* line_info,
 		Diagnostics* diagnostics,
 		Arena* allocator,
-		Arena* temp_allocator) {
-	state->line_info = *line_info;
-	state->diagnostics = diagnostics;
+		Arena* temp_allocator,
+		Arena* generated_tokens_allocator) {
 	state->allocator = allocator;
 	state->temp_allocator = temp_allocator;
+	state->generated_tokens_allocator = generated_tokens_allocator;
+
+	state->line_info = *line_info;
+	state->diagnostics = diagnostics;
 	state->tokenizer = (Tokenizer) {
 		.source_code = source_code,
 		.read_position = 0,
@@ -42,6 +45,24 @@ void preprocessor_init(Preprocessor* state,
 	};
 
 	state->macro_table.macros = arena_alloc_array(state->allocator, MacroDefinition, state->macro_table.capacity);
+
+	{
+		MacroDefinition line_macro = {
+			.name = STR_LIT("__LINE__"),
+			.builtin_kind = BUILTIN_MACRO_LINE,
+			.token_count = 1,
+		};
+
+		macro_table_append(&state->macro_table, &line_macro);
+
+		MacroDefinition file_macro = {
+			.name = STR_LIT("__FILE__"),
+			.builtin_kind = BUILTIN_MACRO_FILE,
+			.token_count = 1,
+		};
+
+		macro_table_append(&state->macro_table, &file_macro);
+	}
 
 	state->macro_call_stack_capacity = 32;
 	state->macro_call_stack_depth = 0;
@@ -243,29 +264,57 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 	}
 
 	if (macro_call) {
-		Token next_token = macro_call->macro->tokens[macro_call->token_index];
-
 		const MacroDefinition* macro = macro_call->macro;
-		MacroTokenHint hint = {};
-		if (macro->style == MACRO_STYLE_FUNCTION) {
-			assert(macro->token_hints);
-			hint = macro->token_hints[macro_call->token_index];
+		switch (macro->builtin_kind) {
+		case BUILTIN_MACRO_NONE: {
+			Token next_token = macro_call->macro->tokens[macro_call->token_index];
+
+			MacroTokenHint hint = {};
+			if (macro->style == MACRO_STYLE_FUNCTION) {
+				assert(macro->token_hints);
+				hint = macro->token_hints[macro_call->token_index];
+			}
+
+			switch (hint.kind) {
+			case MACRO_TOKEN_HINT_NONE:
+				*out_token = next_token;
+				macro_call->token_index += 1;
+				return true;
+			case MACRO_TOKEN_HINT_PARAMETER: {
+				macro_call->argument_index = hint.parameter_index;
+				macro_call->argument_token_index = 0;
+
+				bool has_first_token = _preprocessor_try_expand_macro_argument(state, out_token);
+				assert_msg(has_first_token, "Macro call argument does has 0 tokens");
+				return true;
+			}
+			}
+			break;
+		}
+		case BUILTIN_MACRO_LINE: {
+			assert(state->macro_call_stack_depth > 0);
+			SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
+			uint32_t call_source_line = line_info_pos_to_source_location(
+					&state->line_info,
+					first_call_range.start).line + 1;
+
+			StringBuilder builder = { .arena = state->generated_tokens_allocator };
+			str_builder_append_int(&builder, call_source_line);
+
+			Token generated_token = (Token) {
+				.kind = TOKEN_IDENT,
+				.source_range = first_call_range,
+				.string = builder.string,
+			};
+
+			// Macro call finished
+			macro_call->token_index = macro->token_count;
+
+			*out_token = generated_token;
+			return true;
+		}
 		}
 
-		switch (hint.kind) {
-		case MACRO_TOKEN_HINT_NONE:
-			*out_token = next_token;
-			macro_call->token_index += 1;
-			return true;
-		case MACRO_TOKEN_HINT_PARAMETER: {
-			macro_call->argument_index = hint.parameter_index;
-			macro_call->argument_token_index = 0;
-
-			bool has_first_token = _preprocessor_try_expand_macro_argument(state, out_token);
-			assert_msg(has_first_token, "Macro call argument does has 0 tokens");
-			return true;
-		}
-		}
 	}
 
 	return false;

@@ -41,6 +41,7 @@ typedef struct {
 typedef struct {
 	Arena* allocator;
 	Arena* temp_allocator;
+	Arena* generated_tokens_allocator;
 	Diagnostics* diagnostics;
 	Tokenizer tokenizer;
 	LineInfo line_info;
@@ -70,8 +71,15 @@ typedef struct {
 	};
 } MacroTokenHint;
 
+typedef enum {
+	BUILTIN_MACRO_NONE,
+	BUILTIN_MACRO_LINE,
+	BUILTIN_MACRO_FILE,
+} BuiltinMacroKind;
+
 struct MacroDefinition {
 	String name;
+	BuiltinMacroKind builtin_kind;
 
 	MacroStyle style;
 
@@ -91,7 +99,8 @@ void preprocessor_init(Preprocessor* state,
 		const LineInfo* line_info,
 		Diagnostics* diagnostics,
 		Arena* allocator,
-		Arena* temp_allocator);
+		Arena* temp_allocator,
+		Arena* generated_tokens_allocator);
 
 void preprocessor_skip_derective(Preprocessor* state);
 bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token);

@@ -32,15 +32,13 @@ int main(int argc, char *argv[]) {
 				&line_info,
 				&diagnostics,
 				&arena,
-				&temp_arena);
+				&temp_arena,
+				&arena);
 
 		while (true) {
 			Token token = preprocessor_next_token(&preprocessor);
-			String source_range = sub_str(source_code,
-					token.source_range.start,
-					token.source_range.end - token.source_range.start);
 
-			assert(str_equal(token.string, source_range));
+			printf("%.*s\n", STR_FMT(token.string));
 
 			if (token.kind == TOKEN_EOF) {
 				break;

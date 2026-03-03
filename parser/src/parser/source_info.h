@@ -25,7 +25,19 @@ typedef struct {
 
 LineInfo line_info_from_source(Arena* allocator, String source);
 SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_t string_pos);
-String line_info_get_line_string(const LineInfo* line_info, String source_code, size_t line_index);
+
+inline SourceRange line_info_get_line_range(const LineInfo* line_info, size_t line_index) {
+	return (SourceRange) {
+		.start = line_info->line_starts[line_index],
+		.end = line_info->line_starts[line_index + 1] - 1,
+	};
+}
+
+inline String line_info_get_line_string(const LineInfo* line_info, String source_code, size_t line_index) {
+	SourceRange line_range = line_info_get_line_range(line_info, line_index);
+	size_t line_length = line_range.end - line_range.start;
+	return sub_str(source_code, line_range.start, line_length);
+}
 
 inline SourceRange source_range_from_sub_string(String source_code, String sub_string) {
 	assert(sub_string.v >= source_code.v);

@@ -48,7 +48,3 @@ SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_
 	return location;
 }
 
-String line_info_get_line_string(const LineInfo* line_info, String source_code, size_t line_index) {
-	uint32_t line_length = line_info->line_starts[line_index + 1] - line_info->line_starts[line_index];
-	return sub_str(source_code, line_info->line_starts[line_index], line_length - 1);
-}

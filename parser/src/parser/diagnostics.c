@@ -7,10 +7,34 @@ void _diagnostics_print_entry(const Diagnostics* diagnostics, const DiagnosticsE
 			start_line -= 1;
 		}
 
+		// TODO: Handle multiple highlight ranges
+		assert(entry->highlighted_range_count == 1);
+
+		size_t highlight_index = 0;
+
 		uint32_t end_line = min(entry->end_line + 1, diagnostics->line_info.line_count - 1);
 		for (uint32_t line = start_line; line <= end_line; line += 1) {
 			String source_line = line_info_get_line_string(&diagnostics->line_info, diagnostics->source_code, line);
-			printf("\t%u: %.*s\n", line + 1, STR_FMT(source_line));
+
+			SourceRange line_range = line_info_get_line_range(&diagnostics->line_info, line);
+			SourceRange highlight_range = entry->highlighted_ranges[highlight_index];
+
+			size_t highlight_start = min(max(highlight_range.start, line_range.start), line_range.end);
+			size_t highlight_end = min(max(highlight_range.end, line_range.start), line_range.end);
+
+			// Normalize to range [0; source_line.length]
+			highlight_start -= line_range.start;
+			highlight_end -= line_range.start;
+
+			String before_highlight = sub_str(source_line, 0, highlight_start);
+			String highlighted_sub_str = sub_str(source_line, highlight_start, highlight_end - highlight_start);
+			String after_highlight = sub_str(source_line, highlight_end, source_line.length - highlight_end);
+
+			printf("\t%u: %.*s\033[1;31m%.*s\033[0m%.*s\n",
+					line + 1,
+					STR_FMT(before_highlight),
+					STR_FMT(highlighted_sub_str),
+					STR_FMT(after_highlight));
 		}
 
 		printf("%.*s\n", STR_FMT(entry->message));

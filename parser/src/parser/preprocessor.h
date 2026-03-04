@@ -64,12 +64,18 @@ typedef enum {
 typedef enum {
 	MACRO_TOKEN_HINT_NONE,
 	MACRO_TOKEN_HINT_PARAMETER,
+	MACRO_TOKEN_HINT_STRING_OPERATOR,
 } MacroTokenHintKind;
 
 typedef struct {
 	MacroTokenHintKind kind;
 	union {
-		size_t parameter_index;
+		struct {
+			size_t index;
+		} param;
+		struct {
+			size_t param_index;
+		} string_op;
 	};
 } MacroTokenHint;
 

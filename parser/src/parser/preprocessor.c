@@ -74,6 +74,10 @@ void preprocessor_init(Preprocessor* state,
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
 	macro->tokens = arena_alloc_array(state->allocator, Token, 0);
 
+	ArenaRegion hints_temp_region = arena_begin_temp(state->temp_allocator);
+	MacroTokenHint* token_hints = arena_alloc_array(state->temp_allocator, MacroTokenHint, 0);
+	size_t token_hint_count = 0;
+
 	SourceRange macro_name_range = source_range_from_sub_string(state->tokenizer.source_code, macro->name);
 	uint32_t macro_definition_line = line_info_pos_to_source_location(&state->line_info, macro_name_range.start).line;
 
@@ -85,6 +89,82 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 		Token token = tokenizer_view_next(&state->tokenizer);
 		uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line;
 		if (token_line == macro_definition_line) {
+			MacroTokenHint token_hint = { .kind = MACRO_TOKEN_HINT_NONE };
+
+			switch (token.kind) {
+			case TOKEN_IDENT:
+				if (macro->style != MACRO_STYLE_FUNCTION) {
+					break;
+				}
+
+				size_t parameter_index = macro_find_param_by_name(macro, token.string);
+				if (parameter_index != SIZE_MAX) {
+					token_hint.kind = MACRO_TOKEN_HINT_PARAMETER;
+					token_hint.param.index = parameter_index;
+				}
+
+				break;
+			case TOKEN_HASH: {
+				// Consume TOKEN_HASH, so that we can get the next identifier token,
+				// without tokenizing TOKEN_HASH twice (since `tokenizer_view_next` was used).
+				tokenizer_reset_to_token(&state->tokenizer, token);
+
+				Token param_name_token = tokenizer_view_next(&state->tokenizer);
+				if (param_name_token.kind != TOKEN_IDENT) {
+					TokenKind expected_token = TOKEN_IDENT;
+
+					diagnostics_report_unexpected_token(state->diagnostics,
+							param_name_token,
+							&expected_token,
+							1);
+
+					// NOTE: Terminate parsing here
+					arena_end_temp(hints_temp_region);
+					return;
+				}
+
+				size_t param_index = macro_find_param_by_name(macro, param_name_token.string);
+				if (param_index == SIZE_MAX) {
+					StringBuilder builder = { .arena = state->diagnostics->allocator };
+					str_builder_append(&builder, STR_LIT("# must be followed by parameter name. "));
+					str_builder_append_char(&builder, '\'');
+					str_builder_append(&builder, param_name_token.string);
+					str_builder_append(&builder, STR_LIT("' is not a valid macro parameter"));
+
+					diagnostics_report_error(state->diagnostics,
+							param_name_token.source_range,
+							builder.string,
+							NULL);
+
+					// NOTE: Terminate parsing here
+					arena_end_temp(hints_temp_region);
+					return;
+				}
+
+				token_hint.kind = MACRO_TOKEN_HINT_STRING_OPERATOR;
+				token_hint.string_op.param_index = param_index;
+
+				// Initially token was a TOKEN_HASH. Replace it with the param name token,
+				// so the tokenizer continues after the `param_name_token`.
+				//
+				// This has a side effect that the macro token stream, won't contain the hash token,
+				// but only the param name token with `MACRO_TOKEN_HINT_STRING_OPERATOR`
+				token = param_name_token;
+				break;
+			}
+			default:
+				break;
+			}
+
+			if (macro->style != MACRO_STYLE_FUNCTION) {
+				assert(token_hint.kind == MACRO_TOKEN_HINT_NONE);
+			}
+
+			if (macro->style == MACRO_STYLE_FUNCTION) {
+				*arena_alloc(state->temp_allocator, MacroTokenHint) = token_hint;
+				token_hint_count += 1;
+			}
+
 			// Token is one the same line as the macro definition,
 			// so it belongs to the token stream of this macro
 			*arena_alloc(state->allocator, Token) = token;
@@ -97,24 +177,14 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 	}
 
 	if (macro->style == MACRO_STYLE_FUNCTION) {
-		macro->token_hints = arena_alloc_array(state->allocator, MacroTokenHint, macro->token_count);
-		memset(macro->token_hints, 0, sizeof(*macro->token_hints));
+		assert(token_hint_count == macro->token_count);
 
-		for (size_t i = 0; i < macro->token_count; i += 1) {
-			Token token = macro->tokens[i];
-			if (token.kind == TOKEN_IDENT) {
-				size_t parameter_index = macro_find_param_by_name(macro, token.string);
-				if (parameter_index == SIZE_MAX) {
-					macro->token_hints[i].kind = MACRO_TOKEN_HINT_NONE;
-				} else {
-					macro->token_hints[i].parameter_index = parameter_index;
-					macro->token_hints[i].kind = MACRO_TOKEN_HINT_PARAMETER;
-				}
-			} else {
-				macro->token_hints[i].kind = MACRO_TOKEN_HINT_NONE;
-			}
-		}
+		// Copy token hints, because they were allocated using the temporary allocator
+		macro->token_hints = arena_alloc_array(state->allocator, MacroTokenHint, token_hint_count);
+		memcpy(macro->token_hints, token_hints, sizeof(*token_hints) * token_hint_count);
 	}
+
+	arena_end_temp(hints_temp_region);
 }
 
 bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
@@ -283,11 +353,42 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 				macro_call->token_index += 1;
 				return true;
 			case MACRO_TOKEN_HINT_PARAMETER: {
-				macro_call->argument_index = hint.parameter_index;
+				macro_call->argument_index = hint.param.index;
 				macro_call->argument_token_index = 0;
 
 				bool has_first_token = _preprocessor_try_expand_macro_argument(state, out_token);
 				assert_msg(has_first_token, "Macro call argument does has 0 tokens");
+				return true;
+			}
+			case MACRO_TOKEN_HINT_STRING_OPERATOR: {
+				StringBuilder builder = { .arena = state->generated_tokens_allocator };
+				str_builder_append_char(&builder, '"');
+
+				assert(hint.string_op.param_index < macro->parameter_count);
+
+				MacroArgumentTokens argument_tokens = macro_call->argument_tokens[hint.string_op.param_index];
+
+				if (argument_tokens.count > 0) {
+					str_builder_append(&builder, argument_tokens.tokens[0].string);
+				}
+
+				for (size_t i = 1; i < argument_tokens.count; i += 1) {
+					str_builder_append_char(&builder, ' ');
+					str_builder_append(&builder, argument_tokens.tokens[i].string);
+				}
+
+				str_builder_append_char(&builder, '"');
+
+				Token token = (Token) {
+					.kind = TOKEN_STRING,
+					.source_range = next_token.source_range,
+					.string = builder.string,
+				};
+
+				// We've precessed the string operator token => go to the next one in the token stream of the macro.
+				macro_call->token_index += 1;
+
+				*out_token = token;
 				return true;
 			}
 			}

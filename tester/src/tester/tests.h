@@ -20,4 +20,7 @@ void test_nested_macro_2(TestContext* context);
 void test_builtin_line_macro_expantion(TestContext* context);
 void test_assert_macro_expantion(TestContext* context);
 
+void test_macro_string_operator(TestContext* context);
+void test_macro_string_operator_with_invalid_param_name_fails(TestContext* context);
+
 #endif

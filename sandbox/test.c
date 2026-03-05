@@ -1,3 +1,4 @@
-#define test(a) #a
+typedef int int32;
+typedef uint8_t bool;
 
-test(hello world)
+typedef struct Hello Hello;

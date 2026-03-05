@@ -52,6 +52,9 @@ typedef struct {
 	MacroCallState* macro_call_stack;
 	size_t macro_call_stack_depth;
 	size_t macro_call_stack_capacity;
+
+	bool has_pending_next_token;
+	Token pending_next_token;
 } Preprocessor;
 
 typedef enum {
@@ -117,6 +120,7 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 // NOTE: Returns null in case a call to a macro doesn't produce any tokens
 MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident);
 
+Token preprocessor_view_next(Preprocessor* state);
 Token preprocessor_next_token(Preprocessor* state);
 
 #endif

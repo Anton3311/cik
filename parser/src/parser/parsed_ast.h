@@ -48,14 +48,14 @@ struct ParsedType {
 	};
 };
 
+//
+// Struct
+//
+
 struct ParsedStructMember {
 	SourceString name;
 	ParsedType type;
 };
-
-//
-// Struct
-//
 
 struct ParsedStruct {
 	SourceString name;

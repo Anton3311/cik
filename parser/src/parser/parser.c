@@ -4,19 +4,66 @@ inline SourceString _source_string_from_token(Token token) {
 	return token.string;
 }
 
-bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
-	assert(out_type != NULL);
+bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
+	assert(out_struct_def != NULL);
+
+	Token keyword_token = preprocessor_next_token(parser->preprocessor);
+	assert(keyword_token.kind == TOKEN_KEYWORD_STRUCT);
+
+	SourceString struct_name = {};
 
 	Token token = preprocessor_next_token(parser->preprocessor);
-
 	if (token.kind == TOKEN_IDENT) {
-		out_type->source_range = token.source_range;
-		out_type->named.name = _source_string_from_token(token);
-
-		return true;
+		struct_name = _source_string_from_token(token);
 	} else {
 		TokenKind expected_tokens[] = {
 			TOKEN_IDENT,
+		};
+
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				token,
+				expected_tokens,
+				array_size(expected_tokens));
+		return false;
+	}
+
+	*out_struct_def = (ParsedStruct) {
+		.name = struct_name,
+		.members = NULL,
+		.member_count = 0,
+	};
+
+	return true;
+}
+
+bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
+	assert(out_type != NULL);
+
+	Token token = preprocessor_view_next(parser->preprocessor);
+
+	if (token.kind == TOKEN_IDENT) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_type->kind = PARSED_TYPE_NAMED;
+		out_type->source_range = token.source_range;
+		out_type->named.name = _source_string_from_token(token);
+		return true;
+	} else if (token.kind == TOKEN_KEYWORD_STRUCT) {
+		ParsedStruct struct_def = {};
+		if (!_parser_parse_struct_type(parser, &struct_def)) {
+			return false;
+		}
+
+		out_type->kind = PARSED_TYPE_STRUCT;
+		out_type->struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
+		*out_type->struct_def = struct_def;
+		return true;
+	} else {
+		preprocessor_next_token(parser->preprocessor);
+
+		TokenKind expected_tokens[] = {
+			TOKEN_IDENT,
+			TOKEN_KEYWORD_STRUCT,
 		};
 
 		diagnostics_report_unexpected_token(parser->diagnostics,

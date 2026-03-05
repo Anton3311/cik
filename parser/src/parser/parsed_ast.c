@@ -37,6 +37,8 @@ void printer_begin_struct(PrinterState* printer, const char* struct_name) {
 
 void printer_end_struct(PrinterState* printer) {
 	assert(printer->indent > 0);
+	printer->indent -= 1;
+	printer_indent(printer);
 	printf("}\n");
 }
 
@@ -58,12 +60,21 @@ void printer_string_field(PrinterState* printer, const char* name, String value)
 // AST Printing
 //
 
+void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
+	assert(struct_def != NULL);
+
+	printer_begin_struct(printer, "struct");
+	printer_string_field(printer, "name", struct_def->name);
+	printer_end_struct(printer);
+}
+
 void print_type(PrinterState* printer, const ParsedType* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_NAMED:
 		printer_string_value(printer, type->named.name);
 		break;
 	case PARSED_TYPE_STRUCT:
+		print_struct_def(printer, type->struct_def);
 		break;
 	}
 }

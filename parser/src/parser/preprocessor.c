@@ -605,7 +605,22 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 	return macro_call;
 }
 
+Token preprocessor_view_next(Preprocessor* state) {
+	Token next_token = preprocessor_next_token(state);
+	state->pending_next_token = next_token;
+	state->has_pending_next_token = true;
+	return next_token;
+}
+
 Token preprocessor_next_token(Preprocessor* state) {
+	if (state->has_pending_next_token) {
+		state->has_pending_next_token = false;
+
+		Token token = state->pending_next_token;
+		state->pending_next_token = (Token) {};
+		return token;
+	}
+
 	while (true) {
 		Token next_token = { .kind = TOKEN_COUNT };
 		if (state->macro_call_stack_depth > 0) {

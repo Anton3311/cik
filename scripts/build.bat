@@ -5,6 +5,8 @@ clang ^
 	parser\src\parser\preprocessor.c ^
 	parser\src\parser\source_info.c ^
 	parser\src\parser\diagnostics.c ^
+	parser\src\parser\parsed_ast.c ^
+	parser\src\parser\parser.c ^
 	-g -lDbghelp.lib -m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\
 
 clang ^

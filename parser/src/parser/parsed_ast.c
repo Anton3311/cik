@@ -1,0 +1,95 @@
+#include "parsed_ast.h"
+
+void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node) {
+	assert(list != NULL);
+	assert(node != NULL);
+	assert(node->next == NULL);
+
+	if (list->first == NULL) {
+		assert(list->last == NULL);
+		assert(list->count == 0);
+
+		list->first = node;
+		list->last = node;
+		list->count = 1;
+	} else {
+		assert(list->last != NULL);
+		list->last->next = node;
+		list->last = node;
+		list->count += 1;
+	}
+}
+
+typedef struct {
+	size_t indent;
+} PrinterState;
+
+void printer_indent(const PrinterState* printer) {
+	for (size_t i = 0; i < printer->indent; i += 1) {
+		printf("  ");
+	}
+}
+
+void printer_begin_struct(PrinterState* printer, const char* struct_name) {
+	printf("%s {\n", struct_name);
+	printer->indent += 1;
+}
+
+void printer_end_struct(PrinterState* printer) {
+	assert(printer->indent > 0);
+	printf("}\n");
+}
+
+void printer_field(PrinterState* printer, const char* field_name) {
+	printer_indent(printer);
+	printf("%s = ", field_name);
+}
+
+void printer_string_value(PrinterState* printer, String value) {
+	printf("%.*s\n", STR_FMT(value));
+}
+
+void printer_string_field(PrinterState* printer, const char* name, String value) {
+	printer_indent(printer);
+	printf("%s = %.*s\n", name, STR_FMT(value));
+}
+
+//
+// AST Printing
+//
+
+void print_type(PrinterState* printer, const ParsedType* type) {
+	switch (type->kind) {
+	case PARSED_TYPE_NAMED:
+		printer_string_value(printer, type->named.name);
+		break;
+	case PARSED_TYPE_STRUCT:
+		break;
+	}
+}
+
+void print_type_def(PrinterState* printer, const ParsedTypeDef* type_def) {
+	printer_begin_struct(printer, "typedef");
+
+	printer_field(printer, "type");
+	print_type(printer, &type_def->aliased_type);
+	printer_string_field(printer, "name", type_def->new_name);
+
+	printer_end_struct(printer);
+}
+
+void print_parsed_node(const ParsedNode* node) {
+	PrinterState printer = {};
+
+	while (node != NULL) {
+		switch (node->kind) {
+		case AST_NODE_TYPE_DEF:
+			print_type_def(&printer, &node->type_def);
+			break;
+		case AST_NODE_TYPE_STRUCT:
+			break;
+		}
+
+		node = node->next;
+	}
+}

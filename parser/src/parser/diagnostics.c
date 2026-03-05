@@ -108,7 +108,7 @@ void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 		str_builder_append(&builder, token_kind_to_string(expected_kinds[0]));
 		str_builder_append(&builder, STR_LIT(" or "));
 		str_builder_append(&builder, token_kind_to_string(expected_kinds[1]));
-	} else {
+	} else if (expected_kind_count > 2) {
 		for (size_t i = 0; i < expected_kind_count - 2; i += 1) {
 			str_builder_append(&builder, token_kind_to_string(expected_kinds[i]));
 			str_builder_append(&builder, STR_LIT(", "));

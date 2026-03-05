@@ -3,6 +3,7 @@
 
 #include "core/core.h"
 #include "parser/preprocessor.h"
+#include "parser/parser.h"
 
 int main(int argc, char *argv[]) {
 	Arena arena = {};
@@ -36,14 +37,14 @@ int main(int argc, char *argv[]) {
 				&temp_arena,
 				&arena);
 
-		while (true) {
-			Token token = preprocessor_next_token(&preprocessor);
+		Parser parser = {};
+		parser_init(&parser, &arena, &preprocessor, &diagnostics);
 
-			printf("%.*s\n", STR_FMT(token.string));
+		ParsedAST parsed_ast = {};
+		parser_parse(&parser, &parsed_ast);
 
-			if (token.kind == TOKEN_EOF) {
-				break;
-			}
+		if (parsed_ast.root_nodes.first) {
+			print_parsed_node(parsed_ast.root_nodes.first);
 		}
 
 		diagnostics_print(&diagnostics);

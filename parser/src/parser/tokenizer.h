@@ -1,5 +1,5 @@
-#ifndef PARSER_H
-#define PARSER_H
+#ifndef TOKENIZER_H
+#define TOKENIZER_H
 
 #include "core/core.h"
 #include "parser/source_info.h"
@@ -52,6 +52,10 @@ typedef enum {
 
 	// Bitwise
 	TOKEN_BITWISE_XOR,
+
+	// Keywords
+	TOKEN_KEYWORD_TYPEDEF,
+	TOKEN_KEYWORD_STRUCT,
 
 	TOKEN_COUNT,
 } TokenKind;

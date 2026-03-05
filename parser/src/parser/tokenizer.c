@@ -50,6 +50,10 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 
 	// Bitwise
 	[TOKEN_BITWISE_XOR] = STR_LIT("^"),
+
+	// Keywords
+	[TOKEN_KEYWORD_TYPEDEF] = STR_LIT("typedef"),
+	[TOKEN_KEYWORD_STRUCT] = STR_LIT("struct"),
 };
 
 String token_kind_to_string(TokenKind kind) {
@@ -97,13 +101,21 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		return false;
 	}
 
+	String token_string = sub_str(tokenizer->source_code, token_start, string_length);
+	TokenKind token_kind = TOKEN_IDENT;
+	if (str_equal(token_string, STR_LIT("typedef"))) {
+		token_kind = TOKEN_KEYWORD_TYPEDEF;
+	} else if (str_equal(token_string, STR_LIT("struct"))) {
+		token_kind = TOKEN_KEYWORD_STRUCT;
+	}
+
 	*out_token = (Token) {
 		.source_range = (SourceRange) {
 			.start = token_start,
 			.end = tokenizer->read_position,
 		},
-		.string = sub_str(tokenizer->source_code, token_start, string_length),
-		.kind = TOKEN_IDENT,
+		.string = token_string,
+		.kind = token_kind,
 	};
 	return true;
 }

@@ -1,7 +1,75 @@
 #include "parser.h"
 
+bool _parser_parse_type(Parser* parser, ParsedType* out_type);
+
 inline SourceString _source_string_from_token(Token token) {
 	return token.string;
+}
+
+bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, ParsedStructMember** out_members) {
+	assert(out_member_count != NULL);
+
+	Token left_brace = preprocessor_next_token(parser->preprocessor);
+	assert(left_brace.kind == TOKEN_LEFT_BRACE);
+
+	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+
+	ParsedStructMember* first_member = NULL;
+	ParsedStructMember* last_member = NULL;
+	size_t member_count = 0;
+
+	while (true) {
+		{
+			Token token = preprocessor_view_next(parser->preprocessor);
+			if (token.kind == TOKEN_RIGHT_BRACE) {
+				preprocessor_next_token(parser->preprocessor);
+				break;
+			}
+		}
+
+		ParsedStructMember* member = arena_alloc(parser->ast_allocator, ParsedStructMember);
+		memset(member, 0, sizeof(*member));
+
+		if (!_parser_parse_type(parser, &member->type)) {
+			arena_end_temp(temp);
+			return false;
+		}
+
+		Token name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
+		if (name_or_semilcolon.kind == TOKEN_IDENT) {
+			member->name = _source_string_from_token(name_or_semilcolon);
+			preprocessor_next_token(parser->preprocessor); // consume name
+
+			name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
+		}
+
+		if (name_or_semilcolon.kind == TOKEN_SEMICOLON) {
+			// consume semicolon
+			preprocessor_next_token(parser->preprocessor);
+		} else {
+			TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					name_or_semilcolon,
+					expected_tokens,
+					array_size(expected_tokens));
+			arena_end_temp(temp);
+			return false;
+		}
+
+		if (first_member == NULL) {
+			first_member = member;
+			last_member = member;
+		} else {
+			last_member->next = member;
+			last_member = member;
+		}
+
+		member_count += 1;
+	}
+
+	*out_member_count = member_count;
+	*out_members = first_member;
+	return true;
 }
 
 bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
@@ -11,26 +79,31 @@ bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
 	assert(keyword_token.kind == TOKEN_KEYWORD_STRUCT);
 
 	SourceString struct_name = {};
+	ParsedStructMember* member_list = NULL;
+	size_t member_count = 0;
 
-	Token token = preprocessor_next_token(parser->preprocessor);
+	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_IDENT) {
-		struct_name = _source_string_from_token(token);
-	} else {
-		TokenKind expected_tokens[] = {
-			TOKEN_IDENT,
-		};
+		preprocessor_next_token(parser->preprocessor); // consume identifier
 
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				token,
-				expected_tokens,
-				array_size(expected_tokens));
-		return false;
+		struct_name = _source_string_from_token(token);
+		token = preprocessor_view_next(parser->preprocessor);
+	}
+
+	if (token.kind == TOKEN_LEFT_BRACE) {
+		if (!_parser_parse_struct_members(parser, &member_count, &member_list)) {
+			return false;
+		}
+	}
+
+	if (member_list != NULL) {
+		assert(member_count > 0);
 	}
 
 	*out_struct_def = (ParsedStruct) {
 		.name = struct_name,
-		.members = NULL,
-		.member_count = 0,
+		.member_list = member_list,
+		.member_count = member_count,
 	};
 
 	return true;

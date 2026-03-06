@@ -55,12 +55,14 @@ struct ParsedType {
 struct ParsedStructMember {
 	SourceString name;
 	ParsedType type;
+
+	ParsedStructMember* next;
 };
 
 struct ParsedStruct {
 	SourceString name;
 
-	ParsedStructMember* members;
+	ParsedStructMember* member_list;
 	size_t member_count;
 };
 

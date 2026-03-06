@@ -25,7 +25,7 @@ typedef struct {
 } PrinterState;
 
 void printer_indent(const PrinterState* printer) {
-	for (size_t i = 0; i < printer->indent; i += 1) {
+for (size_t i = 0; i < printer->indent; i += 1) {
 		printf("  ");
 	}
 }
@@ -40,6 +40,23 @@ void printer_end_struct(PrinterState* printer) {
 	printer->indent -= 1;
 	printer_indent(printer);
 	printf("}\n");
+}
+
+void printer_begin_array(PrinterState* printer) {
+	printf("[\n");
+	printer->indent += 1;
+}
+
+void printer_end_array(PrinterState* printer) {
+	assert(printer->indent > 0);
+	printer->indent -= 1;
+	printer_indent(printer);
+	printf("]\n");
+}
+
+void printer_array_element(PrinterState* printer, size_t index) {
+	printer_indent(printer);
+	printf("%zu = ", index);
 }
 
 void printer_field(PrinterState* printer, const char* field_name) {
@@ -60,11 +77,32 @@ void printer_string_field(PrinterState* printer, const char* name, String value)
 // AST Printing
 //
 
+void print_type(PrinterState* printer, const ParsedType* type);
 void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 	assert(struct_def != NULL);
 
 	printer_begin_struct(printer, "struct");
 	printer_string_field(printer, "name", struct_def->name);
+
+	printer_field(printer, "members");
+	printer_begin_array(printer);
+	
+	size_t member_index = 0;
+	ParsedStructMember* member = struct_def->member_list;
+	while (member) {
+		printer_array_element(printer, member_index);
+		printer_begin_struct(printer, "member");
+		printer_string_field(printer, "name", member->name);
+		printer_field(printer, "type");
+		print_type(printer, &member->type);
+		printer_end_struct(printer);
+
+		member = member->next;
+		member_index += 1;
+	}
+
+	printer_end_array(printer);
+
 	printer_end_struct(printer);
 }
 

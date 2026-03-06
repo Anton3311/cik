@@ -30,6 +30,7 @@ static TestCase preprocessor_tests[] = {
 };
 
 static TestCase parser_tests[] = {
+	test(test_parse_type_def_of_primitive_type),
 };
 
 static TestSuite s_test_suites[] = {

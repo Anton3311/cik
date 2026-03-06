@@ -1,6 +1,7 @@
 #include "tests.h"
 
 #include "parser/preprocessor.h"
+#include "parser/parser.h"
 
 //
 // Source Info
@@ -455,4 +456,57 @@ void test_macro_string_operator_with_invalid_param_name_fails(TestContext* conte
 	// NOTE: Line indices are zero based
 	assert(diagnostics.first->start_line + 1 == 1);
 	assert(diagnostics.first->end_line + 1 == 1);
+}
+
+//
+// Parser
+//
+
+void run_parser_test(TestContext* context,
+		Diagnostics* out_diagnostics,
+		LineInfo* out_line_info,
+		String source_code,
+		ParsedAST* out_ast) {
+
+	*out_line_info = line_info_from_source(context->arena, source_code);
+
+	*out_diagnostics = (Diagnostics) {
+		.allocator = context->temp_arena,
+		.source_code = source_code,
+		.line_info = *out_line_info,
+	};
+
+	Preprocessor preprocessor = {};
+	preprocessor_init(&preprocessor,
+			STR_LIT(DEFAULT_SOURCE_PATH),
+			source_code,
+			out_line_info,
+			out_diagnostics,
+			context->arena,
+			context->temp_arena,
+			context->arena);
+
+	Parser parser = {};
+	parser_init(&parser, context->arena, &preprocessor, out_diagnostics);
+
+	parser_parse(&parser, out_ast);
+}
+
+void test_parse_type_def_of_primitive_type(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("typedef int int32;"), &ast);
+
+	assert(diagnostics.first == NULL);
+
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first = ast.root_nodes.first;
+	assert(first->kind == AST_NODE_TYPE_DEF);
+
+	ParsedTypeDef* type_def = &first->type_def;
+	assert(type_def->aliased_type.kind == PARSED_TYPE_NAMED);
+	assert(str_equal(type_def->aliased_type.named.name, STR_LIT("int")));
+	assert(str_equal(type_def->new_name, STR_LIT("int32")));
 }

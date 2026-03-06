@@ -16,6 +16,7 @@ typedef struct ParsedEnumVariant ParsedEnumVariant;
 typedef struct ParsedTypeDef ParsedTypeDef;
 typedef struct ParsedFunction ParsedFunction;
 typedef struct ParsedFunctionParam ParsedFunctionParam;
+typedef struct ParsedScope ParsedScope;
 
 typedef enum {
 	AST_NODE_TYPE_DEF,
@@ -29,6 +30,10 @@ typedef struct {
 	ParsedNode* last;
 	size_t count;
 } ParsedNodeList;
+
+struct ParsedScope {
+	ParsedNodeList nodes;
+};
 
 void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node);
 
@@ -124,7 +129,7 @@ struct ParsedFunction {
 
 	size_t parameter_count;
 	ParsedFunctionParam* parameter_list;
-	ParsedNodeList* body;
+	ParsedScope* body;
 };
 
 //

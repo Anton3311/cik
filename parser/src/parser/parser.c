@@ -1,6 +1,7 @@
 #include "parser.h"
 
 bool _parser_parse_type(Parser* parser, ParsedType* out_type);
+bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope);
 
 inline SourceString _source_string_from_token(Token token) {
 	return token.string;
@@ -13,6 +14,16 @@ void _parser_skip_until_semicolon(Parser* parser) {
 			break;
 		}
 	}
+}
+
+inline bool _parser_try_consume_token(Parser* parser, TokenKind expected_kind) {
+	Token token = preprocessor_view_next(parser->preprocessor);
+	if (token.kind == expected_kind) {
+		preprocessor_next_token(parser->preprocessor);
+		return true;
+	}
+
+	return false;
 }
 
 bool _parser_expect_semicolon(Parser* parser, String error_message) {
@@ -28,8 +39,6 @@ bool _parser_expect_semicolon(Parser* parser, String error_message) {
 
 	return true;
 }
-
-#define try(expression) if (!(expression)) { return 0; }
 
 bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, ParsedStructMember** out_members) {
 	assert(out_member_count != NULL);
@@ -448,7 +457,27 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 			return false;
 		}
 
-		try(_parser_expect_semicolon(parser, STR_LIT("Expected ';' at the end of the function definition")));
+		ParsedScope* body = {};
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_LEFT_BRACE) {
+			body = arena_alloc(parser->ast_allocator, ParsedScope);
+			memset(body, 0, sizeof(*body));
+
+			if (!_parser_parse_scope(parser, body)) {
+				arena_end_temp(temp);
+				return false;
+			}
+		} else if (token.kind == TOKEN_SEMICOLON) {
+			preprocessor_next_token(parser->preprocessor);
+		} else {
+			arena_end_temp(temp);
+			TokenKind expected_tokens[] = { TOKEN_LEFT_BRACE, TOKEN_SEMICOLON };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					token,
+					expected_tokens,
+					array_size(expected_tokens));
+			return false;
+		}
 
 		out_node->kind = AST_NODE_FUNCTION;
 		out_node->function_def = (ParsedFunction) {
@@ -456,7 +485,7 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 			.name = name,
 			.parameter_list = param_list,
 			.parameter_count = param_count,
-			.body = NULL,
+			.body = body,
 		};
 
 		return true;
@@ -473,6 +502,78 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 	return false;
 }
 
+ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
+	switch (initial_token.kind) {
+	case TOKEN_KEYWORD_TYPEDEF: {
+		return _parser_parse_type_def(parser);
+	}
+	case TOKEN_KEYWORD_ENUM: {
+		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_ENUM;
+
+		if (!_parser_parse_enum_type(parser, &node->enum_def)) {
+			arena_end_temp(temp);
+			return NULL;
+		}
+
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after the enum"))) {
+			return NULL;
+		}
+
+		return node;
+	}
+	default: {
+		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		memset(node, 0, sizeof(*node));
+
+		if (_parser_parse_variable_or_function_def(parser, node)) {
+			return node;
+		} else {
+			arena_end_temp(temp);
+
+			preprocessor_next_token(parser->preprocessor);
+			diagnostics_report_unexpected_token(parser->diagnostics, initial_token, NULL, 0);
+			return NULL;
+		}
+
+		break;
+	}
+	}
+
+	unreachable();
+	return NULL;
+}
+
+bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
+	Token token = preprocessor_next_token(parser->preprocessor);
+	assert(token.kind == TOKEN_LEFT_BRACE);
+
+	while (true) {
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_EOF) {
+			preprocessor_next_token(parser->preprocessor);
+
+			diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					STR_LIT("Unexpected end of file"),
+					NULL);
+			return false;
+		} else if (token.kind == TOKEN_RIGHT_BRACE) {
+			preprocessor_next_token(parser->preprocessor);
+			break;
+		}
+
+		ParsedNode* node = _parser_parse_single_node(parser, token);
+		if (node) {
+			parsed_node_list_append(&out_scope->nodes, node);
+		}
+	}
+
+	return true;
+}
+
 void parser_init(Parser* parser,
 		Arena* ast_allocator,
 		Preprocessor* preprocessor,
@@ -485,61 +586,17 @@ void parser_init(Parser* parser,
 void parser_parse(Parser* parser, ParsedAST* ast) {
 	ast->root_nodes = (ParsedNodeList) {};
 
-	while (true) {
+	bool run = true;
+	while (run) {
 		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_EOF) {
-			break;
-		}
-
-		switch (token.kind) {
-		case TOKEN_KEYWORD_TYPEDEF: {
-			ParsedNode* node = _parser_parse_type_def(parser);
-			if (node) {
-				parsed_node_list_append(&ast->root_nodes, node);
-			}
-			break;
-		}
-		case TOKEN_KEYWORD_ENUM: {
-			ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
-			ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
-			node->kind = AST_NODE_ENUM;
-
-			if (!_parser_parse_enum_type(parser, &node->enum_def)) {
-				arena_end_temp(temp);
-				break;
-			}
-
-			Token semicolon = preprocessor_next_token(parser->preprocessor);
-			if (semicolon.kind != TOKEN_SEMICOLON) {
-				arena_end_temp(temp);
-
-				TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
-				diagnostics_report_unexpected_token(parser->diagnostics,
-						semicolon,
-						expected_tokens,
-						array_size(expected_tokens));
-				break;
-			}
-
-			parsed_node_list_append(&ast->root_nodes, node);
-			break;
-		}
-		default: {
-			ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
-			ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
-			memset(node, 0, sizeof(*node));
-
-			if (_parser_parse_variable_or_function_def(parser, node)) {
-				parsed_node_list_append(&ast->root_nodes, node);
-				break;
-			} else {
-				arena_end_temp(temp);
-			}
-
 			preprocessor_next_token(parser->preprocessor);
-			diagnostics_report_unexpected_token(parser->diagnostics, token, NULL, 0);
 			break;
 		}
+
+		ParsedNode* node = _parser_parse_single_node(parser, token);
+		if (node) {
+			parsed_node_list_append(&ast->root_nodes, node);
 		}
 	}
 }

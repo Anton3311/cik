@@ -78,6 +78,8 @@ void printer_string_field(PrinterState* printer, const char* name, String value)
 //
 
 void print_type(PrinterState* printer, const ParsedType* type);
+void print_single_node(PrinterState* printer, const ParsedNode* node);
+
 void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 	assert(struct_def != NULL);
 
@@ -161,6 +163,22 @@ void print_type_def(PrinterState* printer, const ParsedTypeDef* type_def) {
 	printer_end_struct(printer);
 }
 
+void print_scope(PrinterState* printer, const ParsedScope* scope) {
+	printer_begin_array(printer);
+
+	ParsedNode* node = scope->nodes.first;
+	size_t node_index = 0;
+
+	while (node) {
+		printer_array_element(printer, node_index);
+		print_single_node(printer, node);
+		node = node->next;
+		node_index += 1;
+	}
+
+	printer_end_array(printer);
+}
+
 void print_function_def(PrinterState* printer, const ParsedFunction* function_def) {
 	printer_begin_struct(printer, "function");
 
@@ -187,28 +205,38 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 
 	printer_end_array(printer);
 
+	printer_field(printer, "body");
+	if (function_def->body) {
+		print_scope(printer, function_def->body);
+	} else {
+		printf("[]\n");
+	}
+
 	printer_end_struct(printer);
+}
+
+void print_single_node(PrinterState* printer, const ParsedNode* node) {
+	switch (node->kind) {
+	case AST_NODE_TYPE_DEF:
+		print_type_def(printer, &node->type_def);
+		break;
+	case AST_NODE_STRUCT:
+		print_struct_def(printer, &node->struct_def);
+		break;
+	case AST_NODE_ENUM:
+		print_enum_def(printer, &node->enum_def);
+		break;
+	case AST_NODE_FUNCTION:
+		print_function_def(printer, &node->function_def);
+		break;
+	}
 }
 
 void print_parsed_node(const ParsedNode* node) {
 	PrinterState printer = {};
 
 	while (node != NULL) {
-		switch (node->kind) {
-		case AST_NODE_TYPE_DEF:
-			print_type_def(&printer, &node->type_def);
-			break;
-		case AST_NODE_STRUCT:
-			print_struct_def(&printer, &node->struct_def);
-			break;
-		case AST_NODE_ENUM:
-			print_enum_def(&printer, &node->enum_def);
-			break;
-		case AST_NODE_FUNCTION:
-			print_function_def(&printer, &node->function_def);
-			break;
-		}
-
+		print_single_node(&printer, node);
 		node = node->next;
 	}
 }

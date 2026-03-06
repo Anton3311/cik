@@ -14,11 +14,14 @@ typedef struct ParsedStructMember ParsedStructMember;
 typedef struct ParsedEnum ParsedEnum;
 typedef struct ParsedEnumVariant ParsedEnumVariant;
 typedef struct ParsedTypeDef ParsedTypeDef;
+typedef struct ParsedFunction ParsedFunction;
+typedef struct ParsedFunctionParam ParsedFunctionParam;
 
 typedef enum {
 	AST_NODE_TYPE_DEF,
 	AST_NODE_STRUCT,
 	AST_NODE_ENUM,
+	AST_NODE_FUNCTION,
 } AstNodeKind;
 
 typedef struct {
@@ -105,6 +108,26 @@ struct ParsedTypeDef {
 };
 
 //
+// Function
+//
+
+struct ParsedFunctionParam {
+	ParsedType type;
+	SourceString name;
+
+	ParsedFunctionParam* next;
+};
+
+struct ParsedFunction {
+	ParsedType return_type;
+	SourceString name;
+
+	size_t parameter_count;
+	ParsedFunctionParam* parameter_list;
+	ParsedNodeList* body;
+};
+
+//
 // Node
 //
 
@@ -116,6 +139,7 @@ struct ParsedNode {
 		ParsedStruct struct_def;
 		ParsedEnum enum_def;
 		ParsedTypeDef type_def;
+		ParsedFunction function_def;
 	};
 };
 

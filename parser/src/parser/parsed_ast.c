@@ -135,10 +135,8 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 
 void print_type(PrinterState* printer, const ParsedType* type) {
 	if (has_flag(type->qualifiers, TYPE_QUALIFIER_CONST)) {
-		printf("const");
+		printf("const ");
 	}
-
-	printf(" ");
 
 	switch (type->kind) {
 	case PARSED_TYPE_NAMED:
@@ -163,6 +161,35 @@ void print_type_def(PrinterState* printer, const ParsedTypeDef* type_def) {
 	printer_end_struct(printer);
 }
 
+void print_function_def(PrinterState* printer, const ParsedFunction* function_def) {
+	printer_begin_struct(printer, "function");
+
+	printer_string_field(printer, "name", function_def->name);
+	printer_field(printer, "return_type");
+	print_type(printer, &function_def->return_type);
+
+	printer_field(printer, "parameters");
+	printer_begin_array(printer);
+
+	ParsedFunctionParam* param = function_def->parameter_list;
+	size_t param_index = 0;
+	while (param != NULL) {
+		printer_array_element(printer, param_index);
+		printer_begin_struct(printer, "param");
+		printer_string_field(printer, "name", param->name);
+		printer_field(printer, "type");
+		print_type(printer, &param->type);
+		printer_end_struct(printer);
+
+		param = param->next;
+		param_index += 1;
+	}
+
+	printer_end_array(printer);
+
+	printer_end_struct(printer);
+}
+
 void print_parsed_node(const ParsedNode* node) {
 	PrinterState printer = {};
 
@@ -176,6 +203,9 @@ void print_parsed_node(const ParsedNode* node) {
 			break;
 		case AST_NODE_ENUM:
 			print_enum_def(&printer, &node->enum_def);
+			break;
+		case AST_NODE_FUNCTION:
+			print_function_def(&printer, &node->function_def);
 			break;
 		}
 

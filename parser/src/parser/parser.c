@@ -6,6 +6,22 @@ inline SourceString _source_string_from_token(Token token) {
 	return token.string;
 }
 
+bool _parser_expect_semicolon(Parser* parser, String error_message) {
+	Token token = preprocessor_next_token(parser->preprocessor);
+	if (token.kind != TOKEN_SEMICOLON) {
+		TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				token,
+				expected_tokens,
+				array_size(expected_tokens));
+		return false;
+	}
+
+	return true;
+}
+
+#define try(expression) if (!(expression)) { return 0; }
+
 bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, ParsedStructMember** out_members) {
 	assert(out_member_count != NULL);
 	assert(out_members != NULL);
@@ -324,6 +340,130 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	return node;
 }
 
+bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out_param_list, size_t* out_param_count) {
+	Token left_paren = preprocessor_next_token(parser->preprocessor);
+	assert(left_paren.kind == TOKEN_LEFT_PAREN);
+
+	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+
+	ParsedFunctionParam* first_param = NULL;
+	ParsedFunctionParam* last_param = NULL;
+	size_t param_count = 0;
+
+	while (true) {
+		{
+			Token token = preprocessor_view_next(parser->preprocessor);
+			if (token.kind == TOKEN_RIGHT_PAREN) {
+				preprocessor_next_token(parser->preprocessor);
+				break;
+			}
+		}
+
+		ParsedFunctionParam* param = arena_alloc(parser->ast_allocator, ParsedFunctionParam);
+
+		if (!_parser_parse_type(parser, &param->type)) {
+			arena_end_temp(temp);
+			return false;
+		}
+
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_IDENT) {
+			preprocessor_next_token(parser->preprocessor); // consume param name
+
+			param->name = _source_string_from_token(token);
+			token = preprocessor_view_next(parser->preprocessor);
+		}
+
+		if (first_param == NULL) {
+			first_param = param;
+			last_param = param;
+		} else {
+			last_param->next = param;
+			last_param = param;
+		}
+
+		param_count += 1;
+
+		if (token.kind == TOKEN_COMMA) {
+			preprocessor_next_token(parser->preprocessor);
+			continue; // we most likely have more parameters
+		} else if (token.kind == TOKEN_RIGHT_PAREN) {
+			preprocessor_next_token(parser->preprocessor);
+			break;
+		}
+	}
+
+	if (first_param != NULL) {
+		assert(param_count > 0);
+	}
+
+	*out_param_list = first_param;
+	*out_param_count = param_count;
+	return true;
+}
+
+bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node) {
+	assert(out_node != NULL);
+
+	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+
+	ParsedType type = {};
+	SourceString name = {};
+
+	if (!_parser_parse_type(parser, &type)) {
+		arena_end_temp(temp);
+		return false;
+	}
+
+	Token name_token = preprocessor_next_token(parser->preprocessor);
+	if (name_token.kind != TOKEN_IDENT) {
+		arena_end_temp(temp);
+
+		TokenKind expected_tokens[] = { TOKEN_IDENT };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				name_token,
+				expected_tokens,
+				array_size(expected_tokens));
+		return false;
+	}
+
+	name = _source_string_from_token(name_token);
+
+	Token token = preprocessor_view_next(parser->preprocessor);
+	if (token.kind == TOKEN_LEFT_PAREN) {
+		ParsedFunctionParam* param_list = NULL;
+		size_t param_count = 0;
+
+		if (!_parser_parse_function_param_list(parser, &param_list, &param_count)) {
+			arena_end_temp(temp);
+			return false;
+		}
+
+		try(_parser_expect_semicolon(parser, STR_LIT("Expected ';' at the end of the function definition")));
+
+		out_node->kind = AST_NODE_FUNCTION;
+		out_node->function_def = (ParsedFunction) {
+			.return_type = type,
+			.name = name,
+			.parameter_list = param_list,
+			.parameter_count = param_count,
+			.body = NULL,
+		};
+
+		return true;
+	} else {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				token,
+				expected_tokens,
+				array_size(expected_tokens));
+		return false;
+	}
+
+	unreachable();
+	return false;
+}
+
 void parser_init(Parser* parser,
 		Arena* ast_allocator,
 		Preprocessor* preprocessor,
@@ -362,6 +502,8 @@ void parser_parse(Parser* parser, ParsedAST* ast) {
 
 			Token semicolon = preprocessor_next_token(parser->preprocessor);
 			if (semicolon.kind != TOKEN_SEMICOLON) {
+				arena_end_temp(temp);
+
 				TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
 				diagnostics_report_unexpected_token(parser->diagnostics,
 						semicolon,
@@ -374,6 +516,17 @@ void parser_parse(Parser* parser, ParsedAST* ast) {
 			break;
 		}
 		default: {
+			ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+			ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+			memset(node, 0, sizeof(*node));
+
+			if (_parser_parse_variable_or_function_def(parser, node)) {
+				parsed_node_list_append(&ast->root_nodes, node);
+				break;
+			} else {
+				arena_end_temp(temp);
+			}
+
 			preprocessor_next_token(parser->preprocessor);
 			diagnostics_report_unexpected_token(parser->diagnostics, token, NULL, 0);
 			break;

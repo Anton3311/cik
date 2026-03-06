@@ -510,3 +510,73 @@ void test_parse_type_def_of_primitive_type(TestContext* context) {
 	assert(str_equal(type_def->aliased_type.named.name, STR_LIT("int")));
 	assert(str_equal(type_def->new_name, STR_LIT("int32")));
 }
+
+void test_parse_type_def_of_struct_def(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("typedef struct Hello World;"), &ast);
+
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first = ast.root_nodes.first;
+	assert(first->kind == AST_NODE_TYPE_DEF);
+
+	ParsedTypeDef* type_def = &first->type_def;
+	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
+
+	ParsedStruct* struct_def = type_def->aliased_type.struct_def;
+	assert(str_equal(struct_def->name, STR_LIT("Hello")));
+	assert(struct_def->member_count == 0);
+
+	assert(str_equal(type_def->new_name, STR_LIT("World")));
+}
+
+void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("typedef struct Hello {\n"
+				"	int int_value;\n"
+				"	float float_value;\n"
+				"	struct InnerStruct { int inner_value; } inner;\n"
+				"} World;"), &ast);
+
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first = ast.root_nodes.first;
+	assert(first->kind == AST_NODE_TYPE_DEF);
+
+	ParsedTypeDef* type_def = &first->type_def;
+	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
+	assert(str_equal(type_def->new_name, STR_LIT("World")));
+
+	ParsedStruct* hello_struct_def = type_def->aliased_type.struct_def;
+	assert(str_equal(hello_struct_def->name, STR_LIT("Hello")));
+	assert(hello_struct_def->member_count == 3);
+
+	ParsedStructMember* int_value_member = hello_struct_def->member_list;
+	ParsedStructMember* float_value_member = int_value_member->next;
+	ParsedStructMember* inner_member = float_value_member->next;
+	
+	assert(int_value_member->type.kind == PARSED_TYPE_NAMED);
+	assert(str_equal(int_value_member->type.named.name, STR_LIT("int")));
+	assert(str_equal(int_value_member->name, STR_LIT("int_value")));
+
+	assert(float_value_member->type.kind == PARSED_TYPE_NAMED);
+	assert(str_equal(float_value_member->type.named.name, STR_LIT("float")));
+	assert(str_equal(float_value_member->name, STR_LIT("float_value")));
+
+	// Check InnerStruct
+	assert(inner_member->type.kind == PARSED_TYPE_STRUCT);
+
+	ParsedStruct* inner_struct_def = inner_member->type.struct_def;
+	assert(str_equal(inner_struct_def->name, STR_LIT("InnerStruct")));
+
+	ParsedStructMember* inner_value_member = inner_struct_def->member_list;
+	assert(inner_value_member->type.kind == PARSED_TYPE_NAMED);
+	assert(str_equal(inner_value_member->type.named.name, STR_LIT("int")));
+	assert(str_equal(inner_value_member->name, STR_LIT("inner_value")));
+}

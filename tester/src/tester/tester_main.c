@@ -31,13 +31,15 @@ static TestCase preprocessor_tests[] = {
 
 static TestCase parser_tests[] = {
 	test(test_parse_type_def_of_primitive_type),
+	test(test_parse_type_def_of_struct_def),
+	test(test_parse_type_def_of_struct_def_with_members),
 };
 
 static TestSuite s_test_suites[] = {
 	test_suite(source_info_tests),
 	test_suite(tokenizer_tests),
-	test_suite(parser_tests),
 	test_suite(preprocessor_tests),
+	test_suite(parser_tests),
 };
 
 bool arg_parse_uint64(const char* string, uint64_t* out) {

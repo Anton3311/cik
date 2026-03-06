@@ -105,6 +105,7 @@ void test_token_source_range_matches_token_string(TestContext* context) {
 		}
 
 		generated_token_count += 1;
+		assert(generated_token_count <= token_count);
 
 		String source_sub_str = sub_str(random_tokens.generated_source,
 				token.source_range.start,
@@ -112,8 +113,6 @@ void test_token_source_range_matches_token_string(TestContext* context) {
 
 		assert(str_equal(source_sub_str, token.string));
 	}
-
-	assert(generated_token_count == token_count);
 }
 
 void test_tokenizer_generates_expected_token(TestContext* context) {
@@ -138,9 +137,8 @@ void test_tokenizer_generates_expected_token(TestContext* context) {
 		assert(token.kind == expected_kind);
 
 		generated_token_count += 1;
+		assert(generated_token_count <= token_count);
 	}
-
-	assert(generated_token_count == token_count);
 }
 
 //

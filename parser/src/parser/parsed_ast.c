@@ -106,6 +106,33 @@ void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 	printer_end_struct(printer);
 }
 
+void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
+	assert(enum_def != NULL);
+
+	printer_begin_struct(printer, "enum");
+
+	printer_string_field(printer, "name", enum_def->name);
+
+	printer_field(printer, "variants");
+	printer_begin_array(printer);
+
+	size_t variant_index = 0;
+	ParsedEnumVariant* variant = enum_def->variant_list;
+	while (variant != NULL) {
+		printer_array_element(printer, variant_index);
+
+		printer_begin_struct(printer, "variant");
+		printer_string_field(printer, "name", variant->name);
+		printer_end_struct(printer);
+
+		variant = variant->next;
+		variant_index += 1;
+	}
+	printer_end_array(printer);
+
+	printer_end_struct(printer);
+}
+
 void print_type(PrinterState* printer, const ParsedType* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_NAMED:
@@ -113,6 +140,9 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 		break;
 	case PARSED_TYPE_STRUCT:
 		print_struct_def(printer, type->struct_def);
+		break;
+	case PARSED_TYPE_ENUM:
+		print_enum_def(printer, type->enum_def);
 		break;
 	}
 }
@@ -135,7 +165,11 @@ void print_parsed_node(const ParsedNode* node) {
 		case AST_NODE_TYPE_DEF:
 			print_type_def(&printer, &node->type_def);
 			break;
-		case AST_NODE_TYPE_STRUCT:
+		case AST_NODE_STRUCT:
+			print_struct_def(&printer, &node->struct_def);
+			break;
+		case AST_NODE_ENUM:
+			print_enum_def(&printer, &node->enum_def);
 			break;
 		}
 

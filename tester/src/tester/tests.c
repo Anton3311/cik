@@ -580,3 +580,30 @@ void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
 	assert(str_equal(inner_value_member->type.named.name, STR_LIT("int")));
 	assert(str_equal(inner_value_member->name, STR_LIT("inner_value")));
 }
+
+void test_parse_enum_def(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("enum Type {\n"
+				"	TYPE_INT,\n"
+				"	TYPE_FLOAT\n"
+				"};"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first = ast.root_nodes.first;
+	assert(first->kind == AST_NODE_ENUM);
+
+	ParsedEnum* enum_def = &first->enum_def;
+	assert(str_equal(enum_def->name, STR_LIT("Type")));
+	assert(enum_def->variant_count == 2);
+
+	ParsedEnumVariant* first_variant = enum_def->variant_list;
+	ParsedEnumVariant* second_variant = first_variant->next;
+
+	assert(str_equal(first_variant->name, STR_LIT("TYPE_INT")));
+	assert(str_equal(second_variant->name, STR_LIT("TYPE_FLOAT")));
+}

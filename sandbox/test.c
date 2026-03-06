@@ -7,3 +7,13 @@ typedef struct Hello {
 
 	} world;
 } Hello;
+
+typedef enum TokenKind {
+	TOKEN_EOF,
+	TOKEN_IDENT,
+} TokenKind;
+
+enum Type {
+	INT,
+	FLOAT
+};

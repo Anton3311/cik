@@ -56,6 +56,7 @@ typedef enum {
 	// Keywords
 	TOKEN_KEYWORD_TYPEDEF,
 	TOKEN_KEYWORD_STRUCT,
+	TOKEN_KEYWORD_ENUM,
 
 	TOKEN_COUNT,
 } TokenKind;

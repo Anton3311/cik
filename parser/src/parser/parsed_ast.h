@@ -11,11 +11,14 @@ typedef struct ParsedBlock ParsedBlock;
 typedef struct ParsedType ParsedType;
 typedef struct ParsedStruct ParsedStruct;
 typedef struct ParsedStructMember ParsedStructMember;
+typedef struct ParsedEnum ParsedEnum;
+typedef struct ParsedEnumVariant ParsedEnumVariant;
 typedef struct ParsedTypeDef ParsedTypeDef;
 
 typedef enum {
 	AST_NODE_TYPE_DEF,
-	AST_NODE_TYPE_STRUCT,
+	AST_NODE_STRUCT,
+	AST_NODE_ENUM,
 } AstNodeKind;
 
 typedef struct {
@@ -33,6 +36,7 @@ struct ParsedBlock {
 typedef enum {
 	PARSED_TYPE_NAMED,
 	PARSED_TYPE_STRUCT,
+	PARSED_TYPE_ENUM,
 } ParsedTypeKind;
 
 struct ParsedType {
@@ -45,6 +49,7 @@ struct ParsedType {
 		} named;
 		
 		ParsedStruct* struct_def;
+		ParsedEnum* enum_def;
 	};
 };
 
@@ -67,6 +72,23 @@ struct ParsedStruct {
 };
 
 //
+// Enum
+//
+
+struct ParsedEnumVariant {
+	SourceString name;
+
+	ParsedEnumVariant* next;
+};
+
+struct ParsedEnum {
+	SourceString name;
+
+	ParsedEnumVariant* variant_list;
+	size_t variant_count;
+};
+
+//
 // TypeDef
 //
 
@@ -85,6 +107,7 @@ struct ParsedNode {
 
 	union {
 		ParsedStruct struct_def;
+		ParsedEnum enum_def;
 		ParsedTypeDef type_def;
 	};
 };

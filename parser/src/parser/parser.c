@@ -8,6 +8,7 @@ inline SourceString _source_string_from_token(Token token) {
 
 bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, ParsedStructMember** out_members) {
 	assert(out_member_count != NULL);
+	assert(out_members != NULL);
 
 	Token left_brace = preprocessor_next_token(parser->preprocessor);
 	assert(left_brace.kind == TOKEN_LEFT_BRACE);
@@ -109,6 +110,113 @@ bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
 	return true;
 }
 
+bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, ParsedEnumVariant** out_variant_list) {
+	assert(out_variant_count != NULL);
+	assert(out_variant_list != NULL);
+
+	Token left_brace = preprocessor_next_token(parser->preprocessor);
+	assert(left_brace.kind == TOKEN_LEFT_BRACE);
+
+	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+
+	ParsedEnumVariant* first_variant = NULL;
+	ParsedEnumVariant* last_variant = NULL;
+	size_t variant_count = 0;
+
+	while (true) {
+		{
+			Token token = preprocessor_view_next(parser->preprocessor);
+			if (token.kind == TOKEN_RIGHT_BRACE) {
+				preprocessor_next_token(parser->preprocessor);
+				break;
+			}
+		}
+
+		ParsedEnumVariant* variant = arena_alloc(parser->ast_allocator, ParsedEnumVariant);
+		memset(variant, 0, sizeof(*variant));
+
+		Token name_token = preprocessor_next_token(parser->preprocessor);
+		if (name_token.kind != TOKEN_IDENT) {
+			TokenKind expected_tokens[] = { TOKEN_IDENT };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					name_token,
+					expected_tokens,
+					array_size(expected_tokens));
+			arena_end_temp(temp);
+			return false;
+		}
+
+		variant->name = _source_string_from_token(name_token);
+
+		if (first_variant == NULL) {
+			first_variant = variant;
+			last_variant = variant;
+		} else {
+			last_variant->next = variant;
+			last_variant = variant;
+		}
+
+		variant_count += 1;
+
+		Token comma_or_right_brace = preprocessor_view_next(parser->preprocessor);
+		if (comma_or_right_brace.kind == TOKEN_RIGHT_BRACE) {
+			preprocessor_next_token(parser->preprocessor); // consume TOKEN_RIGHT_BRACE
+			break;
+		} else if (comma_or_right_brace.kind == TOKEN_COMMA) {
+			preprocessor_next_token(parser->preprocessor); // consume TOKEN_COMMA
+			continue;
+		} else {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_BRACE, TOKEN_COMMA };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					name_token,
+					expected_tokens,
+					array_size(expected_tokens));
+			arena_end_temp(temp);
+			return false;
+		}
+	}
+
+	*out_variant_count = variant_count;
+	*out_variant_list = first_variant;
+	return true;
+}
+
+bool _parser_parse_enum_type(Parser* parser, ParsedEnum* out_enum_def) {
+	assert(out_enum_def != NULL);
+
+	Token keyword_token = preprocessor_next_token(parser->preprocessor);
+	assert(keyword_token.kind == TOKEN_KEYWORD_ENUM);
+
+	SourceString enum_name = {};
+	ParsedEnumVariant* variant_list = {};
+	size_t variant_count = 0;
+
+	Token token = preprocessor_view_next(parser->preprocessor);
+	if (token.kind == TOKEN_IDENT) {
+		preprocessor_next_token(parser->preprocessor); // consume identifier
+
+		enum_name = _source_string_from_token(token);
+		token = preprocessor_view_next(parser->preprocessor);
+	}
+
+	if (token.kind == TOKEN_LEFT_BRACE) {
+		if (!_parser_parse_enum_variants(parser, &variant_count, &variant_list)) {
+			return false;
+		}
+	}
+
+	if (variant_list != NULL) {
+		assert(variant_count > 0);
+	}
+
+	*out_enum_def = (ParsedEnum) {
+		.name = enum_name,
+		.variant_list = variant_list,
+		.variant_count = variant_count
+	};
+	return true;
+}
+
 bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
 	assert(out_type != NULL);
 
@@ -131,6 +239,16 @@ bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
 		out_type->struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
 		*out_type->struct_def = struct_def;
 		return true;
+	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
+		ParsedEnum enum_def = {};
+		if (!_parser_parse_enum_type(parser, &enum_def)) {
+			return false;
+		}
+
+		out_type->kind = PARSED_TYPE_ENUM;
+		out_type->enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
+		*out_type->enum_def = enum_def;
+		return true;
 	} else {
 		preprocessor_next_token(parser->preprocessor);
 
@@ -150,7 +268,8 @@ bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
 	return false;
 }
 
-ParsedNode* _parser_parse_type_def(Parser* parser, Token keyword_token) {
+ParsedNode* _parser_parse_type_def(Parser* parser) {
+	Token keyword_token = preprocessor_next_token(parser->preprocessor);
 	assert(keyword_token.kind == TOKEN_KEYWORD_TYPEDEF);
 
 	ParsedType aliased_type = {};
@@ -207,20 +326,44 @@ void parser_parse(Parser* parser, ParsedAST* ast) {
 	ast->root_nodes = (ParsedNodeList) {};
 
 	while (true) {
-		Token token = preprocessor_next_token(parser->preprocessor);
+		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_EOF) {
 			break;
 		}
 
 		switch (token.kind) {
 		case TOKEN_KEYWORD_TYPEDEF: {
-			ParsedNode* node = _parser_parse_type_def(parser, token);
+			ParsedNode* node = _parser_parse_type_def(parser);
 			if (node) {
 				parsed_node_list_append(&ast->root_nodes, node);
 			}
 			break;
 		}
+		case TOKEN_KEYWORD_ENUM: {
+			ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+			ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+			node->kind = AST_NODE_ENUM;
+
+			if (!_parser_parse_enum_type(parser, &node->enum_def)) {
+				arena_end_temp(temp);
+				break;
+			}
+
+			Token semicolon = preprocessor_next_token(parser->preprocessor);
+			if (semicolon.kind != TOKEN_SEMICOLON) {
+				TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						semicolon,
+						expected_tokens,
+						array_size(expected_tokens));
+				break;
+			}
+
+			parsed_node_list_append(&ast->root_nodes, node);
+			break;
+		}
 		default: {
+			preprocessor_next_token(parser->preprocessor);
 			diagnostics_report_unexpected_token(parser->diagnostics, token, NULL, 0);
 			break;
 		}

@@ -39,11 +39,15 @@ void test_token_has_valid_string_represenation(TestContext* context) {
 	}
 }
 
-void test_token_source_range_matches_token_string(TestContext* context) {
-	assert(TOKEN_EOF == 0);
+typedef struct {
+	size_t token_count;
+	TokenKind* generated_tokens;
+	String generated_source;
+} RandomTokenStream;
 
-	size_t token_count = 4096;
+RandomTokenStream _generate_random_tokens(TestContext* context, size_t token_count) {
 	size_t acceptable_token_count = TOKEN_COUNT - 1; // - 1 because TOKEN_EOF is exluded
+	TokenKind* generated_tokens = arena_alloc_array(context->arena, TokenKind, token_count);
 
 	StringBuilder builder = { .arena = context->temp_arena };
 	for (size_t i = 0; i < token_count; i += 1) {
@@ -51,6 +55,8 @@ void test_token_source_range_matches_token_string(TestContext* context) {
 		
 		TokenKind token_kind = (TokenKind)(1 + token_index);
 		assert(token_kind != TOKEN_EOF);
+
+		generated_tokens[i] = token_kind;
 
 		String token_string = {};
 		switch (token_kind) {
@@ -73,24 +79,65 @@ void test_token_source_range_matches_token_string(TestContext* context) {
 		str_builder_append_char(&builder, '\n');
 	}
 
+	return (RandomTokenStream) {
+		.token_count = token_count,
+		.generated_tokens = generated_tokens,
+		.generated_source = builder.string,
+	};
+}
+
+void test_token_source_range_matches_token_string(TestContext* context) {
+	assert(TOKEN_EOF == 0);
+
+	size_t token_count = 4096;
+	RandomTokenStream random_tokens = _generate_random_tokens(context, token_count);
+
 	Tokenizer tokenizer = {
-		.source_code = builder.string,
+		.source_code = random_tokens.generated_source,
 	};
 
 	size_t generated_token_count = 0;
 	while (true) {
 		Token token = tokenizer_next_token(&tokenizer);
+
 		if (token.kind == TOKEN_EOF) {
 			break;
 		}
 
 		generated_token_count += 1;
 
-		String source_sub_str = sub_str(builder.string,
+		String source_sub_str = sub_str(random_tokens.generated_source,
 				token.source_range.start,
 				token.source_range.end - token.source_range.start);
 
 		assert(str_equal(source_sub_str, token.string));
+	}
+
+	assert(generated_token_count == token_count);
+}
+
+void test_tokenizer_generates_expected_token(TestContext* context) {
+	assert(TOKEN_EOF == 0);
+
+	size_t token_count = 4096;
+	RandomTokenStream random_tokens = _generate_random_tokens(context, token_count);
+
+	Tokenizer tokenizer = {
+		.source_code = random_tokens.generated_source,
+	};
+
+	size_t generated_token_count = 0;
+	while (true) {
+		Token token = tokenizer_next_token(&tokenizer);
+
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+
+		TokenKind expected_kind = random_tokens.generated_tokens[generated_token_count];
+		assert(token.kind == expected_kind);
+
+		generated_token_count += 1;
 	}
 
 	assert(generated_token_count == token_count);

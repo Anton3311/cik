@@ -45,8 +45,8 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_DOUBLE_EQUAL] = STR_LIT("=="),
 
 	// Logic
-	[TOKEN_LOGIC_AND] = STR_LIT("&"),
-	[TOKEN_LOGIC_OR] = STR_LIT("|"),
+	[TOKEN_LOGIC_AND] = STR_LIT("&&"),
+	[TOKEN_LOGIC_OR] = STR_LIT("||"),
 
 	// Bitwise
 	[TOKEN_BITWISE_XOR] = STR_LIT("^"),
@@ -344,7 +344,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 	case '.':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_DOT);
 	case '=':
-		return _tokenizer_try_create_double_char_token(tokenizer, '=', '=', TOKEN_EXCLAMATION_MARK, TOKEN_DOUBLE_EQUAL);
+		return _tokenizer_try_create_double_char_token(tokenizer, '=', '=', TOKEN_EQUAL, TOKEN_DOUBLE_EQUAL);
 	case ':':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_COLON);
 	case ';':

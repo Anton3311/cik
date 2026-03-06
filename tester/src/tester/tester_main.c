@@ -35,6 +35,7 @@ static TestCase parser_tests[] = {
 	test(test_parse_type_def_of_struct_def),
 	test(test_parse_type_def_of_struct_def_with_members),
 	test(test_parse_enum_def),
+	test(test_parse_function_def),
 };
 
 static TestSuite s_test_suites[] = {

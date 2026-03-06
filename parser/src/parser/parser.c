@@ -6,6 +6,15 @@ inline SourceString _source_string_from_token(Token token) {
 	return token.string;
 }
 
+void _parser_skip_until_semicolon(Parser* parser) {
+	while (true) {
+		Token token = preprocessor_next_token(parser->preprocessor);
+		if (token.kind == TOKEN_SEMICOLON) {
+			break;
+		}
+	}
+}
+
 bool _parser_expect_semicolon(Parser* parser, String error_message) {
 	Token token = preprocessor_next_token(parser->preprocessor);
 	if (token.kind != TOKEN_SEMICOLON) {

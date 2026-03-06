@@ -654,3 +654,36 @@ void test_parse_enum_def(TestContext* context) {
 	assert(str_equal(first_variant->name, STR_LIT("TYPE_INT")));
 	assert(str_equal(second_variant->name, STR_LIT("TYPE_FLOAT")));
 }
+
+void test_parse_function_def(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("void func(int a, int b);"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first = ast.root_nodes.first;
+	assert(first->kind == AST_NODE_FUNCTION);
+
+	ParsedFunction* function_def = &first->function_def;
+	assert(str_equal(function_def->name, STR_LIT("func")));
+
+	ParsedType* return_type = &function_def->return_type;
+	assert(return_type->kind == PARSED_TYPE_NAMED);
+	assert(str_equal(return_type->named.name, STR_LIT("void")));
+
+	assert(function_def->parameter_count == 2);
+	ParsedFunctionParam* first_param = function_def->parameter_list;
+	ParsedFunctionParam* second_param = first_param->next;
+
+	assert(str_equal(first_param->name, STR_LIT("a")));
+	assert(first_param->type.kind == PARSED_TYPE_NAMED);
+	assert(str_equal(first_param->type.named.name, STR_LIT("int")));
+
+	assert(str_equal(second_param->name, STR_LIT("b")));
+	assert(second_param->type.kind == PARSED_TYPE_NAMED);
+	assert(str_equal(second_param->type.named.name, STR_LIT("int")));
+}

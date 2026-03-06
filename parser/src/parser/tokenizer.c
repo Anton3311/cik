@@ -55,6 +55,7 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_KEYWORD_TYPEDEF] = STR_LIT("typedef"),
 	[TOKEN_KEYWORD_STRUCT] = STR_LIT("struct"),
 	[TOKEN_KEYWORD_ENUM] = STR_LIT("enum"),
+	[TOKEN_KEYWORD_CONST] = STR_LIT("const"),
 };
 
 String token_kind_to_string(TokenKind kind) {
@@ -110,6 +111,8 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_STRUCT;
 	} else if (str_equal(token_string, STR_LIT("enum"))) {
 		token_kind = TOKEN_KEYWORD_ENUM;
+	} else if (str_equal(token_string, STR_LIT("const"))) {
+		token_kind = TOKEN_KEYWORD_CONST;
 	}
 
 	*out_token = (Token) {

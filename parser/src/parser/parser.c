@@ -220,6 +220,17 @@ bool _parser_parse_enum_type(Parser* parser, ParsedEnum* out_enum_def) {
 bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
 	assert(out_type != NULL);
 
+	// First parse qualifiers
+	while (true) {
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_KEYWORD_CONST) {
+			preprocessor_next_token(parser->preprocessor);
+			out_type->qualifiers |= TYPE_QUALIFIER_CONST;
+		} else {
+			break;
+		}
+	}
+
 	Token token = preprocessor_view_next(parser->preprocessor);
 
 	if (token.kind == TOKEN_IDENT) {

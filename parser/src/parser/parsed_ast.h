@@ -34,6 +34,11 @@ struct ParsedBlock {
 };
 
 typedef enum {
+	TYPE_QUALIFIER_NONE = 0,
+	TYPE_QUALIFIER_CONST = 1 << 0,
+} TypeQualifiers;
+
+typedef enum {
 	PARSED_TYPE_NAMED,
 	PARSED_TYPE_STRUCT,
 	PARSED_TYPE_ENUM,
@@ -42,6 +47,8 @@ typedef enum {
 struct ParsedType {
 	SourceRange source_range;
 	ParsedTypeKind kind;
+
+	TypeQualifiers qualifiers;
 
 	union {
 		struct {

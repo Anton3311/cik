@@ -21,8 +21,8 @@ void print_assertion_stack_trace();
 #define debug_break() __debugbreak()
 #define crash() if (is_debugger_connected()) { debug_break(); } else { exit(EXIT_FAILURE); }
 
-#define HAS_FLAG(flag_set, flag) (((flag_set) & (flag)) == (flag))
-#define HAS_ANY_FLAG(flag_set, flag) (((flag_set) & (flag)) != 0)
+#define has_flag(flag_set, flag) (((flag_set) & (flag)) == (flag))
+#define has_any_flag(flag_set, flag) (((flag_set) & (flag)) != 0)
 
 #define array_size(array) ((sizeof(array)) / sizeof(*(array)))
 

@@ -134,6 +134,12 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 }
 
 void print_type(PrinterState* printer, const ParsedType* type) {
+	if (has_flag(type->qualifiers, TYPE_QUALIFIER_CONST)) {
+		printf("const");
+	}
+
+	printf(" ");
+
 	switch (type->kind) {
 	case PARSED_TYPE_NAMED:
 		printer_string_value(printer, type->named.name);

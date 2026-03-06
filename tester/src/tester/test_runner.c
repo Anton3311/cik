@@ -184,7 +184,9 @@ int main(int argc, char* argv[]) {
 	}
 
 	for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
-		printf("%.*s:\n", STR_FMT(test_storage.suite_names[suite_index]));
+		printf("\n --- %.*s\n\n", STR_FMT(test_storage.suite_names[suite_index]));
+
+		size_t tests_passed = 0;
 
 		StringArray tests = test_storage.suite_tests[suite_index];
 		for (size_t test_index = 0; test_index < tests.count; test_index += 1) {
@@ -215,17 +217,30 @@ int main(int argc, char* argv[]) {
 			}
 
 			if (pass) {
-				printf("\x1b[1;32m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+				printf("  \x1b[1;32m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+				tests_passed += 1;
 			} else {
-				printf("\x1b[1;31m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+				printf("  \x1b[1;31m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
 			}
 
 			if (exit_code != 0) {
-				printf("stdout:\n");
-				printf("%.*s", STR_FMT(test_output));
-				printf("exit code: %d\n", exit_code);
+				printf("    stdout:\n");
+
+				LineIterator iterator = (LineIterator) { .source = test_output };
+				String output_line = {};
+				while (line_iterator_next(&iterator, &output_line)) {
+					printf("    | %.*s\n", STR_FMT(output_line));
+				}
+
+				printf("    exit code: %d\n", exit_code);
 			}
 		}
+
+		printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m\n",
+				tests_passed,
+				tests.count,
+				tests.count - tests_passed,
+				tests.count);
 	}
 
 	arena_release(&temp_arena);

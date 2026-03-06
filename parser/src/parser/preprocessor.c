@@ -259,14 +259,22 @@ void preprocessor_skip_derective(Preprocessor* state) {
 	if (str_equal(next_token.string, STR_LIT("include"))) {
 		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
 
-		if (_tokenizer_has_next_char(&state->tokenizer, '<')) {
+		char opening_quote = state->tokenizer.source_code.v[state->tokenizer.read_position];
+		if (opening_quote == '<') {
 			Token string_token = {};
 			StringTokenizerResult result = _tokenizer_try_create_string_token(&state->tokenizer, '<', '>', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
-		} else if (_tokenizer_has_next_char(&state->tokenizer, '"')) {
+		} else if (opening_quote == '"') {
 			Token string_token = {};
 			StringTokenizerResult result = _tokenizer_try_create_string_token(&state->tokenizer, '"', '"', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
+		} else {
+			Token next_token = tokenizer_next_token(&state->tokenizer);
+			diagnostics_report_error(state->diagnostics,
+					next_token.source_range,
+					STR_LIT("Expected include path"),
+					NULL);
+			return;
 		}
 
 		// TODO: Use parsed include statements

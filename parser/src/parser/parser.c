@@ -12,6 +12,8 @@ void _parser_skip_until_semicolon(Parser* parser) {
 		Token token = preprocessor_next_token(parser->preprocessor);
 		if (token.kind == TOKEN_SEMICOLON) {
 			break;
+		} else if (token.kind == TOKEN_EOF) {
+			break;
 		}
 	}
 }
@@ -532,9 +534,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return node;
 		} else {
 			arena_end_temp(temp);
-
-			preprocessor_next_token(parser->preprocessor);
-			diagnostics_report_unexpected_token(parser->diagnostics, initial_token, NULL, 0);
+			_parser_skip_until_semicolon(parser);
 			return NULL;
 		}
 

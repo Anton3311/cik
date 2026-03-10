@@ -97,9 +97,14 @@ void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 		Token actual_token,
 		TokenKind* expected_kinds,
 		size_t expected_kind_count) {
+	String actual_token_string = actual_token.string;
+	if (actual_token.kind == TOKEN_EOF) {
+		actual_token_string = token_kind_to_string(actual_token.kind);
+	}
+
 	StringBuilder builder = { .arena = diagnostics->allocator };
 	str_builder_append(&builder, STR_LIT("Unexpected token '"));
-	str_builder_append(&builder, actual_token.string);
+	str_builder_append(&builder, actual_token_string);
 
 	str_builder_append(&builder, STR_LIT("'. Expected: "));
 	if (expected_kind_count == 1) {

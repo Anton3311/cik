@@ -253,19 +253,26 @@ bool _parser_parse_enum_type(Parser* parser, ParsedEnum* out_enum_def) {
 	return true;
 }
 
-bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
-	assert(out_type != NULL);
-
-	// First parse qualifiers
+TypeQualifiers _parser_parse_type_qualifiers(Parser* parser) {
+	TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
 	while (true) {
 		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_KEYWORD_CONST) {
 			preprocessor_next_token(parser->preprocessor);
-			out_type->qualifiers |= TYPE_QUALIFIER_CONST;
+			qualifiers |= TYPE_QUALIFIER_CONST;
 		} else {
 			break;
 		}
 	}
+
+	return qualifiers;
+}
+
+bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
+	assert(out_type != NULL);
+
+	// First parse qualifiers
+	out_type->qualifiers = _parser_parse_type_qualifiers(parser);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 

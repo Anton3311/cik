@@ -75,6 +75,15 @@ typedef struct {
 } Arena;
 
 void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment);
+inline Arena arena_alloc_sub_arena(Arena* arena, size_t size) {
+	assert(arena != NULL);
+	return (Arena) {
+		.capacity = size,
+		.commited = size,
+		.allocated = 0,
+		.base = arena_alloc_aligned(arena, size, 16),
+	};
+}
 
 inline void arena_reset(Arena* arena) {
 	arena->allocated = 0;

@@ -722,16 +722,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		Token semicolon = preprocessor_next_token(parser->preprocessor);
-		if (semicolon.kind != TOKEN_SEMICOLON) {
-			TokenKind expected_tokens[] = {
-				TOKEN_SEMICOLON,
-			};
-
-			diagnostics_report_unexpected_token(parser->diagnostics,
-					semicolon,
-					expected_tokens,
-					array_size(expected_tokens));
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after the struct"))) {
 			return NULL;
 		}
 
@@ -741,12 +732,9 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		return node;
 	}
 	case TOKEN_KEYWORD_ENUM: {
-		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
-		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
-		node->kind = AST_NODE_ENUM;
+		ParsedEnum* enum_def = NULL;
 
-		if (!_parser_parse_enum_def(parser, &node->enum_def)) {
-			arena_end_temp(temp);
+		if (!_parser_parse_enum_def(parser, &enum_def)) {
 			return NULL;
 		}
 
@@ -754,6 +742,9 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
+		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_ENUM;
+		node->enum_def = enum_def;
 		return node;
 	}
 	default: {

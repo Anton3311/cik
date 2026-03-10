@@ -1,5 +1,79 @@
 #include "parser.h"
 
+//
+// IdentifierStorage
+//
+
+size_t _ident_storage_try_find_entry(IdentifierStorage* storage, String name) {
+	assert(storage != NULL);
+	assert(name.length > 0);
+
+	for (size_t i = 0; i < storage->count; i += 1) {
+		if (str_equal(storage->entries[i]->name, name)) {
+			return i;
+		}
+	}
+
+	return SIZE_MAX;
+}
+
+IdentifierEntry* ident_storage_find(IdentifierStorage* storage, String name) {
+	size_t index = _ident_storage_try_find_entry(storage, name);
+	return index == SIZE_MAX ? NULL : storage->entries[index];
+}
+
+void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
+	assert(storage != NULL);
+
+	storage->allocator = allocator;
+	storage->count = 0;
+	storage->capacity = 128;
+	storage->entries = arena_alloc_array(storage->allocator, IdentifierEntry*, storage->capacity);
+	memset(storage->entries, 0, sizeof(*storage->entries) * storage->capacity);
+
+	storage->next_free = NULL;
+}
+
+IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString name) {
+	assert(storage != NULL);
+	assert(name.length > 0);
+
+	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name);
+	IdentifierEntry* entry = NULL;
+	if (existing_entry_index == SIZE_MAX) {
+		assert(storage->count < storage->capacity);
+
+		entry = arena_alloc(storage->allocator, IdentifierEntry);
+		memset(entry, 0, sizeof(*entry));
+
+		assert(storage->entries[storage->count] == NULL);
+
+		storage->entries[storage->count] = entry;
+		storage->count += 1;
+
+		entry->name = name;
+	} else {
+		entry = arena_alloc(storage->allocator, IdentifierEntry);
+		memset(entry, 0, sizeof(*entry));
+
+		entry->name = name;
+		entry->prev = storage->entries[existing_entry_index];
+		storage->entries[existing_entry_index] = entry;
+	}
+
+	assert(entry != NULL);
+	return entry;
+}
+
+void ident_storage_remove(IdentifierStorage* storage, SourceString name) {
+	assert(storage != NULL);
+	assert(name.length > 0);
+}
+
+//
+// Parser
+//
+
 bool _parser_parse_type(Parser* parser, ParsedType* out_type);
 bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope);
 
@@ -109,7 +183,7 @@ bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, Pars
 	return true;
 }
 
-bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
+bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 	assert(out_struct_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -118,6 +192,7 @@ bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
 	SourceString struct_name = {};
 	ParsedStructMember* member_list = NULL;
 	size_t member_count = 0;
+	bool is_forward_declared = true;
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_IDENT) {
@@ -127,7 +202,10 @@ bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
 		token = preprocessor_view_next(parser->preprocessor);
 	}
 
+	// TODO: handle the case when there is no TOKEN_IDENT after the keyword
+
 	if (token.kind == TOKEN_LEFT_BRACE) {
+		is_forward_declared = false;
 		if (!_parser_parse_struct_members(parser, &member_count, &member_list)) {
 			return false;
 		}
@@ -137,12 +215,72 @@ bool _parser_parse_struct_type(Parser* parser, ParsedStruct* out_struct_def) {
 		assert(member_count > 0);
 	}
 
-	*out_struct_def = (ParsedStruct) {
-		.name = struct_name,
-		.member_list = member_list,
-		.member_count = member_count,
-	};
+	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, struct_name);
+	ParsedStruct* struct_def = NULL;
+	if (entry) {
+		if (!has_flag(entry->kind, IDENT_STRUCT)) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append_char(&builder, '\'');
+			str_builder_append(&builder, entry->name);
+			str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
 
+			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(parser->diagnostics,
+					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+					STR_LIT("Previously defined here"),
+					error);
+			return false;
+		}
+		
+		struct_def = entry->struct_def;
+		assert(struct_def);
+
+		if (!struct_def->is_forward_declared && !is_forward_declared) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Redefinition of '"));
+			str_builder_append(&builder, entry->name);
+			str_builder_append_char(&builder, '\'');
+
+			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(parser->diagnostics,
+					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+					STR_LIT("Previously defined here"),
+					error);
+			return false;
+		}
+	} else {
+		entry = ident_storage_insert(&parser->ident_storage, struct_name);
+		entry->kind = IDENT_STRUCT;
+
+		struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
+		memset(struct_def, 0, sizeof(*struct_def));
+		
+		struct_def->name = struct_name;
+		struct_def->is_forward_declared = is_forward_declared;
+
+		entry->struct_def = struct_def;
+	}
+
+	assert(struct_def);
+
+	if (is_forward_declared) {
+		assert(member_count == 0);
+		assert(member_list == NULL);
+	} else {
+		struct_def->member_count = member_count;
+		struct_def->member_list = member_list;
+		struct_def->is_forward_declared = false;
+	}
+
+	*out_struct_def = struct_def;
 	return true;
 }
 
@@ -284,14 +422,13 @@ bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
 		out_type->named.name = _source_string_from_token(token);
 		return true;
 	} else if (token.kind == TOKEN_KEYWORD_STRUCT) {
-		ParsedStruct struct_def = {};
-		if (!_parser_parse_struct_type(parser, &struct_def)) {
+		ParsedStruct* struct_def = {};
+		if (!_parser_parse_struct_def(parser, &struct_def)) {
 			return false;
 		}
 
 		out_type->kind = PARSED_TYPE_STRUCT;
-		out_type->struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
-		*out_type->struct_def = struct_def;
+		out_type->struct_def = struct_def;
 		return true;
 	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
 		ParsedEnum enum_def = {};
@@ -516,6 +653,30 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	case TOKEN_KEYWORD_TYPEDEF: {
 		return _parser_parse_type_def(parser);
 	}
+	case TOKEN_KEYWORD_STRUCT: {
+		ParsedStruct* struct_def = NULL;
+		if (!_parser_parse_struct_def(parser, &struct_def)) {
+			return NULL;
+		}
+
+		Token semicolon = preprocessor_next_token(parser->preprocessor);
+		if (semicolon.kind != TOKEN_SEMICOLON) {
+			TokenKind expected_tokens[] = {
+				TOKEN_SEMICOLON,
+			};
+
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					semicolon,
+					expected_tokens,
+					array_size(expected_tokens));
+			return NULL;
+		}
+
+		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_STRUCT;
+		node->struct_def = struct_def;
+		return node;
+	}
 	case TOKEN_KEYWORD_ENUM: {
 		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
@@ -583,11 +744,14 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 
 void parser_init(Parser* parser,
 		Arena* ast_allocator,
+		Arena* ident_allocator,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics) {
 	parser->ast_allocator = ast_allocator;
 	parser->diagnostics = diagnostics;
 	parser->preprocessor = preprocessor;
+
+	ident_storage_init(&parser->ident_storage, ident_allocator);
 }
 
 void parser_parse(Parser* parser, ParsedAST* ast) {

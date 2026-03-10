@@ -1,5 +1,9 @@
 #include "parsed_ast.h"
 
+//
+// AST
+//
+
 void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node) {
 	assert(list != NULL);
 	assert(node != NULL);
@@ -73,6 +77,11 @@ void printer_string_field(PrinterState* printer, const char* name, String value)
 	printf("%s = %.*s\n", name, STR_FMT(value));
 }
 
+void printer_bool_field(PrinterState* printer, const char* name, bool value) {
+	printer_indent(printer);
+	printf("%s = %s\n", name, (value ? "true" : "false"));
+}
+
 //
 // AST Printing
 //
@@ -85,25 +94,28 @@ void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 
 	printer_begin_struct(printer, "struct");
 	printer_string_field(printer, "name", struct_def->name);
-
-	printer_field(printer, "members");
-	printer_begin_array(printer);
+	printer_bool_field(printer, "is_forward_declared", struct_def->is_forward_declared);
 	
-	size_t member_index = 0;
-	ParsedStructMember* member = struct_def->member_list;
-	while (member) {
-		printer_array_element(printer, member_index);
-		printer_begin_struct(printer, "member");
-		printer_string_field(printer, "name", member->name);
-		printer_field(printer, "type");
-		print_type(printer, &member->type);
-		printer_end_struct(printer);
+	if (!struct_def->is_forward_declared) {
+		printer_field(printer, "members");
+		printer_begin_array(printer);
 
-		member = member->next;
-		member_index += 1;
+		size_t member_index = 0;
+		ParsedStructMember* member = struct_def->member_list;
+		while (member) {
+			printer_array_element(printer, member_index);
+			printer_begin_struct(printer, "member");
+			printer_string_field(printer, "name", member->name);
+			printer_field(printer, "type");
+			print_type(printer, &member->type);
+			printer_end_struct(printer);
+
+			member = member->next;
+			member_index += 1;
+		}
+
+		printer_end_array(printer);
 	}
-
-	printer_end_array(printer);
 
 	printer_end_struct(printer);
 }
@@ -221,7 +233,7 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 		print_type_def(printer, &node->type_def);
 		break;
 	case AST_NODE_STRUCT:
-		print_struct_def(printer, &node->struct_def);
+		print_struct_def(printer, node->struct_def);
 		break;
 	case AST_NODE_ENUM:
 		print_enum_def(printer, &node->enum_def);

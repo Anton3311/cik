@@ -1,3 +1,5 @@
-void main(int a, int b) {
-	typedef int hello;
-}
+struct Hello;
+
+struct Hello {
+
+};

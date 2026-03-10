@@ -531,8 +531,12 @@ void run_parser_test(TestContext* context,
 			context->temp_arena,
 			context->arena);
 
+	// NOTE: This arena is used by the `IdentifierStorage` inside the parser,
+	//       so it's lifetime is no longer than the one of the parser.
+	Arena ident_arena = arena_alloc_sub_arena(context->arena, 2 * 1024);
+
 	Parser parser = {};
-	parser_init(&parser, context->arena, &preprocessor, out_diagnostics);
+	parser_init(&parser, context->arena, &ident_arena, &preprocessor, out_diagnostics);
 
 	parser_parse(&parser, out_ast);
 }
@@ -684,4 +688,41 @@ void test_parse_function_def(TestContext* context) {
 	assert(str_equal(second_param->name, STR_LIT("b")));
 	assert(second_param->type.kind == PARSED_TYPE_NAMED);
 	assert(str_equal(second_param->type.named.name, STR_LIT("int")));
+}
+
+void test_parse_forward_declared_struct(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("struct Hello;"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first_def = ast.root_nodes.first;
+	assert(first_def->kind == AST_NODE_STRUCT);
+
+	assert(first_def->struct_def->is_forward_declared);
+}
+
+void test_parse_forward_declared_struct_followed_by_definition(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("struct Hello; struct Hello {};"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* first_def = ast.root_nodes.first;
+	assert(first_def->kind == AST_NODE_STRUCT);
+	assert(first_def->next != NULL);
+
+	ParsedNode* second_def = first_def->next;
+	assert(second_def->kind == AST_NODE_STRUCT);
+
+	assert(!first_def->struct_def->is_forward_declared);
+	assert(first_def->struct_def == second_def->struct_def);
 }

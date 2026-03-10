@@ -37,8 +37,10 @@ int main(int argc, char *argv[]) {
 				&temp_arena,
 				&arena);
 
+		Arena ident_arena = { .capacity = 1024 * 8 };
+
 		Parser parser = {};
-		parser_init(&parser, &arena, &preprocessor, &diagnostics);
+		parser_init(&parser, &arena, &ident_arena, &preprocessor, &diagnostics);
 
 		ParsedAST parsed_ast = {};
 		parser_parse(&parser, &parsed_ast);
@@ -46,6 +48,8 @@ int main(int argc, char *argv[]) {
 		if (parsed_ast.root_nodes.first) {
 			print_parsed_node(parsed_ast.root_nodes.first);
 		}
+
+		arena_release(&ident_arena);
 
 		diagnostics_print(&diagnostics);
 	} else {

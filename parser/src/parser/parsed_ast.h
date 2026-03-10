@@ -18,6 +18,10 @@ typedef struct ParsedFunction ParsedFunction;
 typedef struct ParsedFunctionParam ParsedFunctionParam;
 typedef struct ParsedScope ParsedScope;
 
+//
+// AST
+//
+
 typedef enum {
 	AST_NODE_TYPE_DEF,
 	AST_NODE_STRUCT,
@@ -82,6 +86,8 @@ struct ParsedStructMember {
 struct ParsedStruct {
 	SourceString name;
 
+	bool is_forward_declared;
+
 	ParsedStructMember* member_list;
 	size_t member_count;
 };
@@ -141,7 +147,7 @@ struct ParsedNode {
 	ParsedNode* next;
 
 	union {
-		ParsedStruct struct_def;
+		ParsedStruct* struct_def;
 		ParsedEnum enum_def;
 		ParsedTypeDef type_def;
 		ParsedFunction function_def;

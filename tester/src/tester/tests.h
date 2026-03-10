@@ -29,7 +29,11 @@ void test_parse_type_def_of_struct_def(TestContext* context);
 void test_parse_type_def_of_struct_def_with_members(TestContext* context);
 void test_parse_enum_def(TestContext* context);
 void test_parse_function_def(TestContext* context);
+
 void test_parse_forward_declared_struct(TestContext* context);
 void test_parse_forward_declared_struct_followed_by_definition(TestContext* context);
+
+void test_parse_forward_declared_enum(TestContext* context);
+void test_parse_forward_declared_enum_by_definition(TestContext* context);
 
 #endif

@@ -236,7 +236,7 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 		print_struct_def(printer, node->struct_def);
 		break;
 	case AST_NODE_ENUM:
-		print_enum_def(printer, &node->enum_def);
+		print_enum_def(printer, node->enum_def);
 		break;
 	case AST_NODE_FUNCTION:
 		print_function_def(printer, &node->function_def);

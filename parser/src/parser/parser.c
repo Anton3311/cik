@@ -225,7 +225,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 			str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
 
 			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-					token.source_range,
+					source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
 					builder.string,
 					NULL);
 
@@ -246,7 +246,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 			str_builder_append_char(&builder, '\'');
 
 			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-					token.source_range,
+					source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
 					builder.string,
 					NULL);
 
@@ -355,7 +355,7 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 	return true;
 }
 
-bool _parser_parse_enum_type(Parser* parser, ParsedEnum* out_enum_def) {
+bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 	assert(out_enum_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -364,6 +364,7 @@ bool _parser_parse_enum_type(Parser* parser, ParsedEnum* out_enum_def) {
 	SourceString enum_name = {};
 	ParsedEnumVariant* variant_list = {};
 	size_t variant_count = 0;
+	bool is_forward_declared = true;
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_IDENT) {
@@ -374,6 +375,7 @@ bool _parser_parse_enum_type(Parser* parser, ParsedEnum* out_enum_def) {
 	}
 
 	if (token.kind == TOKEN_LEFT_BRACE) {
+		is_forward_declared = false;
 		if (!_parser_parse_enum_variants(parser, &variant_count, &variant_list)) {
 			return false;
 		}
@@ -383,11 +385,73 @@ bool _parser_parse_enum_type(Parser* parser, ParsedEnum* out_enum_def) {
 		assert(variant_count > 0);
 	}
 
-	*out_enum_def = (ParsedEnum) {
-		.name = enum_name,
-		.variant_list = variant_list,
-		.variant_count = variant_count
-	};
+	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, enum_name);
+	ParsedEnum* enum_def = NULL;
+
+	if (entry) {
+		if (!has_flag(entry->kind, IDENT_ENUM)) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append_char(&builder, '\'');
+			str_builder_append(&builder, entry->name);
+			str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
+
+			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+					source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(parser->diagnostics,
+					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+					STR_LIT("Previously defined here"),
+					error);
+			return false;
+		}
+
+		enum_def = entry->enum_def;
+		assert(enum_def);
+
+		if (!enum_def->is_forward_declared && !is_forward_declared) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Redefinition of '"));
+			str_builder_append(&builder, entry->name);
+			str_builder_append_char(&builder, '\'');
+
+			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+					source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(parser->diagnostics,
+					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+					STR_LIT("Previously defined here"),
+					error);
+			return false;
+		}
+	} else {
+		entry = ident_storage_insert(&parser->ident_storage, enum_name);
+		entry->kind = IDENT_ENUM;
+
+		enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
+		memset(enum_def, 0, sizeof(*enum_def));
+		
+		enum_def->name = enum_name;
+		enum_def->is_forward_declared = is_forward_declared;
+
+		entry->enum_def = enum_def;
+	}
+
+	assert(enum_def);
+
+	if (is_forward_declared) {
+		assert(variant_count == 0);
+		assert(variant_list == NULL);
+	} else {
+		enum_def->variant_count = variant_count;
+		enum_def->variant_list = variant_list;
+		enum_def->is_forward_declared = false;
+	}
+
+	*out_enum_def = enum_def;
 	return true;
 }
 
@@ -431,14 +495,13 @@ bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
 		out_type->struct_def = struct_def;
 		return true;
 	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
-		ParsedEnum enum_def = {};
-		if (!_parser_parse_enum_type(parser, &enum_def)) {
+		ParsedEnum* enum_def = {};
+		if (!_parser_parse_enum_def(parser, &enum_def)) {
 			return false;
 		}
 
 		out_type->kind = PARSED_TYPE_ENUM;
-		out_type->enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
-		*out_type->enum_def = enum_def;
+		out_type->enum_def = enum_def;
 		return true;
 	} else {
 		preprocessor_next_token(parser->preprocessor);
@@ -682,7 +745,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
 		node->kind = AST_NODE_ENUM;
 
-		if (!_parser_parse_enum_type(parser, &node->enum_def)) {
+		if (!_parser_parse_enum_def(parser, &node->enum_def)) {
 			arena_end_temp(temp);
 			return NULL;
 		}

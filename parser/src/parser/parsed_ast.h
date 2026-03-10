@@ -105,6 +105,8 @@ struct ParsedEnumVariant {
 struct ParsedEnum {
 	SourceString name;
 
+	bool is_forward_declared;
+
 	ParsedEnumVariant* variant_list;
 	size_t variant_count;
 };
@@ -148,7 +150,7 @@ struct ParsedNode {
 
 	union {
 		ParsedStruct* struct_def;
-		ParsedEnum enum_def;
+		ParsedEnum* enum_def;
 		ParsedTypeDef type_def;
 		ParsedFunction function_def;
 	};

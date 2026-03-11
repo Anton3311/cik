@@ -39,4 +39,6 @@ void test_parse_forward_declared_enum_followed_by_definition(TestContext* contex
 void test_parse_forward_declared_function(TestContext* context);
 void test_parse_forward_declared_function_followed_by_definition(TestContext* context);
 
+void test_parse_function_ref_expr(TestContext* context);
+
 #endif

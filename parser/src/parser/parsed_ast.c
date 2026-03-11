@@ -89,6 +89,18 @@ void printer_bool_field(PrinterState* printer, const char* name, bool value) {
 void print_type(PrinterState* printer, const ParsedType* type);
 void print_single_node(PrinterState* printer, const ParsedNode* node);
 
+void print_expr(PrinterState* printer, const ParsedExpr* expr) {
+	assert(expr != NULL);
+
+	switch (expr->kind) {
+	case EXPR_FUNCTION_REFERENCE:
+		printer_begin_struct(printer, "function_ref");
+		printer_string_field(printer, "name", expr->function_ref->name);
+		printer_end_struct(printer);
+		break;
+	}
+}
+
 void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 	assert(struct_def != NULL);
 
@@ -218,7 +230,7 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	printer_end_array(printer);
 	printer_bool_field(printer, "is_forward_declared", function_def->is_forward_declared);
 
-	if (function_def->is_forward_declared) {
+	if (!function_def->is_forward_declared) {
 		printer_field(printer, "body");
 		if (function_def->body) {
 			print_scope(printer, function_def->body);
@@ -244,6 +256,9 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 		break;
 	case AST_NODE_FUNCTION:
 		print_function_def(printer, node->function_def);
+		break;
+	case AST_NODE_EXPR:
+		print_expr(printer, &node->expr);
 		break;
 	}
 }

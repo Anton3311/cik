@@ -808,3 +808,27 @@ void test_parse_forward_declared_function_followed_by_definition(TestContext* co
 	assert(first_def->function_def == second_def->function_def);
 	assert(first_def->function_def->body != NULL);
 }
+
+void test_parse_function_ref_expr(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info,
+			STR_LIT(
+				"void add(int a, int b);"
+				"void add(int a, int b) { add; }"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* first_def = ast.root_nodes.first;
+	assert(first_def->kind == AST_NODE_FUNCTION);
+	assert(first_def->function_def->body != NULL);
+	assert(first_def->function_def->body->nodes.count == 1);
+
+	ParsedNode* body_node = first_def->function_def->body->nodes.first;
+	assert(body_node->kind == AST_NODE_EXPR);
+	assert(body_node->expr.kind == EXPR_FUNCTION_REFERENCE);
+	assert(body_node->expr.function_ref == first_def->function_def);
+}

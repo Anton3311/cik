@@ -17,6 +17,8 @@ typedef struct ParsedTypeDef ParsedTypeDef;
 typedef struct ParsedFunction ParsedFunction;
 typedef struct ParsedFunctionParam ParsedFunctionParam;
 typedef struct ParsedScope ParsedScope;
+typedef struct ParsedCall ParsedCall;
+typedef struct ParsedExpr ParsedExpr;
 
 //
 // AST
@@ -27,6 +29,7 @@ typedef enum {
 	AST_NODE_STRUCT,
 	AST_NODE_ENUM,
 	AST_NODE_FUNCTION,
+	AST_NODE_EXPR,
 } AstNodeKind;
 
 typedef struct {
@@ -69,6 +72,29 @@ struct ParsedType {
 		
 		ParsedStruct* struct_def;
 		ParsedEnum* enum_def;
+	};
+};
+
+//
+// Expr
+//
+
+struct ParsedCall {
+	ParsedExpr* callable;
+	size_t argument_count;
+	ParsedExpr** arguments;
+};
+
+typedef enum {
+	EXPR_FUNCTION_REFERENCE,
+} ExprKind;
+
+struct ParsedExpr {
+	ExprKind kind;
+
+	union {
+		ParsedCall call;
+		ParsedFunction* function_ref;
 	};
 };
 
@@ -154,6 +180,7 @@ struct ParsedNode {
 		ParsedEnum* enum_def;
 		ParsedTypeDef type_def;
 		ParsedFunction* function_def;
+		ParsedExpr expr;
 	};
 };
 

@@ -216,12 +216,16 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	}
 
 	printer_end_array(printer);
+	printer_bool_field(printer, "is_forward_declared", function_def->is_forward_declared);
 
-	printer_field(printer, "body");
-	if (function_def->body) {
-		print_scope(printer, function_def->body);
-	} else {
-		printf("[]\n");
+	if (function_def->is_forward_declared) {
+		printer_field(printer, "body");
+		if (function_def->body) {
+			print_scope(printer, function_def->body);
+		} else {
+			printf("[]\n");
+		}
+
 	}
 
 	printer_end_struct(printer);
@@ -239,7 +243,7 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 		print_enum_def(printer, node->enum_def);
 		break;
 	case AST_NODE_FUNCTION:
-		print_function_def(printer, &node->function_def);
+		print_function_def(printer, node->function_def);
 		break;
 	}
 }

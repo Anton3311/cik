@@ -135,6 +135,7 @@ struct ParsedFunction {
 	ParsedType return_type;
 	SourceString name;
 
+	bool is_forward_declared;
 	size_t parameter_count;
 	ParsedFunctionParam* parameter_list;
 	ParsedScope* body;
@@ -152,7 +153,7 @@ struct ParsedNode {
 		ParsedStruct* struct_def;
 		ParsedEnum* enum_def;
 		ParsedTypeDef type_def;
-		ParsedFunction function_def;
+		ParsedFunction* function_def;
 	};
 };
 

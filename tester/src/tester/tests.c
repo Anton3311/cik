@@ -671,7 +671,7 @@ void test_parse_function_def(TestContext* context) {
 	ParsedNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_FUNCTION);
 
-	ParsedFunction* function_def = &first->function_def;
+	ParsedFunction* function_def = first->function_def;
 	assert(str_equal(function_def->name, STR_LIT("func")));
 
 	ParsedType* return_type = &function_def->return_type;

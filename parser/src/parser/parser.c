@@ -1,5 +1,27 @@
 #include "parser.h"
 
+bool type_equal(const ParsedType* a, const ParsedType* b) {
+	if (a->kind != b->kind) {
+		return false;
+	}
+
+	if (a->qualifiers != b->qualifiers) {
+		return false;
+	}
+
+	switch (a->kind) {
+	case PARSED_TYPE_NAMED:
+		return str_equal(a->named.name, b->named.name);
+	case PARSED_TYPE_STRUCT:
+		return a->struct_def == b->struct_def;
+	case PARSED_TYPE_ENUM:
+		return a->enum_def == b->enum_def;
+	}
+
+	unreachable();
+	return false;
+}
+
 //
 // IdentifierStorage
 //
@@ -732,6 +754,42 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 						STR_LIT("Previously defined here"),
 						error);
 				return false;
+			}
+
+			if (function_def->parameter_count != param_count) {
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, name),
+						STR_LIT("Function was previously defined with a different parameter count"),
+						NULL);
+
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			} else {
+				ParsedFunctionParam* prev_def_param = function_def->parameter_list;
+				ParsedFunctionParam* new_def_param = param_list;
+
+				for (size_t i = 0; i < param_count; i += 1) {
+					bool param_types_are_equal = type_equal(&prev_def_param->type, &new_def_param->type);
+
+					if (!param_types_are_equal) {
+						DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+							new_def_param->type.source_range,
+							STR_LIT("Function previously defined with different parameter types"),
+							NULL);
+
+						diagnostics_report_error(parser->diagnostics,
+								prev_def_param->type.source_range,
+								STR_LIT("Previously defined here"),
+								error);
+						return false;
+					}
+					
+					prev_def_param = prev_def_param->next;
+					new_def_param = new_def_param->next;
+				}
 			}
 		} else {
 			entry = ident_storage_insert(&parser->ident_storage, name);

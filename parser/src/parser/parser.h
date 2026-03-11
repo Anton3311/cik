@@ -12,6 +12,8 @@
 typedef struct IdentifierStorage IdentifierStorage;
 typedef struct IdentifierEntry IdentifierEntry;
 
+bool type_equal(const ParsedType* a, const ParsedType* b);
+
 //
 // IdentifierStorage
 //

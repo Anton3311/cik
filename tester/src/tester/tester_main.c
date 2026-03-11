@@ -39,7 +39,9 @@ static TestCase parser_tests[] = {
 	test(test_parse_forward_declared_struct),
 	test(test_parse_forward_declared_struct_followed_by_definition),
 	test(test_parse_forward_declared_enum),
-	test(test_parse_forward_declared_enum_by_definition),
+	test(test_parse_forward_declared_enum_followed_by_definition),
+	test(test_parse_forward_declared_function),
+	test(test_parse_forward_declared_function_followed_by_definition),
 };
 
 static TestSuite s_test_suites[] = {

@@ -34,6 +34,9 @@ void test_parse_forward_declared_struct(TestContext* context);
 void test_parse_forward_declared_struct_followed_by_definition(TestContext* context);
 
 void test_parse_forward_declared_enum(TestContext* context);
-void test_parse_forward_declared_enum_by_definition(TestContext* context);
+void test_parse_forward_declared_enum_followed_by_definition(TestContext* context);
+
+void test_parse_forward_declared_function(TestContext* context);
+void test_parse_forward_declared_function_followed_by_definition(TestContext* context);
 
 #endif

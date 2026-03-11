@@ -744,7 +744,7 @@ void test_parse_forward_declared_enum(TestContext* context) {
 	assert(first_def->enum_def->is_forward_declared);
 }
 
-void test_parse_forward_declared_enum_by_definition(TestContext* context) {
+void test_parse_forward_declared_enum_followed_by_definition(TestContext* context) {
 	LineInfo line_info;
 	Diagnostics diagnostics;
 	ParsedAST ast;
@@ -763,4 +763,48 @@ void test_parse_forward_declared_enum_by_definition(TestContext* context) {
 
 	assert(!first_def->enum_def->is_forward_declared);
 	assert(first_def->enum_def == second_def->enum_def);
+}
+
+void test_parse_forward_declared_function(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("int add(int a, int b);"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first_def = ast.root_nodes.first;
+	assert(first_def->kind == AST_NODE_FUNCTION);
+	assert(first_def->function_def->is_forward_declared);
+	assert(first_def->function_def->body == NULL);
+}
+
+void test_parse_forward_declared_function_followed_by_definition(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context,
+			&diagnostics,
+			&line_info,
+			STR_LIT(
+				"int add(int a, int b);\n"
+				"int add(int a, int b) {}"),
+			&ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* first_def = ast.root_nodes.first;
+	assert(first_def->kind == AST_NODE_FUNCTION);
+	assert(first_def->next != NULL);
+
+	ParsedNode* second_def = first_def->next;
+	assert(second_def->kind == AST_NODE_FUNCTION);
+
+	assert(!first_def->function_def->is_forward_declared);
+	assert(first_def->function_def == second_def->function_def);
+	assert(first_def->function_def->body != NULL);
 }

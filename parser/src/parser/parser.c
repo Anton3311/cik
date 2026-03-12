@@ -1,7 +1,10 @@
 #include "parser.h"
 
 bool type_equal(const ParsedType* a, const ParsedType* b) {
-	if (a->kind != b->kind) {
+	ParsedTypeKind a_without_signed = a->kind & (~TYPE_FLAG_SIGNED);
+	ParsedTypeKind b_without_signed = b->kind & (~TYPE_FLAG_SIGNED);
+
+	if (a_without_signed != b_without_signed) {
 		return false;
 	}
 
@@ -10,12 +13,33 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 	}
 
 	switch (a->kind) {
-	case PARSED_TYPE_NAMED:
-		return str_equal(a->named.name, b->named.name);
 	case PARSED_TYPE_STRUCT:
 		return a->struct_def == b->struct_def;
 	case PARSED_TYPE_ENUM:
 		return a->enum_def == b->enum_def;
+	case PARSED_TYPE_VOID:
+
+	case PARSED_TYPE_CHAR:
+	case PARSED_TYPE_INT:
+	case PARSED_TYPE_SHORT:
+	case PARSED_TYPE_LONG:
+	case PARSED_TYPE_LONG_LONG:
+
+	case PARSED_TYPE_SIGNED_CHAR:
+	case PARSED_TYPE_SIGNED_INT:
+	case PARSED_TYPE_SIGNED_SHORT:
+	case PARSED_TYPE_SIGNED_LONG:
+	case PARSED_TYPE_SIGNED_LONG_LONG:
+
+	case PARSED_TYPE_UNSIGNED_CHAR:
+	case PARSED_TYPE_UNSIGNED_INT:
+	case PARSED_TYPE_UNSIGNED_SHORT:
+	case PARSED_TYPE_UNSIGNED_LONG:
+	case PARSED_TYPE_UNSIGNED_LONG_LONG:
+
+	case PARSED_TYPE_FLOAT:
+	case PARSED_TYPE_DOUBLE:
+		return true;
 	}
 
 	unreachable();
@@ -512,13 +536,57 @@ ParseTypeOrExprResult _parser_parse_type_or_expr(Parser* parser, ParsedType* out
 	if (token.kind == TOKEN_IDENT) {
 		preprocessor_next_token(parser->preprocessor);
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
-		if (!entry) {
-			out_type->kind = PARSED_TYPE_NAMED;
-			out_type->source_range = token.source_range;
-			out_type->named.name = _source_string_from_token(token);
-			return true;
+		if (str_equal(token.string, STR_LIT("void"))) {
+			out_type->kind = PARSED_TYPE_VOID;
+			return TYPE_OR_EXPR_PARSED_TYPE;
+		} else {
+			ParsedTypeKindFlags type_flags = TYPE_FLAG_NONE;
+			if (str_equal(token.string, STR_LIT("signed"))) {
+				type_flags |= TYPE_FLAG_SIGNED;
+				token = preprocessor_next_token(parser->preprocessor);
+			} else if (str_equal(token.string, STR_LIT("unsigned"))) {
+				type_flags |= TYPE_FLAG_UNSIGNED;
+				token = preprocessor_next_token(parser->preprocessor);
+			}
+
+			ParsedTypeKind type_kind = INT32_MAX;
+
+			if (str_equal(token.string, STR_LIT("char"))) {
+				type_kind = PARSED_TYPE_CHAR;
+			} else if (str_equal(token.string, STR_LIT("int"))) {
+				type_kind = PARSED_TYPE_INT;
+			} else if (str_equal(token.string, STR_LIT("short"))) {
+				type_kind = PARSED_TYPE_SHORT;
+			} else if (str_equal(token.string, STR_LIT("long"))) {
+				Token next_token = preprocessor_view_next(parser->preprocessor);
+				if (next_token.kind == TOKEN_IDENT && str_equal(next_token.string, STR_LIT("long"))) {
+					preprocessor_next_token(parser->preprocessor);
+					type_kind = PARSED_TYPE_LONG_LONG;
+				} else {
+					type_kind = PARSED_TYPE_LONG;
+				}
+			} else if (str_equal(token.string, STR_LIT("float"))) {
+				assert(type_flags == TYPE_FLAG_NONE);
+				type_kind = PARSED_TYPE_FLOAT;
+			} else if (str_equal(token.string, STR_LIT("double"))) {
+				assert(type_flags == TYPE_FLAG_NONE);
+				type_kind = PARSED_TYPE_DOUBLE;
+			}
+
+			if (type_kind != INT32_MAX) {
+				out_type->kind = type_kind | type_flags;
+				return TYPE_OR_EXPR_PARSED_TYPE;
+			}
+
+			if (type_kind == INT32_MAX && type_flags != TYPE_FLAG_NONE) {
+				TokenKind expected_tokens[] = { TOKEN_IDENT };
+				diagnostics_report_unexpected_token(parser->diagnostics, token, expected_tokens, array_size(expected_tokens));
+				return TYPE_OR_EXPR_ERROR;
+			}
 		}
+
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
+		assert(entry);
 
 		switch (entry->kind) {
 		case IDENT_FUNCTION:

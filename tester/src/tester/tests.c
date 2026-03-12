@@ -555,8 +555,7 @@ void test_parse_type_def_of_primitive_type(TestContext* context) {
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
 	ParsedTypeDef* type_def = &first->type_def;
-	assert(type_def->aliased_type.kind == PARSED_TYPE_NAMED);
-	assert(str_equal(type_def->aliased_type.named.name, STR_LIT("int")));
+	assert(type_def->aliased_type.kind == PARSED_TYPE_INT);
 	assert(str_equal(type_def->new_name, STR_LIT("int32")));
 }
 
@@ -610,12 +609,10 @@ void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
 	ParsedStructMember* float_value_member = int_value_member->next;
 	ParsedStructMember* inner_member = float_value_member->next;
 	
-	assert(int_value_member->type.kind == PARSED_TYPE_NAMED);
-	assert(str_equal(int_value_member->type.named.name, STR_LIT("int")));
+	assert(int_value_member->type.kind == PARSED_TYPE_INT);
 	assert(str_equal(int_value_member->name, STR_LIT("int_value")));
 
-	assert(float_value_member->type.kind == PARSED_TYPE_NAMED);
-	assert(str_equal(float_value_member->type.named.name, STR_LIT("float")));
+	assert(float_value_member->type.kind == PARSED_TYPE_FLOAT);
 	assert(str_equal(float_value_member->name, STR_LIT("float_value")));
 
 	// Check InnerStruct
@@ -625,8 +622,7 @@ void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
 	assert(str_equal(inner_struct_def->name, STR_LIT("InnerStruct")));
 
 	ParsedStructMember* inner_value_member = inner_struct_def->member_list;
-	assert(inner_value_member->type.kind == PARSED_TYPE_NAMED);
-	assert(str_equal(inner_value_member->type.named.name, STR_LIT("int")));
+	assert(inner_value_member->type.kind == PARSED_TYPE_INT);
 	assert(str_equal(inner_value_member->name, STR_LIT("inner_value")));
 }
 
@@ -675,20 +671,17 @@ void test_parse_function_def(TestContext* context) {
 	assert(str_equal(function_def->name, STR_LIT("func")));
 
 	ParsedType* return_type = &function_def->return_type;
-	assert(return_type->kind == PARSED_TYPE_NAMED);
-	assert(str_equal(return_type->named.name, STR_LIT("void")));
+	assert(return_type->kind == PARSED_TYPE_VOID);
 
 	assert(function_def->parameter_count == 2);
 	ParsedFunctionParam* first_param = function_def->parameter_list;
 	ParsedFunctionParam* second_param = first_param->next;
 
 	assert(str_equal(first_param->name, STR_LIT("a")));
-	assert(first_param->type.kind == PARSED_TYPE_NAMED);
-	assert(str_equal(first_param->type.named.name, STR_LIT("int")));
+	assert(first_param->type.kind == PARSED_TYPE_INT);
 
 	assert(str_equal(second_param->name, STR_LIT("b")));
-	assert(second_param->type.kind == PARSED_TYPE_NAMED);
-	assert(str_equal(second_param->type.named.name, STR_LIT("int")));
+	assert(second_param->type.kind == PARSED_TYPE_INT);
 }
 
 void test_parse_forward_declared_struct(TestContext* context) {
@@ -831,4 +824,79 @@ void test_parse_function_ref_expr(TestContext* context) {
 	assert(body_node->kind == AST_NODE_EXPR);
 	assert(body_node->expr.kind == EXPR_FUNCTION_REFERENCE);
 	assert(body_node->expr.function_ref == first_def->function_def);
+}
+
+void test_parse_primitive_integer_types(TestContext* context) {
+	StringBuilder builder = { .arena = context->temp_arena };
+
+	ParsedTypeKind type_kinds[] = {
+		PARSED_TYPE_CHAR,
+		PARSED_TYPE_INT,
+		PARSED_TYPE_SHORT,
+		PARSED_TYPE_LONG,
+		PARSED_TYPE_LONG_LONG
+	};
+
+	String type_kind_names[] = {
+		STR_LIT("char"),
+		STR_LIT("int"),
+		STR_LIT("short"),
+		STR_LIT("long"),
+		STR_LIT("long long"),
+	};
+
+	ParsedTypeKindFlags type_flags[] = {
+		TYPE_FLAG_NONE,
+		TYPE_FLAG_SIGNED,
+		TYPE_FLAG_UNSIGNED,
+	};
+
+	String type_flag_names[] = {
+		STR_LIT(""),
+		STR_LIT("signed"),
+		STR_LIT("unsigned")
+	};
+
+	str_builder_append(&builder, STR_LIT("struct Types {\n"));
+
+	size_t field_index = 0;
+	for (size_t flag_index = 0; flag_index < array_size(type_flags); flag_index += 1) {
+		for (size_t type_index = 0; type_index < array_size(type_kinds); type_index += 1) {
+			str_builder_append(&builder, type_flag_names[flag_index]);
+			str_builder_append_char(&builder, ' ');
+			str_builder_append(&builder, type_kind_names[type_index]);
+			str_builder_append_char(&builder, ' ');
+			str_builder_append(&builder, STR_LIT("field"));
+			str_builder_append_int(&builder, field_index);
+			str_builder_append(&builder, STR_LIT(";\n"));
+
+			field_index += 1;
+		}
+	}
+
+	str_builder_append(&builder, STR_LIT("};\n"));
+
+	printf("%.*s\n", STR_FMT(builder.string));
+
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, builder.string, &ast);
+
+	ParsedNode* first_def = ast.root_nodes.first;
+	assert(first_def->kind == AST_NODE_STRUCT);
+
+	ParsedStruct* struct_def = first_def->struct_def;
+	assert(struct_def->member_count == field_index);
+
+	ParsedStructMember* field = struct_def->member_list;
+	for (size_t flag_index = 0; flag_index < array_size(type_flags); flag_index += 1) {
+		for (size_t type_index = 0; type_index < array_size(type_kinds); type_index += 1) {
+			ParsedTypeKind type_kind = type_kinds[type_index] | type_flags[flag_index];
+
+			assert(field->type.kind == type_kind);
+
+			field = field->next;
+		}
+	}
 }

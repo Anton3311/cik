@@ -165,14 +165,72 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 	}
 
 	switch (type->kind) {
-	case PARSED_TYPE_NAMED:
-		printer_string_value(printer, type->named.name);
-		break;
 	case PARSED_TYPE_STRUCT:
 		print_struct_def(printer, type->struct_def);
 		break;
 	case PARSED_TYPE_ENUM:
 		print_enum_def(printer, type->enum_def);
+		break;
+	case PARSED_TYPE_VOID:
+		printf("void\n");
+		break;
+
+	case PARSED_TYPE_CHAR:
+	case PARSED_TYPE_INT:
+	case PARSED_TYPE_SHORT:
+	case PARSED_TYPE_LONG:
+	case PARSED_TYPE_LONG_LONG:
+
+	case PARSED_TYPE_SIGNED_CHAR:
+	case PARSED_TYPE_SIGNED_INT:
+	case PARSED_TYPE_SIGNED_SHORT:
+	case PARSED_TYPE_SIGNED_LONG:
+	case PARSED_TYPE_SIGNED_LONG_LONG:
+
+	case PARSED_TYPE_UNSIGNED_CHAR:
+	case PARSED_TYPE_UNSIGNED_INT:
+	case PARSED_TYPE_UNSIGNED_SHORT:
+	case PARSED_TYPE_UNSIGNED_LONG:
+	case PARSED_TYPE_UNSIGNED_LONG_LONG: {
+		ParsedTypeKind base_kind = type->kind & (~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
+		const char* prefix = "";
+		const char* base_type_name = "";
+
+		if (has_flag(type->kind, TYPE_FLAG_SIGNED)) {
+			prefix = "signed";
+		} else if (has_flag(type->kind, TYPE_FLAG_UNSIGNED)) {
+			prefix = "unsigned";
+		}
+
+		switch (base_kind) {
+		case PARSED_TYPE_CHAR:
+			base_type_name = "char";
+			break;
+		case PARSED_TYPE_INT:
+			base_type_name = "int";
+			break;
+		case PARSED_TYPE_SHORT:
+			base_type_name = "short";
+			break;
+		case PARSED_TYPE_LONG:
+			base_type_name = "long";
+			break;
+		case PARSED_TYPE_LONG_LONG:
+			base_type_name = "long long";
+			break;
+		default:
+			unreachable();
+		}
+
+		printf("%s %s\n", prefix, base_type_name);
+		break;
+	}
+
+	case PARSED_TYPE_FLOAT:
+		printf("float\n");
+		break;
+	case PARSED_TYPE_DOUBLE:
+		printf("double\n");
 		break;
 	}
 }

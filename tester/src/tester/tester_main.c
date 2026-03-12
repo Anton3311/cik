@@ -43,6 +43,7 @@ static TestCase parser_tests[] = {
 	test(test_parse_forward_declared_function),
 	test(test_parse_forward_declared_function_followed_by_definition),
 	test(test_parse_function_ref_expr),
+	test(test_parse_primitive_integer_types),
 };
 
 static TestSuite s_test_suites[] = {

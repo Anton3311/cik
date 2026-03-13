@@ -908,6 +908,18 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		}
 
 		has_param_list = true;
+	} else if (token.kind == TOKEN_SEMICOLON) {
+		preprocessor_next_token(parser->preprocessor);
+
+		// A variable declaration
+		out_node->kind = AST_NODE_VARIABLE;
+		out_node->variable = (ParsedVariable) {
+			.name = name,
+			.type = *type,
+			.value = NULL,
+		};
+
+		return true;
 	}
 
 	if (has_param_list) {

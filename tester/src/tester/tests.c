@@ -900,3 +900,22 @@ void test_parse_primitive_integer_types(TestContext* context) {
 		}
 	}
 }
+
+void test_parse_variable_declaration(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("int a;"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* first_def = ast.root_nodes.first;
+	assert(first_def->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* variable = &first_def->variable;
+	assert(str_equal(variable->name, STR_LIT("a")));
+	assert(variable->value == NULL);
+	assert(variable->type.kind == PARSED_TYPE_INT);
+}

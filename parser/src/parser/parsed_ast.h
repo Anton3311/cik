@@ -16,6 +16,7 @@ typedef struct ParsedEnumVariant ParsedEnumVariant;
 typedef struct ParsedTypeDef ParsedTypeDef;
 typedef struct ParsedFunction ParsedFunction;
 typedef struct ParsedFunctionParam ParsedFunctionParam;
+typedef struct ParsedVariable ParsedVariable;
 typedef struct ParsedScope ParsedScope;
 typedef struct ParsedCall ParsedCall;
 typedef struct ParsedExpr ParsedExpr;
@@ -30,6 +31,7 @@ typedef enum {
 	AST_NODE_ENUM,
 	AST_NODE_FUNCTION,
 	AST_NODE_EXPR,
+	AST_NODE_VARIABLE,
 } AstNodeKind;
 
 typedef struct {
@@ -199,6 +201,16 @@ struct ParsedFunction {
 };
 
 //
+// Variable
+//
+
+struct ParsedVariable {
+	SourceString name;
+	ParsedType type;
+	ParsedExpr* value;
+};
+
+//
 // Node
 //
 
@@ -212,6 +224,7 @@ struct ParsedNode {
 		ParsedTypeDef type_def;
 		ParsedFunction* function_def;
 		ParsedExpr expr;
+		ParsedVariable variable;
 	};
 };
 

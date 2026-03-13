@@ -614,6 +614,10 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 }
 
 Token preprocessor_view_next(Preprocessor* state) {
+	if (state->has_pending_next_token) {
+		return state->pending_next_token;
+	}
+
 	Token next_token = preprocessor_next_token(state);
 	state->pending_next_token = next_token;
 	state->has_pending_next_token = true;

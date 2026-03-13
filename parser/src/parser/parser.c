@@ -523,12 +523,12 @@ typedef enum {
 } ParseTypeOrExprResult;
 
 typedef enum {
-	PRIMITIVE_TYPE_PARSED,
-	PRIMITIVE_TYPE_NOT_PARSED,
-	PRIMITIVE_TYPE_ERROR,
-} ParsePrimitiveTypeResult;
+	PARSE_TYPE_PARSED,
+	PARSE_TYPE_NOT_PARSED,
+	PARSE_TYPE_ERROR,
+} ParseTypeResult;
 
-ParsePrimitiveTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out_type) {
+ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out_type) {
 	assert(out_type != NULL);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
@@ -537,17 +537,17 @@ ParsePrimitiveTypeResult _parser_try_parse_primitive_type(Parser* parser, Parsed
 		preprocessor_next_token(parser->preprocessor);
 
 		out_type->kind = PARSED_TYPE_VOID;
-		return PRIMITIVE_TYPE_PARSED;
+		return PARSE_TYPE_PARSED;
 	} else if (str_equal(token.string, STR_LIT("float"))) {
 		preprocessor_next_token(parser->preprocessor);
 
 		out_type->kind = PARSED_TYPE_FLOAT;
-		return PRIMITIVE_TYPE_PARSED;
+		return PARSE_TYPE_PARSED;
 	} else if (str_equal(token.string, STR_LIT("double"))) {
 		preprocessor_next_token(parser->preprocessor);
 
 		out_type->kind = PARSED_TYPE_DOUBLE;
-		return PRIMITIVE_TYPE_PARSED;
+		return PARSE_TYPE_PARSED;
 	} else {
 		ParsedTypeKindFlags type_flags = TYPE_FLAG_NONE;
 		if (str_equal(token.string, STR_LIT("signed"))) {
@@ -587,111 +587,110 @@ ParsePrimitiveTypeResult _parser_try_parse_primitive_type(Parser* parser, Parsed
 
 		if (type_kind != INT32_MAX) {
 			out_type->kind = type_kind | type_flags;
-			return PRIMITIVE_TYPE_PARSED;
+			return PARSE_TYPE_PARSED;
 		}
 
 		if (type_kind == INT32_MAX && type_flags != TYPE_FLAG_NONE) {
 			TokenKind expected_tokens[] = { TOKEN_IDENT };
 			diagnostics_report_unexpected_token(parser->diagnostics, token, expected_tokens, array_size(expected_tokens));
-			return PRIMITIVE_TYPE_ERROR;
+			return PARSE_TYPE_ERROR;
 		}
 	}
 
-	return PRIMITIVE_TYPE_NOT_PARSED;
+	return PARSE_TYPE_NOT_PARSED;
 }
 
-ParseTypeOrExprResult _parser_parse_type_or_expr(Parser* parser, ParsedType* out_type, ParsedExpr* out_expr) {
-	assert(!(out_type == NULL && out_expr == NULL));
-
-	// First parse qualifiers
-	if (out_type) {
-		out_type->qualifiers = _parser_parse_type_qualifiers(parser);
-	}
+ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out_type) {
+	assert(out_type != NULL);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
-
-	bool has_unexpected_token = false;
 	if (token.kind == TOKEN_IDENT) {
-		switch (_parser_try_parse_primitive_type(parser, out_type)) {
-		case PRIMITIVE_TYPE_ERROR:
-			return TYPE_OR_EXPR_ERROR;
-		case PRIMITIVE_TYPE_PARSED:
-			return TYPE_OR_EXPR_PARSED_TYPE;
-		case PRIMITIVE_TYPE_NOT_PARSED:
+		ParseTypeResult primitive_parse_result = _parser_try_parse_primitive_type(parser, out_type);
+		switch (primitive_parse_result) {
+		case PARSE_TYPE_ERROR:
+		case PARSE_TYPE_PARSED:
+			return primitive_parse_result;
+		case PARSE_TYPE_NOT_PARSED:
 			break;
 		}
-
-		preprocessor_next_token(parser->preprocessor);
 
 		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
 		assert(entry);
 
 		switch (entry->kind) {
 		case IDENT_FUNCTION:
-			out_expr->kind = EXPR_FUNCTION_REFERENCE;
-			out_expr->function_ref = entry->function_def;
-			return TYPE_OR_EXPR_PARSED_EXPR;
 		case IDENT_VARIABLE:
-			assert_msg(false, "todo");
+			return PARSE_TYPE_NOT_PARSED;
 		case IDENT_STRUCT:
+			preprocessor_next_token(parser->preprocessor);
+
 			out_type->kind = PARSED_TYPE_STRUCT;
 			out_type->struct_def = entry->struct_def;
-			return TYPE_OR_EXPR_PARSED_TYPE;
+			return PARSE_TYPE_PARSED;
 		case IDENT_ENUM:
+			preprocessor_next_token(parser->preprocessor);
+
 			out_type->kind = PARSED_TYPE_ENUM;
 			out_type->enum_def = entry->enum_def;
-			return TYPE_OR_EXPR_PARSED_TYPE;
+			return PARSE_TYPE_PARSED;
 		}
 
 		unreachable();
-	} else if (out_type != NULL) {
-		if (token.kind == TOKEN_KEYWORD_STRUCT) {
-			ParsedStruct* struct_def = {};
-			if (!_parser_parse_struct_def(parser, &struct_def)) {
-				return false;
-			}
-
-			out_type->kind = PARSED_TYPE_STRUCT;
-			out_type->struct_def = struct_def;
-			return TYPE_OR_EXPR_PARSED_TYPE;
-		} else if (token.kind == TOKEN_KEYWORD_ENUM) {
-			ParsedEnum* enum_def = {};
-			if (!_parser_parse_enum_def(parser, &enum_def)) {
-				return TYPE_OR_EXPR_ERROR;
-			}
-
-			out_type->kind = PARSED_TYPE_ENUM;
-			out_type->enum_def = enum_def;
-			return TYPE_OR_EXPR_PARSED_TYPE;
-		} else {
-			has_unexpected_token = true;
+	} else if (token.kind == TOKEN_KEYWORD_STRUCT) {
+		ParsedStruct* struct_def = {};
+		if (!_parser_parse_struct_def(parser, &struct_def)) {
+			return PARSE_TYPE_ERROR;
 		}
-	} else {
-		has_unexpected_token = true;
-	}
 
-	if (has_unexpected_token) {
+		out_type->kind = PARSED_TYPE_STRUCT;
+		out_type->struct_def = struct_def;
+		return PARSE_TYPE_PARSED;
+	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
+		ParsedEnum* enum_def = {};
+		if (!_parser_parse_enum_def(parser, &enum_def)) {
+			return PARSE_TYPE_ERROR;
+		}
+
+		out_type->kind = PARSED_TYPE_ENUM;
+		out_type->enum_def = enum_def;
+		return PARSE_TYPE_PARSED;
+	} else {
 		preprocessor_next_token(parser->preprocessor);
 
 		TokenKind expected_tokens[] = {
 			TOKEN_IDENT,
+			TOKEN_KEYWORD_CONST,
 			TOKEN_KEYWORD_STRUCT,
+			TOKEN_KEYWORD_ENUM,
 		};
 
 		diagnostics_report_unexpected_token(parser->diagnostics,
 				token,
 				expected_tokens,
 				array_size(expected_tokens));
-		return TYPE_OR_EXPR_ERROR;
+		return PARSE_TYPE_ERROR;
 	}
 
 	unreachable();
-	return TYPE_OR_EXPR_ERROR;
+	return PARSE_TYPE_ERROR;
 }
 
 bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
-	ParseTypeOrExprResult result = _parser_parse_type_or_expr(parser, out_type, NULL);
-	return result == TYPE_OR_EXPR_PARSED_TYPE;
+	assert(out_type != NULL);
+
+	// First parse qualifiers
+	out_type->qualifiers = _parser_parse_type_qualifiers(parser);
+
+	switch (_parser_try_parse_type_specifier(parser, out_type)) {
+	case PARSE_TYPE_ERROR:
+	case PARSE_TYPE_NOT_PARSED:
+		return false;
+	case PARSE_TYPE_PARSED:
+		return true;
+	}
+
+	unreachable();
+	return false;
 }
 
 ParsedNode* _parser_parse_type_def(Parser* parser) {
@@ -801,21 +800,65 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 	return true;
 }
 
+bool _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
+	Token token = preprocessor_view_next(parser->preprocessor);
+	
+	if (token.kind == TOKEN_IDENT) {
+		preprocessor_next_token(parser->preprocessor);
+
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
+		assert(entry);
+
+		switch (entry->kind) {
+		case IDENT_FUNCTION:
+			out_expr->kind = EXPR_FUNCTION_REFERENCE;
+			out_expr->function_ref = entry->function_def;
+			return true;
+		case IDENT_VARIABLE:
+			assert_msg(false, "todo");
+		case IDENT_STRUCT:
+		case IDENT_ENUM:
+			unreachable();
+		}
+
+		unreachable();
+	}
+
+	return false;
+}
+
 bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node) {
 	assert(out_node != NULL);
 
-	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+	bool has_type = false;
+	TypeQualifiers type_qualifiers = _parser_parse_type_qualifiers(parser);
+	ParsedType type = { .qualifiers = type_qualifiers };
 
-	ParsedType type = {};
-	ParsedExpr expr = {};
-	SourceString name = {};
+	Token maybe_type_specifier_token = preprocessor_view_next(parser->preprocessor);
 
-	switch (_parser_parse_type_or_expr(parser, &type, &expr)) {
-	case TYPE_OR_EXPR_PARSED_TYPE: {
+	switch (_parser_try_parse_type_specifier(parser, &type)) {
+	case PARSE_TYPE_PARSED:
+		has_type = true;
+		break;
+	case PARSE_TYPE_NOT_PARSED:
+		if (type_qualifiers != TYPE_QUALIFIER_NONE) {
+			preprocessor_next_token(parser->preprocessor);
+			diagnostics_report_error(parser->diagnostics,
+					maybe_type_specifier_token.source_range,
+					STR_LIT("Expected type specifier"),
+					NULL);
+
+			return false;
+		}
+
+		break;
+	case PARSE_TYPE_ERROR:
+		return false;
+	}
+
+	if (has_type) {
 		Token name_token = preprocessor_next_token(parser->preprocessor);
 		if (name_token.kind != TOKEN_IDENT) {
-			arena_end_temp(temp);
-
 			TokenKind expected_tokens[] = { TOKEN_IDENT };
 			diagnostics_report_unexpected_token(parser->diagnostics,
 					name_token,
@@ -824,7 +867,7 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 			return false;
 		}
 
-		name = _source_string_from_token(name_token);
+		SourceString name = _source_string_from_token(name_token);
 
 		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_LEFT_PAREN) {
@@ -832,7 +875,6 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 			size_t param_count = 0;
 
 			if (!_parser_parse_function_param_list(parser, &param_list, &param_count)) {
-				arena_end_temp(temp);
 				return false;
 			}
 			
@@ -847,13 +889,11 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 				memset(body, 0, sizeof(*body));
 
 				if (!_parser_parse_scope(parser, body)) {
-					arena_end_temp(temp);
 					return false;
 				}
 			} else if (token.kind == TOKEN_SEMICOLON) {
 				preprocessor_next_token(parser->preprocessor);
 			} else {
-				arena_end_temp(temp);
 				TokenKind expected_tokens[] = { TOKEN_LEFT_BRACE, TOKEN_SEMICOLON };
 				diagnostics_report_unexpected_token(parser->diagnostics,
 						token,
@@ -975,20 +1015,20 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 					array_size(expected_tokens));
 			return false;
 		}
-		break;
-	}
-	case TYPE_OR_EXPR_PARSED_EXPR: {
-		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
-			return false;
-		}
+	} else {
+		ParsedExpr expr = {};
+		if (_parser_try_parse_expr(parser, &expr)) {
+			out_node->kind = AST_NODE_EXPR;
+			out_node->expr = expr;
 
-		out_node->kind = AST_NODE_EXPR;
-		out_node->expr = expr;
-		return true;
-	}
-	case TYPE_OR_EXPR_ERROR:
-		arena_end_temp(temp);
-		return false;
+			if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
+				return false;
+			}
+
+			return true;
+		} else {
+			assert(false);
+		}
 	}
 
 	unreachable();

@@ -40,6 +40,11 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 	case PARSED_TYPE_FLOAT:
 	case PARSED_TYPE_DOUBLE:
 		return true;
+	
+	case PARSED_TYPE_POINTER:
+		assert(a->pointer_base_type != NULL);
+		assert(b->pointer_base_type != NULL);
+		return type_equal(a->pointer_base_type, b->pointer_base_type);
 	}
 
 	unreachable();
@@ -827,9 +832,57 @@ bool _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 	return false;
 }
 
+bool _parser_parse_pre_declaration_modifiers(Parser* parser,
+		ParsedType* base_type,
+		ParsedType* out_type,
+		bool duplicate_base_type) {
+	if (base_type == out_type) {
+		assert(duplicate_base_type);
+	}
+
+	while (true) {
+		TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
+
+		Token maybe_asterisk = preprocessor_view_next(parser->preprocessor);
+		if (maybe_asterisk.kind == TOKEN_ASTERISK) {
+			preprocessor_next_token(parser->preprocessor);
+
+			assert(duplicate_base_type);
+
+			ParsedType* inner_type = arena_alloc(parser->ast_allocator, ParsedType);
+			*inner_type = *base_type;
+
+			*out_type = (ParsedType) {
+				.kind = PARSED_TYPE_POINTER,
+				.pointer_base_type = inner_type,
+				.qualifiers = qualifiers,
+			};
+		} else {
+			if (qualifiers != TYPE_QUALIFIER_NONE) {
+				preprocessor_next_token(parser->preprocessor);
+
+				TokenKind expected_tokens[] = { TOKEN_ASTERISK };
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						maybe_asterisk,
+						expected_tokens,
+						array_size(expected_tokens));
+				return false;
+			} else {
+				break;
+			}
+		}
+	}
+
+	return true;
+}
+
 bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, ParsedType* type) {
 	assert(out_node != NULL);
 	assert(type != NULL);
+
+	if (!_parser_parse_pre_declaration_modifiers(parser, type, type, true)) {
+		return false;
+	}
 
 	Token name_token = preprocessor_next_token(parser->preprocessor);
 	if (name_token.kind != TOKEN_IDENT) {

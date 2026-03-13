@@ -197,9 +197,9 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 		const char* base_type_name = "";
 
 		if (has_flag(type->kind, TYPE_FLAG_SIGNED)) {
-			prefix = "signed";
+			prefix = "signed ";
 		} else if (has_flag(type->kind, TYPE_FLAG_UNSIGNED)) {
-			prefix = "unsigned";
+			prefix = "unsigned ";
 		}
 
 		switch (base_kind) {
@@ -222,7 +222,7 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 			unreachable();
 		}
 
-		printf("%s %s\n", prefix, base_type_name);
+		printf("%s%s\n", prefix, base_type_name);
 		break;
 	}
 
@@ -231,6 +231,12 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 		break;
 	case PARSED_TYPE_DOUBLE:
 		printf("double\n");
+		break;
+	case PARSED_TYPE_POINTER:
+		printer_begin_struct(printer, "pointer_type");
+		printer_field(printer, "base_type");
+		print_type(printer, type->pointer_base_type);
+		printer_end_struct(printer);
 		break;
 	}
 }

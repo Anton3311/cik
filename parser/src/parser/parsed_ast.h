@@ -85,6 +85,8 @@ typedef enum {
 
 	PARSED_TYPE_STRUCT             = 8,
 	PARSED_TYPE_ENUM               = 9,
+
+	PARSED_TYPE_POINTER            = 10,
 } ParsedTypeKind;
 
 struct ParsedType {
@@ -100,6 +102,7 @@ struct ParsedType {
 		
 		ParsedStruct* struct_def;
 		ParsedEnum* enum_def;
+		ParsedType* pointer_base_type;
 	};
 };
 

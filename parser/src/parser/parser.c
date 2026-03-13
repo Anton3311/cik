@@ -522,6 +522,84 @@ typedef enum {
 	TYPE_OR_EXPR_PARSED_EXPR,
 } ParseTypeOrExprResult;
 
+typedef enum {
+	PRIMITIVE_TYPE_PARSED,
+	PRIMITIVE_TYPE_NOT_PARSED,
+	PRIMITIVE_TYPE_ERROR,
+} ParsePrimitiveTypeResult;
+
+ParsePrimitiveTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out_type) {
+	assert(out_type != NULL);
+
+	Token token = preprocessor_view_next(parser->preprocessor);
+
+	if (str_equal(token.string, STR_LIT("void"))) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_type->kind = PARSED_TYPE_VOID;
+		return PRIMITIVE_TYPE_PARSED;
+	} else if (str_equal(token.string, STR_LIT("float"))) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_type->kind = PARSED_TYPE_FLOAT;
+		return PRIMITIVE_TYPE_PARSED;
+	} else if (str_equal(token.string, STR_LIT("double"))) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_type->kind = PARSED_TYPE_DOUBLE;
+		return PRIMITIVE_TYPE_PARSED;
+	} else {
+		ParsedTypeKindFlags type_flags = TYPE_FLAG_NONE;
+		if (str_equal(token.string, STR_LIT("signed"))) {
+			preprocessor_next_token(parser->preprocessor);
+
+			type_flags |= TYPE_FLAG_SIGNED;
+			token = preprocessor_view_next(parser->preprocessor);
+		} else if (str_equal(token.string, STR_LIT("unsigned"))) {
+			preprocessor_next_token(parser->preprocessor);
+
+			type_flags |= TYPE_FLAG_UNSIGNED;
+			token = preprocessor_view_next(parser->preprocessor);
+		}
+
+		ParsedTypeKind type_kind = INT32_MAX;
+
+		if (str_equal(token.string, STR_LIT("char"))) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = PARSED_TYPE_CHAR;
+		} else if (str_equal(token.string, STR_LIT("int"))) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = PARSED_TYPE_INT;
+		} else if (str_equal(token.string, STR_LIT("short"))) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = PARSED_TYPE_SHORT;
+		} else if (str_equal(token.string, STR_LIT("long"))) {
+			preprocessor_next_token(parser->preprocessor);
+
+			Token next_token = preprocessor_view_next(parser->preprocessor);
+			if (next_token.kind == TOKEN_IDENT && str_equal(next_token.string, STR_LIT("long"))) {
+				preprocessor_next_token(parser->preprocessor);
+				type_kind = PARSED_TYPE_LONG_LONG;
+			} else {
+				type_kind = PARSED_TYPE_LONG;
+			}
+		}
+
+		if (type_kind != INT32_MAX) {
+			out_type->kind = type_kind | type_flags;
+			return PRIMITIVE_TYPE_PARSED;
+		}
+
+		if (type_kind == INT32_MAX && type_flags != TYPE_FLAG_NONE) {
+			TokenKind expected_tokens[] = { TOKEN_IDENT };
+			diagnostics_report_unexpected_token(parser->diagnostics, token, expected_tokens, array_size(expected_tokens));
+			return PRIMITIVE_TYPE_ERROR;
+		}
+	}
+
+	return PRIMITIVE_TYPE_NOT_PARSED;
+}
+
 ParseTypeOrExprResult _parser_parse_type_or_expr(Parser* parser, ParsedType* out_type, ParsedExpr* out_expr) {
 	assert(!(out_type == NULL && out_expr == NULL));
 
@@ -534,56 +612,16 @@ ParseTypeOrExprResult _parser_parse_type_or_expr(Parser* parser, ParsedType* out
 
 	bool has_unexpected_token = false;
 	if (token.kind == TOKEN_IDENT) {
-		preprocessor_next_token(parser->preprocessor);
-
-		if (str_equal(token.string, STR_LIT("void"))) {
-			out_type->kind = PARSED_TYPE_VOID;
+		switch (_parser_try_parse_primitive_type(parser, out_type)) {
+		case PRIMITIVE_TYPE_ERROR:
+			return TYPE_OR_EXPR_ERROR;
+		case PRIMITIVE_TYPE_PARSED:
 			return TYPE_OR_EXPR_PARSED_TYPE;
-		} else {
-			ParsedTypeKindFlags type_flags = TYPE_FLAG_NONE;
-			if (str_equal(token.string, STR_LIT("signed"))) {
-				type_flags |= TYPE_FLAG_SIGNED;
-				token = preprocessor_next_token(parser->preprocessor);
-			} else if (str_equal(token.string, STR_LIT("unsigned"))) {
-				type_flags |= TYPE_FLAG_UNSIGNED;
-				token = preprocessor_next_token(parser->preprocessor);
-			}
-
-			ParsedTypeKind type_kind = INT32_MAX;
-
-			if (str_equal(token.string, STR_LIT("char"))) {
-				type_kind = PARSED_TYPE_CHAR;
-			} else if (str_equal(token.string, STR_LIT("int"))) {
-				type_kind = PARSED_TYPE_INT;
-			} else if (str_equal(token.string, STR_LIT("short"))) {
-				type_kind = PARSED_TYPE_SHORT;
-			} else if (str_equal(token.string, STR_LIT("long"))) {
-				Token next_token = preprocessor_view_next(parser->preprocessor);
-				if (next_token.kind == TOKEN_IDENT && str_equal(next_token.string, STR_LIT("long"))) {
-					preprocessor_next_token(parser->preprocessor);
-					type_kind = PARSED_TYPE_LONG_LONG;
-				} else {
-					type_kind = PARSED_TYPE_LONG;
-				}
-			} else if (str_equal(token.string, STR_LIT("float"))) {
-				assert(type_flags == TYPE_FLAG_NONE);
-				type_kind = PARSED_TYPE_FLOAT;
-			} else if (str_equal(token.string, STR_LIT("double"))) {
-				assert(type_flags == TYPE_FLAG_NONE);
-				type_kind = PARSED_TYPE_DOUBLE;
-			}
-
-			if (type_kind != INT32_MAX) {
-				out_type->kind = type_kind | type_flags;
-				return TYPE_OR_EXPR_PARSED_TYPE;
-			}
-
-			if (type_kind == INT32_MAX && type_flags != TYPE_FLAG_NONE) {
-				TokenKind expected_tokens[] = { TOKEN_IDENT };
-				diagnostics_report_unexpected_token(parser->diagnostics, token, expected_tokens, array_size(expected_tokens));
-				return TYPE_OR_EXPR_ERROR;
-			}
+		case PRIMITIVE_TYPE_NOT_PARSED:
+			break;
 		}
+
+		preprocessor_next_token(parser->preprocessor);
 
 		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
 		assert(entry);

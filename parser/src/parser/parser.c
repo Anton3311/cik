@@ -827,6 +827,179 @@ bool _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 	return false;
 }
 
+bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, ParsedType* type) {
+	assert(out_node != NULL);
+	assert(type != NULL);
+
+	Token name_token = preprocessor_next_token(parser->preprocessor);
+	if (name_token.kind != TOKEN_IDENT) {
+		TokenKind expected_tokens[] = { TOKEN_IDENT };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				name_token,
+				expected_tokens,
+				array_size(expected_tokens));
+		
+		return false;
+	}
+
+	SourceString name = _source_string_from_token(name_token);
+
+	bool has_param_list = false;
+	ParsedFunctionParam* param_list = NULL;
+	size_t param_count = 0;
+
+	Token token = preprocessor_view_next(parser->preprocessor);
+	if (token.kind == TOKEN_LEFT_PAREN) {
+		if (!_parser_parse_function_param_list(parser, &param_list, &param_count)) {
+			return false;
+		}
+
+		has_param_list = true;
+	}
+
+	if (has_param_list) {
+		bool is_forward_declared = true;
+
+		ParsedScope* body = {};
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_LEFT_BRACE) {
+			is_forward_declared = false;
+
+			body = arena_alloc(parser->ast_allocator, ParsedScope);
+			memset(body, 0, sizeof(*body));
+
+			if (!_parser_parse_scope(parser, body)) {
+				return false;
+			}
+		} else if (token.kind == TOKEN_SEMICOLON) {
+			preprocessor_next_token(parser->preprocessor);
+		} else {
+			TokenKind expected_tokens[] = { TOKEN_LEFT_BRACE, TOKEN_SEMICOLON };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					token,
+					expected_tokens,
+					array_size(expected_tokens));
+			return false;
+		}
+
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, name);
+		ParsedFunction* function_def = NULL;
+		if (entry) {
+			if (!has_flag(entry->kind, IDENT_FUNCTION)) {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+				str_builder_append_char(&builder, '\'');
+				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
+
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, name),
+						builder.string,
+						NULL);
+
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			}
+
+			function_def = entry->function_def;
+			assert(function_def);
+
+			// TODO: Verify that return types also match
+			if (!function_def->is_forward_declared && !is_forward_declared) {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+				str_builder_append(&builder, STR_LIT("Redefinition of '"));
+				str_builder_append(&builder, entry->name);
+				str_builder_append_char(&builder, '\'');
+
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, name),
+						builder.string,
+						NULL);
+
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			}
+
+			if (function_def->parameter_count != param_count) {
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, name),
+						STR_LIT("Function was previously defined with a different parameter count"),
+						NULL);
+
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			} else {
+				ParsedFunctionParam* prev_def_param = function_def->parameter_list;
+				ParsedFunctionParam* new_def_param = param_list;
+
+				for (size_t i = 0; i < param_count; i += 1) {
+					bool param_types_are_equal = type_equal(&prev_def_param->type, &new_def_param->type);
+
+					if (!param_types_are_equal) {
+						DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+							new_def_param->type.source_range,
+							STR_LIT("Function previously defined with different parameter types"),
+							NULL);
+
+						diagnostics_report_error(parser->diagnostics,
+								prev_def_param->type.source_range,
+								STR_LIT("Previously defined here"),
+								error);
+						return false;
+					}
+					
+					prev_def_param = prev_def_param->next;
+					new_def_param = new_def_param->next;
+				}
+			}
+		} else {
+			entry = ident_storage_insert(&parser->ident_storage, name);
+			entry->kind = IDENT_FUNCTION;
+
+			function_def = arena_alloc(parser->ast_allocator, ParsedFunction); 
+			memset(function_def, 0, sizeof(*function_def));
+			
+			function_def->name = name;
+			function_def->return_type = *type;
+			function_def->parameter_list = param_list;
+			function_def->parameter_count = param_count;
+			function_def->is_forward_declared = is_forward_declared;
+
+			entry->function_def = function_def;
+		}
+
+		assert(function_def);
+
+		if (is_forward_declared) {
+			assert(body == NULL);
+		} else {
+			function_def->body = body;
+			function_def->is_forward_declared = false;
+		}
+
+		out_node->kind = AST_NODE_FUNCTION;
+		out_node->function_def = function_def;
+		return true;
+	} else {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				token,
+				expected_tokens,
+				array_size(expected_tokens));
+		return false;
+	}
+
+	return true;
+}
+
 bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node) {
 	assert(out_node != NULL);
 
@@ -857,164 +1030,7 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 	}
 
 	if (has_type) {
-		Token name_token = preprocessor_next_token(parser->preprocessor);
-		if (name_token.kind != TOKEN_IDENT) {
-			TokenKind expected_tokens[] = { TOKEN_IDENT };
-			diagnostics_report_unexpected_token(parser->diagnostics,
-					name_token,
-					expected_tokens,
-					array_size(expected_tokens));
-			return false;
-		}
-
-		SourceString name = _source_string_from_token(name_token);
-
-		Token token = preprocessor_view_next(parser->preprocessor);
-		if (token.kind == TOKEN_LEFT_PAREN) {
-			ParsedFunctionParam* param_list = NULL;
-			size_t param_count = 0;
-
-			if (!_parser_parse_function_param_list(parser, &param_list, &param_count)) {
-				return false;
-			}
-			
-			bool is_forward_declared = true;
-
-			ParsedScope* body = {};
-			Token token = preprocessor_view_next(parser->preprocessor);
-			if (token.kind == TOKEN_LEFT_BRACE) {
-				is_forward_declared = false;
-
-				body = arena_alloc(parser->ast_allocator, ParsedScope);
-				memset(body, 0, sizeof(*body));
-
-				if (!_parser_parse_scope(parser, body)) {
-					return false;
-				}
-			} else if (token.kind == TOKEN_SEMICOLON) {
-				preprocessor_next_token(parser->preprocessor);
-			} else {
-				TokenKind expected_tokens[] = { TOKEN_LEFT_BRACE, TOKEN_SEMICOLON };
-				diagnostics_report_unexpected_token(parser->diagnostics,
-						token,
-						expected_tokens,
-						array_size(expected_tokens));
-				return false;
-			}
-
-			IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, name);
-			ParsedFunction* function_def = NULL;
-			if (entry) {
-				if (!has_flag(entry->kind, IDENT_FUNCTION)) {
-					StringBuilder builder = { .arena = parser->diagnostics->allocator };
-					str_builder_append_char(&builder, '\'');
-					str_builder_append(&builder, entry->name);
-					str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
-
-					DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-							source_range_from_sub_string(parser->diagnostics->source_code, name),
-							builder.string,
-							NULL);
-
-					diagnostics_report_error(parser->diagnostics,
-							source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
-							STR_LIT("Previously defined here"),
-							error);
-					return false;
-				}
-
-				function_def = entry->function_def;
-				assert(function_def);
-
-				if (!function_def->is_forward_declared && !is_forward_declared) {
-					StringBuilder builder = { .arena = parser->diagnostics->allocator };
-					str_builder_append(&builder, STR_LIT("Redefinition of '"));
-					str_builder_append(&builder, entry->name);
-					str_builder_append_char(&builder, '\'');
-
-					DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-							source_range_from_sub_string(parser->diagnostics->source_code, name),
-							builder.string,
-							NULL);
-
-					diagnostics_report_error(parser->diagnostics,
-							source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
-							STR_LIT("Previously defined here"),
-							error);
-					return false;
-				}
-
-				if (function_def->parameter_count != param_count) {
-					DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-							source_range_from_sub_string(parser->diagnostics->source_code, name),
-							STR_LIT("Function was previously defined with a different parameter count"),
-							NULL);
-
-					diagnostics_report_error(parser->diagnostics,
-							source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
-							STR_LIT("Previously defined here"),
-							error);
-					return false;
-				} else {
-					ParsedFunctionParam* prev_def_param = function_def->parameter_list;
-					ParsedFunctionParam* new_def_param = param_list;
-
-					for (size_t i = 0; i < param_count; i += 1) {
-						bool param_types_are_equal = type_equal(&prev_def_param->type, &new_def_param->type);
-
-						if (!param_types_are_equal) {
-							DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-								new_def_param->type.source_range,
-								STR_LIT("Function previously defined with different parameter types"),
-								NULL);
-
-							diagnostics_report_error(parser->diagnostics,
-									prev_def_param->type.source_range,
-									STR_LIT("Previously defined here"),
-									error);
-							return false;
-						}
-						
-						prev_def_param = prev_def_param->next;
-						new_def_param = new_def_param->next;
-					}
-				}
-			} else {
-				entry = ident_storage_insert(&parser->ident_storage, name);
-				entry->kind = IDENT_FUNCTION;
-
-				function_def = arena_alloc(parser->ast_allocator, ParsedFunction); 
-				memset(function_def, 0, sizeof(*function_def));
-				
-				function_def->name = name;
-				function_def->return_type = type;
-				function_def->parameter_list = param_list;
-				function_def->parameter_count = param_count;
-				function_def->is_forward_declared = is_forward_declared;
-
-				entry->function_def = function_def;
-			}
-
-			assert(function_def);
-
-			if (is_forward_declared) {
-				assert(body == NULL);
-			} else {
-				function_def->body = body;
-				function_def->is_forward_declared = false;
-			}
-
-			out_node->kind = AST_NODE_FUNCTION;
-			out_node->function_def = function_def;
-			return true;
-		} else {
-			TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
-			diagnostics_report_unexpected_token(parser->diagnostics,
-					token,
-					expected_tokens,
-					array_size(expected_tokens));
-			return false;
-		}
+		return _parser_parse_type_declaration(parser, out_node, &type);
 	} else {
 		ParsedExpr expr = {};
 		if (_parser_try_parse_expr(parser, &expr)) {

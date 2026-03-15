@@ -1156,6 +1156,33 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		}
 
 		has_param_list = true;
+	} else if (token.kind == TOKEN_EQUAL) {
+		preprocessor_next_token(parser->preprocessor);
+
+		ParsedExpr* value = arena_alloc(parser->ast_allocator, ParsedExpr);
+		switch (_parser_try_parse_expr(parser, value)) {
+		case EXPR_PARSE_OK:
+			break;
+		case EXPR_PARSE_ERROR:
+			return false;
+		case EXPR_PARSE_NOT_PARSED:
+			diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					STR_LIT("Expected variable value after the '='"),
+					NULL);
+			return false;
+		}
+
+		out_node->kind = AST_NODE_VARIABLE;
+		out_node->variable.name = name;
+		out_node->variable.type = *type;
+		out_node->variable.value = value;
+
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected semicolon after the variable defintion"))) {
+			return false;
+		}
+
+		return true;
 	} else if (token.kind == TOKEN_SEMICOLON) {
 		preprocessor_next_token(parser->preprocessor);
 

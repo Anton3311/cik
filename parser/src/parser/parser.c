@@ -1345,7 +1345,8 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 	if (has_type) {
 		return _parser_parse_type_declaration(parser, out_node, &type);
 	} else {
-		if (_parser_try_parse_expr(parser, &out_node->expr) == EXPR_PARSE_OK) {
+		ExprParseResult result = _parser_try_parse_expr(parser, &out_node->expr);
+		if (result == EXPR_PARSE_OK) {
 			out_node->kind = AST_NODE_EXPR;
 
 			if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
@@ -1354,7 +1355,7 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 
 			return true;
 		} else {
-			assert(false);
+			return false;
 		}
 	}
 

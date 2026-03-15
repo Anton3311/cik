@@ -21,6 +21,7 @@ typedef struct ParsedScope ParsedScope;
 typedef struct ParsedCall ParsedCall;
 typedef struct ParsedExpr ParsedExpr;
 typedef struct ParsedBinExpr ParsedBinExpr;
+typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
 
 //
 // AST
@@ -137,9 +138,26 @@ struct ParsedCall {
 };
 
 typedef enum {
+	INT_LIT_FMT_DECIMAL,
+	INT_LIT_FMT_BIN,
+	INT_LIT_FMT_OCTAL,
+	INT_LIT_FMT_HEX,
+} IntergerLiteralFormat;
+
+String int_literal_format_to_string(IntergerLiteralFormat format);
+
+struct ParsedIntegerLiteral {
+	SourceRange source_range;
+	IntergerLiteralFormat format;
+	ParsedTypeKind integer_type;
+	uint64_t value;
+};
+
+typedef enum {
 	EXPR_CALL,
 	EXPR_BINARY,
 	EXPR_FUNCTION_REFERENCE,
+	EXPR_INTEGER_LITERAL,
 } ExprKind;
 
 struct ParsedExpr {
@@ -149,6 +167,7 @@ struct ParsedExpr {
 		ParsedCall call;
 		ParsedFunction* function_ref;
 		ParsedBinExpr binary;
+		ParsedIntegerLiteral int_literal;
 	};
 };
 

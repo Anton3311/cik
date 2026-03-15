@@ -33,6 +33,22 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
+String int_literal_format_to_string(IntergerLiteralFormat format) {
+	switch (format) {
+	case INT_LIT_FMT_DECIMAL:
+		return STR_LIT("decimal");
+	case INT_LIT_FMT_BIN:
+		return STR_LIT("binary");
+	case INT_LIT_FMT_OCTAL:
+		return STR_LIT("octal");
+	case INT_LIT_FMT_HEX:
+		return STR_LIT("hexidecimal");
+	}
+
+	unreachable();
+	return (String){};
+}
+
 //
 // AST
 //
@@ -138,6 +154,17 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		print_expr(printer, expr->binary.left);
 		printer_field(printer, "right");
 		print_expr(printer, expr->binary.right);
+		printer_end_struct(printer);
+		break;
+	case EXPR_INTEGER_LITERAL:
+		printer_begin_struct(printer, "int_literal");
+		printer_string_field(printer, "format", int_literal_format_to_string(expr->int_literal.format));
+		printer_field(printer, "type");
+
+		ParsedType type = { .kind = expr->int_literal.integer_type };
+		print_type(printer, &type);
+		printer_field(printer, "value");
+		printf("%llu\n", expr->int_literal.value);
 		printer_end_struct(printer);
 		break;
 	}

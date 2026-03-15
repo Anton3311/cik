@@ -118,6 +118,10 @@ void free_executable(void* ptr, size_t size);
 // String
 //
 
+inline bool is_digit(char c) {
+	return '0' <= c && c <= '9';
+}
+
 typedef struct {
 	const char* v;
 	size_t length;

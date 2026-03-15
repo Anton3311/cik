@@ -919,3 +919,62 @@ void test_parse_variable_declaration(TestContext* context) {
 	assert(variable->value == NULL);
 	assert(variable->type.kind == PARSED_TYPE_INT);
 }
+
+void test_parse_simple_bin_expr(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("0xff + 10;"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	assert(ast.root_nodes.first->kind == AST_NODE_EXPR);
+	ParsedExpr* expr = &ast.root_nodes.first->expr;
+	assert(expr->kind == EXPR_BINARY);
+	assert(expr->binary.op == BIN_OP_ADD);
+
+	ParsedExpr* left = expr->binary.left;
+	ParsedExpr* right = expr->binary.right;
+
+	assert(left->kind == EXPR_INTEGER_LITERAL);
+	assert(left->int_literal.integer_type == PARSED_TYPE_INT);
+	assert(left->int_literal.format == INT_LIT_FMT_HEX);
+	assert(left->int_literal.value == 255);
+
+	assert(right ->kind == EXPR_INTEGER_LITERAL);
+	assert(right->int_literal.integer_type == PARSED_TYPE_INT);
+	assert(right->int_literal.format == INT_LIT_FMT_DECIMAL);
+	assert(right->int_literal.value == 10);
+}
+
+void test_bin_op_precedence(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("0xff + 10 * 99 + 02;"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	assert(ast.root_nodes.first->kind == AST_NODE_EXPR);
+
+	ParsedExpr* expr = &ast.root_nodes.first->expr;
+	assert(expr->kind == EXPR_BINARY);
+
+	assert(expr->binary.left->kind == EXPR_INTEGER_LITERAL);
+	assert(expr->binary.left->int_literal.value == 255);
+
+	assert(expr->binary.right->kind == EXPR_BINARY);
+
+	ParsedExpr* inner_expr = expr->binary.right;
+	assert(inner_expr->kind == EXPR_BINARY);
+	assert(inner_expr->binary.right->kind == EXPR_INTEGER_LITERAL);
+	assert(inner_expr->binary.right->int_literal.value == 2);
+
+	ParsedExpr* product_expr = inner_expr->binary.left;
+	assert(product_expr->binary.left->kind == EXPR_INTEGER_LITERAL);
+	assert(product_expr->binary.right->kind == EXPR_INTEGER_LITERAL);
+}

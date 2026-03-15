@@ -264,6 +264,11 @@ bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
 
 	bool is_single_line_comment = _tokenizer_has_next_char(tokenizer, '/');
 	bool is_multi_line_comment = _tokenizer_has_next_char(tokenizer, '*');
+	
+	bool is_comment = is_single_line_comment || is_multi_line_comment;
+	if (!is_comment) {
+		return false;
+	}
 
 	tokenizer->read_position += 1; // consume '/'
 
@@ -298,6 +303,8 @@ bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
 				tokenizer->read_position += 1;
 			}
 		}
+	} else {
+		unreachable();
 	}
 
 	return false;

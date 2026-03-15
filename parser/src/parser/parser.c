@@ -82,12 +82,18 @@ void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
 	storage->entries = arena_alloc_array(storage->allocator, IdentifierEntry*, storage->capacity);
 	memset(storage->entries, 0, sizeof(*storage->entries) * storage->capacity);
 
-	storage->next_free = NULL;
+	storage->current_scope = arena_alloc(storage->allocator, IdentifierScope);
+	memset(storage->current_scope, 0, sizeof(*storage->current_scope));
+
+	storage->next_scope_id = 1;
+	storage->next_free_entry = NULL;
+	storage->next_free_scope = NULL;
 }
 
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString name) {
 	assert(storage != NULL);
 	assert(name.length > 0);
+	assert(storage->current_scope);
 
 	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name);
 	IdentifierEntry* entry = NULL;
@@ -101,16 +107,27 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString n
 
 		storage->entries[storage->count] = entry;
 		storage->count += 1;
-
-		entry->name = name;
 	} else {
+		assert(storage->entries[existing_entry_index]->owner_scope != storage->current_scope);
+
 		entry = arena_alloc(storage->allocator, IdentifierEntry);
 		memset(entry, 0, sizeof(*entry));
 
-		entry->name = name;
 		entry->prev = storage->entries[existing_entry_index];
 		storage->entries[existing_entry_index] = entry;
 	}
+
+	entry->name = name;
+	entry->owner_scope = storage->current_scope;
+
+	// Add to the current scope
+	if (storage->current_scope->first_identifier == NULL) {
+		storage->current_scope->first_identifier = entry;
+	} else {
+		storage->current_scope->last_identifier->next_in_scope = entry;
+	}
+
+	storage->current_scope->last_identifier = entry;
 
 	assert(entry != NULL);
 	return entry;
@@ -119,6 +136,63 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString n
 void ident_storage_remove(IdentifierStorage* storage, SourceString name) {
 	assert(storage != NULL);
 	assert(name.length > 0);
+	assert(storage->current_scope);
+
+	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name);
+	if (existing_entry_index == SIZE_MAX) {
+		return;
+	}
+
+	IdentifierEntry* entry = storage->entries[existing_entry_index];
+	memset(entry, 0, sizeof(*entry));
+
+	entry->next_in_scope = storage->next_free_entry;
+
+	storage->entries[existing_entry_index] = storage->entries[storage->count - 1];
+	storage->entries[storage->count - 1] = NULL;
+	storage->count -= 1;
+}
+
+IdentifierScope* ident_storage_begin_scope(IdentifierStorage* storage) {
+	assert(storage != NULL);
+	assert(storage->current_scope != NULL);
+
+	IdentifierScope* scope;
+	if (storage->next_free_scope == NULL) {
+		scope = arena_alloc(storage->allocator, IdentifierScope);
+	} else {
+		scope = storage->next_free_scope;
+		storage->next_free_scope = storage->next_free_scope->next_free;
+	}
+
+	memset(scope, 0, sizeof(*scope));
+
+	scope->id = storage->next_scope_id;
+	storage->next_scope_id += 1;
+
+	scope->parent = storage->current_scope;
+	storage->current_scope = scope;
+	return scope;
+}
+
+void ident_storage_end_scope(IdentifierStorage* storage) {
+	assert(storage->current_scope);
+
+	IdentifierScope* scope = storage->current_scope;
+	for (IdentifierEntry* entry = scope->first_identifier; entry != NULL;) {
+		IdentifierEntry* next_entry = entry->next_in_scope;
+
+		ident_storage_remove(storage, entry->name);
+
+		entry = next_entry;
+	}
+
+	IdentifierScope* parent_scope = scope->parent;
+
+	scope->next_free = storage->next_free_scope;
+	storage->next_free_scope = scope;
+
+	storage->current_scope = parent_scope;
 }
 
 //
@@ -1178,6 +1252,10 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		out_node->variable.type = *type;
 		out_node->variable.value = value;
 
+		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, out_node->variable.name);
+		entry->kind = IDENT_VARIABLE;
+		entry->variable = &out_node->variable;
+
 		if (!_parser_expect_semicolon(parser, STR_LIT("Expected semicolon after the variable defintion"))) {
 			return false;
 		}
@@ -1193,6 +1271,10 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			.type = *type,
 			.value = NULL,
 		};
+
+		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, out_node->variable.name);
+		entry->kind = IDENT_VARIABLE;
+		entry->variable = &out_node->variable;
 
 		return true;
 	}
@@ -1448,6 +1530,8 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 }
 
 bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
+	ident_storage_begin_scope(&parser->ident_storage);
+
 	Token token = preprocessor_next_token(parser->preprocessor);
 	assert(token.kind == TOKEN_LEFT_BRACE);
 
@@ -1460,6 +1544,8 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 					token.source_range,
 					STR_LIT("Unexpected end of file"),
 					NULL);
+
+			ident_storage_end_scope(&parser->ident_storage);
 			return false;
 		} else if (token.kind == TOKEN_RIGHT_BRACE) {
 			preprocessor_next_token(parser->preprocessor);
@@ -1471,6 +1557,8 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 			parsed_node_list_append(&out_scope->nodes, node);
 		}
 	}
+
+	ident_storage_end_scope(&parser->ident_storage);
 
 	return true;
 }

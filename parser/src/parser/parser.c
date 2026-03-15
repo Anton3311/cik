@@ -816,6 +816,12 @@ bool _token_kind_to_bin_op(TokenKind kind, BinExprKind* out_op) {
 	case TOKEN_ASTERISK:
 		*out_op = BIN_EXPR_MUL;
 		return true;
+	case TOKEN_FORWARD_SLASH:
+		*out_op = BIN_EXPR_DIV;
+		return true;
+	case TOKEN_PERCENT:
+		*out_op = BIN_EXPR_MOD;
+		return true;
 	default:
 		return false;
 	}

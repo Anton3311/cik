@@ -17,6 +17,7 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_PIPE] = STR_LIT("|"),
 	[TOKEN_EXCLAMATION_MARK] = STR_LIT("!"),
 	[TOKEN_QUESTION_MARK] = STR_LIT("?"),
+	[TOKEN_FORWARD_SLASH] = STR_LIT("/"),
 	[TOKEN_ARROW] = STR_LIT("->"),
 
 	// Parens & friends
@@ -366,6 +367,8 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_try_create_double_char_token(tokenizer, '!', '=', TOKEN_EXCLAMATION_MARK, TOKEN_NOT_EQUAL);
 	case '?':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_QUESTION_MARK);
+	case '/':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_FORWARD_SLASH);
 	case '+':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_PLUS);
 	case '-':

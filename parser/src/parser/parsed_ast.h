@@ -114,17 +114,18 @@ struct ParsedType {
 //
 
 typedef enum {
-	BIN_EXPR_ADD,
-	BIN_EXPR_SUB,
-	BIN_EXPR_MUL,
-	BIN_EXPR_DIV,
-	BIN_EXPR_MOD,
-} BinExprKind;
+	BIN_OP_ADD,
+	BIN_OP_SUB,
+	BIN_OP_MUL,
+	BIN_OP_DIV,
+	BIN_OP_MOD,
+} BinOpKind;
 
-String bin_expr_kind_to_string(BinExprKind kind);
+String bin_op_kind_to_string(BinOpKind op);
+uint32_t bin_op_precedence(BinOpKind op);
 
 struct ParsedBinExpr {
-	BinExprKind kind;
+	BinOpKind op;
 	ParsedExpr* left;
 	ParsedExpr* right;
 };

@@ -1,21 +1,36 @@
 #include "parsed_ast.h"
 
-String bin_expr_kind_to_string(BinExprKind kind) {
-	switch (kind) {
-	case BIN_EXPR_ADD:
+String bin_op_kind_to_string(BinOpKind op) {
+	switch (op) {
+	case BIN_OP_ADD:
 		return STR_LIT("+");
-	case BIN_EXPR_SUB:
+	case BIN_OP_SUB:
 		return STR_LIT("-");
-	case BIN_EXPR_MUL:
+	case BIN_OP_MUL:
 		return STR_LIT("*");
-	case BIN_EXPR_DIV:
+	case BIN_OP_DIV:
 		return STR_LIT("/");
-	case BIN_EXPR_MOD:
+	case BIN_OP_MOD:
 		return STR_LIT("%");
 	}
 
 	unreachable();
 	return (String) {};
+}
+
+uint32_t bin_op_precedence(BinOpKind op) {
+	switch (op) {
+	case BIN_OP_ADD:
+	case BIN_OP_SUB:
+		return 4;
+	case BIN_OP_MUL:
+	case BIN_OP_DIV:
+	case BIN_OP_MOD:
+		return 3;
+	}
+
+	unreachable();
+	return UINT32_MAX;
 }
 
 //
@@ -118,7 +133,7 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		break;
 	case EXPR_BINARY:
 		printer_begin_struct(printer, "binary_expr");
-		printer_string_field(printer, "kind", bin_expr_kind_to_string(expr->binary.kind));
+		printer_string_field(printer, "kind", bin_op_kind_to_string(expr->binary.op));
 		printer_field(printer, "left");
 		print_expr(printer, expr->binary.left);
 		printer_field(printer, "right");

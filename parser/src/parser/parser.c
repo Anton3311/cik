@@ -805,22 +805,22 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 	return true;
 }
 
-bool _token_kind_to_bin_op(TokenKind kind, BinExprKind* out_op) {
+bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 	switch (kind) {
 	case TOKEN_PLUS:
-		*out_op = BIN_EXPR_ADD;
+		*out_op = BIN_OP_ADD;
 		return true;
 	case TOKEN_MINUS:
-		*out_op = BIN_EXPR_SUB;
+		*out_op = BIN_OP_SUB;
 		return true;
 	case TOKEN_ASTERISK:
-		*out_op = BIN_EXPR_MUL;
+		*out_op = BIN_OP_MUL;
 		return true;
 	case TOKEN_FORWARD_SLASH:
-		*out_op = BIN_EXPR_DIV;
+		*out_op = BIN_OP_DIV;
 		return true;
 	case TOKEN_PERCENT:
-		*out_op = BIN_EXPR_MOD;
+		*out_op = BIN_OP_MOD;
 		return true;
 	default:
 		return false;
@@ -868,10 +868,12 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 		return left_operand_result;
 	}
 
+	ParsedExpr* current_expr = out_expr;
+
 	while (true) {
 		Token op_token = preprocessor_view_next(parser->preprocessor);
 
-		BinExprKind current_bin_op;
+		BinOpKind current_bin_op;
 		if (_token_kind_to_bin_op(op_token.kind, &current_bin_op)) {
 			preprocessor_next_token(parser->preprocessor);
 				
@@ -887,16 +889,32 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 			}
 
 			ParsedExpr* left_operand = arena_alloc(parser->ast_allocator, ParsedExpr);
-			*left_operand = *out_expr;
 
-			*out_expr = (ParsedExpr) {
+			uint32_t current_op_precedence = bin_op_precedence(current_bin_op);
+			uint32_t next_op_precedence = UINT32_MAX;
+
+			{
+				Token maybe_next_bin_op = preprocessor_view_next(parser->preprocessor);
+				BinOpKind next_bin_op;
+				if (_token_kind_to_bin_op(maybe_next_bin_op.kind, &next_bin_op)) {
+					next_op_precedence = bin_op_precedence(next_bin_op);
+				}
+			}
+
+			*left_operand = *current_expr;
+
+			*current_expr = (ParsedExpr) {
 				.kind = EXPR_BINARY,
 				.binary = (ParsedBinExpr) {
-					.kind = current_bin_op,
+					.op = current_bin_op,
 					.left = left_operand,
 					.right = right_operand,
 				}
 			};
+
+			if (current_op_precedence > next_op_precedence) {
+				current_expr = right_operand;
+			}
 		} else {
 			break;
 		}

@@ -20,6 +20,7 @@ typedef struct ParsedVariable ParsedVariable;
 typedef struct ParsedScope ParsedScope;
 typedef struct ParsedCall ParsedCall;
 typedef struct ParsedExpr ParsedExpr;
+typedef struct ParsedBinExpr ParsedBinExpr;
 
 //
 // AST
@@ -112,6 +113,22 @@ struct ParsedType {
 // Expr
 //
 
+typedef enum {
+	BIN_EXPR_ADD,
+	BIN_EXPR_SUB,
+	BIN_EXPR_MUL,
+	BIN_EXPR_DIV,
+	BIN_EXPR_MOD,
+} BinExprKind;
+
+String bin_expr_kind_to_string(BinExprKind kind);
+
+struct ParsedBinExpr {
+	BinExprKind kind;
+	ParsedExpr* left;
+	ParsedExpr* right;
+};
+
 struct ParsedCall {
 	ParsedExpr* callable;
 	size_t argument_count;
@@ -119,6 +136,8 @@ struct ParsedCall {
 };
 
 typedef enum {
+	EXPR_CALL,
+	EXPR_BINARY,
 	EXPR_FUNCTION_REFERENCE,
 } ExprKind;
 
@@ -128,6 +147,7 @@ struct ParsedExpr {
 	union {
 		ParsedCall call;
 		ParsedFunction* function_ref;
+		ParsedBinExpr binary;
 	};
 };
 

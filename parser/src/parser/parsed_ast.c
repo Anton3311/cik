@@ -1,5 +1,23 @@
 #include "parsed_ast.h"
 
+String bin_expr_kind_to_string(BinExprKind kind) {
+	switch (kind) {
+	case BIN_EXPR_ADD:
+		return STR_LIT("+");
+	case BIN_EXPR_SUB:
+		return STR_LIT("-");
+	case BIN_EXPR_MUL:
+		return STR_LIT("*");
+	case BIN_EXPR_DIV:
+		return STR_LIT("/");
+	case BIN_EXPR_MOD:
+		return STR_LIT("%");
+	}
+
+	unreachable();
+	return (String) {};
+}
+
 //
 // AST
 //
@@ -96,6 +114,15 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 	case EXPR_FUNCTION_REFERENCE:
 		printer_begin_struct(printer, "function_ref");
 		printer_string_field(printer, "name", expr->function_ref->name);
+		printer_end_struct(printer);
+		break;
+	case EXPR_BINARY:
+		printer_begin_struct(printer, "binary_expr");
+		printer_string_field(printer, "kind", bin_expr_kind_to_string(expr->binary.kind));
+		printer_field(printer, "left");
+		print_expr(printer, expr->binary.left);
+		printer_field(printer, "right");
+		print_expr(printer, expr->binary.right);
 		printer_end_struct(printer);
 		break;
 	}

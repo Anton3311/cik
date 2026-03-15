@@ -805,7 +805,31 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 	return true;
 }
 
-bool _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
+bool _token_kind_to_bin_op(TokenKind kind, BinExprKind* out_op) {
+	switch (kind) {
+	case TOKEN_PLUS:
+		*out_op = BIN_EXPR_ADD;
+		return true;
+	case TOKEN_MINUS:
+		*out_op = BIN_EXPR_SUB;
+		return true;
+	case TOKEN_ASTERISK:
+		*out_op = BIN_EXPR_MUL;
+		return true;
+	default:
+		return false;
+	}
+
+	return false;
+}
+
+typedef enum {
+	EXPR_PARSE_OK,
+	EXPR_PARSE_NOT_PARSED,
+	EXPR_PARSE_ERROR,
+} ExprParseResult;
+
+ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
 	Token token = preprocessor_view_next(parser->preprocessor);
 	
 	if (token.kind == TOKEN_IDENT) {
@@ -818,7 +842,7 @@ bool _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 		case IDENT_FUNCTION:
 			out_expr->kind = EXPR_FUNCTION_REFERENCE;
 			out_expr->function_ref = entry->function_def;
-			return true;
+			return EXPR_PARSE_OK;
 		case IDENT_VARIABLE:
 			assert_msg(false, "todo");
 		case IDENT_STRUCT:
@@ -829,7 +853,50 @@ bool _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 		unreachable();
 	}
 
-	return false;
+	return EXPR_PARSE_NOT_PARSED;
+}
+
+ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
+	ExprParseResult left_operand_result = _parser_try_parse_bin_expr_operand(parser, out_expr);
+	if (left_operand_result != EXPR_PARSE_OK) {
+		return left_operand_result;
+	}
+
+	while (true) {
+		Token op_token = preprocessor_view_next(parser->preprocessor);
+
+		BinExprKind current_bin_op;
+		if (_token_kind_to_bin_op(op_token.kind, &current_bin_op)) {
+			preprocessor_next_token(parser->preprocessor);
+				
+			ParsedExpr* right_operand = arena_alloc(parser->ast_allocator, ParsedExpr);
+
+			Token first_operand_token = preprocessor_view_next(parser->preprocessor);
+			if (_parser_try_parse_bin_expr_operand(parser, right_operand) != EXPR_PARSE_OK) {
+				diagnostics_report_error(parser->diagnostics,
+						first_operand_token.source_range,
+						STR_LIT("Expected binary expression operand"),
+						NULL);
+				return EXPR_PARSE_ERROR;
+			}
+
+			ParsedExpr* left_operand = arena_alloc(parser->ast_allocator, ParsedExpr);
+			*left_operand = *out_expr;
+
+			*out_expr = (ParsedExpr) {
+				.kind = EXPR_BINARY,
+				.binary = (ParsedBinExpr) {
+					.kind = current_bin_op,
+					.left = left_operand,
+					.right = right_operand,
+				}
+			};
+		} else {
+			break;
+		}
+	}
+
+	return EXPR_PARSE_OK;
 }
 
 bool _parser_parse_pre_declaration_modifiers(Parser* parser,
@@ -1097,10 +1164,8 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 	if (has_type) {
 		return _parser_parse_type_declaration(parser, out_node, &type);
 	} else {
-		ParsedExpr expr = {};
-		if (_parser_try_parse_expr(parser, &expr)) {
+		if (_parser_try_parse_expr(parser, &out_node->expr) == EXPR_PARSE_OK) {
 			out_node->kind = AST_NODE_EXPR;
-			out_node->expr = expr;
 
 			if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
 				return false;

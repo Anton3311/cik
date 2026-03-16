@@ -45,6 +45,11 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 		assert(a->pointer_base_type != NULL);
 		assert(b->pointer_base_type != NULL);
 		return type_equal(a->pointer_base_type, b->pointer_base_type);
+	
+	case PARSED_TYPE_ARRAY:
+		assert(a->array.size == NULL);
+		assert(b->array.size == NULL);
+		return type_equal(a->array.element_type, a->array.element_type);
 	}
 
 	unreachable();
@@ -208,6 +213,17 @@ void ident_storage_end_scope(IdentifierStorage* storage) {
 
 bool _parser_parse_type(Parser* parser, ParsedType* out_type);
 bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope);
+bool _parser_parse_pre_declaration_modifiers(Parser* parser,
+		ParsedType* base_type,
+		ParsedType* out_type,
+		bool duplicate_base_type);
+
+bool _parser_parse_post_declaration_modifiers(Parser* parser,
+		ParsedType* base_type,
+		ParsedType* out_type,
+		bool duplicate_base_type);
+
+
 
 inline SourceString _source_string_from_token(Token token) {
 	return token.string;
@@ -860,12 +876,22 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 			return false;
 		}
 
+		if (!_parser_parse_pre_declaration_modifiers(parser, &param->type, &param->type, true)) {
+			arena_end_temp(temp);
+			return false;
+		}
+
 		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_IDENT) {
 			preprocessor_next_token(parser->preprocessor); // consume param name
 
 			param->name = _source_string_from_token(token);
 			token = preprocessor_view_next(parser->preprocessor);
+		}
+
+		if (!_parser_parse_post_declaration_modifiers(parser, &param->type, &param->type, true)) {
+			arena_end_temp(temp);
+			return false;
 		}
 
 		if (first_param == NULL) {
@@ -1214,6 +1240,65 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 			} else {
 				break;
 			}
+		}
+	}
+
+	return true;
+}
+
+bool _parser_parse_post_declaration_modifiers(Parser* parser,
+		ParsedType* base_type,
+		ParsedType* out_type,
+		bool duplicate_base_type) {
+	if (base_type == out_type) {
+		assert(duplicate_base_type);
+	}
+
+	while (true) {
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_LEFT_BRACKET) {
+			assert(duplicate_base_type);
+
+			preprocessor_next_token(parser->preprocessor);
+
+			Token next_token = preprocessor_view_next(parser->preprocessor);
+			bool has_size_expr = next_token.kind != TOKEN_RIGHT_BRACKET;
+
+			ParsedExpr* size_expr = NULL;
+			if (has_size_expr) {
+				size_expr = arena_alloc(parser->ast_allocator, ParsedExpr);
+
+				if (_parser_try_parse_expr(parser, size_expr) != EXPR_PARSE_OK) {
+					diagnostics_report_error(parser->diagnostics,
+							next_token.source_range,
+							STR_LIT("Expected array size experession"),
+							NULL);
+					return false;
+				}
+			}
+
+			Token closing_bracket = preprocessor_next_token(parser->preprocessor);
+			if (closing_bracket.kind != TOKEN_RIGHT_BRACKET) {
+				TokenKind expected_tokens[] = { TOKEN_RIGHT_BRACKET };
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						closing_bracket,
+						expected_tokens,
+						array_size(expected_tokens));
+				return false;
+			}
+
+			ParsedType* inner_type = arena_alloc(parser->ast_allocator, ParsedType);
+			*inner_type = *base_type;
+
+			*out_type = (ParsedType) {
+				.kind = PARSED_TYPE_ARRAY,
+				.array = {
+					.element_type = inner_type,
+					.size = size_expr,
+				}
+			};
+		} else {
+			break;
 		}
 	}
 

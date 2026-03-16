@@ -91,6 +91,7 @@ typedef enum {
 	PARSED_TYPE_ENUM               = 9,
 
 	PARSED_TYPE_POINTER            = 10,
+	PARSED_TYPE_ARRAY              = 11,
 } ParsedTypeKind;
 
 struct ParsedType {
@@ -107,6 +108,11 @@ struct ParsedType {
 		ParsedStruct* struct_def;
 		ParsedEnum* enum_def;
 		ParsedType* pointer_base_type;
+
+		struct {
+			ParsedType* element_type;
+			ParsedExpr* size;
+		} array;
 	};
 };
 

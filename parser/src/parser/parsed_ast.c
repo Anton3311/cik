@@ -312,6 +312,18 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 		print_type(printer, type->pointer_base_type);
 		printer_end_struct(printer);
 		break;
+	case PARSED_TYPE_ARRAY:
+		printer_begin_struct(printer, "array_type");
+		printer_field(printer, "element_type");
+		print_type(printer, type->array.element_type);
+
+		if (type->array.size) {
+			printer_field(printer, "size");
+			print_expr(printer, type->array.size);
+		}
+
+		printer_end_struct(printer);
+		break;	break;
 	}
 }
 

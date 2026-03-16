@@ -134,7 +134,10 @@ void test_tokenizer_generates_expected_token(TestContext* context) {
 		}
 
 		TokenKind expected_kind = random_tokens.generated_tokens[generated_token_count];
-		assert(token.kind == expected_kind);
+		assert_msg(token.kind == expected_kind,
+				"Expected: '%.*s' Actual: '%.*s'",
+				STR_FMT(token_kind_to_string(expected_kind)),
+				STR_FMT(token_kind_to_string(token.kind)));
 
 		generated_token_count += 1;
 		assert(generated_token_count <= token_count);

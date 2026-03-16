@@ -36,6 +36,19 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_ASTERISK] = STR_LIT("*"),
 	[TOKEN_PERCENT] = STR_LIT("%"),
 
+	[TOKEN_DOUBLE_PLUS] = STR_LIT("++"),
+	[TOKEN_DOUBLE_MINUS] = STR_LIT("--"),
+
+	[TOKEN_ASSIGNMENT_BY_SUM] = STR_LIT("+="),
+	[TOKEN_ASSIGNMENT_BY_DIFFERENCE] = STR_LIT("-="),
+	[TOKEN_ASSIGNMENT_BY_PRODUCT] = STR_LIT("*="),
+	[TOKEN_ASSIGNMENT_BY_QUOTIENT] = STR_LIT("/="),
+	[TOKEN_ASSIGNMENT_BY_REMAINDER] = STR_LIT("%="),
+
+	[TOKEN_ASSIGNMENT_BY_BITWISE_AND] = STR_LIT("&="),
+	[TOKEN_ASSIGNMENT_BY_BITWISE_OR] = STR_LIT("|="),
+	[TOKEN_ASSIGNMENT_BY_BITWISE_XOR] = STR_LIT("^="),
+
 	// Comparison
 	[TOKEN_LESS] = STR_LIT("<"),
 	[TOKEN_GREATER] = STR_LIT(">"),
@@ -51,6 +64,7 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 
 	// Bitwise
 	[TOKEN_BITWISE_XOR] = STR_LIT("^"),
+	[TOKEN_BITWISE_NOT] = STR_LIT("~"),
 
 	// Keywords
 	[TOKEN_KEYWORD_TYPEDEF] = STR_LIT("typedef"),
@@ -344,9 +358,9 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 	case '#':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_HASH);
 	case '*':
-		return _tokenizer_create_single_char_token(tokenizer, TOKEN_ASTERISK);
+		return _tokenizer_try_create_double_char_token(tokenizer, '*', '=', TOKEN_ASTERISK, TOKEN_ASSIGNMENT_BY_PRODUCT);
 	case '%':
-		return _tokenizer_create_single_char_token(tokenizer, TOKEN_PERCENT);
+		return _tokenizer_try_create_double_char_token(tokenizer, '%', '=', TOKEN_PERCENT, TOKEN_ASSIGNMENT_BY_REMAINDER);
 	case ',':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_COMMA);
 	case '.':
@@ -357,22 +371,143 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_COLON);
 	case ';':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_SEMICOLON);
-	case '&':
-		return _tokenizer_try_create_double_char_token(tokenizer, '&', '&', TOKEN_AMPERSAND, TOKEN_LOGIC_AND);
-	case '|':
-		return _tokenizer_try_create_double_char_token(tokenizer, '|', '|', TOKEN_PIPE, TOKEN_LOGIC_OR);
+	case '&': {
+		if (tokenizer->read_position + 1 < tokenizer->source_code.length) {
+			TokenKind kind = TOKEN_COUNT;
+			switch (tokenizer->source_code.v[tokenizer->read_position + 1]) {
+			case '&':
+				kind = TOKEN_LOGIC_AND;
+				break;
+			case '=':
+				kind = TOKEN_ASSIGNMENT_BY_BITWISE_AND;
+				break;
+			default:
+				break;
+			}
+
+			if (kind != TOKEN_COUNT) {
+				Token token = (Token) {
+					.source_range = (SourceRange) {
+						.start = tokenizer->read_position,
+						.end = tokenizer->read_position + 2,
+					},
+					.string = sub_str(tokenizer->source_code, tokenizer->read_position, 2),
+					.kind = kind,
+				};
+
+				tokenizer->read_position += 2;
+				return token;
+			}
+		}
+
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_AMPERSAND);
+	}
+	case '|': {
+		if (tokenizer->read_position + 1 < tokenizer->source_code.length) {
+			TokenKind kind = TOKEN_COUNT;
+			switch (tokenizer->source_code.v[tokenizer->read_position + 1]) {
+			case '|':
+				kind = TOKEN_LOGIC_OR;
+				break;
+			case '=':
+				kind = TOKEN_ASSIGNMENT_BY_BITWISE_OR;
+				break;
+			default:
+				break;
+			}
+
+			if (kind != TOKEN_COUNT) {
+				Token token = (Token) {
+					.source_range = (SourceRange) {
+						.start = tokenizer->read_position,
+						.end = tokenizer->read_position + 2,
+					},
+					.string = sub_str(tokenizer->source_code, tokenizer->read_position, 2),
+					.kind = kind,
+				};
+
+				tokenizer->read_position += 2;
+				return token;
+			}
+		}
+
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_PIPE);
+	}
 	case '^':
-		return _tokenizer_create_single_char_token(tokenizer, TOKEN_BITWISE_XOR);
+		return _tokenizer_try_create_double_char_token(tokenizer, '^', '=', TOKEN_BITWISE_XOR, TOKEN_ASSIGNMENT_BY_BITWISE_XOR);
+	case '~':
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_BITWISE_NOT);
 	case '!':
 		return _tokenizer_try_create_double_char_token(tokenizer, '!', '=', TOKEN_EXCLAMATION_MARK, TOKEN_NOT_EQUAL);
 	case '?':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_QUESTION_MARK);
 	case '/':
-		return _tokenizer_create_single_char_token(tokenizer, TOKEN_FORWARD_SLASH);
-	case '+':
+		return _tokenizer_try_create_double_char_token(tokenizer, '/', '=', TOKEN_FORWARD_SLASH, TOKEN_ASSIGNMENT_BY_QUOTIENT);
+	case '+': {
+		if (tokenizer->read_position + 1 < tokenizer->source_code.length) {
+			TokenKind kind = TOKEN_COUNT;
+			switch (tokenizer->source_code.v[tokenizer->read_position + 1]) {
+			case '+':
+				kind = TOKEN_DOUBLE_PLUS;
+				break;
+			case '=':
+				kind = TOKEN_ASSIGNMENT_BY_SUM;
+				break;
+			default:
+				break;
+			}
+
+			if (kind != TOKEN_COUNT) {
+				Token token = (Token) {
+					.source_range = (SourceRange) {
+						.start = tokenizer->read_position,
+						.end = tokenizer->read_position + 2,
+					},
+					.string = sub_str(tokenizer->source_code, tokenizer->read_position, 2),
+					.kind = kind,
+				};
+
+				tokenizer->read_position += 2;
+				return token;
+			}
+		}
+
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_PLUS);
-	case '-':
-		return _tokenizer_try_create_double_char_token(tokenizer, '-', '>', TOKEN_MINUS, TOKEN_ARROW);
+	}
+	case '-': {
+		if (tokenizer->read_position + 1 < tokenizer->source_code.length) {
+			TokenKind kind = TOKEN_COUNT;
+			switch (tokenizer->source_code.v[tokenizer->read_position + 1]) {
+			case '-':
+				kind = TOKEN_DOUBLE_MINUS;
+				break;
+			case '=':
+				kind = TOKEN_ASSIGNMENT_BY_DIFFERENCE;
+				break;
+			case '>':
+				kind = TOKEN_ARROW;
+				break;
+			default:
+				break;
+			}
+
+			if (kind != TOKEN_COUNT) {
+				Token token = (Token) {
+					.source_range = (SourceRange) {
+						.start = tokenizer->read_position,
+						.end = tokenizer->read_position + 2,
+					},
+					.string = sub_str(tokenizer->source_code, tokenizer->read_position, 2),
+					.kind = kind,
+				};
+
+				tokenizer->read_position += 2;
+				return token;
+			}
+		}
+
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_MINUS);
+	}
 
 	case '(':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_LEFT_PAREN);

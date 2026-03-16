@@ -10,9 +10,9 @@ static TestCase source_info_tests[] = {
 };
 
 static TestCase tokenizer_tests[] = { 
+	test(test_tokenizer_generates_expected_token),
 	test(test_token_has_valid_string_represenation),
 	test(test_token_source_range_matches_token_string),
-	test(test_tokenizer_generates_expected_token),
 };
 
 static TestCase preprocessor_tests[] = {

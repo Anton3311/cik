@@ -698,7 +698,13 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		}
 
 		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
-		assert(entry);
+		if (entry == NULL) {
+			diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					STR_LIT("Use of undeclared identifier"),
+					NULL);
+			return PARSE_TYPE_ERROR;
+		}
 
 		switch (entry->kind) {
 		case IDENT_FUNCTION:
@@ -1073,7 +1079,13 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 		}
 
 		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
-		assert(entry);
+		if (entry == NULL) {
+			diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					STR_LIT("Use of undeclared identifier"),
+					NULL);
+			return EXPR_PARSE_ERROR;
+		}
 
 		switch (entry->kind) {
 		case IDENT_FUNCTION:

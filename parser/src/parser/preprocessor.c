@@ -252,11 +252,55 @@ size_t macro_find_param_by_name(const MacroDefinition* macro, String param_name)
 	return SIZE_MAX;
 }
 
+typedef enum {
+	DIRECTIVE_INCLUDE,
+	DIRECTIVE_DEFINE,
+	DIRECTIVE_UNDEF,
+	DIRECTIVE_IF,
+	DIRECTIVE_ELIF,
+	DIRECTIVE_ELSE,
+	DIRECTIVE_ENDIF,
+	DIRECTIVE_IFDEF,
+	DIRECTIVE_IFNDEF,
+} DirectiveKind;
+
 void preprocessor_skip_derective(Preprocessor* state) {
 	Token next_token = tokenizer_next_token(&state->tokenizer);
 	assert(next_token.kind == TOKEN_IDENT);
 
+	DirectiveKind directive_kind;
 	if (str_equal(next_token.string, STR_LIT("include"))) {
+		directive_kind = DIRECTIVE_INCLUDE;
+	} else if (str_equal(next_token.string, STR_LIT("define"))) {
+		directive_kind = DIRECTIVE_DEFINE;
+	} else if (str_equal(next_token.string, STR_LIT("undef"))) {
+		directive_kind = DIRECTIVE_UNDEF;
+	} else if (str_equal(next_token.string, STR_LIT("if"))) {
+		directive_kind = DIRECTIVE_IF;
+	} else if (str_equal(next_token.string, STR_LIT("elif"))) {
+		directive_kind = DIRECTIVE_ELIF;
+	} else if (str_equal(next_token.string, STR_LIT("else"))) {
+		directive_kind = DIRECTIVE_ELSE;
+	} else if (str_equal(next_token.string, STR_LIT("endif"))) {
+		directive_kind = DIRECTIVE_ENDIF;
+	} else if (str_equal(next_token.string, STR_LIT("ifdef"))) {
+		directive_kind = DIRECTIVE_IFDEF;
+	} else if (str_equal(next_token.string, STR_LIT("ifndef"))) {
+		directive_kind = DIRECTIVE_IFNDEF;
+	} else {
+		StringBuilder builder = { .arena = state->diagnostics->allocator };
+		str_builder_append(&builder, STR_LIT("Unhandled preprocessor directive type: "));
+		str_builder_append(&builder, next_token.string);
+
+		diagnostics_report_error(state->diagnostics,
+				next_token.source_range,
+				builder.string,
+				NULL);
+		return;
+	}
+
+	switch (directive_kind) {
+	case DIRECTIVE_INCLUDE: {
 		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
 
 		char opening_quote = state->tokenizer.source_code.v[state->tokenizer.read_position];
@@ -276,22 +320,15 @@ void preprocessor_skip_derective(Preprocessor* state) {
 					NULL);
 			return;
 		}
-
-		// TODO: Use parsed include statements
-	} else if (str_equal(next_token.string, STR_LIT("define"))) {
+		break;
+	}
+	case DIRECTIVE_DEFINE: {
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
 			macro_table_append(&state->macro_table, &macro);
 		}
-	} else {
-		StringBuilder builder = { .arena = state->diagnostics->allocator };
-		str_builder_append(&builder, STR_LIT("Unhandled preprocessor derective type: "));
-		str_builder_append(&builder, next_token.string);
-
-		diagnostics_report_error(state->diagnostics,
-				next_token.source_range,
-				builder.string,
-				NULL);
+		break;
+	}
 	}
 }
 

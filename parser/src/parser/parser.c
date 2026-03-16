@@ -100,7 +100,14 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString n
 	if (existing_entry_index == SIZE_MAX) {
 		assert(storage->count < storage->capacity);
 
-		entry = arena_alloc(storage->allocator, IdentifierEntry);
+		if (storage->next_free_entry) {
+			// Reuse a free entry
+			entry = storage->next_free_entry;
+			storage->next_free_entry = storage->next_free_entry->next_in_scope;
+		} else {
+			entry = arena_alloc(storage->allocator, IdentifierEntry);
+		}
+
 		memset(entry, 0, sizeof(*entry));
 
 		assert(storage->entries[storage->count] == NULL);

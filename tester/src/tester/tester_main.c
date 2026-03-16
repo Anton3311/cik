@@ -47,6 +47,7 @@ static TestCase parser_tests[] = {
 	test(test_parse_variable_declaration),
 	test(test_parse_simple_bin_expr),
 	test(test_bin_op_precedence),
+	test(test_parse_variable_ref_expr),
 };
 
 static TestSuite s_test_suites[] = {

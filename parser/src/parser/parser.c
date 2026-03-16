@@ -1100,7 +1100,10 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 			out_expr->function_ref = entry->function_def;
 			return EXPR_PARSE_OK;
 		case IDENT_VARIABLE:
-			assert_msg(false, "todo");
+			out_expr->kind = EXPR_VARIABLE_REFERENCE;
+			out_expr->variable_ref = entry->variable;
+			return EXPR_PARSE_OK;
+			return EXPR_PARSE_OK;
 		case IDENT_STRUCT:
 		case IDENT_ENUM:
 			unreachable();

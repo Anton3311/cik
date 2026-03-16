@@ -45,5 +45,6 @@ void test_parse_primitive_integer_types(TestContext* context);
 void test_parse_variable_declaration(TestContext* context);
 void test_parse_simple_bin_expr(TestContext* context);
 void test_bin_op_precedence(TestContext* context);
+void test_parse_variable_ref_expr(TestContext* context);
 
 #endif

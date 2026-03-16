@@ -981,3 +981,30 @@ void test_bin_op_precedence(TestContext* context) {
 	assert(product_expr->binary.left->kind == EXPR_INTEGER_LITERAL);
 	assert(product_expr->binary.right->kind == EXPR_INTEGER_LITERAL);
 }
+
+void test_parse_variable_ref_expr(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("int a; a + a;"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* first_node = ast.root_nodes.first;
+	ParsedNode* second_node = first_node->next;
+
+	assert(first_node->kind == AST_NODE_VARIABLE);
+	assert(second_node->kind == AST_NODE_EXPR);
+
+	ParsedVariable* variable = &first_node->variable;
+
+	ParsedExpr* expr = &second_node->expr;
+	assert(expr->kind == EXPR_BINARY);
+
+	assert(expr->binary.left->kind == EXPR_VARIABLE_REFERENCE);
+	assert(expr->binary.left->variable_ref == variable);
+	assert(expr->binary.right->kind == EXPR_VARIABLE_REFERENCE);
+	assert(expr->binary.right->variable_ref == variable);
+}

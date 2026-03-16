@@ -157,6 +157,7 @@ typedef enum {
 	EXPR_CALL,
 	EXPR_BINARY,
 	EXPR_FUNCTION_REFERENCE,
+	EXPR_VARIABLE_REFERENCE,
 	EXPR_INTEGER_LITERAL,
 } ExprKind;
 
@@ -166,6 +167,7 @@ struct ParsedExpr {
 	union {
 		ParsedCall call;
 		ParsedFunction* function_ref;
+		ParsedVariable* variable_ref;
 		ParsedBinExpr binary;
 		ParsedIntegerLiteral int_literal;
 	};

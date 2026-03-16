@@ -147,6 +147,11 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		printer_string_field(printer, "name", expr->function_ref->name);
 		printer_end_struct(printer);
 		break;
+	case EXPR_VARIABLE_REFERENCE:
+		printer_begin_struct(printer, "variable_ref");
+		printer_string_field(printer, "name", expr->variable_ref->name);
+		printer_end_struct(printer);
+		break;
 	case EXPR_BINARY:
 		printer_begin_struct(printer, "binary_expr");
 		printer_string_field(printer, "kind", bin_op_kind_to_string(expr->binary.op));

@@ -6,9 +6,13 @@
 void test_text_start_position_to_source_location(TestContext* context);
 void test_last_line_postion_to_source_location(TestContext* context);
 
+
+
 void test_token_has_valid_string_represenation(TestContext* context);
 void test_token_source_range_matches_token_string(TestContext* context);
 void test_tokenizer_generates_expected_token(TestContext* context);
+
+
 
 void test_non_function_style_macro_expansion(TestContext* context);
 void test_expand_function_style_macro_with_two_params(TestContext* context);
@@ -23,6 +27,10 @@ void test_assert_macro_expantion(TestContext* context);
 
 void test_macro_string_operator(TestContext* context);
 void test_macro_string_operator_with_invalid_param_name_fails(TestContext* context);
+
+void test_simple_if_elif_directives(TestContext* context);
+
+
 
 void test_parse_type_def_of_primitive_type(TestContext* context);
 void test_parse_type_def_of_struct_def(TestContext* context);

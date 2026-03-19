@@ -28,6 +28,7 @@ static TestCase preprocessor_tests[] = {
 	test(test_assert_macro_expantion),
 	test(test_macro_string_operator),
 	test(test_macro_string_operator_with_invalid_param_name_fails),
+	test(test_simple_if_elif_directives),
 };
 
 static TestCase parser_tests[] = {

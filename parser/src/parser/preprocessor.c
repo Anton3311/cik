@@ -264,41 +264,110 @@ typedef enum {
 	DIRECTIVE_IFNDEF,
 } DirectiveKind;
 
-void preprocessor_skip_derective(Preprocessor* state) {
-	Token next_token = tokenizer_next_token(&state->tokenizer);
-	assert(next_token.kind == TOKEN_IDENT);
+const DirectiveKind INVALID_DIRECTIVE = -1;
 
-	DirectiveKind directive_kind;
-	if (str_equal(next_token.string, STR_LIT("include"))) {
-		directive_kind = DIRECTIVE_INCLUDE;
-	} else if (str_equal(next_token.string, STR_LIT("define"))) {
-		directive_kind = DIRECTIVE_DEFINE;
-	} else if (str_equal(next_token.string, STR_LIT("undef"))) {
-		directive_kind = DIRECTIVE_UNDEF;
-	} else if (str_equal(next_token.string, STR_LIT("if"))) {
-		directive_kind = DIRECTIVE_IF;
-	} else if (str_equal(next_token.string, STR_LIT("elif"))) {
-		directive_kind = DIRECTIVE_ELIF;
-	} else if (str_equal(next_token.string, STR_LIT("else"))) {
-		directive_kind = DIRECTIVE_ELSE;
-	} else if (str_equal(next_token.string, STR_LIT("endif"))) {
-		directive_kind = DIRECTIVE_ENDIF;
-	} else if (str_equal(next_token.string, STR_LIT("ifdef"))) {
-		directive_kind = DIRECTIVE_IFDEF;
-	} else if (str_equal(next_token.string, STR_LIT("ifndef"))) {
-		directive_kind = DIRECTIVE_IFNDEF;
-	} else {
-		StringBuilder builder = { .arena = state->diagnostics->allocator };
-		str_builder_append(&builder, STR_LIT("Unhandled preprocessor directive type: "));
-		str_builder_append(&builder, next_token.string);
-
-		diagnostics_report_error(state->diagnostics,
-				next_token.source_range,
-				builder.string,
-				NULL);
-		return;
+DirectiveKind _directive_kind_from_string(String string) {
+	if (str_equal(string, STR_LIT("include"))) {
+		return DIRECTIVE_INCLUDE;
+	} else if (str_equal(string, STR_LIT("define"))) {
+		return DIRECTIVE_DEFINE;
+	} else if (str_equal(string, STR_LIT("undef"))) {
+		return DIRECTIVE_UNDEF;
+	} else if (str_equal(string, STR_LIT("if"))) {
+		return DIRECTIVE_IF;
+	} else if (str_equal(string, STR_LIT("elif"))) {
+		return DIRECTIVE_ELIF;
+	} else if (str_equal(string, STR_LIT("else"))) {
+		return DIRECTIVE_ELSE;
+	} else if (str_equal(string, STR_LIT("endif"))) {
+		return DIRECTIVE_ENDIF;
+	} else if (str_equal(string, STR_LIT("ifdef"))) {
+		return DIRECTIVE_IFDEF;
+	} else if (str_equal(string, STR_LIT("ifndef"))) {
+		return DIRECTIVE_IFNDEF;
 	}
 
+	return INVALID_DIRECTIVE;
+}
+
+bool _preprocessor_parse_condition(Preprocessor* state) {
+	Token predicate_token = tokenizer_next_token(&state->tokenizer);
+	return !str_equal(predicate_token.string, STR_LIT("0"));
+}
+
+typedef struct {
+	DirectiveKind next_directive;
+} DirectiveQueue;
+
+inline void _enqueue_directive(DirectiveQueue* queue, DirectiveKind directive) {
+	assert(queue->next_directive == INVALID_DIRECTIVE);
+	queue->next_directive = directive;
+}
+
+inline DirectiveKind _dequeue_directive(DirectiveQueue* queue) {
+	assert(queue->next_directive != INVALID_DIRECTIVE);
+	DirectiveKind directive = queue->next_directive;
+	queue->next_directive = INVALID_DIRECTIVE;
+	return directive;
+}
+
+void _preprocessor_skip_branch_body(Preprocessor* state, DirectiveQueue* queue) {
+	uint32_t branch_depth = state->conditional_directive_depth;
+	state->conditional_directive_depth += 1;
+
+	while (state->conditional_directive_depth > branch_depth) {
+		Token token = tokenizer_next_token(&state->tokenizer);
+
+		if (token.kind == TOKEN_EOF) {
+			TokenKind expected_tokens[] = { TOKEN_HASH };
+			diagnostics_report_unexpected_token(state->diagnostics,
+					token,
+					expected_tokens,
+					array_size(expected_tokens));
+			break;
+		}
+
+		if (token.kind != TOKEN_HASH) {
+			continue;
+		}
+
+		// we have a directive
+		Token directive_name_token = tokenizer_view_next(&state->tokenizer);
+		DirectiveKind inner_directive_kind = _directive_kind_from_string(directive_name_token.string);
+		if (inner_directive_kind == INVALID_DIRECTIVE) {
+			diagnostics_report_error(state->diagnostics,
+					directive_name_token.source_range,
+					STR_LIT("Unknown preprocessor directive"),
+					NULL);
+			continue;
+		}
+
+		switch (inner_directive_kind) {
+			case DIRECTIVE_IF:
+			case DIRECTIVE_IFDEF:
+			case DIRECTIVE_IFNDEF:
+				tokenizer_next_token(&state->tokenizer);
+				state->conditional_directive_depth += 1;
+				break;
+			case DIRECTIVE_ENDIF:
+				tokenizer_next_token(&state->tokenizer);
+				state->conditional_directive_depth -= 1;
+				break;
+			case DIRECTIVE_ELIF:
+				tokenizer_next_token(&state->tokenizer);
+				state->conditional_directive_depth -= 1;
+
+				_enqueue_directive(queue, DIRECTIVE_ELIF);
+				break;
+			default:
+				break;
+		}
+	}
+
+	assert(branch_depth == state->conditional_directive_depth);
+}
+
+void _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_kind, DirectiveQueue* queue) {
 	switch (directive_kind) {
 	case DIRECTIVE_INCLUDE: {
 		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
@@ -329,6 +398,75 @@ void preprocessor_skip_derective(Preprocessor* state) {
 		}
 		break;
 	}
+	case DIRECTIVE_IF: {
+		state->current_condition_direction_predicate_value = _preprocessor_parse_condition(state);
+		if (!state->current_condition_direction_predicate_value) {
+			_preprocessor_skip_branch_body(state, queue);
+		} else {
+			state->conditional_directive_depth += 1;
+		}
+
+		break;
+	}
+	case DIRECTIVE_ELIF: {
+		bool condition_value = _preprocessor_parse_condition(state);
+		state->current_condition_direction_predicate_value = !state->current_condition_direction_predicate_value
+			&& condition_value;
+
+		if (!state->current_condition_direction_predicate_value) {
+			_preprocessor_skip_branch_body(state, queue);
+		} else {
+			state->conditional_directive_depth += 1;
+		}
+
+		break;
+	}
+	case DIRECTIVE_ENDIF: {
+		assert(state->conditional_directive_depth > 0);
+		state->conditional_directive_depth -= 1;
+		break;
+	}
+	}
+}
+
+void preprocessor_skip_directive(Preprocessor* state) {
+	Token hash_token = tokenizer_view_next(&state->tokenizer);
+	if (hash_token.kind != TOKEN_HASH) {
+		return;
+	}
+
+	tokenizer_reset_to_token(&state->tokenizer, hash_token);
+
+	Token directive_name_token = tokenizer_next_token(&state->tokenizer);
+	if (directive_name_token.kind != TOKEN_IDENT) {
+		TokenKind expected_tokens[] = { TOKEN_IDENT };
+		diagnostics_report_unexpected_token(state->diagnostics,
+				directive_name_token,
+				expected_tokens,
+				array_size(expected_tokens));
+		return;
+	}
+
+	DirectiveKind directive_kind = _directive_kind_from_string(directive_name_token.string);
+	if (directive_kind == INVALID_DIRECTIVE) {
+		StringBuilder builder = { .arena = state->diagnostics->allocator };
+		str_builder_append(&builder, STR_LIT("Unknown preprocessor directive type: "));
+		str_builder_append(&builder, directive_name_token.string);
+
+		diagnostics_report_error(state->diagnostics,
+				directive_name_token.source_range,
+				builder.string,
+				NULL);
+		return;
+	}
+
+	DirectiveQueue queue = { .next_directive = INVALID_DIRECTIVE };
+	_enqueue_directive(&queue, directive_kind);
+
+	// `_preprocessor_parse_directive` can also push to the queue, so do in a loop
+	while (queue.next_directive != INVALID_DIRECTIVE) {
+		DirectiveKind directive_kind = _dequeue_directive(&queue);
+		_preprocessor_parse_directive(state, directive_kind, &queue);
 	}
 }
 
@@ -683,12 +821,17 @@ Token preprocessor_next_token(Preprocessor* state) {
 		}
 		
 		if (next_token.kind == TOKEN_COUNT) {
-			next_token = tokenizer_next_token(&state->tokenizer);
+			next_token = tokenizer_view_next(&state->tokenizer);
+
+			if (next_token.kind == TOKEN_HASH) {
+				preprocessor_skip_directive(state);
+				continue;
+			} else {
+				tokenizer_reset_to_token(&state->tokenizer, next_token);
+			}
 		}
 
-		if (next_token.kind == TOKEN_HASH) {
-			preprocessor_skip_derective(state);
-		} else if (next_token.kind == TOKEN_IDENT) {
+		if (next_token.kind == TOKEN_IDENT) {
 			const MacroDefinition* macro = macro_table_find(&state->macro_table, next_token.string);
 			if (macro == NULL) {
 				return next_token;

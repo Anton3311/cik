@@ -55,6 +55,9 @@ typedef struct {
 
 	bool has_pending_next_token;
 	Token pending_next_token;
+
+	uint32_t conditional_directive_depth;
+	bool current_condition_direction_predicate_value;
 } Preprocessor;
 
 typedef enum {
@@ -114,7 +117,7 @@ void preprocessor_init(Preprocessor* state,
 		Arena* temp_allocator,
 		Arena* generated_tokens_allocator);
 
-void preprocessor_skip_derective(Preprocessor* state);
+void preprocessor_skip_directive(Preprocessor* state);
 bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token);
 
 // NOTE: Returns null in case a call to a macro doesn't produce any tokens

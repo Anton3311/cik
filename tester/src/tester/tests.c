@@ -506,6 +506,39 @@ void test_macro_string_operator_with_invalid_param_name_fails(TestContext* conte
 	assert(diagnostics.first->end_line + 1 == 1);
 }
 
+void test_simple_if_elif_directives(TestContext* context) {
+	String source_code = STR_LIT(
+			"#if 0\n"
+			"hello\n"
+			"#elif 1\n"
+			"world\n"
+			"#endif\n"
+	);
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Token* tokens = arena_alloc_array(context->temp_arena, Token, 0);
+	size_t token_count = 0;
+
+	while (true) {
+		Token token = preprocessor_next_token(&preprocessor);
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+
+		*arena_alloc(context->temp_arena, Token) = token;
+		token_count += 1;
+	}
+
+	assert(token_count == 1);
+	assert(tokens[0].kind == TOKEN_IDENT);
+	assert(str_equal(tokens[0].string, STR_LIT("world")));
+}
+
 //
 // Parser
 //

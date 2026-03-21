@@ -32,6 +32,7 @@ void test_macro_string_operator_with_invalid_param_name_fails(TestContext* conte
 void test_simple_if_elif_directives(TestContext* context);
 void test_parsing_of_non_function_style_macro_with_paren_as_first_token_in_stream(TestContext* context);
 void test_error_directive(TestContext* context);
+void test_multi_line_define(TestContext* context);
 
 
 

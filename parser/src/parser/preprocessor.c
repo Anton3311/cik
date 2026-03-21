@@ -123,17 +123,19 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 	size_t token_hint_count = 0;
 
 	SourceRange macro_name_range = source_range_from_sub_string(state->tokenizer.source_code, macro->name);
-	uint32_t macro_definition_line = line_info_pos_to_source_location(&state->line_info, macro_name_range.start).line;
+	uint32_t expected_token_line = line_info_pos_to_source_location(&state->line_info, macro_name_range.start).line;
 
-	while (true) {
-		if (tokenizer_is_end(&state->tokenizer)) {
-			break;
-		}
-
+	while (!tokenizer_is_end(&state->tokenizer)) {
 		Token token = tokenizer_view_next(&state->tokenizer);
 		uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line;
-		if (token_line == macro_definition_line) {
+		if (token_line == expected_token_line) {
 			MacroTokenHint token_hint = { .kind = MACRO_TOKEN_HINT_NONE };
+
+			if (token.kind == TOKEN_BACKWARD_SLASH) {
+				expected_token_line += 1;
+				tokenizer_reset_to_token(&state->tokenizer, token);
+				continue;
+			}
 
 			switch (token.kind) {
 			case TOKEN_IDENT:
@@ -209,7 +211,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				token_hint_count += 1;
 			}
 
-			// Token is one the same line as the macro definition,
+			// Token is on the same line as the macro definition,
 			// so it belongs to the token stream of this macro
 			*arena_alloc(state->allocator, Token) = token;
 			macro->token_count += 1;

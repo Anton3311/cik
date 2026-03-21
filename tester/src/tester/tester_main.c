@@ -34,6 +34,7 @@ static TestCase preprocessor_tests[] = {
 	test(test_simple_if_elif_directives),
 	test(test_parsing_of_non_function_style_macro_with_paren_as_first_token_in_stream),
 	test(test_error_directive),
+	test(test_multi_line_define),
 };
 
 static TestCase parser_tests[] = {

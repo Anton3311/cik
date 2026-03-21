@@ -604,6 +604,40 @@ void test_error_directive(TestContext* context) {
 	assert(str_equal(diagnostics.first->message, STR_LIT("Error message")));
 }
 
+void test_multi_line_define(TestContext* context) {
+	String source_code = STR_LIT(
+		"#define macro hello\\\n"
+		"world\n"
+		"macro"
+	);
+
+	String expected_source_code = STR_LIT("hello\nworld");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Tokenizer expected_source_tokenizer = (Tokenizer) {
+		.source_code = expected_source_code,
+	};
+
+	while (true) {
+		Token token = preprocessor_next_token(&preprocessor);
+		Token expected_token = tokenizer_next_token(&expected_source_tokenizer);
+
+		printf("%.*s %.*s\n", STR_FMT(token.string), STR_FMT(expected_token.string));
+
+		assert(token.kind == expected_token.kind);
+		assert(str_equal(token.string, expected_token.string));
+
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+	}
+}
+
 //
 // Parser
 //

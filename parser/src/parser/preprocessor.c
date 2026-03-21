@@ -1,5 +1,7 @@
 #include "preprocessor.h"
 
+#include "parser/parse_tools.h"
+
 void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
 	assert(table->count < table->capacity);
 
@@ -357,45 +359,126 @@ DirectiveKind _directive_kind_from_string(String string) {
 	return INVALID_DIRECTIVE;
 }
 
-bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
-	Token predicate_token = tokenizer_next_token(&state->tokenizer);
-	if (str_equal(predicate_token.string, STR_LIT("defined"))) {
-		Token maybe_paren = tokenizer_view_next(&state->tokenizer);
+typedef enum {
+	EXPR_IDENT,
+	EXPR_INT_LITERAL,
+	EXPR_OP_DEFINED,
+} ExprKind;
 
-		bool is_wrapped_in_parens = false;
-		if (maybe_paren.kind == TOKEN_LEFT_PAREN) {
-			tokenizer_reset_to_token(&state->tokenizer, maybe_paren);
-			is_wrapped_in_parens = true;
-		}
+typedef struct Expr Expr;
+struct Expr {
+	ExprKind kind;
+	SourceRange source_range;
 
-		Token macro_name = tokenizer_next_token(&state->tokenizer);
-		if (macro_name.kind != TOKEN_IDENT) {
-			TokenKind expected_tokens[] = { TOKEN_IDENT };
+	union {
+		struct {
+			uint64_t value;
+		} integer_literal;
+
+		struct {
+			Expr* macro;
+		} op_defined;
+
+		Token ident;
+	};
+};
+
+Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
+	Token token = tokenizer_view_next(&state->tokenizer);
+
+	if (token.kind == TOKEN_LEFT_PAREN) {
+		tokenizer_reset_to_token(&state->tokenizer, token);
+
+		Expr* expr = _preprocessor_parse_expr(state, allocator);
+
+		Token closing_paren = tokenizer_next_token(&state->tokenizer);
+		if (closing_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
 			diagnostics_report_unexpected_token(state->diagnostics,
-					macro_name,
+					closing_paren,
 					expected_tokens,
 					array_size(expected_tokens));
-			return false;
+			return NULL;
 		}
 
-		if (is_wrapped_in_parens) {
-			Token closing_paren = tokenizer_next_token(&state->tokenizer);
-			if (closing_paren.kind != TOKEN_RIGHT_PAREN) {
-				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
-				diagnostics_report_unexpected_token(state->diagnostics,
-						closing_paren,
-						expected_tokens,
-						array_size(expected_tokens));
-				return false;
+		return expr;
+	} else if (token.kind == TOKEN_EXCLAMATION_MARK) {
+		tokenizer_reset_to_token(&state->tokenizer, token);
+		assert(false);
+	} else if (token.kind == TOKEN_IDENT) {
+		tokenizer_reset_to_token(&state->tokenizer, token);
+
+		if (str_equal(token.string, STR_LIT("defined"))) {
+			Expr* macro = _preprocessor_parse_expr(state, allocator);
+			if (!macro) {
+				return NULL;
 			}
+
+			Expr* expr = arena_alloc(allocator, Expr);
+			expr->kind = EXPR_OP_DEFINED;
+			expr->source_range = (SourceRange) {
+				.start = token.source_range.start,
+				.end = macro->source_range.end,
+			};
+			expr->op_defined.macro = macro;
+			return expr;
+		} else if (is_digit(token.string.v[0])) {
+			uint64_t value = 0;
+			bool result = parse_integer_literal(state->diagnostics, token, &value);
+
+			if (!result) {
+				return NULL;
+			}
+
+			Expr* expr = arena_alloc(allocator, Expr);
+			expr->kind = EXPR_INT_LITERAL;
+			expr->integer_literal.value = value;
+
+			return expr;
+		} else {
+			Expr* expr = arena_alloc(allocator, Expr);
+			expr->kind = EXPR_IDENT;
+			expr->ident = token;
+			expr->source_range = token.source_range;
+			return expr;
 		}
 
-		bool has_macro = macro_table_find(&state->macro_table, macro_name.string) != NULL;
-		*out_result = has_macro;
-		return true;
 	}
 
-	*out_result = !str_equal(predicate_token.string, STR_LIT("0"));
+	return NULL;
+}
+
+bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
+	assert(expr);
+
+	switch (expr->kind) {
+	case EXPR_IDENT:
+		break;
+	case EXPR_INT_LITERAL:
+		return expr->integer_literal.value > 0;
+	case EXPR_OP_DEFINED: {
+		assert(expr->op_defined.macro->kind == EXPR_IDENT);
+		const MacroDefinition* macro = macro_table_find(&state->macro_table, expr->op_defined.macro->ident.string);
+		return macro != NULL;
+	}
+	}
+	
+	unreachable();
+	return false;
+}
+
+bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
+	ArenaRegion temp = arena_begin_temp(state->temp_allocator);
+	Expr* expr = _preprocessor_parse_expr(state, state->temp_allocator);
+
+	if (!expr) {
+		arena_end_temp(temp);
+		return false;
+	}
+
+	*out_result = _expr_to_boolean(state, expr);
+
+	arena_end_temp(temp);
 	return true;
 }
 

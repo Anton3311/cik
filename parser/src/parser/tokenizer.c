@@ -325,21 +325,29 @@ bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
 	return false;
 }
 
+Token _tokenizer_create_eof_token(Tokenizer* tokenizer) {
+	return (Token) {
+		.source_range = (SourceRange) {
+			.start = tokenizer->read_position,
+			.end = tokenizer->read_position,
+		},
+		.string = (String) {},
+		.kind = TOKEN_EOF,
+	};
+}
+
 Token tokenizer_next_token(Tokenizer* tokenizer) {
 	char32_t current_char = 0;
 	while (true) {
 		if (tokenizer_is_end(tokenizer)) {
-			return (Token) {
-				.source_range = (SourceRange) {
-					.start = tokenizer->read_position,
-					.end = tokenizer->read_position,
-				},
-				.string = (String) {},
-				.kind = TOKEN_EOF,
-			};
+			return _tokenizer_create_eof_token(tokenizer);
 		}
 
 		while (true) {
+			if (tokenizer_is_end(tokenizer)) {
+				return _tokenizer_create_eof_token(tokenizer);
+			}
+
 			bool skipped = _tokenizer_try_skip_comment(tokenizer);
 			if (!skipped) {
 				break;

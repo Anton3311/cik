@@ -565,9 +565,9 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 void preprocessor_skip_directive(Preprocessor* state) {
 	ParsedDirective directive = {};
 	bool result = _preprocessor_parse_directive_statement(state, &directive);
-	assert(result);
-
-	_preprocessor_parse_directive(state, directive);
+	if (result) {
+		_preprocessor_parse_directive(state, directive);
+	}
 }
 
 bool _preprocessor_try_expand_macro_argument(Preprocessor* state, Token* out_token) {

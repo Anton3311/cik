@@ -56,9 +56,14 @@ IntegerLiteralInfo int_literal_info_from_token(Token token) {
 		}
 
 		if (!prefix_parsed) {
-			format = INT_LIT_FMT_OCTAL;
-			literal_string.v += 1;
-			literal_string.length -= 1;
+
+			// NOTE: Avoid discarding the leading zero, if the literal is just a zero
+			if (token.string.length > 1) {
+				format = INT_LIT_FMT_OCTAL;
+				literal_string.v += 1;
+				literal_string.length -= 1;
+			}
+
 			prefix_parsed = true;
 		}
 

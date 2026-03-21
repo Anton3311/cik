@@ -562,11 +562,35 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 	return true;
 }
 
+void _preprocessor_skip_until_newline(Preprocessor* state) {
+	uint32_t initial_line = line_info_pos_to_source_location(&state->line_info, state->tokenizer.read_position).line;
+
+	while (true) {
+		Token token = tokenizer_view_next(&state->tokenizer);
+		uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line; 
+
+		if (token_line > initial_line) {
+			break;
+		} else if (token.kind == TOKEN_EOF) {
+			// Stop only if the EOF token is on this line
+			tokenizer_reset_to_token(&state->tokenizer, token);
+			break;
+		} else {
+			tokenizer_reset_to_token(&state->tokenizer, token);
+		}
+	}
+}
+
 void preprocessor_skip_directive(Preprocessor* state) {
 	ParsedDirective directive = {};
-	bool result = _preprocessor_parse_directive_statement(state, &directive);
-	if (result) {
-		_preprocessor_parse_directive(state, directive);
+	if (!_preprocessor_parse_directive_statement(state, &directive)) {
+		_preprocessor_skip_until_newline(state);
+		return;
+	}
+
+	if (!_preprocessor_parse_directive(state, directive)) {
+		_preprocessor_skip_until_newline(state);
+		return;
 	}
 }
 

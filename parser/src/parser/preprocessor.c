@@ -363,7 +363,15 @@ typedef enum {
 	EXPR_IDENT,
 	EXPR_INT_LITERAL,
 	EXPR_OP_DEFINED,
+	EXPR_UNARY,
 } ExprKind;
+
+typedef enum {
+	UNARY_NEGATE,
+	UNARY_PLUS,
+
+	UNARY_LOGICAL_NOT,
+} UnaryOp;
 
 typedef struct Expr Expr;
 struct Expr {
@@ -378,6 +386,11 @@ struct Expr {
 		struct {
 			Expr* macro;
 		} op_defined;
+
+		struct {
+			UnaryOp op;
+			Expr* operand;
+		} unary;
 
 		Token ident;
 	};
@@ -402,9 +415,35 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
 		}
 
 		return expr;
-	} else if (token.kind == TOKEN_EXCLAMATION_MARK) {
+	} else if (token.kind == TOKEN_EXCLAMATION_MARK || token.kind == TOKEN_MINUS || token.kind == TOKEN_PLUS) {
 		tokenizer_reset_to_token(&state->tokenizer, token);
-		assert(false);
+
+		UnaryOp op = -1;
+		switch (token.kind) {
+		case TOKEN_EXCLAMATION_MARK:
+			op = UNARY_LOGICAL_NOT;
+			break;
+		case TOKEN_PLUS:
+			op = UNARY_PLUS;
+			break;
+		case TOKEN_MINUS:
+			op = UNARY_NEGATE;
+			break;
+		default:
+			unreachable();
+		}
+
+		Expr* operand = _preprocessor_parse_expr(state, allocator);
+
+		Expr* expr = arena_alloc(allocator, Expr);
+		expr->kind = EXPR_UNARY;
+		expr->unary.op = op;
+		expr->unary.operand = operand;
+		expr->source_range = (SourceRange) {
+			.start = token.source_range.start,
+			.end = operand->source_range.end,
+		};
+		return expr;
 	} else if (token.kind == TOKEN_IDENT) {
 		tokenizer_reset_to_token(&state->tokenizer, token);
 
@@ -442,7 +481,6 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
 			expr->source_range = token.source_range;
 			return expr;
 		}
-
 	}
 
 	return NULL;
@@ -456,6 +494,19 @@ bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
 		break;
 	case EXPR_INT_LITERAL:
 		return expr->integer_literal.value > 0;
+	case EXPR_UNARY: {
+		bool result = _expr_to_boolean(state, expr->unary.operand);
+
+		switch (expr->unary.op) {
+		case UNARY_PLUS:
+		case UNARY_NEGATE:
+			assert_msg(false, "todo");
+		case UNARY_LOGICAL_NOT:
+			return !result;
+		}
+
+		unreachable();
+	}
 	case EXPR_OP_DEFINED: {
 		assert(expr->op_defined.macro->kind == EXPR_IDENT);
 		const MacroDefinition* macro = macro_table_find(&state->macro_table, expr->op_defined.macro->ident.string);

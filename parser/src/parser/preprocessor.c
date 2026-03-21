@@ -125,6 +125,8 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 	SourceRange macro_name_range = source_range_from_sub_string(state->tokenizer.source_code, macro->name);
 	uint32_t expected_token_line = line_info_pos_to_source_location(&state->line_info, macro_name_range.start).line;
 
+	bool next_token_is_part_of_insert_operator = false;
+
 	while (!tokenizer_is_end(&state->tokenizer)) {
 		Token token = tokenizer_view_next(&state->tokenizer);
 		uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line;
@@ -146,52 +148,25 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				}
 
 				size_t parameter_index = macro_find_param_by_name(macro, token.string);
-				if (parameter_index != SIZE_MAX) {
-					token_hint.kind = MACRO_TOKEN_HINT_PARAMETER;
-					token_hint.param.index = parameter_index;
+
+				bool is_insert_operator = false;
+				if (next_token_is_part_of_insert_operator) {
+					is_insert_operator = true;
 				}
 
 				Token maybe_token_insert_operator = tokenizer_view_next(&state->tokenizer);
 				if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
-					assert(token_hint.kind == MACRO_TOKEN_HINT_NONE);
-
 					tokenizer_reset_to_token(&state->tokenizer, maybe_token_insert_operator);
+					is_insert_operator = true;
+					next_token_is_part_of_insert_operator = true;
+				} else if (parameter_index != SIZE_MAX) {
+					token_hint.kind = MACRO_TOKEN_HINT_PARAMETER;
+					token_hint.param.index = parameter_index;
+				}
 
-					Token param_name_token = tokenizer_next_token(&state->tokenizer);
-					if (param_name_token.kind != TOKEN_IDENT) {
-						TokenKind expected_token = TOKEN_IDENT;
-
-						diagnostics_report_unexpected_token(state->diagnostics,
-								param_name_token,
-								&expected_token,
-								1);
-
-						// NOTE: Terminate parsing here
-						arena_end_temp(hints_temp_region);
-						return;
-					}
-
-					size_t param_index = macro_find_param_by_name(macro, param_name_token.string);
-					if (param_index == SIZE_MAX) {
-						StringBuilder builder = { .arena = state->diagnostics->allocator };
-						str_builder_append(&builder, STR_LIT("## must be followed by parameter name. "));
-						str_builder_append_char(&builder, '\'');
-						str_builder_append(&builder, param_name_token.string);
-						str_builder_append(&builder, STR_LIT("' is not a valid macro parameter"));
-
-						diagnostics_report_error(state->diagnostics,
-								param_name_token.source_range,
-								builder.string,
-								NULL);
-
-						// NOTE: Terminate parsing here
-						arena_end_temp(hints_temp_region);
-						return;
-					} else {
-						token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
-						token_hint.token_insert_op.param_index = param_index;
-						break;
-					}
+				if (is_insert_operator) {
+					token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
+					token_hint.token_insert_op.param_index = parameter_index; // here an invalid param index is allowed
 				}
 
 				break;
@@ -742,6 +717,55 @@ bool _preprocessor_try_expand_macro_argument(Preprocessor* state, Token* out_tok
 	return true;
 }
 
+// Merges subsequent tokens with `MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR` hints into a single identifier token.
+//
+// NOTE: Supports merging only if each of the macro arguments has exactly one token.
+bool _preprocessor_apply_token_insert_operator(Preprocessor* state, MacroCallState* macro_call, Token* out_token) {
+	const MacroDefinition* macro = macro_call->macro;
+	assert(macro->style == MACRO_STYLE_FUNCTION);
+
+	StringBuilder builder = { .arena = state->generated_tokens_allocator };
+	SourceRange source_range = { SIZE_MAX, SIZE_MAX };
+
+	size_t token_count = macro->token_count;
+	while (macro_call->token_index < token_count) {
+		const Token token = macro->tokens[macro_call->token_index];
+		const MacroTokenHint hint = macro->token_hints[macro_call->token_index];
+
+		if (hint.kind != MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR) {
+			break;
+		}
+
+		if (source_range.start == SIZE_MAX) {
+			source_range = token.source_range;
+		} else {
+			source_range.end = token.source_range.end;
+		}
+
+		size_t param_index = hint.token_insert_op.param_index;
+		if (param_index == SIZE_MAX) {
+			str_builder_append(&builder, token.string);
+		} else {
+			assert(param_index < macro->parameter_count);
+
+			const MacroArgumentTokens argument_tokens = macro_call->argument_tokens[param_index];
+			assert(argument_tokens.count == 1);
+			str_builder_append(&builder, argument_tokens.tokens[0].string);
+		}
+
+		macro_call->token_index += 1;
+	}
+
+	Token token = (Token) {
+		.kind = TOKEN_IDENT,
+		.source_range = source_range,
+		.string = builder.string,
+	};
+
+	*out_token = token;
+	return true;
+}
+
 bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token) {
 	assert(state->macro_call_stack_depth > 0);
 
@@ -818,28 +842,8 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 				*out_token = token;
 				return true;
 			}
-			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR: {
-				assert(hint.string_op.param_index < macro->parameter_count);
-
-				MacroArgumentTokens argument_tokens = macro_call->argument_tokens[hint.token_insert_op.param_index];
-				assert(argument_tokens.count == 1);
-
-				StringBuilder builder = { .arena = state->generated_tokens_allocator };
-				str_builder_append(&builder, next_token.string);
-				str_builder_append(&builder, argument_tokens.tokens[0].string);
-
-				Token token = (Token) {
-					.kind = TOKEN_IDENT,
-					.source_range = next_token.source_range,
-					.string = builder.string,
-				};
-
-				// We've precessed the string operator token => go to the next one in the token stream of the macro.
-				macro_call->token_index += 1;
-
-				*out_token = token;
-				return true;
-			}
+			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR:
+				return _preprocessor_apply_token_insert_operator(state, macro_call, out_token);
 			}
 			break;
 		}

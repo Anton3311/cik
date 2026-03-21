@@ -144,6 +144,21 @@ void test_tokenizer_generates_expected_token(TestContext* context) {
 	}
 }
 
+void test_mutli_line_comment_with_asterisk_on_line_starts(TestContext* context) {
+	String source_code = STR_LIT(
+			"/* start of multi line comment\n"
+			" * line starting with asterisk\n"
+			" * another line starting with asterisk\n"
+			" */");
+
+	Tokenizer tokenizer = {
+		.source_code = source_code,
+	};
+
+	Token token = tokenizer_next_token(&tokenizer);
+	assert(token.kind == TOKEN_EOF);
+}
+
 //
 // Preprocessor
 //

@@ -310,14 +310,12 @@ bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
 			}
 
 			char32_t c = tokenizer_get_char(tokenizer);
-			if (c == '*') {
-				if (_tokenizer_has_next_char(tokenizer, '/')) {
-					tokenizer->read_position += 2; // consume */
-					return true;
-				}
-			} else {
-				tokenizer->read_position += 1;
+			if (c == '*' && _tokenizer_has_next_char(tokenizer, '/')) {
+				tokenizer->read_position += 2; // consume */
+				return true;
 			}
+
+			tokenizer->read_position += 1;
 		}
 	} else {
 		unreachable();

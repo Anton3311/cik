@@ -15,6 +15,7 @@ static TestCase tokenizer_tests[] = {
 	test(test_tokenizer_generates_expected_token),
 	test(test_token_has_valid_string_represenation),
 	test(test_token_source_range_matches_token_string),
+	test(test_mutli_line_comment_with_asterisk_on_line_starts),
 };
 
 static TestCase preprocessor_tests[] = {

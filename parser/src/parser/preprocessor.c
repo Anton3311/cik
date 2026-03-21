@@ -33,6 +33,8 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 // Preprocessor
 //
 
+void _preprocessor_skip_until_newline(Preprocessor* state);
+
 String directive_kind_to_string(DirectiveKind kind) {
 	switch (kind) {
 	case DIRECTIVE_INCLUDE:
@@ -53,6 +55,8 @@ String directive_kind_to_string(DirectiveKind kind) {
 		return STR_LIT("ifdef");
 	case DIRECTIVE_IFNDEF:
 		return STR_LIT("ifndef");
+	case DIRECTIVE_PRAGMA:
+		return STR_LIT("pragma");
 	}
 
 	unreachable();
@@ -315,6 +319,8 @@ DirectiveKind _directive_kind_from_string(String string) {
 		return DIRECTIVE_IFDEF;
 	} else if (str_equal(string, STR_LIT("ifndef"))) {
 		return DIRECTIVE_IFNDEF;
+	} else if (str_equal(string, STR_LIT("pragma"))) {
+		return DIRECTIVE_PRAGMA;
 	}
 
 	return INVALID_DIRECTIVE;
@@ -353,6 +359,10 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			return false;
 		}
 		break;
+	}
+	case DIRECTIVE_PRAGMA: {
+		_preprocessor_skip_until_newline(state);
+		return true;
 	}
 	case DIRECTIVE_DEFINE: {
 		MacroDefinition macro = {};

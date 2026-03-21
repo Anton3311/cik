@@ -50,6 +50,7 @@ typedef enum {
 	DIRECTIVE_ENDIF,
 	DIRECTIVE_IFDEF,
 	DIRECTIVE_IFNDEF,
+	DIRECTIVE_PRAGMA,
 } DirectiveKind;
 
 String directive_kind_to_string(DirectiveKind kind);

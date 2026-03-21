@@ -57,6 +57,8 @@ String directive_kind_to_string(DirectiveKind kind) {
 		return STR_LIT("ifndef");
 	case DIRECTIVE_PRAGMA:
 		return STR_LIT("pragma");
+	case DIRECTIVE_ERROR:
+		return STR_LIT("error");
 	}
 
 	unreachable();
@@ -321,6 +323,8 @@ DirectiveKind _directive_kind_from_string(String string) {
 		return DIRECTIVE_IFNDEF;
 	} else if (str_equal(string, STR_LIT("pragma"))) {
 		return DIRECTIVE_PRAGMA;
+	} else if (str_equal(string, STR_LIT("error"))) {
+		return DIRECTIVE_ERROR;
 	}
 
 	return INVALID_DIRECTIVE;
@@ -537,6 +541,52 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		}
 		state->current_branch_state = state->current_branch_state->parent;
 		break;
+	}
+	case DIRECTIVE_ERROR: {
+		uint32_t initial_line = line_info_pos_to_source_location(&state->line_info, directive.source_range.end).line;
+
+		Token first_token = { .kind = TOKEN_COUNT };
+		Token last_token = { .kind = TOKEN_COUNT };
+
+		while (true) {
+			Token token = tokenizer_view_next(&state->tokenizer);
+			
+			uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line; 
+
+			if (token_line > initial_line) {
+				break;
+			} else if (token.kind == TOKEN_EOF) {
+				// Stop only if the EOF token is on this line
+				tokenizer_reset_to_token(&state->tokenizer, token);
+				break;
+			} else {
+				tokenizer_reset_to_token(&state->tokenizer, token);
+
+				if (first_token.kind == TOKEN_COUNT) {
+					first_token = token;
+					last_token = token;
+				} else {
+					last_token = token;
+				}
+			}
+		}
+
+		if (_preprocessor_is_current_region_enabled(state)) {
+			SourceRange error_message_range = (SourceRange) {
+				.start = first_token.source_range.start,
+				.end = last_token.source_range.end,
+			};
+
+			String error_message = sub_str(state->tokenizer.source_code,
+					error_message_range.start,
+					error_message_range.end - error_message_range.start);
+
+			diagnostics_report_error(state->diagnostics,
+					directive.source_range,
+					error_message,
+					NULL);
+		}
+		return false;
 	}
 	}
 

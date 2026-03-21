@@ -587,6 +587,23 @@ void test_parsing_of_non_function_style_macro_with_paren_as_first_token_in_strea
 	}
 }
 
+void test_error_directive(TestContext* context) {
+	String source_code = STR_LIT(
+		"#error Error message"
+	);
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	while (preprocessor_next_token(&preprocessor).kind != TOKEN_EOF);
+
+	assert(diagnostics.first != NULL);
+	assert(str_equal(diagnostics.first->message, STR_LIT("Error message")));
+}
+
 //
 // Parser
 //

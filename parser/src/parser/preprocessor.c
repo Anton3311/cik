@@ -7,6 +7,18 @@ void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
 	table->count += 1;
 }
 
+bool macro_table_remove(MacroTable* table, String name) {
+	for (size_t i = 0; i < table->count; i += 1) {
+		if (str_equal(table->macros[i].name, name)) {
+			table->macros[i] = table->macros[table->count - 1];
+			table->count -= 1;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 	for (size_t i = 0; i < table->count; i += 1) {
 		if (str_equal(table->macros[i].name, name)) {
@@ -309,7 +321,7 @@ bool _preprocessor_parse_condition(Preprocessor* state) {
 	return !str_equal(predicate_token.string, STR_LIT("0"));
 }
 
-bool _preprocessor_is_current_region_enabled(Preprocessor* preprocessor) {
+bool _preprocessor_is_current_region_enabled(Preprocessor* state) {
 	return state->current_branch_state == NULL
 		|| (state->current_branch_state && state->current_branch_state->predicate_value);
 }
@@ -344,6 +356,23 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			if (_preprocessor_is_current_region_enabled(state)) {
 				macro_table_append(&state->macro_table, &macro);
 			}
+		}
+		break;
+	}
+	case DIRECTIVE_UNDEF: {
+		Token macro_name = tokenizer_next_token(&state->tokenizer);
+		if (_preprocessor_is_current_region_enabled(state)) {
+			if (macro_name.kind != TOKEN_IDENT) {
+				TokenKind expected_tokens[] = { TOKEN_IDENT };
+				diagnostics_report_unexpected_token(state->diagnostics,
+						macro_name,
+						expected_tokens,
+						array_size(expected_tokens));
+				return false;
+			}
+
+			bool result = macro_table_remove(&state->macro_table, macro_name.string);
+			assert(result);
 		}
 		break;
 	}

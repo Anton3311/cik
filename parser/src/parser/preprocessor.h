@@ -15,6 +15,7 @@ typedef struct {
 } MacroTable;
 
 void macro_table_append(MacroTable* table, const MacroDefinition* macro);
+bool macro_table_remove(MacroTable* table, String name);
 const MacroDefinition* macro_table_find(const MacroTable* table, String name);
 
 //

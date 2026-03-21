@@ -60,6 +60,7 @@ typedef struct {
 
 struct PreprocessorBranchState {
 	bool predicate_value;
+	bool has_enabled_alternative_branch;
 	ParsedDirective current_directive; // are we in an #if, #elif or #else etc block?
 
 	PreprocessorBranchState* parent;

@@ -346,6 +346,8 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		branch_state->current_directive = directive;
 
 		bool predicate_value = _preprocessor_parse_condition(state);
+		branch_state->has_enabled_alternative_branch = predicate_value;
+
 		if (branch_state->parent) {
 			branch_state->predicate_value = predicate_value && branch_state->parent->predicate_value;
 		} else {
@@ -353,6 +355,48 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		}
 
 		state->current_branch_state = branch_state;
+		break;
+	}
+	case DIRECTIVE_ELSE: {
+		PreprocessorBranchState* branch_state = state->current_branch_state;
+		if (branch_state == NULL) {
+			diagnostics_report_error(state->diagnostics,
+					directive.source_range,
+					STR_LIT("#else has no matching #if directive"),
+					NULL);
+			return false;
+		}
+
+		switch (branch_state->current_directive.kind) {
+		case DIRECTIVE_IF:
+		case DIRECTIVE_ELIF:
+			break;
+		default: {
+			StringBuilder builder = { state->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("#elif directive can't appear after "));
+			str_builder_append(&builder, directive_kind_to_string(branch_state->current_directive.kind));
+
+			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
+					directive.source_range,
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(state->diagnostics,
+					branch_state->current_directive.source_range,
+					STR_LIT("Previous directive here"),
+					error);
+			return false;
+		}
+		}
+
+		if (branch_state->parent) {
+			branch_state->predicate_value = !branch_state->has_enabled_alternative_branch
+				&& !branch_state->parent->predicate_value;
+		} else {
+			branch_state->predicate_value = !branch_state->has_enabled_alternative_branch;
+		}
+
+		branch_state->current_directive = directive;
 		break;
 	}
 	case DIRECTIVE_ELIF: {
@@ -388,9 +432,10 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		}
 
 		bool predicate_value = _preprocessor_parse_condition(state);
+		branch_state->has_enabled_alternative_branch = predicate_value;
+
 		branch_state->predicate_value = !branch_state->predicate_value && predicate_value;
 		branch_state->current_directive = directive;
-
 		break;
 	}
 	case DIRECTIVE_ENDIF: {

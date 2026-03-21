@@ -393,6 +393,37 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		state->current_branch_state = branch_state;
 		break;
 	}
+	case DIRECTIVE_IFDEF:
+	case DIRECTIVE_IFNDEF: {
+		Token macro_name = tokenizer_next_token(&state->tokenizer);
+		if (macro_name.kind != TOKEN_IDENT) {
+			TokenKind expected_tokens[] = { TOKEN_IDENT };
+			diagnostics_report_unexpected_token(state->diagnostics,
+					macro_name,
+					expected_tokens,
+					array_size(expected_tokens));
+			return false;
+		}
+
+		PreprocessorBranchState* branch_state = arena_alloc(state->allocator, PreprocessorBranchState);
+		branch_state->parent = state->current_branch_state;
+		branch_state->current_directive = directive;
+		
+		bool flip_predicate = directive.kind == DIRECTIVE_IFNDEF;
+		bool is_macro_defined = macro_table_find(&state->macro_table, macro_name.string) != NULL;
+		bool predicate_value = is_macro_defined ^ flip_predicate;
+
+		branch_state->has_enabled_alternative_branch = predicate_value;
+
+		if (branch_state->parent) {
+			branch_state->predicate_value = predicate_value && branch_state->parent->predicate_value;
+		} else {
+			branch_state->predicate_value = predicate_value;
+		}
+
+		state->current_branch_state = branch_state;
+		break;
+	}
 	case DIRECTIVE_ELSE: {
 		PreprocessorBranchState* branch_state = state->current_branch_state;
 		if (branch_state == NULL) {
@@ -405,6 +436,8 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 		switch (branch_state->current_directive.kind) {
 		case DIRECTIVE_IF:
+		case DIRECTIVE_IFDEF:
+		case DIRECTIVE_IFNDEF:
 		case DIRECTIVE_ELIF:
 			break;
 		default: {
@@ -447,6 +480,8 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 		switch (branch_state->current_directive.kind) {
 		case DIRECTIVE_IF:
+		case DIRECTIVE_IFDEF:
+		case DIRECTIVE_IFNDEF:
 		case DIRECTIVE_ELIF:
 			break;
 		default: {

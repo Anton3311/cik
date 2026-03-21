@@ -6,6 +6,7 @@
 #include "parser/diagnostics.h"
 
 typedef struct MacroDefinition MacroDefinition;
+typedef struct PreprocessorBranchState PreprocessorBranchState;
 
 typedef struct {
 	size_t capacity;
@@ -38,6 +39,25 @@ typedef struct {
 	SourceRange call_source_range;
 } MacroCallState;
 
+typedef enum {
+	DIRECTIVE_INCLUDE,
+	DIRECTIVE_DEFINE,
+	DIRECTIVE_UNDEF,
+	DIRECTIVE_IF,
+	DIRECTIVE_ELIF,
+	DIRECTIVE_ELSE,
+	DIRECTIVE_ENDIF,
+	DIRECTIVE_IFDEF,
+	DIRECTIVE_IFNDEF,
+} DirectiveKind;
+
+struct PreprocessorBranchState {
+	bool predicate_value;
+	DirectiveKind current_directive; // are we in an #if, #elif or #else etc block?
+
+	PreprocessorBranchState* parent;
+};
+
 typedef struct {
 	String source_path;
 
@@ -56,8 +76,7 @@ typedef struct {
 	bool has_pending_next_token;
 	Token pending_next_token;
 
-	uint32_t conditional_directive_depth;
-	bool current_condition_direction_predicate_value;
+	PreprocessorBranchState* current_branch_state;
 } Preprocessor;
 
 typedef enum {

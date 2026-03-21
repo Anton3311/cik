@@ -252,18 +252,6 @@ size_t macro_find_param_by_name(const MacroDefinition* macro, String param_name)
 	return SIZE_MAX;
 }
 
-typedef enum {
-	DIRECTIVE_INCLUDE,
-	DIRECTIVE_DEFINE,
-	DIRECTIVE_UNDEF,
-	DIRECTIVE_IF,
-	DIRECTIVE_ELIF,
-	DIRECTIVE_ELSE,
-	DIRECTIVE_ENDIF,
-	DIRECTIVE_IFDEF,
-	DIRECTIVE_IFNDEF,
-} DirectiveKind;
-
 const DirectiveKind INVALID_DIRECTIVE = -1;
 
 DirectiveKind _directive_kind_from_string(String string) {
@@ -296,78 +284,11 @@ bool _preprocessor_parse_condition(Preprocessor* state) {
 }
 
 typedef struct {
-	DirectiveKind next_directive;
-} DirectiveQueue;
+	DirectiveKind kind;
+	SourceRange source_range;
+} ParsedDirective;
 
-inline void _enqueue_directive(DirectiveQueue* queue, DirectiveKind directive) {
-	assert(queue->next_directive == INVALID_DIRECTIVE);
-	queue->next_directive = directive;
-}
-
-inline DirectiveKind _dequeue_directive(DirectiveQueue* queue) {
-	assert(queue->next_directive != INVALID_DIRECTIVE);
-	DirectiveKind directive = queue->next_directive;
-	queue->next_directive = INVALID_DIRECTIVE;
-	return directive;
-}
-
-void _preprocessor_skip_branch_body(Preprocessor* state, DirectiveQueue* queue) {
-	uint32_t branch_depth = state->conditional_directive_depth;
-	state->conditional_directive_depth += 1;
-
-	while (state->conditional_directive_depth > branch_depth) {
-		Token token = tokenizer_next_token(&state->tokenizer);
-
-		if (token.kind == TOKEN_EOF) {
-			TokenKind expected_tokens[] = { TOKEN_HASH };
-			diagnostics_report_unexpected_token(state->diagnostics,
-					token,
-					expected_tokens,
-					array_size(expected_tokens));
-			break;
-		}
-
-		if (token.kind != TOKEN_HASH) {
-			continue;
-		}
-
-		// we have a directive
-		Token directive_name_token = tokenizer_view_next(&state->tokenizer);
-		DirectiveKind inner_directive_kind = _directive_kind_from_string(directive_name_token.string);
-		if (inner_directive_kind == INVALID_DIRECTIVE) {
-			diagnostics_report_error(state->diagnostics,
-					directive_name_token.source_range,
-					STR_LIT("Unknown preprocessor directive"),
-					NULL);
-			continue;
-		}
-
-		switch (inner_directive_kind) {
-			case DIRECTIVE_IF:
-			case DIRECTIVE_IFDEF:
-			case DIRECTIVE_IFNDEF:
-				tokenizer_next_token(&state->tokenizer);
-				state->conditional_directive_depth += 1;
-				break;
-			case DIRECTIVE_ENDIF:
-				tokenizer_next_token(&state->tokenizer);
-				state->conditional_directive_depth -= 1;
-				break;
-			case DIRECTIVE_ELIF:
-				tokenizer_next_token(&state->tokenizer);
-				state->conditional_directive_depth -= 1;
-
-				_enqueue_directive(queue, DIRECTIVE_ELIF);
-				break;
-			default:
-				break;
-		}
-	}
-
-	assert(branch_depth == state->conditional_directive_depth);
-}
-
-void _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_kind, DirectiveQueue* queue) {
+bool _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_kind) {
 	switch (directive_kind) {
 	case DIRECTIVE_INCLUDE: {
 		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
@@ -387,7 +308,7 @@ void _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_
 					next_token.source_range,
 					STR_LIT("Expected include path"),
 					NULL);
-			return;
+			return false;
 		}
 		break;
 	}
@@ -399,43 +320,66 @@ void _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_
 		break;
 	}
 	case DIRECTIVE_IF: {
-		state->current_condition_direction_predicate_value = _preprocessor_parse_condition(state);
-		if (!state->current_condition_direction_predicate_value) {
-			_preprocessor_skip_branch_body(state, queue);
+		PreprocessorBranchState* branch_state = arena_alloc(state->allocator, PreprocessorBranchState);
+		branch_state->parent = state->current_branch_state;
+		branch_state->current_directive = DIRECTIVE_IF;
+
+		bool predicate_value = _preprocessor_parse_condition(state);
+		if (branch_state->parent) {
+			branch_state->predicate_value = predicate_value && branch_state->parent->predicate_value;
 		} else {
-			state->conditional_directive_depth += 1;
+			branch_state->predicate_value = predicate_value;
 		}
 
+		state->current_branch_state = branch_state;
 		break;
 	}
 	case DIRECTIVE_ELIF: {
-		bool condition_value = _preprocessor_parse_condition(state);
-		state->current_condition_direction_predicate_value = !state->current_condition_direction_predicate_value
-			&& condition_value;
-
-		if (!state->current_condition_direction_predicate_value) {
-			_preprocessor_skip_branch_body(state, queue);
-		} else {
-			state->conditional_directive_depth += 1;
+		PreprocessorBranchState* branch_state = state->current_branch_state;
+		if (branch_state == NULL) {
+			diagnostics_report_error(state->diagnostics,
+					(SourceRange) {}, // TODO: source range
+					STR_LIT("#elif outside of the #if statement"),
+					NULL);
+			break;
 		}
+
+		switch (branch_state->current_directive) {
+		case DIRECTIVE_IF:
+		case DIRECTIVE_ELIF:
+			break;
+		default:
+			assert_msg(false, "Insert previous directive in the error message");
+
+			// TODO: source range
+			diagnostics_report_error(state->diagnostics,
+					(SourceRange) {},
+					STR_LIT("#elif apperas after a "),
+					NULL);
+			break;
+		}
+
+		bool predicate_value = _preprocessor_parse_condition(state);
+		branch_state->predicate_value = !branch_state->predicate_value && predicate_value;
+		branch_state->current_directive = DIRECTIVE_ELIF;
 
 		break;
 	}
 	case DIRECTIVE_ENDIF: {
-		assert(state->conditional_directive_depth > 0);
-		state->conditional_directive_depth -= 1;
+		assert(state->current_branch_state != NULL);
+		state->current_branch_state = state->current_branch_state->parent;
 		break;
 	}
 	}
+
+	return true;
 }
 
-void preprocessor_skip_directive(Preprocessor* state) {
-	Token hash_token = tokenizer_view_next(&state->tokenizer);
-	if (hash_token.kind != TOKEN_HASH) {
-		return;
-	}
+bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirective* out_directive) {
+	assert(out_directive != NULL);
 
-	tokenizer_reset_to_token(&state->tokenizer, hash_token);
+	Token hash_token = tokenizer_next_token(&state->tokenizer);
+	assert(hash_token.kind == TOKEN_HASH);
 
 	Token directive_name_token = tokenizer_next_token(&state->tokenizer);
 	if (directive_name_token.kind != TOKEN_IDENT) {
@@ -444,7 +388,7 @@ void preprocessor_skip_directive(Preprocessor* state) {
 				directive_name_token,
 				expected_tokens,
 				array_size(expected_tokens));
-		return;
+		return false;
 	}
 
 	DirectiveKind directive_kind = _directive_kind_from_string(directive_name_token.string);
@@ -457,17 +401,23 @@ void preprocessor_skip_directive(Preprocessor* state) {
 				directive_name_token.source_range,
 				builder.string,
 				NULL);
-		return;
+		return false;
 	}
 
-	DirectiveQueue queue = { .next_directive = INVALID_DIRECTIVE };
-	_enqueue_directive(&queue, directive_kind);
+	out_directive->kind = directive_kind;
+	out_directive->source_range = (SourceRange) {
+		.start = hash_token.source_range.start,
+		.end = directive_name_token.source_range.end,
+	};
+	return true;
+}
 
-	// `_preprocessor_parse_directive` can also push to the queue, so do in a loop
-	while (queue.next_directive != INVALID_DIRECTIVE) {
-		DirectiveKind directive_kind = _dequeue_directive(&queue);
-		_preprocessor_parse_directive(state, directive_kind, &queue);
-	}
+void preprocessor_skip_directive(Preprocessor* state) {
+	ParsedDirective directive = {};
+	bool result = _preprocessor_parse_directive_statement(state, &directive);
+	assert(result);
+
+	_preprocessor_parse_directive(state, directive.kind);
 }
 
 bool _preprocessor_try_expand_macro_argument(Preprocessor* state, Token* out_token) {
@@ -809,6 +759,21 @@ Token preprocessor_next_token(Preprocessor* state) {
 	}
 
 	while (true) {
+		if (state->current_branch_state != NULL && !state->current_branch_state->predicate_value) {
+			Token token = tokenizer_view_next(&state->tokenizer);
+			switch (token.kind) {
+			case TOKEN_HASH:
+				preprocessor_skip_directive(state);
+				break;
+			case TOKEN_EOF:
+				return token;
+			default:
+				tokenizer_reset_to_token(&state->tokenizer, token);
+			}
+
+			continue;
+		}
+
 		Token next_token = { .kind = TOKEN_COUNT };
 		if (state->macro_call_stack_depth > 0) {
 			// NOTE: Inside an expanding macro call.

@@ -35,6 +35,42 @@ void _report_invalid_char_in_interger_literal(Diagnostics* diagnostics,
 			NULL);
 }
 
+IntegerLiteralInfo int_literal_info_from_token(Token token) {
+	IntergerLiteralFormat format = INT_LIT_FMT_DECIMAL;
+	String literal_string = token.string;
+
+	if (token.string.v[0] == '0') {
+		bool prefix_parsed = false;
+		if (token.string.length > 2) {
+			if (token.string.v[1] == 'x') {
+				format = INT_LIT_FMT_HEX;
+				literal_string.v += 2;
+				literal_string.length -= 2;
+				prefix_parsed = true;
+			} else if (token.string.v[1] == 'b') {
+				format = INT_LIT_FMT_BIN;
+				literal_string.v += 2;
+				literal_string.length -= 2;
+				prefix_parsed = true;
+			}
+		}
+
+		if (!prefix_parsed) {
+			format = INT_LIT_FMT_OCTAL;
+			literal_string.v += 1;
+			literal_string.length -= 1;
+			prefix_parsed = true;
+		}
+
+		assert(prefix_parsed);
+	}
+
+	return (IntegerLiteralInfo) {
+		.format = format,
+		.int_part_string = literal_string
+	};
+}
+
 bool parse_integer_literal_value(Diagnostics* diagnostics,
 		Token literal_token,
 		String string,

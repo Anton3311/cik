@@ -14,10 +14,26 @@ typedef enum {
 
 String int_literal_format_to_string(IntergerLiteralFormat format);
 
+typedef struct {
+	IntergerLiteralFormat format;
+	String int_part_string;
+} IntegerLiteralInfo;
+
+IntegerLiteralInfo int_literal_info_from_token(Token token);
+
 bool parse_integer_literal_value(Diagnostics* diagnostics,
 		Token literal_token,
 		String string,
 		IntergerLiteralFormat format,
 		uint64_t* out_result);
+
+inline bool parse_integer_literal(Diagnostics* diagnostics, Token literal_token, uint64_t* out_result) {
+	IntegerLiteralInfo literal_info = int_literal_info_from_token(literal_token);
+	return parse_integer_literal_value(diagnostics,
+			literal_token,
+			literal_info.int_part_string,
+			literal_info.format,
+			out_result);
+}
 
 #endif

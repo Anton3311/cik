@@ -971,37 +971,15 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 		assert(token.string.length > 0);
 		bool is_int_literal = is_digit(token.string.v[0]);
 		if (is_int_literal) {
-			IntergerLiteralFormat format = INT_LIT_FMT_DECIMAL;
-			String literal_string = token.string;
-
-			if (token.string.v[0] == '0') {
-				bool prefix_parsed = false;
-				if (token.string.length > 2) {
-					if (token.string.v[1] == 'x') {
-						format = INT_LIT_FMT_HEX;
-						literal_string.v += 2;
-						literal_string.length -= 2;
-						prefix_parsed = true;
-					} else if (token.string.v[1] == 'b') {
-						format = INT_LIT_FMT_BIN;
-						literal_string.v += 2;
-						literal_string.length -= 2;
-						prefix_parsed = true;
-					}
-				}
-
-				if (!prefix_parsed) {
-					format = INT_LIT_FMT_OCTAL;
-					literal_string.v += 1;
-					literal_string.length -= 1;
-					prefix_parsed = true;
-				}
-
-				assert(prefix_parsed);
-			}
+			IntegerLiteralInfo literal_info = int_literal_info_from_token(token);
 
 			uint64_t literal_value = 0;
-			bool result = parse_integer_literal_value(parser->diagnostics, token, literal_string, format, &literal_value);
+			bool result = parse_integer_literal_value(parser->diagnostics,
+					token,
+					literal_info.int_part_string,
+					literal_info.format,
+					&literal_value);
+
 			if (!result) {
 				return EXPR_PARSE_ERROR;
 			}
@@ -1011,7 +989,7 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 			out_expr->kind = EXPR_INTEGER_LITERAL;
 			out_expr->int_literal = (ParsedIntegerLiteral) {
 				.source_range = token.source_range,
-				.format = format,
+				.format = literal_info.format,
 				.integer_type = PARSED_TYPE_INT,
 				.value = literal_value,
 			};

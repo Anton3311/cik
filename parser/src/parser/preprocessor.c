@@ -357,9 +357,46 @@ DirectiveKind _directive_kind_from_string(String string) {
 	return INVALID_DIRECTIVE;
 }
 
-bool _preprocessor_parse_condition(Preprocessor* state) {
+bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
 	Token predicate_token = tokenizer_next_token(&state->tokenizer);
-	return !str_equal(predicate_token.string, STR_LIT("0"));
+	if (str_equal(predicate_token.string, STR_LIT("defined"))) {
+		Token maybe_paren = tokenizer_view_next(&state->tokenizer);
+
+		bool is_wrapped_in_parens = false;
+		if (maybe_paren.kind == TOKEN_LEFT_PAREN) {
+			tokenizer_reset_to_token(&state->tokenizer, maybe_paren);
+			is_wrapped_in_parens = true;
+		}
+
+		Token macro_name = tokenizer_next_token(&state->tokenizer);
+		if (macro_name.kind != TOKEN_IDENT) {
+			TokenKind expected_tokens[] = { TOKEN_IDENT };
+			diagnostics_report_unexpected_token(state->diagnostics,
+					macro_name,
+					expected_tokens,
+					array_size(expected_tokens));
+			return false;
+		}
+
+		if (is_wrapped_in_parens) {
+			Token closing_paren = tokenizer_next_token(&state->tokenizer);
+			if (closing_paren.kind != TOKEN_RIGHT_PAREN) {
+				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+				diagnostics_report_unexpected_token(state->diagnostics,
+						closing_paren,
+						expected_tokens,
+						array_size(expected_tokens));
+				return false;
+			}
+		}
+
+		bool has_macro = macro_table_find(&state->macro_table, macro_name.string) != NULL;
+		*out_result = has_macro;
+		return true;
+	}
+
+	*out_result = !str_equal(predicate_token.string, STR_LIT("0"));
+	return true;
 }
 
 bool _preprocessor_is_current_region_enabled(Preprocessor* state) {
@@ -430,7 +467,11 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		branch_state->parent = state->current_branch_state;
 		branch_state->current_directive = directive;
 
-		bool predicate_value = _preprocessor_parse_condition(state);
+		bool predicate_value = false;
+		if (!_preprocessor_parse_condition(state, &predicate_value)) {
+			return false;
+		}
+
 		branch_state->has_enabled_alternative_branch = predicate_value;
 
 		if (branch_state->parent) {
@@ -551,7 +592,11 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		}
 		}
 
-		bool predicate_value = _preprocessor_parse_condition(state);
+		bool predicate_value = false;
+		if (!_preprocessor_parse_condition(state, &predicate_value)) {
+			return false;
+		}
+
 		branch_state->has_enabled_alternative_branch = predicate_value;
 
 		branch_state->predicate_value = !branch_state->predicate_value && predicate_value;

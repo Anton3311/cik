@@ -21,6 +21,32 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 // Preprocessor
 //
 
+String directive_kind_to_string(DirectiveKind kind) {
+	switch (kind) {
+	case DIRECTIVE_INCLUDE:
+		return STR_LIT("include");
+	case DIRECTIVE_DEFINE:
+		return STR_LIT("define");
+	case DIRECTIVE_UNDEF:
+		return STR_LIT("undef");
+	case DIRECTIVE_IF:
+		return STR_LIT("if");
+	case DIRECTIVE_ELIF:
+		return STR_LIT("elif");
+	case DIRECTIVE_ELSE:
+		return STR_LIT("else");
+	case DIRECTIVE_ENDIF:
+		return STR_LIT("endif");
+	case DIRECTIVE_IFDEF:
+		return STR_LIT("ifdef");
+	case DIRECTIVE_IFNDEF:
+		return STR_LIT("ifndef");
+	}
+
+	unreachable();
+	return (String) {};
+}
+
 void preprocessor_init(Preprocessor* state,
 		String source_path,
 		String source_code,
@@ -283,13 +309,8 @@ bool _preprocessor_parse_condition(Preprocessor* state) {
 	return !str_equal(predicate_token.string, STR_LIT("0"));
 }
 
-typedef struct {
-	DirectiveKind kind;
-	SourceRange source_range;
-} ParsedDirective;
-
-bool _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_kind) {
-	switch (directive_kind) {
+bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directive) {
+	switch (directive.kind) {
 	case DIRECTIVE_INCLUDE: {
 		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
 
@@ -322,7 +343,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_
 	case DIRECTIVE_IF: {
 		PreprocessorBranchState* branch_state = arena_alloc(state->allocator, PreprocessorBranchState);
 		branch_state->parent = state->current_branch_state;
-		branch_state->current_directive = DIRECTIVE_IF;
+		branch_state->current_directive = directive;
 
 		bool predicate_value = _preprocessor_parse_condition(state);
 		if (branch_state->parent) {
@@ -338,35 +359,48 @@ bool _preprocessor_parse_directive(Preprocessor* state, DirectiveKind directive_
 		PreprocessorBranchState* branch_state = state->current_branch_state;
 		if (branch_state == NULL) {
 			diagnostics_report_error(state->diagnostics,
-					(SourceRange) {}, // TODO: source range
-					STR_LIT("#elif outside of the #if statement"),
+					directive.source_range,
+					STR_LIT("#elif has no matching #if directive"),
 					NULL);
-			break;
+			return false;
 		}
 
-		switch (branch_state->current_directive) {
+		switch (branch_state->current_directive.kind) {
 		case DIRECTIVE_IF:
 		case DIRECTIVE_ELIF:
 			break;
-		default:
-			assert_msg(false, "Insert previous directive in the error message");
+		default: {
+			StringBuilder builder = { state->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("#elif directive can't appear after "));
+			str_builder_append(&builder, directive_kind_to_string(branch_state->current_directive.kind));
 
-			// TODO: source range
-			diagnostics_report_error(state->diagnostics,
-					(SourceRange) {},
-					STR_LIT("#elif apperas after a "),
+			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
+					directive.source_range,
+					builder.string,
 					NULL);
-			break;
+
+			diagnostics_report_error(state->diagnostics,
+					branch_state->current_directive.source_range,
+					STR_LIT("Previous directive here"),
+					error);
+			return false;
+		}
 		}
 
 		bool predicate_value = _preprocessor_parse_condition(state);
 		branch_state->predicate_value = !branch_state->predicate_value && predicate_value;
-		branch_state->current_directive = DIRECTIVE_ELIF;
+		branch_state->current_directive = directive;
 
 		break;
 	}
 	case DIRECTIVE_ENDIF: {
-		assert(state->current_branch_state != NULL);
+		if (state->current_branch_state == NULL) {
+			diagnostics_report_error(state->diagnostics,
+					directive.source_range,
+					STR_LIT("#endif used without #if"),
+					NULL);
+			return false;
+		}
 		state->current_branch_state = state->current_branch_state->parent;
 		break;
 	}
@@ -417,7 +451,7 @@ void preprocessor_skip_directive(Preprocessor* state) {
 	bool result = _preprocessor_parse_directive_statement(state, &directive);
 	assert(result);
 
-	_preprocessor_parse_directive(state, directive.kind);
+	_preprocessor_parse_directive(state, directive);
 }
 
 bool _preprocessor_try_expand_macro_argument(Preprocessor* state, Token* out_token) {

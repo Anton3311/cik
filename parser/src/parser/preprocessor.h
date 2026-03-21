@@ -51,9 +51,16 @@ typedef enum {
 	DIRECTIVE_IFNDEF,
 } DirectiveKind;
 
+String directive_kind_to_string(DirectiveKind kind);
+
+typedef struct {
+	DirectiveKind kind;
+	SourceRange source_range;
+} ParsedDirective;
+
 struct PreprocessorBranchState {
 	bool predicate_value;
-	DirectiveKind current_directive; // are we in an #if, #elif or #else etc block?
+	ParsedDirective current_directive; // are we in an #if, #elif or #else etc block?
 
 	PreprocessorBranchState* parent;
 };

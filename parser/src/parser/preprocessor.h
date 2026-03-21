@@ -101,6 +101,7 @@ typedef enum {
 	MACRO_TOKEN_HINT_NONE,
 	MACRO_TOKEN_HINT_PARAMETER,
 	MACRO_TOKEN_HINT_STRING_OPERATOR,
+	MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR,
 } MacroTokenHintKind;
 
 typedef struct {
@@ -109,9 +110,14 @@ typedef struct {
 		struct {
 			size_t index;
 		} param;
+
 		struct {
 			size_t param_index;
 		} string_op;
+		
+		struct {
+			size_t param_index;
+		} token_insert_op;
 	};
 } MacroTokenHint;
 

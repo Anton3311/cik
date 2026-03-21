@@ -139,6 +139,8 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 
 			switch (token.kind) {
 			case TOKEN_IDENT:
+				tokenizer_reset_to_token(&state->tokenizer, token);
+
 				if (macro->style != MACRO_STYLE_FUNCTION) {
 					break;
 				}
@@ -147,6 +149,49 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				if (parameter_index != SIZE_MAX) {
 					token_hint.kind = MACRO_TOKEN_HINT_PARAMETER;
 					token_hint.param.index = parameter_index;
+				}
+
+				Token maybe_token_insert_operator = tokenizer_view_next(&state->tokenizer);
+				if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
+					assert(token_hint.kind == MACRO_TOKEN_HINT_NONE);
+
+					tokenizer_reset_to_token(&state->tokenizer, maybe_token_insert_operator);
+
+					Token param_name_token = tokenizer_next_token(&state->tokenizer);
+					if (param_name_token.kind != TOKEN_IDENT) {
+						TokenKind expected_token = TOKEN_IDENT;
+
+						diagnostics_report_unexpected_token(state->diagnostics,
+								param_name_token,
+								&expected_token,
+								1);
+
+						// NOTE: Terminate parsing here
+						arena_end_temp(hints_temp_region);
+						return;
+					}
+
+					size_t param_index = macro_find_param_by_name(macro, param_name_token.string);
+					if (param_index == SIZE_MAX) {
+						StringBuilder builder = { .arena = state->diagnostics->allocator };
+						str_builder_append(&builder, STR_LIT("## must be followed by parameter name. "));
+						str_builder_append_char(&builder, '\'');
+						str_builder_append(&builder, param_name_token.string);
+						str_builder_append(&builder, STR_LIT("' is not a valid macro parameter"));
+
+						diagnostics_report_error(state->diagnostics,
+								param_name_token.source_range,
+								builder.string,
+								NULL);
+
+						// NOTE: Terminate parsing here
+						arena_end_temp(hints_temp_region);
+						return;
+					} else {
+						token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
+						token_hint.token_insert_op.param_index = param_index;
+						break;
+					}
 				}
 
 				break;
@@ -168,6 +213,8 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 					arena_end_temp(hints_temp_region);
 					return;
 				}
+
+				tokenizer_reset_to_token(&state->tokenizer, param_name_token);
 
 				size_t param_index = macro_find_param_by_name(macro, param_name_token.string);
 				if (param_index == SIZE_MAX) {
@@ -198,7 +245,12 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				token = param_name_token;
 				break;
 			}
+			case TOKEN_DOUBLE_HASH: {
+				unreachable();
+				break;
+			}
 			default:
+				tokenizer_reset_to_token(&state->tokenizer, token);
 				break;
 			}
 
@@ -215,8 +267,6 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 			// so it belongs to the token stream of this macro
 			*arena_alloc(state->allocator, Token) = token;
 			macro->token_count += 1;
-
-			tokenizer_reset_to_token(&state->tokenizer, token);
 		} else {
 			break;
 		}
@@ -758,6 +808,28 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 
 				Token token = (Token) {
 					.kind = TOKEN_STRING,
+					.source_range = next_token.source_range,
+					.string = builder.string,
+				};
+
+				// We've precessed the string operator token => go to the next one in the token stream of the macro.
+				macro_call->token_index += 1;
+
+				*out_token = token;
+				return true;
+			}
+			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR: {
+				assert(hint.string_op.param_index < macro->parameter_count);
+
+				MacroArgumentTokens argument_tokens = macro_call->argument_tokens[hint.token_insert_op.param_index];
+				assert(argument_tokens.count == 1);
+
+				StringBuilder builder = { .arena = state->generated_tokens_allocator };
+				str_builder_append(&builder, next_token.string);
+				str_builder_append(&builder, argument_tokens.tokens[0].string);
+
+				Token token = (Token) {
+					.kind = TOKEN_IDENT,
 					.source_range = next_token.source_range,
 					.string = builder.string,
 				};

@@ -914,7 +914,15 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 		return NULL;
 	}
 
-	assert(state->macro_call_stack_depth < state->macro_call_stack_capacity);
+	if (state->macro_call_stack_depth >= state->macro_call_stack_capacity) {
+		DiagnosticsEntry* overflow_error = diagnostics_report_error(state->diagnostics,
+				call_source_range,
+				STR_LIT("Macro callstack overflow"),
+				NULL);
+
+		_preprocessor_macro_call_stack_to_diagnostics(state, overflow_error);
+		return NULL;
+	}
 
 	MacroCallState* macro_call = &state->macro_call_stack[state->macro_call_stack_depth];
 	state->macro_call_stack_depth += 1;

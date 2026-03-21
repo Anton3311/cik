@@ -533,59 +533,67 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 		assert(variant_count > 0);
 	}
 
-	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, enum_name);
 	ParsedEnum* enum_def = NULL;
+	if (enum_name.length > 0) {
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, enum_name);
 
-	if (entry) {
-		if (!has_flag(entry->kind, IDENT_ENUM)) {
-			StringBuilder builder = { .arena = parser->diagnostics->allocator };
-			str_builder_append_char(&builder, '\'');
-			str_builder_append(&builder, entry->name);
-			str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
+		if (entry) {
+			if (!has_flag(entry->kind, IDENT_ENUM)) {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+				str_builder_append_char(&builder, '\'');
+				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
 
-			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
-					builder.string,
-					NULL);
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
+						builder.string,
+						NULL);
 
-			diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
-					STR_LIT("Previously defined here"),
-					error);
-			return false;
-		}
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			}
 
-		enum_def = entry->enum_def;
-		assert(enum_def);
+			enum_def = entry->enum_def;
+			assert(enum_def);
 
-		if (!enum_def->is_forward_declared && !is_forward_declared) {
-			StringBuilder builder = { .arena = parser->diagnostics->allocator };
-			str_builder_append(&builder, STR_LIT("Redefinition of '"));
-			str_builder_append(&builder, entry->name);
-			str_builder_append_char(&builder, '\'');
+			if (!enum_def->is_forward_declared && !is_forward_declared) {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+				str_builder_append(&builder, STR_LIT("Redefinition of '"));
+				str_builder_append(&builder, entry->name);
+				str_builder_append_char(&builder, '\'');
 
-			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
-					builder.string,
-					NULL);
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
+						builder.string,
+						NULL);
 
-			diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
-					STR_LIT("Previously defined here"),
-					error);
-			return false;
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			}
+		} else {
+			entry = ident_storage_insert(&parser->ident_storage, enum_name);
+			entry->kind = IDENT_ENUM;
+
+			enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
+			memset(enum_def, 0, sizeof(*enum_def));
+			
+			enum_def->name = enum_name;
+			enum_def->is_forward_declared = is_forward_declared;
+
+			entry->enum_def = enum_def;
 		}
 	} else {
-		entry = ident_storage_insert(&parser->ident_storage, enum_name);
-		entry->kind = IDENT_ENUM;
-
 		enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
 		memset(enum_def, 0, sizeof(*enum_def));
-		
+
 		enum_def->name = enum_name;
 		enum_def->is_forward_declared = is_forward_declared;
-
-		entry->enum_def = enum_def;
 	}
 
 	assert(enum_def);

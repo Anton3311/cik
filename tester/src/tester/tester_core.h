@@ -12,6 +12,8 @@ typedef enum {
 
 	TEST_CMD_RUN_TEST,
 
+	TEST_CMD_RUN_PREPROCESSOR_TEST,
+
 	TEST_CMD_COUNT,
 } TestCommandKind;
 

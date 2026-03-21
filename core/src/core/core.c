@@ -261,7 +261,7 @@ StringArray string_to_lines(String string, Arena* allocator) {
 }
 
 //
-// File IO
+// File System
 //
 
 String read_entire_file_to_str(const char* file_path, Arena* arena) {
@@ -284,5 +284,50 @@ String read_entire_file_to_str(const char* file_path, Arena* arena) {
 	fclose(f);
 
 	return (String) { .v = string, .length = size };
+}
+
+StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_path_allocator, Arena* temp_arena) {
+	ArenaRegion temp = arena_begin_temp(temp_arena);
+
+	StringBuilder builder = { .arena = temp_arena };
+	str_builder_append(&builder, directory_path);
+	str_builder_append(&builder, STR_LIT("\\*"));
+
+	const char* filter_string = str_builder_to_cstr(&builder);
+
+	WIN32_FIND_DATA find_data = {};
+	HANDLE search_handle = FindFirstFileA(filter_string, &find_data);
+
+	if (search_handle == INVALID_HANDLE_VALUE) {
+		arena_end_temp(temp);
+		return (StringArray) {};
+	}
+
+
+	String* file_path_array = arena_alloc_array(temp_arena, String, 0);
+	size_t file_count = 0;
+
+	while (true) {
+		bool is_file = !has_flag(find_data.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY);
+		if (is_file) {
+			String file_path = str_duplicate_from_cstr(find_data.cFileName, file_path_allocator);
+			*arena_alloc(temp_arena, String) = file_path;
+			file_count += 1;
+		}
+
+		if (FindNextFile(search_handle, &find_data) == 0) {
+			break;
+		}
+	}
+
+	FindClose(search_handle);
+
+	StringArray file_paths = {};
+	file_paths.values = arena_alloc_array(file_path_allocator, String, file_count);
+	file_paths.count = file_count;
+	memcpy(file_paths.values, file_path_array, sizeof(String) * file_count);
+
+	arena_end_temp(temp);
+	return file_paths;
 }
 

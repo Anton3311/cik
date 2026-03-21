@@ -4,6 +4,8 @@
 #include "tester/tester_core.h"
 #include "tester/tests.h"
 
+#include "parser/preprocessor.h"
+
 static TestCase source_info_tests[] = {
 	test(test_text_start_position_to_source_location),
 	test(test_last_line_postion_to_source_location),
@@ -89,6 +91,55 @@ bool test_cmd_parse(const char* string, TestCommandKind* kind) {
 	return false;
 }
 
+void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_arena) {
+	String file_path_string = str_from_cstr(file_path);
+	String source_code = read_entire_file_to_str(file_path, arena);
+
+	LineInfo line_info = line_info_from_source(arena, source_code);
+
+	Diagnostics diagnostics = (Diagnostics) {
+		.allocator = arena,
+		.source_code = source_code,
+		.line_info = line_info,
+	};
+	
+	Preprocessor preprocessor = {};
+	preprocessor_init(&preprocessor,
+			file_path_string,
+			source_code,
+			&line_info,
+			&diagnostics,
+			arena,
+			temp_arena,
+			arena);
+
+	Token first_token = {};
+	bool has_token = false;
+
+	while (true) {
+		Token token = preprocessor_next_token(&preprocessor);
+		if (token.kind == TOKEN_EOF) {
+			break;
+		} else {
+			assert(!has_token);
+			first_token = token;
+			has_token = true;
+		}
+	}
+
+	assert_msg(has_token, "Preprocessor hasn't generated any tokens");
+	assert(first_token.kind == TOKEN_IDENT);
+
+	String pass_string = STR_LIT("pass");
+	String fail_string = STR_LIT("fail");
+
+	bool is_pass = str_equal(pass_string, first_token.string);
+	bool is_fail = str_equal(fail_string, first_token.string);
+	assert(is_pass || is_fail);
+
+	assert(is_pass);
+}
+
 int main(int argc, char* argv[]) {
 	srand(2153);
 
@@ -162,7 +213,7 @@ int main(int argc, char* argv[]) {
 			}
 			return 0;
 		}
-		case TEST_CMD_RUN_TEST:
+		case TEST_CMD_RUN_TEST: {
 			size_t test_suite_count = array_size(s_test_suites);
 			const char* input_promt = "args: <suite_index> <test_index>";
 			if (argc != 4) {
@@ -205,6 +256,25 @@ int main(int argc, char* argv[]) {
 			arena_release(&temp_arena);
 			arena_release(&arena);
 			return 0;
+		}
+		case TEST_CMD_RUN_PREPROCESSOR_TEST: {
+			const char* input_promt = "args: <test_file_path>";
+			
+			if (argc != 3) {
+				fprintf(stderr, "%s", input_promt);
+				return EXIT_FAILURE;
+			}
+
+			const char* test_file_path = argv[2];
+
+			Arena arena = { .capacity = 128 * 4096 };
+			Arena temp_arena = { .capacity = 128 * 4096 };
+			run_preprocessor_test(test_file_path, &arena, &temp_arena);
+
+			arena_release(&temp_arena);
+			arena_release(&arena);
+			return 0;
+		}
 		case TEST_CMD_COUNT:
 			unreachable();
 		}

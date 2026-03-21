@@ -138,14 +138,19 @@ typedef struct {
 
 bool extract_test_suites(TestStorage* storage, Arena* arena, Arena* temp_arena) {
 	{
+		ArenaRegion temp = arena_begin_temp(temp_arena);
 		String all_test_suites = {};
-		if (!run_tester(STR_LIT("1"), arena, temp_arena, &all_test_suites, NULL)) {
-			return false;
+
+		StringBuilder builder = { .arena = temp_arena };
+		str_builder_append_int(&builder, TEST_CMD_GET_TEST_SUITE_NAMES);
+		
+		if (run_tester(builder.string, arena, temp_arena, &all_test_suites, NULL)) {
+			StringArray test_suites = string_to_lines(all_test_suites, arena);
+			storage->suite_names = test_suites.values;
+			storage->suite_count = test_suites.count;
 		}
 
-		StringArray test_suites = string_to_lines(all_test_suites, arena);
-		storage->suite_names = test_suites.values;
-		storage->suite_count = test_suites.count;
+		arena_end_temp(temp);
 	}
 
 	storage->suite_tests = arena_alloc_array(arena, StringArray, storage->suite_count);
@@ -173,6 +178,45 @@ bool extract_test_suites(TestStorage* storage, Arena* arena, Arena* temp_arena) 
 	return true;
 }
 
+bool run_single_test(String command, String test_name, Arena* arena, Arena* temp_arena) {
+	ArenaRegion temp = arena_begin_temp(temp_arena);
+
+	String test_output = {};
+	int32_t exit_code = 0;
+	bool result = run_tester(command, arena, temp_arena, &test_output, &exit_code);
+
+	arena_end_temp(temp);
+
+	bool pass = result && exit_code == 0;
+
+	const char* status_string = pass ? "PASS" : "FAIL";
+
+	const char* message = "";
+	if (!result) {
+		message = " - Failed to launch the test";
+	}
+
+	if (pass) {
+		printf("  \x1b[1;32m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+	} else {
+		printf("  \x1b[1;31m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+	}
+
+	if (exit_code != 0) {
+		printf("    stdout:\n");
+
+		LineIterator iterator = (LineIterator) { .source = test_output };
+		String output_line = {};
+		while (line_iterator_next(&iterator, &output_line)) {
+			printf("    | %.*s\n", STR_FMT(output_line));
+		}
+
+		printf("    exit code: %d\n", exit_code);
+	}
+
+	return pass;
+}
+
 int main(int argc, char* argv[]) {
 	Arena arena = { .capacity = 128 * 4096 };
 	Arena temp_arena = { .capacity = 128 * 4096 };
@@ -192,8 +236,6 @@ int main(int argc, char* argv[]) {
 		for (size_t test_index = 0; test_index < tests.count; test_index += 1) {
 			String test_name = tests.values[test_index];
 
-			ArenaRegion temp = arena_begin_temp(&temp_arena);
-
 			StringBuilder builder = { .arena = &temp_arena };
 			str_builder_append_int(&builder, TEST_CMD_RUN_TEST);
 			str_builder_append_char(&builder, ' ');
@@ -201,38 +243,8 @@ int main(int argc, char* argv[]) {
 			str_builder_append_char(&builder, ' ');
 			str_builder_append_int(&builder, test_index);
 
-			String test_output = {};
-			int32_t exit_code = 0;
-			bool result = run_tester(builder.string, &arena, &temp_arena, &test_output, &exit_code);
-
-			arena_end_temp(temp);
-
-			bool pass = result && exit_code == 0;
-
-			const char* status_string = pass ? "PASS" : "FAIL";
-
-			const char* message = "";
-			if (!result) {
-				message = " - Failed to launch the test";
-			}
-
-			if (pass) {
-				printf("  \x1b[1;32m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
+			if (run_single_test(builder.string, test_name, &arena, &temp_arena)) {
 				tests_passed += 1;
-			} else {
-				printf("  \x1b[1;31m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test_name), message);
-			}
-
-			if (exit_code != 0) {
-				printf("    stdout:\n");
-
-				LineIterator iterator = (LineIterator) { .source = test_output };
-				String output_line = {};
-				while (line_iterator_next(&iterator, &output_line)) {
-					printf("    | %.*s\n", STR_FMT(output_line));
-				}
-
-				printf("    exit code: %d\n", exit_code);
 			}
 		}
 
@@ -241,6 +253,34 @@ int main(int argc, char* argv[]) {
 				tests.count,
 				tests.count - tests_passed,
 				tests.count);
+	}
+
+	{
+		String test_directory = STR_LIT("tests/preprocessor");
+
+		size_t tests_passed = 0;
+		printf("\n --- %.*s\n\n", STR_FMT(test_directory));
+
+		StringArray paths = fs_enumerate_files_in_directory(test_directory, &arena, &temp_arena);
+		for (size_t i = 0; i < paths.count; i += 1) {
+			StringBuilder builder = { .arena = &temp_arena };
+			str_builder_append_int(&builder, TEST_CMD_RUN_PREPROCESSOR_TEST);
+			str_builder_append_char(&builder, ' ');
+			str_builder_append(&builder, test_directory);
+			str_builder_append_char(&builder, '/');
+			str_builder_append(&builder, paths.values[i]);
+
+			if (run_single_test(builder.string, paths.values[i], &arena, &temp_arena)) {
+				tests_passed += 1;
+			}
+		}
+
+		size_t test_count = paths.count;
+		printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m\n",
+				tests_passed,
+				test_count,
+				test_count - tests_passed,
+				test_count);
 	}
 
 	arena_release(&temp_arena);

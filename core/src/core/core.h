@@ -139,6 +139,13 @@ inline String str_from_cstr(const char* cstr) {
 	return (String) { .v = cstr, .length = strlen(cstr) };
 }
 
+inline String str_duplicate_from_cstr(const char* str, Arena* allocator) {
+	size_t length = strlen(str);
+	char* string = arena_alloc_array(allocator, char, length);
+	memcpy(string, str, length);
+	return (String) { .v = string, .length = length };
+}
+
 inline const char* str_to_cstr(String string, Arena* allocator) {
 	char* cstring = arena_alloc_array(allocator, char, string.length + 1);
 	memcpy(cstring, string.v, string.length);
@@ -233,10 +240,12 @@ bool line_iterator_next(LineIterator* iter, String* out_line);
 StringArray string_to_lines(String string, Arena* allocator);
 
 //
-// File IO
+// File System
 //
 
 String read_entire_file_to_str(const char* file_path, Arena* arena);
+
+StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_path_allocator, Arena* temp_arena);
 
 //
 // Hashing

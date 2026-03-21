@@ -7,6 +7,7 @@ clang ^
 	parser\src\parser\diagnostics.c ^
 	parser\src\parser\parsed_ast.c ^
 	parser\src\parser\parser.c ^
+	parser\src\parser\parse_tools.c ^
 	-g -lDbghelp.lib -m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\
 
 clang ^
@@ -18,6 +19,7 @@ clang ^
 	parser\src\parser\source_info.c ^
 	parser\src\parser\diagnostics.c ^
 	parser\src\parser\parser.c ^
+	parser\src\parser\parse_tools.c ^
 	parser\src\parser\parsed_ast.c ^
 	-g -lDbghelp.lib -m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src
 

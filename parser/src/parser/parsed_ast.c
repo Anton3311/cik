@@ -33,22 +33,6 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
-String int_literal_format_to_string(IntergerLiteralFormat format) {
-	switch (format) {
-	case INT_LIT_FMT_DECIMAL:
-		return STR_LIT("decimal");
-	case INT_LIT_FMT_BIN:
-		return STR_LIT("binary");
-	case INT_LIT_FMT_OCTAL:
-		return STR_LIT("octal");
-	case INT_LIT_FMT_HEX:
-		return STR_LIT("hexidecimal");
-	}
-
-	unreachable();
-	return (String){};
-}
-
 //
 // AST
 //

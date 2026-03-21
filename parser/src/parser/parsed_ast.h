@@ -3,6 +3,7 @@
 
 #include "core/core.h"
 #include "parser/source_info.h"
+#include "parser/parse_tools.h"
 
 typedef String SourceString;
 
@@ -142,15 +143,6 @@ struct ParsedCall {
 	size_t argument_count;
 	ParsedExpr** arguments;
 };
-
-typedef enum {
-	INT_LIT_FMT_DECIMAL,
-	INT_LIT_FMT_BIN,
-	INT_LIT_FMT_OCTAL,
-	INT_LIT_FMT_HEX,
-} IntergerLiteralFormat;
-
-String int_literal_format_to_string(IntergerLiteralFormat format);
 
 struct ParsedIntegerLiteral {
 	SourceRange source_range;

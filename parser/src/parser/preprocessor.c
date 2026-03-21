@@ -238,7 +238,11 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	macro->name = name_token.string;
 
 	Token maybe_paren = tokenizer_view_next(&state->tokenizer);
-	if (maybe_paren.kind == TOKEN_LEFT_PAREN) {
+
+	// A function style is defined by a name followed by a left paren right after it (without any whitespace)
+	if (maybe_paren.kind == TOKEN_LEFT_PAREN
+			&& name_token.source_range.end == maybe_paren.source_range.start) {
+
 		macro->style = MACRO_STYLE_FUNCTION;
 		// We have a function style macro => parse paremeter names
 		tokenizer_reset_to_token(&state->tokenizer, maybe_paren);

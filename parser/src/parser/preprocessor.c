@@ -309,6 +309,11 @@ bool _preprocessor_parse_condition(Preprocessor* state) {
 	return !str_equal(predicate_token.string, STR_LIT("0"));
 }
 
+bool _preprocessor_is_current_region_enabled(Preprocessor* preprocessor) {
+	return state->current_branch_state == NULL
+		|| (state->current_branch_state && state->current_branch_state->predicate_value);
+}
+
 bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directive) {
 	switch (directive.kind) {
 	case DIRECTIVE_INCLUDE: {
@@ -336,7 +341,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 	case DIRECTIVE_DEFINE: {
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
-			macro_table_append(&state->macro_table, &macro);
+			if (_preprocessor_is_current_region_enabled(state)) {
+				macro_table_append(&state->macro_table, &macro);
+			}
 		}
 		break;
 	}

@@ -386,7 +386,11 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			}
 
 			bool result = macro_table_remove(&state->macro_table, macro_name.string);
-			assert(result);
+			if (result) {
+				debug_log_info("undef %.*s", STR_FMT(macro_name.string));
+			} else {
+				debug_log_warn("undef %.*s failed", STR_FMT(macro_name.string));
+			}
 		}
 		break;
 	}

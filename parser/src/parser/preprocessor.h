@@ -166,9 +166,6 @@ struct MacroDefinition {
 	size_t token_count;
 };
 
-// Returns SIZE_MAX when not found
-size_t macro_find_param_by_name(const MacroDefinition* macro, String param_name);
-
 void preprocessor_init(Preprocessor* state,
 		String source_path,
 		String source_code,
@@ -177,11 +174,6 @@ void preprocessor_init(Preprocessor* state,
 		Arena* allocator,
 		Arena* temp_allocator,
 		Arena* generated_tokens_allocator);
-
-void preprocessor_skip_directive(Preprocessor* state);
-
-// NOTE: Returns null in case a call to a macro doesn't produce any tokens
-MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident);
 
 Token preprocessor_view_next(Preprocessor* state);
 Token preprocessor_next_token(Preprocessor* state);

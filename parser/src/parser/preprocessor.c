@@ -37,6 +37,9 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 
 void _preprocessor_skip_until_newline(Preprocessor* state);
 
+// Returns SIZE_MAX if not found
+size_t _macro_find_param_by_name(const MacroDefinition* macro, String param_name);
+
 String directive_kind_to_string(DirectiveKind kind) {
 	switch (kind) {
 	case DIRECTIVE_INCLUDE:
@@ -159,7 +162,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 					break;
 				}
 
-				size_t parameter_index = macro_find_param_by_name(macro, token.string);
+				size_t parameter_index = _macro_find_param_by_name(macro, token.string);
 
 				bool is_insert_operator = false;
 				if (next_token_is_part_of_insert_operator) {
@@ -204,7 +207,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 
 				tokenizer_reset_to_token(&state->tokenizer, param_name_token);
 
-				size_t param_index = macro_find_param_by_name(macro, param_name_token.string);
+				size_t param_index = _macro_find_param_by_name(macro, param_name_token.string);
 				if (param_index == SIZE_MAX) {
 					StringBuilder builder = { .arena = state->diagnostics->allocator };
 					str_builder_append(&builder, STR_LIT("# must be followed by parameter name. "));
@@ -350,7 +353,7 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	return true;
 }
 
-size_t macro_find_param_by_name(const MacroDefinition* macro, String param_name) {
+size_t _macro_find_param_by_name(const MacroDefinition* macro, String param_name) {
 	assert(macro->style == MACRO_STYLE_FUNCTION);
 
 	for (size_t i = 0; i < macro->parameter_count; i += 1) {
@@ -888,7 +891,7 @@ void _preprocessor_skip_until_newline(Preprocessor* state) {
 	}
 }
 
-void preprocessor_skip_directive(Preprocessor* state) {
+void _preprocessor_skip_directive(Preprocessor* state) {
 	ParsedDirective directive = {};
 	if (!_preprocessor_parse_directive_statement(state, &directive)) {
 		_preprocessor_skip_until_newline(state);
@@ -1236,7 +1239,8 @@ void _preprocessor_macro_call_stack_to_diagnostics(const Preprocessor* state, Di
 	}
 }
 
-MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
+// NOTE: Returns null in case a call to a macro doesn't produce any tokens
+MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
 	MacroArgumentTokens* argument_tokens = NULL;
 
 	SourceRange call_source_range = macro_call_ident.source_range;
@@ -1387,7 +1391,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 			Token token = tokenizer_view_next(&state->tokenizer);
 			switch (token.kind) {
 			case TOKEN_HASH:
-				preprocessor_skip_directive(state);
+				_preprocessor_skip_directive(state);
 				break;
 			case TOKEN_EOF:
 				return token;
@@ -1420,7 +1424,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 			next_token = tokenizer_view_next(&state->tokenizer);
 
 			if (next_token.kind == TOKEN_HASH) {
-				preprocessor_skip_directive(state);
+				_preprocessor_skip_directive(state);
 				continue;
 			} else {
 				tokenizer_reset_to_token(&state->tokenizer, next_token);
@@ -1433,7 +1437,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 				return next_token;
 			}
 
-			preprocessor_init_macro_call(state, macro, next_token);
+			_preprocessor_init_macro_call(state, macro, next_token);
 
 			// NOTE: Possible cases:
 			//       1. The macro call started successfully, because the it produces tokens.

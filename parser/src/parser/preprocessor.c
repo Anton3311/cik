@@ -958,7 +958,7 @@ inline bool _macro_call_finished(const MacroCall* call) {
 	return call->token_index == call->macro->token_count;
 }
 
-bool _preprocessor_expand_user_defined_macro(Preprocessor* state, Token* out_token, MacroCall* call) {
+bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, Token* out_token, MacroCall* call) {
 	const MacroDefinition* macro = call->macro;
 
 	assert(!_macro_call_finished(call));
@@ -995,7 +995,7 @@ bool _preprocessor_expand_user_defined_macro(Preprocessor* state, Token* out_tok
 				break; // keep looping so that the new state gets processed
 			}
 			case MACRO_TOKEN_HINT_STRING_OPERATOR: {
-				StringBuilder builder = { .arena = state->generated_tokens_allocator };
+				StringBuilder builder = { .arena = generated_tokens_allocator };
 				str_builder_append_char(&builder, '"');
 
 				assert(hint.string_op.param_index < macro->parameter_count);
@@ -1026,7 +1026,7 @@ bool _preprocessor_expand_user_defined_macro(Preprocessor* state, Token* out_tok
 				return true;
 			}
 			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR:
-				return _preprocessor_apply_token_insert_operator(state->generated_tokens_allocator, call, out_token);
+				return _preprocessor_apply_token_insert_operator(generated_tokens_allocator, call, out_token);
 			case MACRO_TOKEN_HINT_VA_ARGS:
 				unreachable();
 			}
@@ -1130,7 +1130,7 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 		
 		bool result;
 		if (call->macro->builtin_kind == BUILTIN_MACRO_NONE) {
-			result = _preprocessor_expand_user_defined_macro(state, out_token, call);
+			result = _preprocessor_expand_user_defined_macro(state->generated_tokens_allocator, out_token, call);
 		} else {
 			result = _preprocessor_expand_builtin_macro(state, out_token, call);
 		}

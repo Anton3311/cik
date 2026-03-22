@@ -905,11 +905,14 @@ void preprocessor_skip_directive(Preprocessor* state) {
 // Merges subsequent tokens with `MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR` hints into a single identifier token.
 //
 // NOTE: Supports merging only if each of the macro arguments has exactly one token.
-bool _preprocessor_apply_token_insert_operator(Preprocessor* state, MacroCall* macro_call, Token* out_token) {
+bool _preprocessor_apply_token_insert_operator(Arena* generated_tokens_allocator,
+		MacroCall* macro_call,
+		Token* out_token) {
+
 	const MacroDefinition* macro = macro_call->macro;
 	assert(macro->style == MACRO_STYLE_FUNCTION);
 
-	StringBuilder builder = { .arena = state->generated_tokens_allocator };
+	StringBuilder builder = { .arena = generated_tokens_allocator };
 	SourceRange source_range = { SIZE_MAX, SIZE_MAX };
 
 	size_t token_count = macro->token_count;
@@ -1023,7 +1026,7 @@ bool _preprocessor_expand_user_defined_macro(Preprocessor* state, Token* out_tok
 				return true;
 			}
 			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR:
-				return _preprocessor_apply_token_insert_operator(state, call, out_token);
+				return _preprocessor_apply_token_insert_operator(state->generated_tokens_allocator, call, out_token);
 			case MACRO_TOKEN_HINT_VA_ARGS:
 				unreachable();
 			}

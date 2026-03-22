@@ -30,7 +30,7 @@ typedef struct {
 typedef enum {
 	MACRO_CALL_TOKEN,
 	MACRO_CALL_ARGUMENT_EXPANSION,
-	MACRO_CALL_VARGS_EXPANSION,
+	MACRO_CALL_VA_ARGS_EXPANSION,
 } MacroCallState;
 
 typedef struct {
@@ -38,6 +38,11 @@ typedef struct {
 	size_t arg_index;
 	size_t arg_token_index;
 } MacroCallArgExpansion;
+
+typedef struct {
+	size_t arg_index;
+	size_t arg_token_index;
+} MacroCallVaArgsExpansion;
 
 typedef struct {
 	const MacroDefinition* macro;
@@ -116,6 +121,7 @@ typedef enum {
 	MACRO_TOKEN_HINT_PARAMETER,
 	MACRO_TOKEN_HINT_STRING_OPERATOR,
 	MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR,
+	MACRO_TOKEN_HINT_VA_ARGS,
 } MacroTokenHintKind;
 
 typedef struct {
@@ -150,7 +156,7 @@ struct MacroDefinition {
 	String* parameter_names;
 	size_t parameter_count;
 
-	bool has_vargs;
+	bool has_va_args;
 	
 	Token* tokens;
 	MacroTokenHint* token_hints;

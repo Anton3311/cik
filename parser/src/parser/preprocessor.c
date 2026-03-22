@@ -149,6 +149,13 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 					break;
 				}
 
+				bool is_va_args = str_equal(token.string, STR_LIT("__VA_ARGS__"));
+				if (is_va_args) {
+					assert(macro->has_va_args);
+					token_hint.kind = MACRO_TOKEN_HINT_VA_ARGS;
+					break;
+				}
+
 				size_t parameter_index = macro_find_param_by_name(macro, token.string);
 
 				bool is_insert_operator = false;
@@ -167,6 +174,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				}
 
 				if (is_insert_operator) {
+					assert(token_hint.kind == MACRO_TOKEN_HINT_NONE || token_hint.kind == MACRO_TOKEN_HINT_PARAMETER);
 					token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
 					token_hint.token_insert_op.param_index = parameter_index; // here an invalid param index is allowed
 				}
@@ -312,7 +320,7 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 					return false;
 				}
 
-				macro->has_vargs = true;
+				macro->has_va_args = true;
 				break;
 			}
 
@@ -1016,6 +1024,8 @@ bool _preprocessor_expand_user_defined_macro(Preprocessor* state, Token* out_tok
 			}
 			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR:
 				return _preprocessor_apply_token_insert_operator(state, call, out_token);
+			case MACRO_TOKEN_HINT_VA_ARGS:
+				unreachable();
 			}
 			break;
 		}
@@ -1039,7 +1049,7 @@ bool _preprocessor_expand_user_defined_macro(Preprocessor* state, Token* out_tok
 			expansion->arg_token_index += 1;
 			return true;
 		}
-		case MACRO_CALL_VARGS_EXPANSION: {
+		case MACRO_CALL_VA_ARGS_EXPANSION: {
 			unreachable();
 		}
 		}

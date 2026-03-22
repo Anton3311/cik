@@ -112,9 +112,12 @@ void preprocessor_init(Preprocessor* state,
 		macro_table_append(&state->macro_table, &file_macro);
 	}
 
-	state->macro_call_stack_capacity = 32;
-	state->macro_call_stack_depth = 0;
-	state->macro_call_stack = arena_alloc_array(state->allocator, MacroCall, state->macro_call_stack_capacity);
+	const size_t call_stack_capacity = 32;
+	state->macro_call_stack = (MacroCallStack) {
+		.depth = 0,
+		.capacity = call_stack_capacity,
+		.frames = arena_alloc_array(state->allocator, MacroCall, call_stack_capacity),
+	};
 }
 
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
@@ -1072,8 +1075,8 @@ bool _preprocessor_expand_builtin_macro(Preprocessor* state, Token* out_token, M
 	case BUILTIN_MACRO_NONE:
 		unreachable();
 	case BUILTIN_MACRO_LINE: {
-		assert(state->macro_call_stack_depth > 0);
-		SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
+		assert(state->macro_call_stack.depth > 0);
+		SourceRange first_call_range = state->macro_call_stack.frames[0].call_source_range;
 		uint32_t call_source_line = line_info_pos_to_source_location(
 				&state->line_info,
 				first_call_range.start).line + 1;
@@ -1094,8 +1097,8 @@ bool _preprocessor_expand_builtin_macro(Preprocessor* state, Token* out_token, M
 		return true;
 	}
 	case BUILTIN_MACRO_FILE: {
-		assert(state->macro_call_stack_depth > 0);
-		SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
+		assert(state->macro_call_stack.depth > 0);
+		SourceRange first_call_range = state->macro_call_stack.frames[0].call_source_range;
 
 		StringBuilder builder = { .arena = state->generated_tokens_allocator };
 		str_builder_append_char(&builder, '"');
@@ -1121,13 +1124,13 @@ bool _preprocessor_expand_builtin_macro(Preprocessor* state, Token* out_token, M
 }
 
 bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token) {
-	while (state->macro_call_stack_depth > 0) {
-		MacroCall* call = &state->macro_call_stack[state->macro_call_stack_depth - 1];
+	while (state->macro_call_stack.depth > 0) {
+		MacroCall* call = &state->macro_call_stack.frames[state->macro_call_stack.depth - 1];
 		if (_macro_call_finished(call)) {
-			state->macro_call_stack_depth -= 1;
+			state->macro_call_stack.depth -= 1;
 			continue;
 		}
-		
+
 		bool result;
 		if (call->macro->builtin_kind == BUILTIN_MACRO_NONE) {
 			result = _preprocessor_expand_user_defined_macro(state->generated_tokens_allocator, out_token, call);
@@ -1151,7 +1154,7 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 // falls back to the source tokenizer.
 Token _preprocessor_next_macro_or_source_token(Preprocessor* state) {
 	Token token = {};
-	if (state->macro_call_stack_depth > 0 && preprocessor_get_next_macro_expantion_token(state, &token)) {
+	if (state->macro_call_stack.depth > 0 && preprocessor_get_next_macro_expantion_token(state, &token)) {
 		return token;
 	}
 
@@ -1162,9 +1165,9 @@ void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,
 		size_t call_index,
 		DiagnosticsEntry* root_error) {
 	assert(root_error != NULL);
-	assert(call_index < state->macro_call_stack_depth);
+	assert(call_index < state->macro_call_stack.depth);
 
-	const MacroCall* call = &state->macro_call_stack[call_index];
+	const MacroCall* call = &state->macro_call_stack.frames[call_index];
 	const MacroDefinition* macro = call->macro;
 
 	StringBuilder builder = { .arena = state->diagnostics->allocator };
@@ -1194,7 +1197,7 @@ void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,
 }
 
 void _preprocessor_macro_call_stack_to_diagnostics(const Preprocessor* state, DiagnosticsEntry* root_error) {
-	for (size_t call_index = 0; call_index < state->macro_call_stack_depth; call_index += 1) {
+	for (size_t call_index = 0; call_index < state->macro_call_stack.depth; call_index += 1) {
 		_preprocessor_macro_call_to_diagnostics(state, call_index, root_error);
 	}
 }
@@ -1288,7 +1291,7 @@ MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefiniti
 		return NULL;
 	}
 
-	if (state->macro_call_stack_depth >= state->macro_call_stack_capacity) {
+	if (state->macro_call_stack.depth >= state->macro_call_stack.capacity) {
 		DiagnosticsEntry* overflow_error = diagnostics_report_error(state->diagnostics,
 				call_source_range,
 				STR_LIT("Macro callstack overflow"),
@@ -1298,8 +1301,8 @@ MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefiniti
 		return NULL;
 	}
 
-	MacroCall* macro_call = &state->macro_call_stack[state->macro_call_stack_depth];
-	state->macro_call_stack_depth += 1;
+	MacroCall* macro_call = &state->macro_call_stack.frames[state->macro_call_stack.depth];
+	state->macro_call_stack.depth += 1;
 
 	memset(macro_call, 0, sizeof(*macro_call));
 	
@@ -1348,7 +1351,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 		}
 
 		Token next_token = { .kind = TOKEN_COUNT };
-		if (state->macro_call_stack_depth > 0) {
+		if (state->macro_call_stack.depth > 0) {
 			// NOTE: Inside an expanding macro call.
 			//       Instead of getting tokens from the tokenizer
 			//       return the onces from the macro.

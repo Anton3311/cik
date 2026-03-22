@@ -89,6 +89,12 @@ struct PreprocessorBranchState {
 };
 
 typedef struct {
+	MacroCall* frames;
+	size_t depth;
+	size_t capacity;
+} MacroCallStack;
+
+typedef struct {
 	String source_path;
 
 	Arena* allocator;
@@ -98,10 +104,7 @@ typedef struct {
 	Tokenizer tokenizer;
 	LineInfo line_info;
 	MacroTable macro_table;
-
-	MacroCall* macro_call_stack;
-	size_t macro_call_stack_depth;
-	size_t macro_call_stack_capacity;
+	MacroCallStack macro_call_stack;
 
 	bool has_pending_next_token;
 	Token pending_next_token;

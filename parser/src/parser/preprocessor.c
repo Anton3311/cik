@@ -114,7 +114,7 @@ void preprocessor_init(Preprocessor* state,
 
 	state->macro_call_stack_capacity = 32;
 	state->macro_call_stack_depth = 0;
-	state->macro_call_stack = arena_alloc_array(state->allocator, MacroCallState, state->macro_call_stack_capacity);
+	state->macro_call_stack = arena_alloc_array(state->allocator, MacroCall, state->macro_call_stack_capacity);
 }
 
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
@@ -890,38 +890,14 @@ void preprocessor_skip_directive(Preprocessor* state) {
 	}
 }
 
-bool _preprocessor_try_expand_macro_argument(Preprocessor* state, Token* out_token) {
-	assert(state->macro_call_stack_depth > 0);
-
-	MacroCallState* last_call = &state->macro_call_stack[state->macro_call_stack_depth - 1];
-	if (last_call->argument_index == SIZE_MAX) {
-		return false;
-	}
-
-	assert(last_call->argument_index < last_call->macro->parameter_count);
-
-	MacroArgumentTokens argument_tokens = last_call->argument_tokens[last_call->argument_index];
-	assert(last_call->argument_token_index <= argument_tokens.count);
-
-	bool argument_is_fully_expanded = last_call->argument_token_index == argument_tokens.count;
-	if (argument_is_fully_expanded) {
-		last_call->argument_index = SIZE_MAX;
-		last_call->argument_token_index = SIZE_MAX;
-
-		// Move to the next token
-		last_call->token_index += 1;
-		return false;
-	}
-
-	*out_token = argument_tokens.tokens[last_call->argument_token_index];
-	last_call->argument_token_index += 1;
-	return true;
-}
+//
+// Macro call expansion state machine
+//
 
 // Merges subsequent tokens with `MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR` hints into a single identifier token.
 //
 // NOTE: Supports merging only if each of the macro arguments has exactly one token.
-bool _preprocessor_apply_token_insert_operator(Preprocessor* state, MacroCallState* macro_call, Token* out_token) {
+bool _preprocessor_apply_token_insert_operator(Preprocessor* state, MacroCall* macro_call, Token* out_token) {
 	const MacroDefinition* macro = macro_call->macro;
 	assert(macro->style == MACRO_STYLE_FUNCTION);
 
@@ -967,50 +943,45 @@ bool _preprocessor_apply_token_insert_operator(Preprocessor* state, MacroCallSta
 	return true;
 }
 
-bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token) {
-	assert(state->macro_call_stack_depth > 0);
+inline bool _macro_call_finished(const MacroCall* call) {
+	return call->token_index == call->macro->token_count;
+}
 
-	if (_preprocessor_try_expand_macro_argument(state, out_token)) {
-		return true;
-	}
+bool _preprocessor_expand_user_defined_macro(Preprocessor* state, Token* out_token, MacroCall* call) {
+	const MacroDefinition* macro = call->macro;
 
-	MacroCallState* macro_call = NULL;
+	assert(!_macro_call_finished(call));
+	assert(macro->builtin_kind == BUILTIN_MACRO_NONE);
 
-	// Pop finished macro calls off of the stack
-	while (state->macro_call_stack_depth > 0) {
-		macro_call = &state->macro_call_stack[state->macro_call_stack_depth - 1];
-		if (macro_call->token_index == macro_call->macro->token_count) {
-			state->macro_call_stack_depth -= 1;
-			macro_call = NULL;
-		} else {
-			break;
+	// NOTE: Loop until we get a token
+	while (true) {
+		if (_macro_call_finished(call)) {
+			return false;
 		}
-	}
-
-	if (macro_call) {
-		const MacroDefinition* macro = macro_call->macro;
-		switch (macro->builtin_kind) {
-		case BUILTIN_MACRO_NONE: {
-			Token next_token = macro_call->macro->tokens[macro_call->token_index];
+		
+		switch (call->state) {
+		case MACRO_CALL_TOKEN: {
+			Token next_token = macro->tokens[call->token_index];
 
 			MacroTokenHint hint = {};
 			if (macro->style == MACRO_STYLE_FUNCTION) {
 				assert(macro->token_hints);
-				hint = macro->token_hints[macro_call->token_index];
+				hint = macro->token_hints[call->token_index];
 			}
 
 			switch (hint.kind) {
 			case MACRO_TOKEN_HINT_NONE:
 				*out_token = next_token;
-				macro_call->token_index += 1;
+				call->token_index += 1;
 				return true;
 			case MACRO_TOKEN_HINT_PARAMETER: {
-				macro_call->argument_index = hint.param.index;
-				macro_call->argument_token_index = 0;
+				call->state = MACRO_CALL_ARGUMENT_EXPANSION;
+				call->arg_expansion = (MacroCallArgExpansion) {
+					.arg_index = hint.param.index,
+					.arg_token_index = 0,
+				};
 
-				bool has_first_token = _preprocessor_try_expand_macro_argument(state, out_token);
-				assert_msg(has_first_token, "Macro call argument does has 0 tokens");
-				return true;
+				break; // keep looping so that the new state gets processed
 			}
 			case MACRO_TOKEN_HINT_STRING_OPERATOR: {
 				StringBuilder builder = { .arena = state->generated_tokens_allocator };
@@ -1018,7 +989,7 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 
 				assert(hint.string_op.param_index < macro->parameter_count);
 
-				MacroArgumentTokens argument_tokens = macro_call->argument_tokens[hint.string_op.param_index];
+				MacroArgumentTokens argument_tokens = call->argument_tokens[hint.string_op.param_index];
 
 				if (argument_tokens.count > 0) {
 					str_builder_append(&builder, argument_tokens.tokens[0].string);
@@ -1038,61 +1009,122 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 				};
 
 				// We've precessed the string operator token => go to the next one in the token stream of the macro.
-				macro_call->token_index += 1;
+				call->token_index += 1;
 
 				*out_token = token;
 				return true;
 			}
 			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR:
-				return _preprocessor_apply_token_insert_operator(state, macro_call, out_token);
+				return _preprocessor_apply_token_insert_operator(state, call, out_token);
 			}
 			break;
 		}
-		case BUILTIN_MACRO_LINE: {
-			assert(state->macro_call_stack_depth > 0);
-			SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
-			uint32_t call_source_line = line_info_pos_to_source_location(
-					&state->line_info,
-					first_call_range.start).line + 1;
+		case MACRO_CALL_ARGUMENT_EXPANSION: {
+			MacroCallArgExpansion* expansion = &call->arg_expansion;
+			assert(expansion->arg_index < call->macro->parameter_count);
 
-			StringBuilder builder = { .arena = state->generated_tokens_allocator };
-			str_builder_append_int(&builder, call_source_line);
+			MacroArgumentTokens argument_tokens = call->argument_tokens[expansion->arg_index];
+			bool argument_is_fully_expanded = expansion->arg_token_index == argument_tokens.count;
+			if (argument_is_fully_expanded) {
+				call->state = MACRO_CALL_TOKEN;
 
-			Token generated_token = (Token) {
-				.kind = TOKEN_IDENT,
-				.source_range = first_call_range,
-				.string = builder.string,
-			};
+				// Move to the next token
+				call->token_index += 1;
+				break;
+			}
 
-			// Macro call finished
-			macro_call->token_index = macro->token_count;
+			assert(expansion->arg_token_index < argument_tokens.count);
 
-			*out_token = generated_token;
+			*out_token = argument_tokens.tokens[expansion->arg_token_index];
+			expansion->arg_token_index += 1;
 			return true;
 		}
-		case BUILTIN_MACRO_FILE: {
-			assert(state->macro_call_stack_depth > 0);
-			SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
+		case MACRO_CALL_VARGS_EXPANSION: {
+			unreachable();
+		}
+		}
+	}
 
-			StringBuilder builder = { .arena = state->generated_tokens_allocator };
-			str_builder_append_char(&builder, '"');
-			str_builder_append(&builder, state->source_path);
-			str_builder_append_char(&builder, '"');
+	unreachable();
+	return false;
+}
 
-			Token generated_token = (Token) {
-				.kind = TOKEN_STRING,
-				.source_range = first_call_range,
-				.string = builder.string,
-			};
+bool _preprocessor_expand_builtin_macro(Preprocessor* state, Token* out_token, MacroCall* call) {
+	const MacroDefinition* macro = call->macro;
 
-			// Mark the call as finished
-			macro_call->token_index = macro->token_count;
+	assert(!_macro_call_finished(call));
+	assert(macro->builtin_kind != BUILTIN_MACRO_NONE);
 
-			*out_token = generated_token;
+	switch (macro->builtin_kind) {
+	case BUILTIN_MACRO_NONE:
+		unreachable();
+	case BUILTIN_MACRO_LINE: {
+		assert(state->macro_call_stack_depth > 0);
+		SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
+		uint32_t call_source_line = line_info_pos_to_source_location(
+				&state->line_info,
+				first_call_range.start).line + 1;
+
+		StringBuilder builder = { .arena = state->generated_tokens_allocator };
+		str_builder_append_int(&builder, call_source_line);
+
+		Token generated_token = (Token) {
+			.kind = TOKEN_IDENT,
+			.source_range = first_call_range,
+			.string = builder.string,
+		};
+
+		// Macro call finished
+		call->token_index = macro->token_count;
+
+		*out_token = generated_token;
+		return true;
+	}
+	case BUILTIN_MACRO_FILE: {
+		assert(state->macro_call_stack_depth > 0);
+		SourceRange first_call_range = state->macro_call_stack[0].call_source_range;
+
+		StringBuilder builder = { .arena = state->generated_tokens_allocator };
+		str_builder_append_char(&builder, '"');
+		str_builder_append(&builder, state->source_path);
+		str_builder_append_char(&builder, '"');
+
+		Token generated_token = (Token) {
+			.kind = TOKEN_STRING,
+			.source_range = first_call_range,
+			.string = builder.string,
+		};
+
+		// Mark the call as finished
+		call->token_index = macro->token_count;
+
+		*out_token = generated_token;
+		return true;
+	}
+	}
+
+	unreachable();
+	return false;
+}
+
+bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token) {
+	while (state->macro_call_stack_depth > 0) {
+		MacroCall* call = &state->macro_call_stack[state->macro_call_stack_depth - 1];
+		if (_macro_call_finished(call)) {
+			state->macro_call_stack_depth -= 1;
+			continue;
+		}
+		
+		bool result;
+		if (call->macro->builtin_kind == BUILTIN_MACRO_NONE) {
+			result = _preprocessor_expand_user_defined_macro(state, out_token, call);
+		} else {
+			result = _preprocessor_expand_builtin_macro(state, out_token, call);
+		}
+
+		if (result) {
 			return true;
 		}
-		}
-
 	}
 
 	return false;
@@ -1119,7 +1151,7 @@ void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,
 	assert(root_error != NULL);
 	assert(call_index < state->macro_call_stack_depth);
 
-	const MacroCallState* call = &state->macro_call_stack[call_index];
+	const MacroCall* call = &state->macro_call_stack[call_index];
 	const MacroDefinition* macro = call->macro;
 
 	StringBuilder builder = { .arena = state->diagnostics->allocator };
@@ -1154,7 +1186,7 @@ void _preprocessor_macro_call_stack_to_diagnostics(const Preprocessor* state, Di
 	}
 }
 
-MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
+MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
 	MacroArgumentTokens* argument_tokens = NULL;
 
 	SourceRange call_source_range = macro_call_ident.source_range;
@@ -1253,16 +1285,15 @@ MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDef
 		return NULL;
 	}
 
-	MacroCallState* macro_call = &state->macro_call_stack[state->macro_call_stack_depth];
+	MacroCall* macro_call = &state->macro_call_stack[state->macro_call_stack_depth];
 	state->macro_call_stack_depth += 1;
 
 	memset(macro_call, 0, sizeof(*macro_call));
 	
 	macro_call->macro = macro;
 	macro_call->call_source_range = call_source_range;
+	macro_call->state = MACRO_CALL_TOKEN;
 	macro_call->argument_tokens = argument_tokens;
-	macro_call->argument_index = SIZE_MAX;
-	macro_call->argument_token_index = SIZE_MAX;
 
 	return macro_call;
 }

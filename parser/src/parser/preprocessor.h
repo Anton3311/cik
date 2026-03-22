@@ -27,18 +27,32 @@ typedef struct {
 	size_t count;
 } MacroArgumentTokens;
 
+typedef enum {
+	MACRO_CALL_TOKEN,
+	MACRO_CALL_ARGUMENT_EXPANSION,
+	MACRO_CALL_VARGS_EXPANSION,
+} MacroCallState;
+
+typedef struct {
+	// Which macro call argument is being expanded
+	size_t arg_index;
+	size_t arg_token_index;
+} MacroCallArgExpansion;
+
 typedef struct {
 	const MacroDefinition* macro;
 	size_t token_index;
 
-	// Which macro call argument is being expanded
-	size_t argument_index;
-	size_t argument_token_index;
+	MacroCallState state;
+
+	union {
+		MacroCallArgExpansion arg_expansion;
+	};
 
 	// Size matches the number of macro parameters
 	MacroArgumentTokens* argument_tokens;
 	SourceRange call_source_range;
-} MacroCallState;
+} MacroCall;
 
 typedef enum {
 	DIRECTIVE_INCLUDE,
@@ -80,7 +94,7 @@ typedef struct {
 	LineInfo line_info;
 	MacroTable macro_table;
 
-	MacroCallState* macro_call_stack;
+	MacroCall* macro_call_stack;
 	size_t macro_call_stack_depth;
 	size_t macro_call_stack_capacity;
 
@@ -159,7 +173,7 @@ void preprocessor_skip_directive(Preprocessor* state);
 bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token);
 
 // NOTE: Returns null in case a call to a macro doesn't produce any tokens
-MacroCallState* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident);
+MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident);
 
 Token preprocessor_view_next(Preprocessor* state);
 Token preprocessor_next_token(Preprocessor* state);

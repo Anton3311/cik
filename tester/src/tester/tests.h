@@ -34,6 +34,7 @@ void test_parsing_of_non_function_style_macro_with_paren_as_first_token_in_strea
 void test_error_directive(TestContext* context);
 void test_multi_line_define(TestContext* context);
 void test_token_insertion_operator(TestContext* context);
+void test_va_args_macro(TestContext* context);
 
 
 

@@ -52,6 +52,7 @@ typedef struct {
 
 	union {
 		MacroCallArgExpansion arg_expansion;
+		MacroCallVaArgsExpansion va_args_expansion;
 	};
 
 	// Size matches the number of macro parameters

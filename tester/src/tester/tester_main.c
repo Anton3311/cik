@@ -36,6 +36,7 @@ static TestCase preprocessor_tests[] = {
 	test(test_error_directive),
 	test(test_multi_line_define),
 	test(test_token_insertion_operator),
+	test(test_va_args_macro),
 };
 
 static TestCase parser_tests[] = {

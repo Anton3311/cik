@@ -1034,7 +1034,12 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR:
 				return _preprocessor_apply_token_insert_operator(generated_tokens_allocator, call, out_token);
 			case MACRO_TOKEN_HINT_VA_ARGS:
-				unreachable();
+				call->state = MACRO_CALL_VA_ARGS_EXPANSION;
+				call->va_args_expansion = (MacroCallVaArgsExpansion) {
+					.arg_index = macro->parameter_count,
+					.arg_token_index = 0,
+				};
+				break;
 			}
 			break;
 		}
@@ -1059,7 +1064,48 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 			return true;
 		}
 		case MACRO_CALL_VA_ARGS_EXPANSION: {
-			unreachable();
+			MacroCallVaArgsExpansion* expansion = &call->va_args_expansion;
+			assert(call->argument_count >= macro->parameter_count);
+			assert(expansion->arg_index < call->argument_count);
+
+			size_t token_count_in_arg = call->argument_tokens[expansion->arg_index].count;
+			bool argument_is_fully_expanded = expansion->arg_token_index == token_count_in_arg;
+			bool is_last_arg = expansion->arg_index + 1 == call->argument_count;
+
+			if (argument_is_fully_expanded) {
+				if (is_last_arg) {
+					call->state = MACRO_CALL_TOKEN;
+
+					// Move to the next token
+					call->token_index += 1;
+					break;
+				} else {
+					// Move to the next argument
+					expansion->arg_index += 1;
+					expansion->arg_token_index = 0;
+
+					// But first immediately return a comma token.
+					// Keep `arg_token_index` at 0, so that the next time a token gets requested
+					// it return the first token of the argument.
+
+					// TODO: figure out how to generate a proper source range for this comma token.
+					Token va_args_token = macro->tokens[call->token_index];
+					*out_token = (Token) {
+						.kind = TOKEN_COMMA,
+						.string = STR_LIT(","),
+						.source_range = va_args_token.source_range,
+					};
+
+					return true;
+				}
+			}
+
+			MacroArgumentTokens argument_tokens = call->argument_tokens[expansion->arg_index];
+			assert(expansion->arg_token_index < argument_tokens.count);
+
+			*out_token = argument_tokens.tokens[expansion->arg_token_index];
+			expansion->arg_token_index += 1;
+			return true;
 		}
 		}
 	}

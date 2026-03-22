@@ -296,6 +296,24 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 					// There are potentially more paremeters
 					continue;
 				}
+			} else if (token.kind == TOKEN_ELLIPSES) {
+				Token right_paren = tokenizer_next_token(&state->tokenizer);
+				if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+					TokenKind expected_tokens[] = {
+						TOKEN_RIGHT_PAREN,
+					};
+
+					diagnostics_report_unexpected_token(state->diagnostics,
+							token,
+							expected_tokens,
+							array_size(expected_tokens));
+
+					arena_end_temp(temp_region);
+					return false;
+				}
+
+				macro->has_vargs = true;
+				break;
 			}
 
 			if (token.kind == TOKEN_RIGHT_PAREN) {
@@ -306,7 +324,11 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 					TOKEN_RIGHT_PAREN,
 				};
 
-				diagnostics_report_unexpected_token(state->diagnostics, token, expected_tokens, array_size(expected_tokens));
+				diagnostics_report_unexpected_token(state->diagnostics,
+						token,
+						expected_tokens,
+						array_size(expected_tokens));
+
 				arena_end_temp(temp_region);
 				return false;
 			}

@@ -21,6 +21,7 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_FORWARD_SLASH] = STR_LIT("/"),
 	[TOKEN_BACKWARD_SLASH] = STR_LIT("\\"),
 	[TOKEN_ARROW] = STR_LIT("->"),
+	[TOKEN_ELLIPSES] = STR_LIT("..."),
 
 	// Parens & friends
 	[TOKEN_LEFT_PAREN] = STR_LIT("("),
@@ -371,8 +372,27 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_try_create_double_char_token(tokenizer, '%', '=', TOKEN_PERCENT, TOKEN_ASSIGNMENT_BY_REMAINDER);
 	case ',':
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_COMMA);
-	case '.':
+	case '.': {
+		if (tokenizer->read_position + 3 <= tokenizer->source_code.length) {
+			const char* string = tokenizer->source_code.v + tokenizer->read_position;
+			bool is_ellipses = string[0] == '.' && string[1] == '.' && string[2] == '.';
+			if (is_ellipses) {
+				Token token = (Token) {
+					.source_range = (SourceRange) {
+						.start = tokenizer->read_position,
+						.end = tokenizer->read_position + 3,
+					},
+					.string = sub_str(tokenizer->source_code, tokenizer->read_position, 3),
+					.kind = TOKEN_ELLIPSES,
+				};
+
+				tokenizer->read_position += 3;
+				return token;
+			}
+		}
+
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_DOT);
+	}
 	case '=':
 		return _tokenizer_try_create_double_char_token(tokenizer, '=', '=', TOKEN_EQUAL, TOKEN_DOUBLE_EQUAL);
 	case ':':

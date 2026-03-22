@@ -31,7 +31,7 @@ typedef struct {
 	const MacroDefinition* macro;
 	size_t token_index;
 
-	// Which macro call argument is being expanding
+	// Which macro call argument is being expanded
 	size_t argument_index;
 	size_t argument_token_index;
 
@@ -135,6 +135,8 @@ struct MacroDefinition {
 
 	String* parameter_names;
 	size_t parameter_count;
+
+	bool has_vargs;
 	
 	Token* tokens;
 	MacroTokenHint* token_hints;

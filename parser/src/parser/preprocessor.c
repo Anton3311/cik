@@ -1239,103 +1239,142 @@ void _preprocessor_macro_call_stack_to_diagnostics(const Preprocessor* state, Di
 	}
 }
 
-// NOTE: Returns null in case a call to a macro doesn't produce any tokens
-MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
-	MacroArgumentTokens* argument_tokens = NULL;
+typedef struct {
+	SourceRange source_range;
+	MacroArgumentTokens* token_streams;
+	size_t count;
+} ParsedMacroCallArgs;
 
-	SourceRange call_source_range = macro_call_ident.source_range;
-
+bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArgs* out_args) {
 	MacroExpansionSourceInfo source_info = _create_macro_expansion_source_info(state);
+	Token maybe_left_paren = _preprocessor_next_macro_or_source_token(source_info,
+			&state->macro_call_stack,
+			state->generated_tokens_allocator,
+			&state->tokenizer);
 
-	if (macro->style == MACRO_STYLE_FUNCTION) {
-		// Parse macro arguments
-		Token maybe_left_paren = _preprocessor_next_macro_or_source_token(source_info,
+	if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(state->diagnostics,
+				maybe_left_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		return false;
+	}
+
+	SourceRange source_range = (SourceRange) {
+		.start = maybe_left_paren.source_range.start,
+		.end = SIZE_MAX
+	};
+
+	ArenaRegion args_region = arena_begin_temp(state->temp_allocator);
+	ArenaRegion streams_region = arena_begin_temp(state->allocator);
+
+	MacroArgumentTokens* token_streams = arena_alloc_array(state->temp_allocator, MacroArgumentTokens, 0);
+	size_t token_stream_count = 0;
+
+	MacroArgumentTokens current_token_stream = {};
+	current_token_stream.tokens = arena_alloc_array(state->allocator, Token, 0);
+
+	bool arg_is_expected = false;
+	while (true) {
+		Token token = _preprocessor_next_macro_or_source_token(source_info,
 				&state->macro_call_stack,
 				state->generated_tokens_allocator,
 				&state->tokenizer);
 
-		if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
-			TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
-			diagnostics_report_unexpected_token(state->diagnostics,
-					maybe_left_paren,
-					expected_tokens,
-					array_size(expected_tokens));
+		if (token.kind == TOKEN_EOF) {
+			arena_end_temp(args_region);
+			arena_end_temp(streams_region);
+			return false;
+		}
+
+		bool argument_end = token.kind == TOKEN_COMMA || token.kind == TOKEN_RIGHT_PAREN;
+		if (argument_end) {
+			arena_alloc(state->temp_allocator, MacroArgumentTokens);
+
+			if (current_token_stream.count > 0 || arg_is_expected) {
+				token_streams[token_stream_count] = current_token_stream;
+				token_stream_count += 1;
+			}
+
+			arg_is_expected = false;
+
+			current_token_stream.count = 0;
+			current_token_stream.tokens = arena_alloc_array(state->allocator, Token, 0);
+		}
+
+		if (token.kind == TOKEN_COMMA) {
+			arg_is_expected = true;
+			continue;
+		} else if (token.kind == TOKEN_RIGHT_PAREN) {
+			source_range.end = token.source_range.end;
+			break;
+		}
+
+		arena_alloc(state->allocator, Token);
+
+		current_token_stream.tokens[current_token_stream.count] = token;
+		current_token_stream.count += 1;
+	}
+
+	// Copy `token_streams` array to the main arena
+	out_args->source_range = source_range;
+	out_args->count = token_stream_count;
+	out_args->token_streams = arena_alloc_array(state->allocator, MacroArgumentTokens, token_stream_count);
+	memcpy(out_args->token_streams, token_streams, sizeof(*token_streams) * token_stream_count);
+
+	arena_end_temp(args_region);
+	return true;
+}
+
+// NOTE: Returns null in case a call to a macro doesn't produce any tokens
+MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
+	ParsedMacroCallArgs args = {};
+	SourceRange call_source_range = macro_call_ident.source_range;
+
+	if (macro->style == MACRO_STYLE_FUNCTION) {
+		// Parse macro arguments
+
+		if (!_preprocessor_parse_macro_call_args(state, &args)) {
 			return NULL;
 		}
+		
+		if (args.count < macro->parameter_count) {
+			// Not enough macro arguments
+			StringBuilder builder = { state->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Not enough arguments during a call of macro called '"));
+			str_builder_append(&builder, macro->name);
+			str_builder_append(&builder, STR_LIT("'. Expected "));
+			str_builder_append_int(&builder, macro->parameter_count);
+			str_builder_append(&builder, STR_LIT(" but only "));
+			str_builder_append_int(&builder, args.count);
+			str_builder_append(&builder, STR_LIT(" were provided."));
 
-		argument_tokens = arena_alloc_array(state->temp_allocator,
-				MacroArgumentTokens,
-				macro->parameter_count);
+			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
+					source_range_from_sub_string(state->tokenizer.source_code, macro->name),
+					builder.string,
+					NULL);
 
-		memset(argument_tokens, 0, sizeof(*argument_tokens) * macro->parameter_count);
+			_preprocessor_macro_call_stack_to_diagnostics(state, error);
+			return NULL;
+		} else if (args.count > macro->parameter_count && !macro->has_va_args) {
+			// Too many macro arguments
+			StringBuilder builder = { state->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Too many arguments during a call of macro called '"));
+			str_builder_append(&builder, macro->name);
+			str_builder_append(&builder, STR_LIT("'. Expected "));
+			str_builder_append_int(&builder, macro->parameter_count);
+			str_builder_append(&builder, STR_LIT(" but "));
+			str_builder_append_int(&builder, args.count);
+			str_builder_append(&builder, STR_LIT(" were provided."));
 
-		bool end_argument_list = false;
+			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
+					source_range_from_sub_string(state->tokenizer.source_code, macro->name),
+					builder.string,
+					NULL);
 
-		for (size_t arg_index = 0; arg_index < macro->parameter_count; arg_index += 1) {
-			MacroArgumentTokens* tokens = &argument_tokens[arg_index];
-			tokens->tokens = arena_alloc_array(state->temp_allocator, Token, 0);
-			
-			while (true) {
-				Token token = _preprocessor_next_macro_or_source_token(source_info,
-						&state->macro_call_stack,
-						state->generated_tokens_allocator,
-						&state->tokenizer);
-
-				if (token.kind == TOKEN_COMMA) {
-					break;
-				} else if (token.kind == TOKEN_RIGHT_PAREN) {
-					end_argument_list = true;
-					call_source_range.end = token.source_range.end;
-					break;
-				}
-
-				arena_alloc(state->temp_allocator, Token);
-
-				tokens->tokens[tokens->count] = token;
-				tokens->count += 1;
-			}
-
-			if (end_argument_list) {
-				if (arg_index != macro->parameter_count - 1) {
-					// Not enough macro arguments
-					StringBuilder builder = { state->diagnostics->allocator };
-					str_builder_append(&builder, STR_LIT("Not enough arguments during a call of macro called '"));
-					str_builder_append(&builder, macro->name);
-					str_builder_append(&builder, STR_LIT("'. Expected "));
-					str_builder_append_int(&builder, macro->parameter_count);
-					str_builder_append(&builder, STR_LIT(" but only "));
-					str_builder_append_int(&builder, arg_index + 1);
-					str_builder_append(&builder, STR_LIT(" were provided."));
-
-					DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
-							source_range_from_sub_string(state->tokenizer.source_code, macro->name),
-							builder.string,
-							NULL);
-
-					_preprocessor_macro_call_stack_to_diagnostics(state, error);
-					return NULL;
-				}
-
-				break;
-			}
-		}
-
-		if (!end_argument_list) {
-			Token maybe_right_paren = _preprocessor_next_macro_or_source_token(source_info,
-						&state->macro_call_stack,
-						state->generated_tokens_allocator,
-						&state->tokenizer);
-
-			if (maybe_right_paren.kind != TOKEN_RIGHT_PAREN) {
-				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
-				diagnostics_report_unexpected_token(state->diagnostics,
-						maybe_right_paren,
-						expected_tokens,
-						array_size(expected_tokens));
-				return NULL;
-			}
-
-			call_source_range.end = maybe_right_paren.source_range.end;
+			_preprocessor_macro_call_stack_to_diagnostics(state, error);
+			return NULL;
 		}
 	}
 
@@ -1359,9 +1398,13 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 	memset(macro_call, 0, sizeof(*macro_call));
 	
 	macro_call->macro = macro;
-	macro_call->call_source_range = call_source_range;
+	macro_call->call_source_range = (SourceRange) {
+		.start = macro_call_ident.source_range.start,
+		.end = args.source_range.end,
+	};
 	macro_call->state = MACRO_CALL_TOKEN;
-	macro_call->argument_tokens = argument_tokens;
+	macro_call->argument_tokens = args.token_streams;
+	macro_call->argument_count = args.count;
 
 	return macro_call;
 }

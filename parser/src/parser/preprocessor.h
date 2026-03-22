@@ -56,6 +56,7 @@ typedef struct {
 
 	// Size matches the number of macro parameters
 	MacroArgumentTokens* argument_tokens;
+	size_t argument_count;
 	SourceRange call_source_range;
 } MacroCall;
 

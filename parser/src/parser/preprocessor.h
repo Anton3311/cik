@@ -179,7 +179,6 @@ void preprocessor_init(Preprocessor* state,
 		Arena* generated_tokens_allocator);
 
 void preprocessor_skip_directive(Preprocessor* state);
-bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token);
 
 // NOTE: Returns null in case a call to a macro doesn't produce any tokens
 MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident);

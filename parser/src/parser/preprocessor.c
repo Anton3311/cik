@@ -1065,23 +1065,39 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 	return false;
 }
 
-bool _preprocessor_expand_builtin_macro(Preprocessor* state, Token* out_token, MacroCall* call) {
+typedef struct {
+	const String source_file_path;
+	const LineInfo* line_info;
+} MacroExpansionSourceInfo;
+
+inline MacroExpansionSourceInfo _create_macro_expansion_source_info(const Preprocessor* preprocessor) {
+	return (MacroExpansionSourceInfo) {
+		.source_file_path = preprocessor->source_path,
+		.line_info = &preprocessor->line_info,
+	};
+}
+
+bool _preprocessor_expand_builtin_macro(MacroExpansionSourceInfo source_info,
+		const MacroCallStack* call_stack,
+		Arena* generated_tokens_allocator,
+		Token* out_token,
+		MacroCall* call) {
 	const MacroDefinition* macro = call->macro;
 
 	assert(!_macro_call_finished(call));
 	assert(macro->builtin_kind != BUILTIN_MACRO_NONE);
+	assert(call_stack->depth > 0);
 
 	switch (macro->builtin_kind) {
 	case BUILTIN_MACRO_NONE:
 		unreachable();
 	case BUILTIN_MACRO_LINE: {
-		assert(state->macro_call_stack.depth > 0);
-		SourceRange first_call_range = state->macro_call_stack.frames[0].call_source_range;
+		SourceRange first_call_range = call_stack->frames[0].call_source_range;
 		uint32_t call_source_line = line_info_pos_to_source_location(
-				&state->line_info,
+				source_info.line_info,
 				first_call_range.start).line + 1;
 
-		StringBuilder builder = { .arena = state->generated_tokens_allocator };
+		StringBuilder builder = { .arena = generated_tokens_allocator };
 		str_builder_append_int(&builder, call_source_line);
 
 		Token generated_token = (Token) {
@@ -1097,12 +1113,11 @@ bool _preprocessor_expand_builtin_macro(Preprocessor* state, Token* out_token, M
 		return true;
 	}
 	case BUILTIN_MACRO_FILE: {
-		assert(state->macro_call_stack.depth > 0);
-		SourceRange first_call_range = state->macro_call_stack.frames[0].call_source_range;
+		SourceRange first_call_range = call_stack->frames[0].call_source_range;
 
-		StringBuilder builder = { .arena = state->generated_tokens_allocator };
+		StringBuilder builder = { .arena = generated_tokens_allocator };
 		str_builder_append_char(&builder, '"');
-		str_builder_append(&builder, state->source_path);
+		str_builder_append(&builder, source_info.source_file_path);
 		str_builder_append_char(&builder, '"');
 
 		Token generated_token = (Token) {
@@ -1123,19 +1138,27 @@ bool _preprocessor_expand_builtin_macro(Preprocessor* state, Token* out_token, M
 	return false;
 }
 
-bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out_token) {
-	while (state->macro_call_stack.depth > 0) {
-		MacroCall* call = &state->macro_call_stack.frames[state->macro_call_stack.depth - 1];
+bool _preprocessor_get_next_macro_expansion_token(MacroExpansionSourceInfo source_info,
+		MacroCallStack* macro_call_stack,
+		Arena* generated_tokens_allocator,
+		Token* out_token) {
+
+	while (macro_call_stack->depth > 0) {
+		MacroCall* call = &macro_call_stack->frames[macro_call_stack->depth - 1];
 		if (_macro_call_finished(call)) {
-			state->macro_call_stack.depth -= 1;
+			macro_call_stack->depth -= 1;
 			continue;
 		}
 
 		bool result;
 		if (call->macro->builtin_kind == BUILTIN_MACRO_NONE) {
-			result = _preprocessor_expand_user_defined_macro(state->generated_tokens_allocator, out_token, call);
+			result = _preprocessor_expand_user_defined_macro(generated_tokens_allocator, out_token, call);
 		} else {
-			result = _preprocessor_expand_builtin_macro(state, out_token, call);
+			result = _preprocessor_expand_builtin_macro(source_info,
+					macro_call_stack,
+					generated_tokens_allocator,
+					out_token,
+					call);
 		}
 
 		if (result) {
@@ -1146,19 +1169,30 @@ bool preprocessor_get_next_macro_expantion_token(Preprocessor* state, Token* out
 	return false;
 }
 
-// Returns the next token from the macro call expantion
-// (Uses `preprocessor_get_next_macro_expantion_token` for that).
+// Returns the next token from the macro call expansion
+// (Uses `_preprocessor_get_next_macro_expansion_token` for that).
 //
-// In case `preprocessor_get_next_macro_expantion_token` fails
+// In case `_preprocessor_get_next_macro_expansion_token` fails
 // (when the preprocessor isn't expanding a macro)
 // falls back to the source tokenizer.
-Token _preprocessor_next_macro_or_source_token(Preprocessor* state) {
+inline Token _preprocessor_next_macro_or_source_token(MacroExpansionSourceInfo source_info,
+		MacroCallStack* macro_call_stack,
+		Arena* generated_tokens_allocator,
+		Tokenizer* tokenizer) {
+
 	Token token = {};
-	if (state->macro_call_stack.depth > 0 && preprocessor_get_next_macro_expantion_token(state, &token)) {
-		return token;
+	if (macro_call_stack->depth > 0) {
+		bool result = _preprocessor_get_next_macro_expansion_token(source_info,
+				macro_call_stack,
+				generated_tokens_allocator,
+				&token);
+
+		if (result) {
+			return token;
+		}
 	}
 
-	return tokenizer_next_token(&state->tokenizer);
+	return tokenizer_next_token(tokenizer);
 }
 
 void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,
@@ -1207,9 +1241,15 @@ MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefiniti
 
 	SourceRange call_source_range = macro_call_ident.source_range;
 
+	MacroExpansionSourceInfo source_info = _create_macro_expansion_source_info(state);
+
 	if (macro->style == MACRO_STYLE_FUNCTION) {
 		// Parse macro arguments
-		Token maybe_left_paren = _preprocessor_next_macro_or_source_token(state);
+		Token maybe_left_paren = _preprocessor_next_macro_or_source_token(source_info,
+				&state->macro_call_stack,
+				state->generated_tokens_allocator,
+				&state->tokenizer);
+
 		if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
 			TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
 			diagnostics_report_unexpected_token(state->diagnostics,
@@ -1232,7 +1272,11 @@ MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefiniti
 			tokens->tokens = arena_alloc_array(state->temp_allocator, Token, 0);
 			
 			while (true) {
-				Token token = _preprocessor_next_macro_or_source_token(state);
+				Token token = _preprocessor_next_macro_or_source_token(source_info,
+						&state->macro_call_stack,
+						state->generated_tokens_allocator,
+						&state->tokenizer);
+
 				if (token.kind == TOKEN_COMMA) {
 					break;
 				} else if (token.kind == TOKEN_RIGHT_PAREN) {
@@ -1273,7 +1317,11 @@ MacroCall* preprocessor_init_macro_call(Preprocessor* state, const MacroDefiniti
 		}
 
 		if (!end_argument_list) {
-			Token maybe_right_paren = _preprocessor_next_macro_or_source_token(state);
+			Token maybe_right_paren = _preprocessor_next_macro_or_source_token(source_info,
+						&state->macro_call_stack,
+						state->generated_tokens_allocator,
+						&state->tokenizer);
+
 			if (maybe_right_paren.kind != TOKEN_RIGHT_PAREN) {
 				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
 				diagnostics_report_unexpected_token(state->diagnostics,
@@ -1358,7 +1406,14 @@ Token preprocessor_next_token(Preprocessor* state) {
 			//
 			//       In that way the call gets replaced with whatever code was defined in the macro.
 
-			preprocessor_get_next_macro_expantion_token(state, &next_token);
+			bool result = _preprocessor_get_next_macro_expansion_token(_create_macro_expansion_source_info(state),
+					&state->macro_call_stack,
+					state->generated_tokens_allocator,
+					&next_token);
+
+			if (result) {
+				assert(next_token.kind != TOKEN_COUNT);
+			}
 		}
 		
 		if (next_token.kind == TOKEN_COUNT) {

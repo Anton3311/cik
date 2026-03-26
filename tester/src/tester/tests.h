@@ -41,6 +41,8 @@ void test_va_args_macro(TestContext* context);
 void test_parse_type_def_of_primitive_type(TestContext* context);
 void test_parse_type_def_of_struct_def(TestContext* context);
 void test_parse_type_def_of_struct_def_with_members(TestContext* context);
+void test_aliased_type_resolution(TestContext* context);
+
 void test_parse_enum_def(TestContext* context);
 void test_parse_function_def(TestContext* context);
 

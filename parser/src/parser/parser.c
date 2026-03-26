@@ -749,6 +749,12 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		case IDENT_FUNCTION:
 		case IDENT_VARIABLE:
 			return PARSE_TYPE_NOT_PARSED;
+		case IDENT_TYPE_DEF:
+			preprocessor_next_token(parser->preprocessor);
+
+			*out_type = entry->type_def->aliased_type;
+			out_type->alias_definition = entry->type_def;
+			return PARSE_TYPE_PARSED;
 		case IDENT_STRUCT:
 			preprocessor_next_token(parser->preprocessor);
 
@@ -830,6 +836,10 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 		return NULL;
 	}
 
+	if (!_parser_parse_pre_declaration_modifiers(parser, &aliased_type, &aliased_type, true)) {
+		return NULL;
+	}
+
 	Token new_name = preprocessor_next_token(parser->preprocessor);
 	if (new_name.kind != TOKEN_IDENT) {
 		TokenKind expected_tokens[] = {
@@ -856,13 +866,22 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 		return NULL;
 	}
 
+	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, new_name.string);
+	assert(entry == NULL);
+
+	ParsedTypeDef* type_def = arena_alloc(parser->ast_allocator, ParsedTypeDef);
+	memset(type_def, 0, sizeof(*type_def));
+	
+	type_def->new_name = _source_string_from_token(new_name);
+	type_def->aliased_type = aliased_type;
+
+	entry = ident_storage_insert(&parser->ident_storage, new_name.string);
+	entry->kind = IDENT_TYPE_DEF;
+	entry->type_def = type_def;
+
 	ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
 	node->kind = AST_NODE_TYPE_DEF;
-	node->type_def = (ParsedTypeDef) {
-		.aliased_type = aliased_type,
-		.new_name = new_name.string,
-	};
-
+	node->type_def = type_def;
 	return node;
 }
 
@@ -1013,6 +1032,8 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 		}
 
 		switch (entry->kind) {
+		case IDENT_TYPE_DEF:
+			break;
 		case IDENT_FUNCTION:
 			out_expr->kind = EXPR_FUNCTION_REFERENCE;
 			out_expr->function_ref = entry->function_def;

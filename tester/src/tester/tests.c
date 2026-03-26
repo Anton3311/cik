@@ -755,7 +755,7 @@ void test_parse_type_def_of_primitive_type(TestContext* context) {
 	ParsedNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
-	ParsedTypeDef* type_def = &first->type_def;
+	ParsedTypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == PARSED_TYPE_INT);
 	assert(str_equal(type_def->new_name, STR_LIT("int32")));
 }
@@ -772,7 +772,7 @@ void test_parse_type_def_of_struct_def(TestContext* context) {
 	ParsedNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
-	ParsedTypeDef* type_def = &first->type_def;
+	ParsedTypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
 
 	ParsedStruct* struct_def = type_def->aliased_type.struct_def;
@@ -798,7 +798,7 @@ void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
 	ParsedNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
-	ParsedTypeDef* type_def = &first->type_def;
+	ParsedTypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
 	assert(str_equal(type_def->new_name, STR_LIT("World")));
 
@@ -825,6 +825,25 @@ void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
 	ParsedStructMember* inner_value_member = inner_struct_def->member_list;
 	assert(inner_value_member->type.kind == PARSED_TYPE_INT);
 	assert(str_equal(inner_value_member->name, STR_LIT("inner_value")));
+}
+
+void test_aliased_type_resolution(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("typedef int int32;\n"
+				"int32 number;"), &ast);
+
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* type_def_node = ast.root_nodes.first;
+	ParsedNode* var_node = type_def_node->next;
+
+	assert(type_def_node->kind == AST_NODE_TYPE_DEF);
+	assert(var_node->kind == AST_NODE_VARIABLE);
+
+	assert(var_node->variable.type.alias_definition == type_def_node->type_def);
 }
 
 void test_parse_enum_def(TestContext* context) {

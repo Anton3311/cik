@@ -398,7 +398,7 @@ void print_variable(PrinterState* printer, const ParsedVariable* variable) {
 void print_single_node(PrinterState* printer, const ParsedNode* node) {
 	switch (node->kind) {
 	case AST_NODE_TYPE_DEF:
-		print_type_def(printer, &node->type_def);
+		print_type_def(printer, node->type_def);
 		break;
 	case AST_NODE_STRUCT:
 		print_struct_def(printer, node->struct_def);

@@ -102,6 +102,7 @@ struct ParsedType {
 	ParsedTypeKind kind;
 
 	TypeQualifiers qualifiers;
+	ParsedTypeDef* alias_definition;
 
 	union {
 		struct {
@@ -263,7 +264,7 @@ struct ParsedNode {
 	union {
 		ParsedStruct* struct_def;
 		ParsedEnum* enum_def;
-		ParsedTypeDef type_def;
+		ParsedTypeDef* type_def;
 		ParsedFunction* function_def;
 		ParsedExpr expr;
 		ParsedVariable variable;

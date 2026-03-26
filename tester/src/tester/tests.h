@@ -63,4 +63,7 @@ void test_parse_simple_bin_expr(TestContext* context);
 void test_bin_op_precedence(TestContext* context);
 void test_parse_variable_ref_expr(TestContext* context);
 
+void test_parse_return_stmt(TestContext* context);
+void test_parse_return_stmt_without_value(TestContext* context);
+
 #endif

@@ -23,6 +23,7 @@ typedef struct ParsedCall ParsedCall;
 typedef struct ParsedExpr ParsedExpr;
 typedef struct ParsedBinExpr ParsedBinExpr;
 typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
+typedef struct ParsedReturnStmt ParsedReturnStmt;
 
 //
 // AST
@@ -35,6 +36,7 @@ typedef enum {
 	AST_NODE_FUNCTION,
 	AST_NODE_EXPR,
 	AST_NODE_VARIABLE,
+	AST_NODE_RETURN,
 } AstNodeKind;
 
 typedef struct {
@@ -254,6 +256,14 @@ struct ParsedVariable {
 };
 
 //
+// ReturnStmt
+//
+
+struct ParsedReturnStmt {
+	ParsedExpr* value;
+};
+
+//
 // Node
 //
 
@@ -268,6 +278,7 @@ struct ParsedNode {
 		ParsedFunction* function_def;
 		ParsedExpr expr;
 		ParsedVariable variable;
+		ParsedReturnStmt return_stmt;
 	};
 };
 

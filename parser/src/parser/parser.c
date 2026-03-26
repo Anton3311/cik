@@ -1545,6 +1545,33 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		node->enum_def = enum_def;
 		return node;
 	}
+	case TOKEN_KEYWORD_RETURN: {
+		preprocessor_next_token(parser->preprocessor);
+
+		Token token = preprocessor_view_next(parser->preprocessor);
+		bool has_value = true;
+		if (token.kind == TOKEN_SEMICOLON) {
+			has_value = false;
+		}
+		
+		ParsedExpr* return_value = NULL;
+		if (has_value) {
+			return_value = arena_alloc(parser->ast_allocator, ParsedExpr);
+
+			if (_parser_try_parse_expr(parser, return_value) != EXPR_PARSE_OK) {
+				return NULL;
+			}
+		}
+
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after the return"))) {
+			return NULL;
+		}
+
+		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_RETURN;
+		node->return_stmt.value = return_value;
+		return node;
+	}
 	default: {
 		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
@@ -1589,7 +1616,7 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 			break;
 		} else if (token.kind == TOKEN_SEMICOLON) {
 			preprocessor_next_token(parser->preprocessor);
-			break;
+			continue;
 		}
 
 		ParsedNode* node = _parser_parse_single_node(parser, token);

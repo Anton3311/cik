@@ -395,6 +395,17 @@ void print_variable(PrinterState* printer, const ParsedVariable* variable) {
 	printer_end_struct(printer);
 }
 
+void print_return_stmt(PrinterState* printer, const ParsedReturnStmt* return_stmt) {
+	printer_begin_struct(printer, "return");
+
+	if (return_stmt->value) {
+		printer_field(printer, "value");
+		print_expr(printer, return_stmt->value);
+	}
+
+	printer_end_struct(printer);
+}
+
 void print_single_node(PrinterState* printer, const ParsedNode* node) {
 	switch (node->kind) {
 	case AST_NODE_TYPE_DEF:
@@ -414,6 +425,9 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 		break;
 	case AST_NODE_VARIABLE:
 		print_variable(printer, &node->variable);
+		break;
+	case AST_NODE_RETURN:
+		print_return_stmt(printer, &node->return_stmt);
 		break;
 	}
 }

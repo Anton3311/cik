@@ -1225,3 +1225,45 @@ void test_parse_variable_ref_expr(TestContext* context) {
 	assert(expr->binary.right->kind == EXPR_VARIABLE_REFERENCE);
 	assert(expr->binary.right->variable_ref == variable);
 }
+
+void test_parse_return_stmt(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("int main() { return 0; }"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_FUNCTION);
+
+	ParsedFunction* function = node->function_def;
+	ParsedScope* body = function->body;
+	assert(body->nodes.count == 1);
+
+	ParsedNode* return_node = body->nodes.first;
+	assert(return_node->kind == AST_NODE_RETURN);
+	assert(return_node->return_stmt.value);
+}
+
+void test_parse_return_stmt_without_value(TestContext* context) {
+	LineInfo line_info;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &line_info, STR_LIT("void main() { return; }"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_FUNCTION);
+
+	ParsedFunction* function = node->function_def;
+	ParsedScope* body = function->body;
+	assert(body->nodes.count == 1);
+
+	ParsedNode* return_node = body->nodes.first;
+	assert(return_node->kind == AST_NODE_RETURN);
+	assert(return_node->return_stmt.value == NULL);
+}

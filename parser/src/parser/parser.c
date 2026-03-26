@@ -1587,6 +1587,9 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 		} else if (token.kind == TOKEN_RIGHT_BRACE) {
 			preprocessor_next_token(parser->preprocessor);
 			break;
+		} else if (token.kind == TOKEN_SEMICOLON) {
+			preprocessor_next_token(parser->preprocessor);
+			break;
 		}
 
 		ParsedNode* node = _parser_parse_single_node(parser, token);
@@ -1619,6 +1622,9 @@ void parser_parse(Parser* parser, ParsedAST* ast) {
 	while (run) {
 		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_EOF) {
+			preprocessor_next_token(parser->preprocessor);
+			break;
+		} else if (token.kind == TOKEN_SEMICOLON) {
 			preprocessor_next_token(parser->preprocessor);
 			break;
 		}

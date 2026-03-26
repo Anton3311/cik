@@ -297,6 +297,11 @@ bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, Pars
 			return false;
 		}
 
+		if (!_parser_parse_pre_declaration_modifiers(parser, &member->type, &member->type, true)) {
+			arena_end_temp(temp);
+			return false;
+		}
+
 		Token name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
 		if (name_or_semilcolon.kind == TOKEN_IDENT) {
 			member->name = _source_string_from_token(name_or_semilcolon);

@@ -366,61 +366,73 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 		assert(member_count > 0);
 	}
 
-	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, struct_name);
+	bool struct_def_initialized = false;
 	ParsedStruct* struct_def = NULL;
-	if (entry) {
-		if (!has_flag(entry->kind, IDENT_STRUCT)) {
-			StringBuilder builder = { .arena = parser->diagnostics->allocator };
-			str_builder_append_char(&builder, '\'');
-			str_builder_append(&builder, entry->name);
-			str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
-
-			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
-					builder.string,
-					NULL);
-
-			diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
-					STR_LIT("Previously defined here"),
-					error);
-			return false;
-		}
-		
-		struct_def = entry->struct_def;
-		assert(struct_def);
-
-		if (!struct_def->is_forward_declared && !is_forward_declared) {
-			StringBuilder builder = { .arena = parser->diagnostics->allocator };
-			str_builder_append(&builder, STR_LIT("Redefinition of '"));
-			str_builder_append(&builder, entry->name);
-			str_builder_append_char(&builder, '\'');
-
-			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
-					builder.string,
-					NULL);
-
-			diagnostics_report_error(parser->diagnostics,
-					source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
-					STR_LIT("Previously defined here"),
-					error);
-			return false;
-		}
-	} else {
-		entry = ident_storage_insert(&parser->ident_storage, struct_name);
-		entry->kind = IDENT_STRUCT;
-
+	if (struct_name.length == 0) {
 		struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
 		memset(struct_def, 0, sizeof(*struct_def));
-		
-		struct_def->name = struct_name;
-		struct_def->is_forward_declared = is_forward_declared;
 
-		entry->struct_def = struct_def;
+		struct_def_initialized = false;
+	} else {
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, struct_name);
+		if (entry) {
+			if (!has_flag(entry->kind, IDENT_STRUCT)) {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+				str_builder_append_char(&builder, '\'');
+				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
+
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
+						builder.string,
+						NULL);
+
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			}
+			
+			struct_def = entry->struct_def;
+			assert(struct_def);
+
+			struct_def_initialized = true;
+
+			if (!struct_def->is_forward_declared && !is_forward_declared) {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+				str_builder_append(&builder, STR_LIT("Redefinition of '"));
+				str_builder_append(&builder, entry->name);
+				str_builder_append_char(&builder, '\'');
+
+				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
+						builder.string,
+						NULL);
+
+				diagnostics_report_error(parser->diagnostics,
+						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						STR_LIT("Previously defined here"),
+						error);
+				return false;
+			}
+		} else {
+			entry = ident_storage_insert(&parser->ident_storage, struct_name);
+			entry->kind = IDENT_STRUCT;
+
+			struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
+			memset(struct_def, 0, sizeof(*struct_def));
+
+			entry->struct_def = struct_def;
+		}
 	}
 
 	assert(struct_def);
+
+	if (!struct_def_initialized) {
+		struct_def->name = struct_name;
+		struct_def->is_forward_declared = is_forward_declared;
+	}
 
 	if (is_forward_declared) {
 		assert(member_count == 0);

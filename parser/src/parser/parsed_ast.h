@@ -84,15 +84,17 @@ typedef enum {
 	PARSED_TYPE_UNSIGNED_SHORT     = 3 | TYPE_FLAG_UNSIGNED,
 	PARSED_TYPE_UNSIGNED_LONG      = 4 | TYPE_FLAG_UNSIGNED,
 	PARSED_TYPE_UNSIGNED_LONG_LONG = 5 | TYPE_FLAG_UNSIGNED,
+	
+	PARSED_TYPE_SIZE_T             = 6,
 
-	PARSED_TYPE_FLOAT              = 6,
-	PARSED_TYPE_DOUBLE             = 7,
+	PARSED_TYPE_FLOAT              = 7,
+	PARSED_TYPE_DOUBLE             = 8,
 
-	PARSED_TYPE_STRUCT             = 8,
-	PARSED_TYPE_ENUM               = 9,
+	PARSED_TYPE_STRUCT             = 9,
+	PARSED_TYPE_ENUM               = 10,
 
-	PARSED_TYPE_POINTER            = 10,
-	PARSED_TYPE_ARRAY              = 11,
+	PARSED_TYPE_POINTER            = 11,
+	PARSED_TYPE_ARRAY              = 12,
 } ParsedTypeKind;
 
 struct ParsedType {

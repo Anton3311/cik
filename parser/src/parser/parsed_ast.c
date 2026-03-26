@@ -233,6 +233,10 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 		printf("void\n");
 		break;
 
+	case PARSED_TYPE_SIZE_T:
+		printf("size_t\n");
+		break;
+
 	case PARSED_TYPE_CHAR:
 	case PARSED_TYPE_INT:
 	case PARSED_TYPE_SHORT:

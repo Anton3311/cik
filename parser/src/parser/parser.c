@@ -20,6 +20,7 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 	case PARSED_TYPE_ENUM:
 		return a->enum_def == b->enum_def;
 	case PARSED_TYPE_VOID:
+	case PARSED_TYPE_SIZE_T:
 
 	case PARSED_TYPE_CHAR:
 	case PARSED_TYPE_INT:
@@ -659,6 +660,11 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out
 		preprocessor_next_token(parser->preprocessor);
 
 		out_type->kind = PARSED_TYPE_DOUBLE;
+		return PARSE_TYPE_PARSED;
+	} else if (str_equal(token.string, STR_LIT("size_t"))) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_type->kind = PARSED_TYPE_SIZE_T;
 		return PARSE_TYPE_PARSED;
 	} else {
 		ParsedTypeKindFlags type_flags = TYPE_FLAG_NONE;

@@ -84,6 +84,7 @@ typedef enum {
 String token_kind_to_string(TokenKind kind);
 
 typedef struct {
+	const SourceFile* source_file;
 	String source_code;
 	size_t read_position;
 } Tokenizer;
@@ -101,6 +102,8 @@ typedef enum {
 	STR_TOKEN_RESULT_INVALID_ESCAPE_CHAR,
 	STR_TOKEN_RESULT_EOF_REACHED,
 } StringTokenizerResult;
+
+void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file);
 
 inline bool tokenizer_is_end(const Tokenizer* tokenizer) {
 	return tokenizer->read_position == tokenizer->source_code.length;

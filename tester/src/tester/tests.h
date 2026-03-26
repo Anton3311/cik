@@ -12,6 +12,7 @@ void test_token_has_valid_string_represenation(TestContext* context);
 void test_token_source_range_matches_token_string(TestContext* context);
 void test_tokenizer_generates_expected_token(TestContext* context);
 void test_mutli_line_comment_with_asterisk_on_line_starts(TestContext* context);
+void test_token_has_valid_source_file(TestContext* context);
 
 
 

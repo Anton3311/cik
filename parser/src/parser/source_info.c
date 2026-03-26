@@ -48,3 +48,44 @@ SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_
 	return location;
 }
 
+//
+// SourceStorage
+//
+
+void source_storage_init(SourceStorage* storage, Arena* allocator) {
+	assert(allocator);
+
+	storage->allocator = allocator;
+	storage->count = 0;
+	storage->capacity = 256;
+	storage->files = arena_alloc_array(storage->allocator, SourceFile, storage->capacity);
+}
+
+SourceFile* _source_storage_insert(SourceStorage* storage, String path, Arena* temp_allocator) {
+	assert(storage->count < storage->capacity);
+	assert(path.length > 0);
+
+	SourceFile* file = &storage->files[storage->count];
+	storage->count += 1;
+
+	file->path = path;
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	file->source_code = read_entire_file_to_str(str_to_cstr(path, temp_allocator), storage->allocator);
+	arena_end_temp(temp);
+
+	file->line_info = line_info_from_source(storage->allocator, file->source_code);
+	return file;
+}
+
+SourceFile* source_storage_find_file(SourceStorage* storage, String path) {
+	assert(path.length > 0);
+
+	for (size_t i = 0; i < storage->count; i += 1) {
+		if (str_equal(storage->files[i].path, path)) {
+			return &storage->files[i];
+		}
+	}
+
+	return NULL;
+}

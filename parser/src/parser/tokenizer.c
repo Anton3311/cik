@@ -77,6 +77,14 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_KEYWORD_RETURN] = STR_LIT("return"),
 };
 
+void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file) {
+	assert(source_file);
+
+	tokenizer->source_file = source_file;
+	tokenizer->source_code = source_file->source_code;
+	tokenizer->read_position = 0;
+}
+
 String token_kind_to_string(TokenKind kind) {
 	return s_token_kind_to_string[kind];
 }
@@ -87,6 +95,7 @@ inline Token _tokenizer_create_single_char_token(Tokenizer* tokenizer, TokenKind
 	size_t position = tokenizer->read_position;
 	Token token = (Token) {
 		.source_range = (SourceRange) {
+			.source_file = tokenizer->source_file,
 			.start = position,
 			.end = position + 1,
 		},
@@ -138,6 +147,7 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 
 	*out_token = (Token) {
 		.source_range = (SourceRange) {
+			.source_file = tokenizer->source_file,
 			.start = token_start,
 			.end = tokenizer->read_position,
 		},
@@ -219,6 +229,7 @@ StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
 			size_t string_length = tokenizer->read_position - string_start;
 			*out_token = (Token) {
 				.source_range = (SourceRange) {
+					.source_file = tokenizer->source_file,
 					.start = string_start,
 					.end = tokenizer->read_position,
 				},
@@ -255,6 +266,7 @@ Token _tokenizer_try_create_double_char_token(Tokenizer* tokenizer,
 			tokenizer->read_position += 1;
 			return (Token) {
 				.source_range = (SourceRange) {
+					.source_file = tokenizer->source_file,
 					.start = token_start,
 					.end = tokenizer->read_position,
 				},
@@ -266,6 +278,7 @@ Token _tokenizer_try_create_double_char_token(Tokenizer* tokenizer,
 
 	return (Token) {
 		.source_range = (SourceRange) {
+			.source_file = tokenizer->source_file,
 			.start = token_start,
 			.end = tokenizer->read_position,
 		},
@@ -332,6 +345,7 @@ bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
 Token _tokenizer_create_eof_token(Tokenizer* tokenizer) {
 	return (Token) {
 		.source_range = (SourceRange) {
+			.source_file = tokenizer->source_file,
 			.start = tokenizer->read_position,
 			.end = tokenizer->read_position,
 		},
@@ -382,6 +396,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			if (is_ellipses) {
 				Token token = (Token) {
 					.source_range = (SourceRange) {
+						.source_file = tokenizer->source_file,
 						.start = tokenizer->read_position,
 						.end = tokenizer->read_position + 3,
 					},
@@ -419,6 +434,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			if (kind != TOKEN_COUNT) {
 				Token token = (Token) {
 					.source_range = (SourceRange) {
+						.source_file = tokenizer->source_file,
 						.start = tokenizer->read_position,
 						.end = tokenizer->read_position + 2,
 					},
@@ -450,6 +466,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			if (kind != TOKEN_COUNT) {
 				Token token = (Token) {
 					.source_range = (SourceRange) {
+						.source_file = tokenizer->source_file,
 						.start = tokenizer->read_position,
 						.end = tokenizer->read_position + 2,
 					},
@@ -493,6 +510,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			if (kind != TOKEN_COUNT) {
 				Token token = (Token) {
 					.source_range = (SourceRange) {
+						.source_file = tokenizer->source_file,
 						.start = tokenizer->read_position,
 						.end = tokenizer->read_position + 2,
 					},
@@ -527,6 +545,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			if (kind != TOKEN_COUNT) {
 				Token token = (Token) {
 					.source_range = (SourceRange) {
+						.source_file = tokenizer->source_file,
 						.start = tokenizer->read_position,
 						.end = tokenizer->read_position + 2,
 					},

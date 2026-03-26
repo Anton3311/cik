@@ -919,7 +919,7 @@ bool _preprocessor_apply_token_insert_operator(Arena* generated_tokens_allocator
 	assert(macro->style == MACRO_STYLE_FUNCTION);
 
 	StringBuilder builder = { .arena = generated_tokens_allocator };
-	SourceRange source_range = { SIZE_MAX, SIZE_MAX };
+	SourceRange source_range = { NULL, SIZE_MAX, SIZE_MAX };
 
 	size_t token_count = macro->token_count;
 	while (macro_call->token_index < token_count) {
@@ -933,6 +933,7 @@ bool _preprocessor_apply_token_insert_operator(Arena* generated_tokens_allocator
 		if (source_range.start == SIZE_MAX) {
 			source_range = token.source_range;
 		} else {
+			assert(source_range.source_file == token.source_range.source_file);
 			source_range.end = token.source_range.end;
 		}
 

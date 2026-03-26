@@ -3,6 +3,8 @@
 #include "parser/preprocessor.h"
 #include "parser/parser.h"
 
+#define DEFAULT_SOURCE_PATH "test.c"
+
 //
 // Source Info
 //
@@ -159,11 +161,32 @@ void test_mutli_line_comment_with_asterisk_on_line_starts(TestContext* context) 
 	assert(token.kind == TOKEN_EOF);
 }
 
+void test_token_has_valid_source_file(TestContext* context) {
+	size_t token_count = 4096;
+	RandomTokenStream random_tokens = _generate_random_tokens(context, token_count);
+
+	SourceFile source_file = {
+		.path = STR_LIT(DEFAULT_SOURCE_PATH),
+		.source_code = random_tokens.generated_source
+	};
+
+	Tokenizer tokenizer = {};
+	tokenizer_init(&tokenizer, &source_file);
+
+	while (true) {
+		Token token = tokenizer_next_token(&tokenizer);
+
+		if (token.kind == TOKEN_EOF) {
+			break;
+		}
+
+		assert(token.source_range.source_file != NULL);
+	}
+}
+
 //
 // Preprocessor
 //
-
-#define DEFAULT_SOURCE_PATH "test.c"
 
 static void init_preprocessor_test(TestContext* context,
 		String source_code,

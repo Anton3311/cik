@@ -19,6 +19,9 @@ int main(int argc, char *argv[]) {
 		String source_code = read_entire_file_to_str(argv[1], &temp_arena);
 		assert(source_code.v != NULL);
 
+		SourceStorage source_storage = {};
+		source_storage_init(&source_storage, &arena);
+
 		LineInfo line_info = line_info_from_source(&arena, source_code);
 
 		Diagnostics diagnostics = (Diagnostics) {

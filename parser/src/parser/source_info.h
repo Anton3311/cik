@@ -3,11 +3,14 @@
 
 #include "core/core.h"
 
+typedef struct SourceFile SourceFile;
+
 //
 // LineInfo
 //
 
 typedef struct {
+	const SourceFile* source_file;
 	size_t start;
 	size_t end;
 } SourceRange;
@@ -49,5 +52,30 @@ inline SourceRange source_range_from_sub_string(String source_code, String sub_s
 		.end = range_start + sub_string.length,
 	};
 }
+
+//
+// SourceStorage
+//
+
+typedef struct {
+	size_t value;
+} SourceFileId;
+
+struct SourceFile {
+	String path;
+	String source_code;
+	LineInfo line_info;
+};
+
+typedef struct {
+	SourceFile* files;
+	size_t count;
+	size_t capacity;
+
+	Arena* allocator;
+} SourceStorage;
+
+void source_storage_init(SourceStorage* storage, Arena* allocator);
+SourceFile* source_storage_find_file(SourceStorage* storage, String path); 
 
 #endif

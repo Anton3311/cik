@@ -86,7 +86,7 @@ void preprocessor_init(Preprocessor* state,
 	state->diagnostics = diagnostics;
 
 	state->macro_table = (MacroTable) {
-		.capacity = 128,
+		.capacity = 256,
 		.count = 0,
 	};
 

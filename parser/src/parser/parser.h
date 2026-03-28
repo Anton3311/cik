@@ -12,6 +12,7 @@
 typedef struct IdentifierStorage IdentifierStorage;
 typedef struct IdentifierEntry IdentifierEntry;
 typedef struct IdentifierScope IdentifierScope;
+typedef struct IdentifierNamespace IdentifierNamespace;
 
 bool type_equal(const ParsedType* a, const ParsedType* b);
 
@@ -32,9 +33,17 @@ typedef enum {
 	IDENT_FUNCTION = IDENT_CATEGORY_VAR_OR_FUNC | 4,
 } IdentifierEntryKind;
 
+typedef enum {
+	IDENT_NAMESPACE_DEFAULT,
+	IDENT_NAMESPACE_TAGGED,
+	IDENT_NAMESPACE_ALIAS,
+	IDENT_NAMESPACE_COUNT
+} IdentifierNamespaceKind;
+
 struct IdentifierEntry {
 	SourceString name;
 	IdentifierEntryKind kind;
+	IdentifierNamespaceKind owner_namespace;
 
 	IdentifierScope* owner_scope;
 
@@ -65,12 +74,18 @@ struct IdentifierScope {
 	IdentifierEntry* last_identifier;
 };
 
-struct IdentifierStorage {
-	Arena* allocator;
+struct IdentifierNamespace {
+	String debug_name;
 
 	size_t count;
 	size_t capacity;
 	IdentifierEntry** entries;
+};
+
+struct IdentifierStorage {
+	Arena* allocator;
+
+	IdentifierNamespace namespaces[IDENT_NAMESPACE_COUNT];
 
 	uint64_t next_scope_id;
 	IdentifierScope* current_scope;
@@ -80,12 +95,25 @@ struct IdentifierStorage {
 };
 
 void ident_storage_init(IdentifierStorage* storage, Arena* allocator);
-IdentifierEntry* ident_storage_find(IdentifierStorage* storage, String name);
-IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString name);
-void ident_storage_remove(IdentifierStorage* storage, SourceString name);
+
+IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
+		IdentifierNamespaceKind namespace_kind,
+		String name);
+
+IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
+		IdentifierNamespaceKind namespace_kind,
+		SourceString name);
+
+void ident_storage_remove(IdentifierStorage* storage,
+		IdentifierNamespaceKind namespace_kind,
+		SourceString name);
 
 IdentifierScope* ident_storage_begin_scope(IdentifierStorage* storage);
 void ident_storage_end_scope(IdentifierStorage* storage);
+
+//
+// Parser
+//
 
 typedef struct {
 	Arena* ast_allocator;

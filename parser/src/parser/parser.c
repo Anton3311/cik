@@ -63,12 +63,18 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 // IdentifierStorage
 //
 
-size_t _ident_storage_try_find_entry(IdentifierStorage* storage, String name) {
-	assert(storage != NULL);
+IdentifierNamespace* _ident_storage_get_namespace(IdentifierStorage* storage, IdentifierNamespaceKind namespace_kind) {
+	assert(namespace_kind >= 0);
+	assert(namespace_kind < IDENT_NAMESPACE_COUNT);
+	return &storage->namespaces[namespace_kind];
+}
+
+size_t _ident_storage_try_find_entry(IdentifierNamespace* ident_namespace, String name) {
+	assert(ident_namespace != NULL);
 	assert(name.length > 0);
 
-	for (size_t i = 0; i < storage->count; i += 1) {
-		if (str_equal(storage->entries[i]->name.string, name)) {
+	for (size_t i = 0; i < ident_namespace->count; i += 1) {
+		if (str_equal(ident_namespace->entries[i]->name.string, name)) {
 			return i;
 		}
 	}
@@ -76,19 +82,30 @@ size_t _ident_storage_try_find_entry(IdentifierStorage* storage, String name) {
 	return SIZE_MAX;
 }
 
-IdentifierEntry* ident_storage_find(IdentifierStorage* storage, String name) {
-	size_t index = _ident_storage_try_find_entry(storage, name);
-	return index == SIZE_MAX ? NULL : storage->entries[index];
+IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
+		IdentifierNamespaceKind namespace_kind,
+		String name) {
+
+	IdentifierNamespace* ident_namespace = _ident_storage_get_namespace(storage, namespace_kind);
+	size_t index = _ident_storage_try_find_entry(ident_namespace, name);
+	return index == SIZE_MAX ? NULL : ident_namespace->entries[index];
+}
+
+void _ident_storage_init_namespace(IdentifierNamespace* ident_namespace, Arena* allocator) {
+	ident_namespace->count = 0;
+	ident_namespace->capacity = 128;
+	ident_namespace->entries = arena_alloc_array(allocator, IdentifierEntry*, ident_namespace->capacity);
+	memset(ident_namespace->entries, 0, sizeof(*ident_namespace->entries) * ident_namespace->capacity);
 }
 
 void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
 	assert(storage != NULL);
 
 	storage->allocator = allocator;
-	storage->count = 0;
-	storage->capacity = 128;
-	storage->entries = arena_alloc_array(storage->allocator, IdentifierEntry*, storage->capacity);
-	memset(storage->entries, 0, sizeof(*storage->entries) * storage->capacity);
+
+	for (size_t i = 0; i < IDENT_NAMESPACE_COUNT; i += 1) {
+		_ident_storage_init_namespace(&storage->namespaces[i], allocator);
+	}
 
 	storage->current_scope = arena_alloc(storage->allocator, IdentifierScope);
 	memset(storage->current_scope, 0, sizeof(*storage->current_scope));
@@ -98,15 +115,20 @@ void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
 	storage->next_free_scope = NULL;
 }
 
-IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString name) {
+IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
+		IdentifierNamespaceKind namespace_kind,
+		SourceString name) {
+
 	assert(storage != NULL);
 	assert(name.string.length > 0);
 	assert(storage->current_scope);
 
-	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name.string);
+	IdentifierNamespace* ident_namespace = _ident_storage_get_namespace(storage, namespace_kind);
+
+	size_t existing_entry_index = _ident_storage_try_find_entry(ident_namespace, name.string);
 	IdentifierEntry* entry = NULL;
 	if (existing_entry_index == SIZE_MAX) {
-		assert(storage->count < storage->capacity);
+		assert(ident_namespace->count < ident_namespace->capacity);
 
 		if (storage->next_free_entry) {
 			// Reuse a free entry
@@ -118,21 +140,21 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString n
 
 		memset(entry, 0, sizeof(*entry));
 
-		assert(storage->entries[storage->count] == NULL);
-
-		storage->entries[storage->count] = entry;
-		storage->count += 1;
+		assert(ident_namespace->entries[ident_namespace->count] == NULL);
+		ident_namespace->entries[ident_namespace->count] = entry;
+		ident_namespace->count += 1;
 	} else {
-		assert(storage->entries[existing_entry_index]->owner_scope != storage->current_scope);
+		assert(ident_namespace->entries[existing_entry_index]->owner_scope != storage->current_scope);
 
 		entry = arena_alloc(storage->allocator, IdentifierEntry);
 		memset(entry, 0, sizeof(*entry));
 
-		entry->prev = storage->entries[existing_entry_index];
-		storage->entries[existing_entry_index] = entry;
+		entry->prev = ident_namespace->entries[existing_entry_index];
+		ident_namespace->entries[existing_entry_index] = entry;
 	}
 
 	entry->name = name;
+	entry->owner_namespace = namespace_kind;
 	entry->owner_scope = storage->current_scope;
 
 	// Add to the current scope
@@ -148,24 +170,29 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString n
 	return entry;
 }
 
-void ident_storage_remove(IdentifierStorage* storage, SourceString name) {
+void ident_storage_remove(IdentifierStorage* storage,
+		IdentifierNamespaceKind namespace_kind,
+		SourceString name) {
+
 	assert(storage != NULL);
 	assert(name.string.length > 0);
 	assert(storage->current_scope);
 
-	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name.string);
+	IdentifierNamespace* ident_namespace = _ident_storage_get_namespace(storage, namespace_kind);
+
+	size_t existing_entry_index = _ident_storage_try_find_entry(ident_namespace, name.string);
 	if (existing_entry_index == SIZE_MAX) {
 		return;
 	}
 
-	IdentifierEntry* entry = storage->entries[existing_entry_index];
+	IdentifierEntry* entry = ident_namespace->entries[existing_entry_index];
 	memset(entry, 0, sizeof(*entry));
 
 	entry->next_in_scope = storage->next_free_entry;
 
-	storage->entries[existing_entry_index] = storage->entries[storage->count - 1];
-	storage->entries[storage->count - 1] = NULL;
-	storage->count -= 1;
+	ident_namespace->entries[existing_entry_index] = ident_namespace->entries[ident_namespace->count - 1];
+	ident_namespace->entries[ident_namespace->count - 1] = NULL;
+	ident_namespace->count -= 1;
 }
 
 IdentifierScope* ident_storage_begin_scope(IdentifierStorage* storage) {
@@ -197,7 +224,7 @@ void ident_storage_end_scope(IdentifierStorage* storage) {
 	for (IdentifierEntry* entry = scope->first_identifier; entry != NULL;) {
 		IdentifierEntry* next_entry = entry->next_in_scope;
 
-		ident_storage_remove(storage, entry->name);
+		ident_storage_remove(storage, entry->owner_namespace, entry->name);
 
 		entry = next_entry;
 	}
@@ -375,7 +402,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 
 		struct_def_initialized = false;
 	} else {
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, struct_name.string);
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name.string);
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_STRUCT)) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
@@ -418,7 +445,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 				return false;
 			}
 		} else {
-			entry = ident_storage_insert(&parser->ident_storage, struct_name);
+			entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name);
 			entry->kind = IDENT_STRUCT;
 
 			struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
@@ -551,7 +578,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 
 	ParsedEnum* enum_def = NULL;
 	if (enum_name.string.length > 0) {
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, enum_name.string);
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name.string);
 
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_ENUM)) {
@@ -593,7 +620,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 				return false;
 			}
 		} else {
-			entry = ident_storage_insert(&parser->ident_storage, enum_name);
+			entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name);
 			entry->kind = IDENT_ENUM;
 
 			enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
@@ -749,8 +776,11 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 			break;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, token.string);
 		if (entry == NULL) {
+			return PARSE_TYPE_NOT_PARSED;
+
+			// TODO: Generate error? In same cases it is needed
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
 					STR_LIT("Use of undeclared identifier"),
@@ -761,7 +791,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		switch (entry->kind) {
 		case IDENT_FUNCTION:
 		case IDENT_VARIABLE:
-			return PARSE_TYPE_NOT_PARSED;
+			unreachable();
 		case IDENT_TYPE_DEF:
 			preprocessor_next_token(parser->preprocessor);
 
@@ -769,12 +799,14 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 			out_type->alias_definition = entry->type_def;
 			return PARSE_TYPE_PARSED;
 		case IDENT_STRUCT:
+			unreachable();
 			preprocessor_next_token(parser->preprocessor);
 
 			out_type->kind = PARSED_TYPE_STRUCT;
 			out_type->struct_def = entry->struct_def;
 			return PARSE_TYPE_PARSED;
 		case IDENT_ENUM:
+			unreachable();
 			preprocessor_next_token(parser->preprocessor);
 
 			out_type->kind = PARSED_TYPE_ENUM;
@@ -879,7 +911,7 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 		return NULL;
 	}
 
-	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, new_name.string);
+	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, new_name.string);
 	assert(entry == NULL);
 
 	ParsedTypeDef* type_def = arena_alloc(parser->ast_allocator, ParsedTypeDef);
@@ -888,7 +920,7 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	type_def->new_name = source_string_from_token(new_name);
 	type_def->aliased_type = aliased_type;
 
-	entry = ident_storage_insert(&parser->ident_storage, source_string_from_token(new_name));
+	entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, source_string_from_token(new_name));
 	entry->kind = IDENT_TYPE_DEF;
 	entry->type_def = type_def;
 
@@ -1035,7 +1067,7 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 			return EXPR_PARSE_OK;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, token.string);
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, token.string);
 		if (entry == NULL) {
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
@@ -1045,8 +1077,6 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 		}
 
 		switch (entry->kind) {
-		case IDENT_TYPE_DEF:
-			break;
 		case IDENT_FUNCTION:
 			out_expr->kind = EXPR_FUNCTION_REFERENCE;
 			out_expr->function_ref = entry->function_def;
@@ -1055,7 +1085,7 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 			out_expr->kind = EXPR_VARIABLE_REFERENCE;
 			out_expr->variable_ref = entry->variable;
 			return EXPR_PARSE_OK;
-			return EXPR_PARSE_OK;
+		case IDENT_TYPE_DEF:
 		case IDENT_STRUCT:
 		case IDENT_ENUM:
 			unreachable();
@@ -1285,7 +1315,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		out_node->variable.type = *type;
 		out_node->variable.value = value;
 
-		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, out_node->variable.name);
+		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, out_node->variable.name);
 		entry->kind = IDENT_VARIABLE;
 		entry->variable = &out_node->variable;
 
@@ -1305,7 +1335,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			.value = NULL,
 		};
 
-		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, out_node->variable.name);
+		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, out_node->variable.name);
 		entry->kind = IDENT_VARIABLE;
 		entry->variable = &out_node->variable;
 
@@ -1337,7 +1367,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			return false;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, name.string);
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name.string);
 		ParsedFunction* function_def = NULL;
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_FUNCTION)) {
@@ -1416,7 +1446,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 				}
 			}
 		} else {
-			entry = ident_storage_insert(&parser->ident_storage, name);
+			entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name);
 			entry->kind = IDENT_FUNCTION;
 
 			function_def = arena_alloc(parser->ast_allocator, ParsedFunction); 

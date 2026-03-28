@@ -86,7 +86,7 @@ void preprocessor_init(Preprocessor* state,
 	state->diagnostics = diagnostics;
 
 	state->macro_table = (MacroTable) {
-		.capacity = 256,
+		.capacity = 2048,
 		.count = 0,
 	};
 
@@ -1373,16 +1373,53 @@ typedef struct {
 	size_t count;
 } ParsedMacroCallArgs;
 
-bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArgs* out_args) {
-	Token maybe_left_paren = _preprocessor_next_macro_or_source_token(
-			_preprocessor_current_file(state),
-			&state->macro_call_stack,
+typedef struct {
+	void* data;
+	
+	struct {
+		Token(*next)(void* data);
+	} vtable;
+} TokenProvider;
+
+inline Token token_provider_next(TokenProvider* self) {
+	return self->vtable.next(self->data);
+}
+
+//
+// MacroOrSourceTokenProviderState
+//
+
+typedef struct {
+	const SourceFile* source_file;
+	MacroCallStack* macro_call_stack;
+	Arena* generated_tokens_allocator;
+	Tokenizer* tokenizer;
+} MacroOrSourceTokenProviderState;
+
+Token macro_or_source_token_provider_next(void* data) {
+	MacroOrSourceTokenProviderState* state = (MacroOrSourceTokenProviderState*)data;
+	return _preprocessor_next_macro_or_source_token(
+			state->source_file,
+			state->macro_call_stack,
 			state->generated_tokens_allocator,
 			state->tokenizer);
+}
+
+//
+// MacroCall parsing
+//
+
+bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
+		TokenProvider token_provider,
+		Arena* allocator,
+		Arena* temp_allocator,
+		ParsedMacroCallArgs* out_args) {
+
+	Token maybe_left_paren = token_provider_next(&token_provider);
 
 	if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
 		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
-		diagnostics_report_unexpected_token(state->diagnostics,
+		diagnostics_report_unexpected_token(diagnostics,
 				maybe_left_paren,
 				expected_tokens,
 				array_size(expected_tokens));
@@ -1394,22 +1431,18 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 		.end = SIZE_MAX
 	};
 
-	ArenaRegion args_region = arena_begin_temp(state->temp_allocator);
-	ArenaRegion streams_region = arena_begin_temp(state->allocator);
+	ArenaRegion args_region = arena_begin_temp(temp_allocator);
+	ArenaRegion streams_region = arena_begin_temp(allocator);
 
-	MacroArgumentTokens* token_streams = arena_alloc_array(state->temp_allocator, MacroArgumentTokens, 0);
+	MacroArgumentTokens* token_streams = arena_alloc_array(temp_allocator, MacroArgumentTokens, 0);
 	size_t token_stream_count = 0;
 
 	MacroArgumentTokens current_token_stream = {};
-	current_token_stream.tokens = arena_alloc_array(state->allocator, Token, 0);
+	current_token_stream.tokens = arena_alloc_array(allocator, Token, 0);
 
 	bool arg_is_expected = false;
 	while (true) {
-		Token token = _preprocessor_next_macro_or_source_token(
-				_preprocessor_current_file(state),
-				&state->macro_call_stack,
-				state->generated_tokens_allocator,
-				state->tokenizer);
+		Token token = token_provider_next(&token_provider);
 
 		if (token.kind == TOKEN_EOF) {
 			arena_end_temp(args_region);
@@ -1419,7 +1452,7 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 
 		bool argument_end = token.kind == TOKEN_COMMA || token.kind == TOKEN_RIGHT_PAREN;
 		if (argument_end) {
-			arena_alloc(state->temp_allocator, MacroArgumentTokens);
+			arena_alloc(temp_allocator, MacroArgumentTokens);
 
 			if (current_token_stream.count > 0 || arg_is_expected) {
 				token_streams[token_stream_count] = current_token_stream;
@@ -1429,7 +1462,7 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 			arg_is_expected = false;
 
 			current_token_stream.count = 0;
-			current_token_stream.tokens = arena_alloc_array(state->allocator, Token, 0);
+			current_token_stream.tokens = arena_alloc_array(allocator, Token, 0);
 		}
 
 		if (token.kind == TOKEN_COMMA) {
@@ -1440,7 +1473,7 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 			break;
 		}
 
-		arena_alloc(state->allocator, Token);
+		arena_alloc(allocator, Token);
 
 		current_token_stream.tokens[current_token_stream.count] = token;
 		current_token_stream.count += 1;
@@ -1449,7 +1482,7 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 	// Copy `token_streams` array to the main arena
 	out_args->source_range = source_range;
 	out_args->count = token_stream_count;
-	out_args->token_streams = arena_alloc_array(state->allocator, MacroArgumentTokens, token_stream_count);
+	out_args->token_streams = arena_alloc_array(allocator, MacroArgumentTokens, token_stream_count);
 	memcpy(out_args->token_streams, token_streams, sizeof(*token_streams) * token_stream_count);
 
 	arena_end_temp(args_region);
@@ -1464,7 +1497,21 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 	if (macro->style == MACRO_STYLE_FUNCTION) {
 		// Parse macro arguments
 
-		if (!_preprocessor_parse_macro_call_args(state, &args)) {
+		MacroOrSourceTokenProviderState token_provider_state = {};
+		token_provider_state.source_file = _preprocessor_current_file(state);
+		token_provider_state.macro_call_stack = &state->macro_call_stack;
+		token_provider_state.generated_tokens_allocator = state->generated_tokens_allocator;
+		token_provider_state.tokenizer = state->tokenizer;
+
+		TokenProvider token_provider = {};
+		token_provider.data = &token_provider_state;
+		token_provider.vtable.next = macro_or_source_token_provider_next;
+
+		if (!_preprocessor_parse_macro_call_args(state->diagnostics,
+					token_provider,
+					state->allocator,
+					state->temp_allocator,
+					&args)) {
 			return NULL;
 		}
 		
@@ -1527,10 +1574,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 	memset(macro_call, 0, sizeof(*macro_call));
 	
 	macro_call->macro = macro;
-	macro_call->call_source_range = (SourceRange) {
-		.start = macro_call_ident.source_range.start,
-		.end = args.source_range.end,
-	};
+	macro_call->call_source_range = call_source_range;
 	macro_call->state = MACRO_CALL_TOKEN;
 	macro_call->argument_tokens = args.token_streams;
 	macro_call->argument_count = args.count;
@@ -1613,7 +1657,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 			_preprocessor_init_macro_call(state, macro, next_token);
 
 			// NOTE: Possible cases:
-			//       1. The macro call started successfully, because the it produces tokens.
+			//       1. The macro call started successfully, because it produces tokens.
 			//       2. The macro call was skipped, since it doesn't produce any tokens.
 			//       3. Macro call failed.
 			//

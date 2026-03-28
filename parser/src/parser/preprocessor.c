@@ -640,38 +640,40 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			return false;
 		}
 
-		String path_string = sub_str(string_token.string, 1, string_token.string.length - 2);
-		String resolved_include_path = source_storage_resolve_include_path(
-				state->source_storage,
-				path_string,
-				source_file,
-				state->allocator,
-				state->temp_allocator);
+		if (_preprocessor_is_current_region_enabled(state)) {
+			String path_string = sub_str(string_token.string, 1, string_token.string.length - 2);
+			String resolved_include_path = source_storage_resolve_include_path(
+					state->source_storage,
+					path_string,
+					source_file,
+					state->allocator,
+					state->temp_allocator);
 
-		if (resolved_include_path.length == 0) {
-			StringBuilder builder = { .arena = state->diagnostics->allocator };
-			str_builder_append(&builder, STR_LIT("File '"));
-			str_builder_append(&builder, path_string);
-			str_builder_append(&builder, STR_LIT("' not found"));
+			if (resolved_include_path.length == 0) {
+				StringBuilder builder = { .arena = state->diagnostics->allocator };
+				str_builder_append(&builder, STR_LIT("File '"));
+				str_builder_append(&builder, path_string);
+				str_builder_append(&builder, STR_LIT("' not found"));
 
-			diagnostics_report_error(state->diagnostics,
-					directive.source_range,
-					builder.string,
-					NULL);
+				diagnostics_report_error(state->diagnostics,
+						directive.source_range,
+						builder.string,
+						NULL);
 
-			return false;
-		}
+				return false;
+			}
 
-		const SourceFile* included_file = source_storage_append_from_path(state->source_storage,
-				resolved_include_path,
-				state->temp_allocator);
+			const SourceFile* included_file = source_storage_append_from_path(state->source_storage,
+					resolved_include_path,
+					state->temp_allocator);
 
-		if (!_preprocessor_push_file(state, included_file)) {
-			diagnostics_report_error(state->diagnostics,
-					directive.source_range,
-					STR_LIT("Include stack overflow"),
-					NULL);
-			return false;
+			if (!_preprocessor_push_file(state, included_file)) {
+				diagnostics_report_error(state->diagnostics,
+						directive.source_range,
+						STR_LIT("Include stack overflow"),
+						NULL);
+				return false;
+			}
 		}
 
 		break;

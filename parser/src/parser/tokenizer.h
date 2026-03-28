@@ -90,9 +90,9 @@ typedef struct {
 } Tokenizer;
 
 typedef struct {
-	SourceRange source_range;
 	String string;
 	TokenKind kind;
+	SourceRange source_range;
 } Token;
 
 typedef enum {
@@ -126,7 +126,6 @@ inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
 
 	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
 }
-
 
 void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file);
 void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer);

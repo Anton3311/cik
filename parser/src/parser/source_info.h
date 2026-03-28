@@ -6,8 +6,8 @@
 typedef struct SourceFile SourceFile;
 
 typedef struct {
-	const SourceFile* source_file;
 	String string;
+	const SourceFile* source_file;
 } SourceString;
 
 typedef struct {

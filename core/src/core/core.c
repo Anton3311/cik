@@ -5,6 +5,8 @@
 
 #include <windows.h>
 #include <dbghelp.h>
+#include <shlwapi.h> 
+#include <pathcch.h>
 
 bool is_debugger_connected() {
 	return IsDebuggerPresent();
@@ -381,5 +383,107 @@ StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_p
 
 	arena_end_temp(temp);
 	return file_paths;
+}
+
+//
+// Path
+// 
+
+String get_current_directory(Arena* allocator) {
+	// Includes null terminator
+	DWORD buffer_size = GetCurrentDirectory(0, NULL);
+
+	ArenaRegion temp = arena_begin_temp(allocator);
+
+	char* buffer = arena_alloc_array(allocator, char, (size_t)buffer_size);
+	DWORD result = GetCurrentDirectory(buffer_size, buffer);
+
+	if (!result) {
+		arena_end_temp(temp);
+		return (String) {};
+	}
+
+	assert(buffer[buffer_size - 1] == 0);
+	return (String) { .v = buffer, .length = buffer_size - 1 };
+}
+
+String path_to_absolute(Arena* allocator, String path) {
+	String current_dir = get_current_directory(allocator);
+
+	StringBuilder builder = { .arena = allocator };
+	str_builder_append(&builder, current_dir);
+	str_builder_append_char(&builder, '/');
+	str_builder_append(&builder, path);
+
+	return builder.string;
+}
+
+bool path_exists(Arena* temp_allocator, String path) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	const char* path_cstr = str_to_cstr(path, temp_allocator);
+	bool exists = PathFileExistsA(path_cstr);
+
+	arena_end_temp(temp);
+	return exists;
+}
+
+WideString _path_canonicalize_to_wide_string(String path, Arena* allocator) {
+	WideString wide_path_string = str_to_wstr(path, allocator, true);
+
+	wchar_t* wide_canonical_path = arena_alloc_array(allocator, wchar_t, wide_path_string.length);
+	HRESULT result = PathCchCanonicalize(wide_canonical_path,
+			wide_path_string.length,
+			wide_path_string.v);
+
+	assert(result == S_OK);
+	
+	size_t canonical_path_length = wcslen(wide_canonical_path);
+	for (size_t i = 0; i < canonical_path_length; i += 1) {
+		if (wide_canonical_path[i] == '\\') {
+			wide_canonical_path[i] = '/';
+		}
+	}
+
+	return (WideString) { .v = wide_canonical_path, .length = canonical_path_length };
+}
+
+String path_canonicalize(String path, Arena* allocator, Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	WideString wide_canonical_path_string = _path_canonicalize_to_wide_string(path, temp_allocator);
+	String canonical_path = str_from_wstr(wide_canonical_path_string, allocator);
+
+	arena_end_temp(temp);
+
+	return canonical_path;
+}
+
+size_t path_get_file_name_start(String path) {
+	for (size_t i = path.length; i > 0; i -= 1) {
+		char c = path.v[i - 1];
+		if (c == '/' || c == '\\') {
+			return i;
+		}
+	}
+
+	return 0;
+}
+
+String path_get_parent(String path) {
+	size_t file_name_start = path_get_file_name_start(path);
+	size_t parent_path_end = file_name_start;
+
+	for (size_t i = file_name_start; i > 0; i -= 1) {
+		char c = path.v[i - 1];
+		if (c == '/' || c == '\\') {
+			continue;
+		} else {
+			parent_path_end = i;
+			break;
+		}
+	}
+
+	return sub_str(path, 0, parent_path_end);
 }
 

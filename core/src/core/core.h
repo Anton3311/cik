@@ -384,4 +384,21 @@ inline void bit_array_or(const BitArray* a, const BitArray* b, BitArray* out) {
 	}
 }
 
+//
+// Path
+//
+
+String get_current_directory(Arena* allocator);
+String path_to_absolute(Arena* allocator, String path);
+bool path_exists(Arena* temp_allocator, String path);
+String path_canonicalize(String path, Arena* allocator, Arena* temp_allocator);
+size_t path_get_file_name_start(String path);
+
+inline String path_get_file_name(String path) {
+	size_t file_name_start = path_get_file_name_start(path);
+	return sub_str(path, file_name_start, path.length - file_name_start);
+}
+
+String path_get_parent(String path);
+
 #endif

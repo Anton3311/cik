@@ -8,7 +8,7 @@ clang ^
 	parser\src\parser\parsed_ast.c ^
 	parser\src\parser\parser.c ^
 	parser\src\parser\parse_tools.c ^
-	-g -lDbghelp.lib -m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\
+	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\
 
 clang ^
 	core\src\core\core.c ^
@@ -21,9 +21,9 @@ clang ^
 	parser\src\parser\parser.c ^
 	parser\src\parser\parse_tools.c ^
 	parser\src\parser\parsed_ast.c ^
-	-g -lDbghelp.lib -m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src
+	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src
 
 clang ^
 	core\src\core\core.c ^
 	tester\src\tester\test_runner.c ^
-	-g -lDbghelp.lib -m64 -Wall -o bin\test_runner.exe -Icore\src\ -Itester\src\
+	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -m64 -Wall -o bin\test_runner.exe -Icore\src\ -Itester\src\

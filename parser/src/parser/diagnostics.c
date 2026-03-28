@@ -8,23 +8,27 @@ void _print_indent(size_t count) {
 
 void _diagnostics_print_entry(const Diagnostics* diagnostics, const DiagnosticsEntry* entry, size_t indent) {
 	while (entry != NULL) {
+		// TODO: Handle multiple highlight ranges
+		assert(entry->highlighted_range_count == 1);
+
+		const SourceFile* source_file = entry->source_file;
+		assert(source_file);
+		const LineInfo* line_info = &source_file->line_info;
+
 		uint32_t start_line = entry->start_line;
 		if (start_line > 0) {
 			start_line -= 1;
 		}
 
-		// TODO: Handle multiple highlight ranges
-		assert(entry->highlighted_range_count == 1);
-
 		size_t highlight_index = 0;
 
 		printf("\n");
 
-		uint32_t end_line = min(entry->end_line + 1, diagnostics->line_info.line_count - 1);
+		uint32_t end_line = min(entry->end_line + 1, line_info->line_count - 1);
 		for (uint32_t line = start_line; line <= end_line; line += 1) {
-			String source_line = line_info_get_line_string(&diagnostics->line_info, diagnostics->source_code, line);
+			String source_line = line_info_get_line_string(line_info, source_file->source_code, line);
 
-			SourceRange line_range = line_info_get_line_range(&diagnostics->line_info, line);
+			SourceRange line_range = line_info_get_line_range(line_info, line);
 			SourceRange highlight_range = entry->highlighted_ranges[highlight_index];
 
 			size_t highlight_start = min(max(highlight_range.start, line_range.start), line_range.end);
@@ -66,9 +70,13 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 		SourceRange source_range,
 		String message,
 		DiagnosticsEntry* parent) {
+	assert(source_range.source_file);
+	const LineInfo* line_info = &source_range.source_file->line_info;
+
 	DiagnosticsEntry* entry = arena_alloc(diagnostics->allocator, DiagnosticsEntry);
-	entry->start_line = line_info_pos_to_source_location(&diagnostics->line_info, source_range.start).line;
-	entry->end_line = line_info_pos_to_source_location(&diagnostics->line_info, source_range.end).line;
+	entry->start_line = line_info_pos_to_source_location(line_info, source_range.start).line;
+	entry->end_line = line_info_pos_to_source_location(line_info, source_range.end).line;
+	entry->source_file = source_range.source_file;
 
 	entry->highlighted_ranges = arena_alloc(diagnostics->allocator, SourceRange);
 	entry->highlighted_ranges[0] = source_range;

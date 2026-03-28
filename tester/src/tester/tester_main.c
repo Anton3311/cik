@@ -105,19 +105,18 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 	String file_path_string = str_from_cstr(file_path);
 	String source_code = read_entire_file_to_str(file_path, arena);
 
-	LineInfo line_info = line_info_from_source(arena, source_code);
+	SourceFile source_file = {};
+	source_file.path = file_path_string;
+	source_file.source_code = source_code;
+	source_file.line_info = line_info_from_source(arena, source_code);
 
 	Diagnostics diagnostics = (Diagnostics) {
 		.allocator = arena,
-		.source_code = source_code,
-		.line_info = line_info,
 	};
 	
 	Preprocessor preprocessor = {};
 	preprocessor_init(&preprocessor,
-			file_path_string,
-			source_code,
-			&line_info,
+			&source_file,
 			&diagnostics,
 			arena,
 			temp_arena,

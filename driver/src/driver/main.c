@@ -21,20 +21,15 @@ int main(int argc, char *argv[]) {
 
 		SourceStorage source_storage = {};
 		source_storage_init(&source_storage, &arena);
-
-		LineInfo line_info = line_info_from_source(&arena, source_code);
+		SourceFile* source_file = source_storage_append_from_path(&source_storage, str_from_cstr(argv[1]), &temp_arena);
 
 		Diagnostics diagnostics = (Diagnostics) {
 			.allocator = &diagnostics_arena,
-			.source_code = source_code,
-			.line_info = line_info,
 		};
 
 		Preprocessor preprocessor = {};
 		preprocessor_init(&preprocessor,
-				str_from_cstr(argv[1]),
-				source_code,
-				&line_info,
+				source_file,
 				&diagnostics,
 				&arena,
 				&temp_arena,

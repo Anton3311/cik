@@ -78,6 +78,31 @@ SourceFile* _source_storage_insert(SourceStorage* storage, String path, Arena* t
 	return file;
 }
 
+SourceFile* source_storage_append(SourceStorage* storage, String path, String source_code) {
+	assert(storage->count < storage->capacity);
+	assert(path.length > 0);
+
+	SourceFile* file = &storage->files[storage->count];
+	storage->count += 1;
+
+	file->path = path;
+	file->source_code = source_code;
+	file->line_info = line_info_from_source(storage->allocator, file->source_code);
+	return file;
+}
+
+SourceFile* source_storage_append_from_path(SourceStorage* storage, String path, Arena* temp_allocator) {
+	assert(path.length > 0);
+	assert(temp_allocator);
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	String source_code = read_entire_file_to_str(str_to_cstr(path, temp_allocator), storage->allocator);
+	SourceFile* source_file = source_storage_append(storage, path, source_code);
+	arena_end_temp(temp);
+
+	return source_file;
+}
+
 SourceFile* source_storage_find_file(SourceStorage* storage, String path) {
 	assert(path.length > 0);
 

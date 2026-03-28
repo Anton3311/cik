@@ -17,12 +17,12 @@ String int_literal_format_to_string(IntergerLiteralFormat format) {
 }
 
 void _report_invalid_char_in_interger_literal(Diagnostics* diagnostics,
-		String literal_string,
+		SourceString literal_string,
 		size_t invalid_char_position,
 		IntergerLiteralFormat format) {
 
 	String format_string = int_literal_format_to_string(format);
-	String invalid_char_sub_str = sub_str(literal_string, invalid_char_position, 1);
+	String invalid_char_sub_str = sub_str(literal_string.string, invalid_char_position, 1);
 
 	StringBuilder builder = { .arena = diagnostics->allocator };
 	str_builder_append(&builder, STR_LIT("Unexpected char in "));
@@ -30,7 +30,10 @@ void _report_invalid_char_in_interger_literal(Diagnostics* diagnostics,
 	str_builder_append(&builder, STR_LIT(" integer literal"));
 
 	diagnostics_report_error(diagnostics,
-			source_range_from_sub_string(diagnostics->source_code, invalid_char_sub_str),
+			source_string_to_range((SourceString) {
+				.string = invalid_char_sub_str,
+				.source_file = literal_string.source_file,
+			}),
 			builder.string,
 			NULL);
 }
@@ -72,16 +75,19 @@ IntegerLiteralInfo int_literal_info_from_token(Token token) {
 
 	return (IntegerLiteralInfo) {
 		.format = format,
-		.int_part_string = literal_string
+		.int_part_string = (SourceString) {
+			.source_file = token.source_range.source_file,
+			.string = literal_string,
+		},
 	};
 }
 
 bool parse_integer_literal_value(Diagnostics* diagnostics,
 		Token literal_token,
-		String string,
+		SourceString int_part_string,
 		IntergerLiteralFormat format,
 		uint64_t* out_result) {
-	if (string.length == 0) {
+	if (int_part_string.string.length == 0) {
 		diagnostics_report_error(diagnostics,
 				literal_token.source_range,
 				STR_LIT("Invalid integer literal"),
@@ -89,6 +95,7 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 		return false;
 	}
 
+	String string = int_part_string.string;
 	uint64_t result = 0;
 
 	switch (format) {
@@ -98,7 +105,7 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 				uint64_t digit = (uint64_t)(string.v[i] - '0');
 				result = result * 10 + digit;
 			} else {
-				_report_invalid_char_in_interger_literal(diagnostics, string, i, format);
+				_report_invalid_char_in_interger_literal(diagnostics, int_part_string, i, format);
 				return false;
 			}
 		}
@@ -125,7 +132,7 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 				uint64_t digit = (uint64_t)(string.v[i] - '0');
 				result = result << shift | digit;
 			} else {
-				_report_invalid_char_in_interger_literal(diagnostics, string, i, format);
+				_report_invalid_char_in_interger_literal(diagnostics, int_part_string, i, format);
 				return false;
 			}
 		}
@@ -143,7 +150,7 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 			} else if (string.v[i] >= 'A' && string.v[i] <= 'F') {
 				digit = (uint64_t)(string.v[i] - 'A' + 10);
 			} else {
-				_report_invalid_char_in_interger_literal(diagnostics, string, i, format);
+				_report_invalid_char_in_interger_literal(diagnostics, int_part_string, i, format);
 				return false;
 			}
 

@@ -103,7 +103,12 @@ typedef enum {
 	STR_TOKEN_RESULT_EOF_REACHED,
 } StringTokenizerResult;
 
-void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file);
+inline SourceString source_string_from_token(Token token) {
+	return (SourceString) {
+		.source_file = token.source_range.source_file,
+		.string = token.string,
+	};
+}
 
 inline bool tokenizer_is_end(const Tokenizer* tokenizer) {
 	return tokenizer->read_position == tokenizer->source_code.length;
@@ -122,6 +127,8 @@ inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
 	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
 }
 
+
+void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file);
 void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer);
 
 StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,

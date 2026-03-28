@@ -97,14 +97,11 @@ typedef struct {
 } MacroCallStack;
 
 typedef struct {
-	String source_path;
-
 	Arena* allocator;
 	Arena* temp_allocator;
 	Arena* generated_tokens_allocator;
 	Diagnostics* diagnostics;
 	Tokenizer tokenizer;
-	LineInfo line_info;
 	MacroTable macro_table;
 	MacroCallStack macro_call_stack;
 
@@ -153,7 +150,7 @@ typedef enum {
 } BuiltinMacroKind;
 
 struct MacroDefinition {
-	String name;
+	SourceString name;
 	BuiltinMacroKind builtin_kind;
 
 	MacroStyle style;
@@ -169,9 +166,7 @@ struct MacroDefinition {
 };
 
 void preprocessor_init(Preprocessor* state,
-		String source_path,
-		String source_code,
-		const LineInfo* line_info,
+		const SourceFile* source_file,
 		Diagnostics* diagnostics,
 		Arena* allocator,
 		Arena* temp_allocator,

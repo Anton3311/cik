@@ -16,14 +16,14 @@ String int_literal_format_to_string(IntergerLiteralFormat format);
 
 typedef struct {
 	IntergerLiteralFormat format;
-	String int_part_string;
+	SourceString int_part_string;
 } IntegerLiteralInfo;
 
 IntegerLiteralInfo int_literal_info_from_token(Token token);
 
 bool parse_integer_literal_value(Diagnostics* diagnostics,
 		Token literal_token,
-		String string,
+		SourceString int_part_string,
 		IntergerLiteralFormat format,
 		uint64_t* out_result);
 

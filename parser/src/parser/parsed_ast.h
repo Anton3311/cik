@@ -5,8 +5,6 @@
 #include "parser/source_info.h"
 #include "parser/parse_tools.h"
 
-typedef String SourceString;
-
 typedef struct ParsedNode ParsedNode;
 typedef struct ParsedBlock ParsedBlock;
 typedef struct ParsedType ParsedType;

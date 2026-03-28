@@ -68,7 +68,7 @@ size_t _ident_storage_try_find_entry(IdentifierStorage* storage, String name) {
 	assert(name.length > 0);
 
 	for (size_t i = 0; i < storage->count; i += 1) {
-		if (str_equal(storage->entries[i]->name, name)) {
+		if (str_equal(storage->entries[i]->name.string, name)) {
 			return i;
 		}
 	}
@@ -100,10 +100,10 @@ void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
 
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString name) {
 	assert(storage != NULL);
-	assert(name.length > 0);
+	assert(name.string.length > 0);
 	assert(storage->current_scope);
 
-	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name);
+	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name.string);
 	IdentifierEntry* entry = NULL;
 	if (existing_entry_index == SIZE_MAX) {
 		assert(storage->count < storage->capacity);
@@ -150,10 +150,10 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage, SourceString n
 
 void ident_storage_remove(IdentifierStorage* storage, SourceString name) {
 	assert(storage != NULL);
-	assert(name.length > 0);
+	assert(name.string.length > 0);
 	assert(storage->current_scope);
 
-	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name);
+	size_t existing_entry_index = _ident_storage_try_find_entry(storage, name.string);
 	if (existing_entry_index == SIZE_MAX) {
 		return;
 	}
@@ -228,10 +228,6 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 
 
 
-inline SourceString _source_string_from_token(Token token) {
-	return token.string;
-}
-
 void _parser_skip_until_semicolon(Parser* parser) {
 	while (true) {
 		Token token = preprocessor_next_token(parser->preprocessor);
@@ -304,7 +300,7 @@ bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, Pars
 
 		Token name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
 		if (name_or_semilcolon.kind == TOKEN_IDENT) {
-			member->name = _source_string_from_token(name_or_semilcolon);
+			member->name = source_string_from_token(name_or_semilcolon);
 			preprocessor_next_token(parser->preprocessor); // consume name
 
 			name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
@@ -354,7 +350,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 	if (token.kind == TOKEN_IDENT) {
 		preprocessor_next_token(parser->preprocessor); // consume identifier
 
-		struct_name = _source_string_from_token(token);
+		struct_name = source_string_from_token(token);
 		token = preprocessor_view_next(parser->preprocessor);
 	}
 
@@ -373,27 +369,27 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 
 	bool struct_def_initialized = false;
 	ParsedStruct* struct_def = NULL;
-	if (struct_name.length == 0) {
+	if (struct_name.string.length == 0) {
 		struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
 		memset(struct_def, 0, sizeof(*struct_def));
 
 		struct_def_initialized = false;
 	} else {
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, struct_name);
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, struct_name.string);
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_STRUCT)) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
 				str_builder_append_char(&builder, '\'');
-				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, entry->name.string);
 				str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
 
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
+						source_string_to_range(struct_name),
 						builder.string,
 						NULL);
 
 				diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						source_string_to_range(struct_name),
 						STR_LIT("Previously defined here"),
 						error);
 				return false;
@@ -407,16 +403,16 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 			if (!struct_def->is_forward_declared && !is_forward_declared) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Redefinition of '"));
-				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, entry->name.string);
 				str_builder_append_char(&builder, '\'');
 
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, struct_name),
+						source_string_to_range(struct_name),
 						builder.string,
 						NULL);
 
 				diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
 				return false;
@@ -488,7 +484,7 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 			return false;
 		}
 
-		variant->name = _source_string_from_token(name_token);
+		variant->name = source_string_from_token(name_token);
 
 		if (first_variant == NULL) {
 			first_variant = variant;
@@ -538,7 +534,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 	if (token.kind == TOKEN_IDENT) {
 		preprocessor_next_token(parser->preprocessor); // consume identifier
 
-		enum_name = _source_string_from_token(token);
+		enum_name = source_string_from_token(token);
 		token = preprocessor_view_next(parser->preprocessor);
 	}
 
@@ -554,23 +550,23 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 	}
 
 	ParsedEnum* enum_def = NULL;
-	if (enum_name.length > 0) {
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, enum_name);
+	if (enum_name.string.length > 0) {
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, enum_name.string);
 
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_ENUM)) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
 				str_builder_append_char(&builder, '\'');
-				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, entry->name.string);
 				str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
 
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
+						source_string_to_range(enum_name),
 						builder.string,
 						NULL);
 
 				diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
 				return false;
@@ -582,16 +578,16 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 			if (!enum_def->is_forward_declared && !is_forward_declared) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Redefinition of '"));
-				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, entry->name.string);
 				str_builder_append_char(&builder, '\'');
 
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, enum_name),
+						source_string_to_range(enum_name),
 						builder.string,
 						NULL);
 
 				diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
 				return false;
@@ -889,10 +885,10 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	ParsedTypeDef* type_def = arena_alloc(parser->ast_allocator, ParsedTypeDef);
 	memset(type_def, 0, sizeof(*type_def));
 	
-	type_def->new_name = _source_string_from_token(new_name);
+	type_def->new_name = source_string_from_token(new_name);
 	type_def->aliased_type = aliased_type;
 
-	entry = ident_storage_insert(&parser->ident_storage, new_name.string);
+	entry = ident_storage_insert(&parser->ident_storage, source_string_from_token(new_name));
 	entry->kind = IDENT_TYPE_DEF;
 	entry->type_def = type_def;
 
@@ -937,7 +933,7 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 		if (token.kind == TOKEN_IDENT) {
 			preprocessor_next_token(parser->preprocessor); // consume param name
 
-			param->name = _source_string_from_token(token);
+			param->name = source_string_from_token(token);
 			token = preprocessor_view_next(parser->preprocessor);
 		}
 
@@ -1254,7 +1250,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		return false;
 	}
 
-	SourceString name = _source_string_from_token(name_token);
+	SourceString name = source_string_from_token(name_token);
 
 	bool has_param_list = false;
 	ParsedFunctionParam* param_list = NULL;
@@ -1341,22 +1337,22 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			return false;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, name);
+		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, name.string);
 		ParsedFunction* function_def = NULL;
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_FUNCTION)) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
 				str_builder_append_char(&builder, '\'');
-				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, entry->name.string);
 				str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
 
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, name),
+						source_string_to_range(name),
 						builder.string,
 						NULL);
 
 				diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
 				return false;
@@ -1369,16 +1365,16 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			if (!function_def->is_forward_declared && !is_forward_declared) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Redefinition of '"));
-				str_builder_append(&builder, entry->name);
+				str_builder_append(&builder, entry->name.string);
 				str_builder_append_char(&builder, '\'');
 
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, name),
+						source_string_to_range(name),
 						builder.string,
 						NULL);
 
 				diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
 				return false;
@@ -1386,12 +1382,12 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 
 			if (function_def->parameter_count != param_count) {
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, name),
+						source_string_to_range(name),
 						STR_LIT("Function was previously defined with a different parameter count"),
 						NULL);
 
 				diagnostics_report_error(parser->diagnostics,
-						source_range_from_sub_string(parser->diagnostics->source_code, entry->name),
+						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
 				return false;

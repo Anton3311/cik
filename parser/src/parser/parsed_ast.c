@@ -128,12 +128,12 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 	switch (expr->kind) {
 	case EXPR_FUNCTION_REFERENCE:
 		printer_begin_struct(printer, "function_ref");
-		printer_string_field(printer, "name", expr->function_ref->name);
+		printer_string_field(printer, "name", expr->function_ref->name.string);
 		printer_end_struct(printer);
 		break;
 	case EXPR_VARIABLE_REFERENCE:
 		printer_begin_struct(printer, "variable_ref");
-		printer_string_field(printer, "name", expr->variable_ref->name);
+		printer_string_field(printer, "name", expr->variable_ref->name.string);
 		printer_end_struct(printer);
 		break;
 	case EXPR_BINARY:
@@ -163,7 +163,7 @@ void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 	assert(struct_def != NULL);
 
 	printer_begin_struct(printer, "struct");
-	printer_string_field(printer, "name", struct_def->name);
+	printer_string_field(printer, "name", struct_def->name.string);
 	printer_bool_field(printer, "is_forward_declared", struct_def->is_forward_declared);
 	
 	if (!struct_def->is_forward_declared) {
@@ -175,7 +175,7 @@ void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 		while (member) {
 			printer_array_element(printer, member_index);
 			printer_begin_struct(printer, "member");
-			printer_string_field(printer, "name", member->name);
+			printer_string_field(printer, "name", member->name.string);
 			printer_field(printer, "type");
 			print_type(printer, &member->type);
 			printer_end_struct(printer);
@@ -195,7 +195,7 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 
 	printer_begin_struct(printer, "enum");
 
-	printer_string_field(printer, "name", enum_def->name);
+	printer_string_field(printer, "name", enum_def->name.string);
 
 	printer_field(printer, "variants");
 	printer_begin_array(printer);
@@ -206,7 +206,7 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 		printer_array_element(printer, variant_index);
 
 		printer_begin_struct(printer, "variant");
-		printer_string_field(printer, "name", variant->name);
+		printer_string_field(printer, "name", variant->name.string);
 		printer_end_struct(printer);
 
 		variant = variant->next;
@@ -320,7 +320,7 @@ void print_type_def(PrinterState* printer, const ParsedTypeDef* type_def) {
 
 	printer_field(printer, "type");
 	print_type(printer, &type_def->aliased_type);
-	printer_string_field(printer, "name", type_def->new_name);
+	printer_string_field(printer, "name", type_def->new_name.string);
 
 	printer_end_struct(printer);
 }
@@ -344,7 +344,7 @@ void print_scope(PrinterState* printer, const ParsedScope* scope) {
 void print_function_def(PrinterState* printer, const ParsedFunction* function_def) {
 	printer_begin_struct(printer, "function");
 
-	printer_string_field(printer, "name", function_def->name);
+	printer_string_field(printer, "name", function_def->name.string);
 	printer_field(printer, "return_type");
 	print_type(printer, &function_def->return_type);
 
@@ -356,7 +356,7 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	while (param != NULL) {
 		printer_array_element(printer, param_index);
 		printer_begin_struct(printer, "param");
-		printer_string_field(printer, "name", param->name);
+		printer_string_field(printer, "name", param->name.string);
 		printer_field(printer, "type");
 		print_type(printer, &param->type);
 		printer_end_struct(printer);
@@ -383,7 +383,7 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 
 void print_variable(PrinterState* printer, const ParsedVariable* variable) {
 	printer_begin_struct(printer, "variable");
-	printer_string_field(printer, "name", variable->name);
+	printer_string_field(printer, "name", variable->name.string);
 	printer_field(printer, "type");
 	print_type(printer, &variable->type);
 

@@ -12,6 +12,8 @@ typedef enum {
 typedef struct DiagnosticsEntry DiagnosticsEntry;
 
 struct DiagnosticsEntry {
+	const SourceFile* source_file;
+
 	uint32_t start_line;
 	uint32_t end_line;
 	SourceRange* highlighted_ranges;
@@ -27,9 +29,6 @@ struct DiagnosticsEntry {
 
 typedef struct {
 	Arena* allocator;
-
-	String source_code;
-	LineInfo line_info;
 
 	DiagnosticsEntry* first;
 	DiagnosticsEntry* last;

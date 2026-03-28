@@ -5,15 +5,20 @@
 
 typedef struct SourceFile SourceFile;
 
-//
-// LineInfo
-//
+typedef struct {
+	const SourceFile* source_file;
+	String string;
+} SourceString;
 
 typedef struct {
 	const SourceFile* source_file;
 	size_t start;
 	size_t end;
 } SourceRange;
+
+//
+// LineInfo
+//
 
 typedef struct {
 	uint32_t line;
@@ -76,6 +81,14 @@ typedef struct {
 } SourceStorage;
 
 void source_storage_init(SourceStorage* storage, Arena* allocator);
+SourceFile* source_storage_append(SourceStorage* storage, String path, String source_code);
+SourceFile* source_storage_append_from_path(SourceStorage* storage, String path, Arena* temp_allocator);
 SourceFile* source_storage_find_file(SourceStorage* storage, String path); 
+
+inline SourceRange source_string_to_range(SourceString string) {
+	SourceRange range = source_range_from_sub_string(string.source_file->source_code, string.string);
+	range.source_file = string.source_file;
+	return range;
+}
 
 #endif

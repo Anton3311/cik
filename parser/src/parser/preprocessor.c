@@ -11,7 +11,7 @@ void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
 
 bool macro_table_remove(MacroTable* table, String name) {
 	for (size_t i = 0; i < table->count; i += 1) {
-		if (str_equal(table->macros[i].name, name)) {
+		if (str_equal(table->macros[i].name.string, name)) {
 			table->macros[i] = table->macros[table->count - 1];
 			table->count -= 1;
 			return true;
@@ -23,7 +23,7 @@ bool macro_table_remove(MacroTable* table, String name) {
 
 const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 	for (size_t i = 0; i < table->count; i += 1) {
-		if (str_equal(table->macros[i].name, name)) {
+		if (str_equal(table->macros[i].name.string, name)) {
 			return &table->macros[i];
 		}
 	}
@@ -71,9 +71,7 @@ String directive_kind_to_string(DirectiveKind kind) {
 }
 
 void preprocessor_init(Preprocessor* state,
-		String source_path,
-		String source_code,
-		const LineInfo* line_info,
+		const SourceFile* source_file,
 		Diagnostics* diagnostics,
 		Arena* allocator,
 		Arena* temp_allocator,
@@ -82,13 +80,8 @@ void preprocessor_init(Preprocessor* state,
 	state->temp_allocator = temp_allocator;
 	state->generated_tokens_allocator = generated_tokens_allocator;
 
-	state->source_path = source_path;
-	state->line_info = *line_info;
 	state->diagnostics = diagnostics;
-	state->tokenizer = (Tokenizer) {
-		.source_code = source_code,
-		.read_position = 0,
-	};
+	tokenizer_init(&state->tokenizer, source_file);
 
 	state->macro_table = (MacroTable) {
 		.capacity = 128,
@@ -99,7 +92,10 @@ void preprocessor_init(Preprocessor* state,
 
 	{
 		MacroDefinition line_macro = {
-			.name = STR_LIT("__LINE__"),
+			.name = (SourceString) {
+				.string = STR_LIT("__LINE__"),
+				.source_file = state->tokenizer.source_file,
+			},
 			.builtin_kind = BUILTIN_MACRO_LINE,
 			.token_count = 1,
 		};
@@ -107,7 +103,10 @@ void preprocessor_init(Preprocessor* state,
 		macro_table_append(&state->macro_table, &line_macro);
 
 		MacroDefinition file_macro = {
-			.name = STR_LIT("__FILE__"),
+			.name = (SourceString) {
+				.string = STR_LIT("__FILE__"),
+				.source_file = state->tokenizer.source_file,
+			},
 			.builtin_kind = BUILTIN_MACRO_FILE,
 			.token_count = 1,
 		};
@@ -123,6 +122,10 @@ void preprocessor_init(Preprocessor* state,
 	};
 }
 
+inline const SourceFile* _preprocessor_current_file(const Preprocessor* state) {
+	return state->tokenizer.source_file;
+}
+
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
 	macro->tokens = arena_alloc_array(state->allocator, Token, 0);
 
@@ -130,14 +133,16 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 	MacroTokenHint* token_hints = arena_alloc_array(state->temp_allocator, MacroTokenHint, 0);
 	size_t token_hint_count = 0;
 
-	SourceRange macro_name_range = source_range_from_sub_string(state->tokenizer.source_code, macro->name);
-	uint32_t expected_token_line = line_info_pos_to_source_location(&state->line_info, macro_name_range.start).line;
+	SourceRange macro_name_range = source_string_to_range(macro->name);
+
+	const LineInfo* line_info = &_preprocessor_current_file(state)->line_info;
+	uint32_t expected_token_line = line_info_pos_to_source_location(line_info, macro_name_range.start).line;
 
 	bool next_token_is_part_of_insert_operator = false;
 
 	while (!tokenizer_is_end(&state->tokenizer)) {
 		Token token = tokenizer_view_next(&state->tokenizer);
-		uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line;
+		uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line;
 		if (token_line == expected_token_line) {
 			MacroTokenHint token_hint = { .kind = MACRO_TOKEN_HINT_NONE };
 
@@ -284,7 +289,7 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	}
 
 	macro->style = MACRO_STYLE_DEFAULT;
-	macro->name = name_token.string;
+	macro->name = source_string_from_token(name_token);
 
 	Token maybe_paren = tokenizer_view_next(&state->tokenizer);
 
@@ -575,6 +580,9 @@ bool _preprocessor_is_current_region_enabled(Preprocessor* state) {
 }
 
 bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directive) {
+	const SourceFile* source_file = _preprocessor_current_file(state);
+	const LineInfo* line_info = &source_file->line_info;
+
 	switch (directive.kind) {
 	case DIRECTIVE_INCLUDE: {
 		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
@@ -785,7 +793,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		break;
 	}
 	case DIRECTIVE_ERROR: {
-		uint32_t initial_line = line_info_pos_to_source_location(&state->line_info, directive.source_range.end).line;
+		uint32_t initial_line = line_info_pos_to_source_location(line_info, directive.source_range.end).line;
 
 		Token first_token = { .kind = TOKEN_COUNT };
 		Token last_token = { .kind = TOKEN_COUNT };
@@ -793,7 +801,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		while (true) {
 			Token token = tokenizer_view_next(&state->tokenizer);
 			
-			uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line; 
+			uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line; 
 
 			if (token_line > initial_line) {
 				break;
@@ -866,6 +874,7 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 
 	out_directive->kind = directive_kind;
 	out_directive->source_range = (SourceRange) {
+		.source_file = hash_token.source_range.source_file,
 		.start = hash_token.source_range.start,
 		.end = directive_name_token.source_range.end,
 	};
@@ -873,11 +882,14 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 }
 
 void _preprocessor_skip_until_newline(Preprocessor* state) {
-	uint32_t initial_line = line_info_pos_to_source_location(&state->line_info, state->tokenizer.read_position).line;
+	const SourceFile* source_file = _preprocessor_current_file(state);
+	const LineInfo* line_info = &source_file->line_info;
+
+	uint32_t initial_line = line_info_pos_to_source_location(line_info, state->tokenizer.read_position).line;
 
 	while (true) {
 		Token token = tokenizer_view_next(&state->tokenizer);
-		uint32_t token_line = line_info_pos_to_source_location(&state->line_info, token.source_range.end).line; 
+		uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line; 
 
 		if (token_line > initial_line) {
 			break;
@@ -1115,19 +1127,7 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 	return false;
 }
 
-typedef struct {
-	const String source_file_path;
-	const LineInfo* line_info;
-} MacroExpansionSourceInfo;
-
-inline MacroExpansionSourceInfo _create_macro_expansion_source_info(const Preprocessor* preprocessor) {
-	return (MacroExpansionSourceInfo) {
-		.source_file_path = preprocessor->source_path,
-		.line_info = &preprocessor->line_info,
-	};
-}
-
-bool _preprocessor_expand_builtin_macro(MacroExpansionSourceInfo source_info,
+bool _preprocessor_expand_builtin_macro(const SourceFile* source_file,
 		const MacroCallStack* call_stack,
 		Arena* generated_tokens_allocator,
 		Token* out_token,
@@ -1144,7 +1144,7 @@ bool _preprocessor_expand_builtin_macro(MacroExpansionSourceInfo source_info,
 	case BUILTIN_MACRO_LINE: {
 		SourceRange first_call_range = call_stack->frames[0].call_source_range;
 		uint32_t call_source_line = line_info_pos_to_source_location(
-				source_info.line_info,
+				&source_file->line_info,
 				first_call_range.start).line + 1;
 
 		StringBuilder builder = { .arena = generated_tokens_allocator };
@@ -1167,7 +1167,7 @@ bool _preprocessor_expand_builtin_macro(MacroExpansionSourceInfo source_info,
 
 		StringBuilder builder = { .arena = generated_tokens_allocator };
 		str_builder_append_char(&builder, '"');
-		str_builder_append(&builder, source_info.source_file_path);
+		str_builder_append(&builder, source_file->path);
 		str_builder_append_char(&builder, '"');
 
 		Token generated_token = (Token) {
@@ -1188,7 +1188,7 @@ bool _preprocessor_expand_builtin_macro(MacroExpansionSourceInfo source_info,
 	return false;
 }
 
-bool _preprocessor_get_next_macro_expansion_token(MacroExpansionSourceInfo source_info,
+bool _preprocessor_get_next_macro_expansion_token(const SourceFile* source_file,
 		MacroCallStack* macro_call_stack,
 		Arena* generated_tokens_allocator,
 		Token* out_token) {
@@ -1204,7 +1204,7 @@ bool _preprocessor_get_next_macro_expansion_token(MacroExpansionSourceInfo sourc
 		if (call->macro->builtin_kind == BUILTIN_MACRO_NONE) {
 			result = _preprocessor_expand_user_defined_macro(generated_tokens_allocator, out_token, call);
 		} else {
-			result = _preprocessor_expand_builtin_macro(source_info,
+			result = _preprocessor_expand_builtin_macro(source_file,
 					macro_call_stack,
 					generated_tokens_allocator,
 					out_token,
@@ -1225,14 +1225,14 @@ bool _preprocessor_get_next_macro_expansion_token(MacroExpansionSourceInfo sourc
 // In case `_preprocessor_get_next_macro_expansion_token` fails
 // (when the preprocessor isn't expanding a macro)
 // falls back to the source tokenizer.
-inline Token _preprocessor_next_macro_or_source_token(MacroExpansionSourceInfo source_info,
+inline Token _preprocessor_next_macro_or_source_token(const SourceFile* source_file,
 		MacroCallStack* macro_call_stack,
 		Arena* generated_tokens_allocator,
 		Tokenizer* tokenizer) {
 
 	Token token = {};
 	if (macro_call_stack->depth > 0) {
-		bool result = _preprocessor_get_next_macro_expansion_token(source_info,
+		bool result = _preprocessor_get_next_macro_expansion_token(source_file,
 				macro_call_stack,
 				generated_tokens_allocator,
 				&token);
@@ -1257,7 +1257,7 @@ void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,
 	StringBuilder builder = { .arena = state->diagnostics->allocator };
 
 	str_builder_append(&builder, STR_LIT("Expended from macro '"));
-	str_builder_append(&builder, call->macro->name);
+	str_builder_append(&builder, call->macro->name.string);
 	str_builder_append(&builder, STR_LIT("'\n"));
 
 	for (size_t param_index = 0; param_index < macro->parameter_count; param_index += 1) {
@@ -1293,8 +1293,8 @@ typedef struct {
 } ParsedMacroCallArgs;
 
 bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArgs* out_args) {
-	MacroExpansionSourceInfo source_info = _create_macro_expansion_source_info(state);
-	Token maybe_left_paren = _preprocessor_next_macro_or_source_token(source_info,
+	Token maybe_left_paren = _preprocessor_next_macro_or_source_token(
+			_preprocessor_current_file(state),
 			&state->macro_call_stack,
 			state->generated_tokens_allocator,
 			&state->tokenizer);
@@ -1324,7 +1324,8 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 
 	bool arg_is_expected = false;
 	while (true) {
-		Token token = _preprocessor_next_macro_or_source_token(source_info,
+		Token token = _preprocessor_next_macro_or_source_token(
+				_preprocessor_current_file(state),
 				&state->macro_call_stack,
 				state->generated_tokens_allocator,
 				&state->tokenizer);
@@ -1390,7 +1391,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 			// Not enough macro arguments
 			StringBuilder builder = { state->diagnostics->allocator };
 			str_builder_append(&builder, STR_LIT("Not enough arguments during a call of macro called '"));
-			str_builder_append(&builder, macro->name);
+			str_builder_append(&builder, macro->name.string);
 			str_builder_append(&builder, STR_LIT("'. Expected "));
 			str_builder_append_int(&builder, macro->parameter_count);
 			str_builder_append(&builder, STR_LIT(" but only "));
@@ -1398,7 +1399,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 			str_builder_append(&builder, STR_LIT(" were provided."));
 
 			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
-					source_range_from_sub_string(state->tokenizer.source_code, macro->name),
+					source_string_to_range(macro->name),
 					builder.string,
 					NULL);
 
@@ -1408,7 +1409,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 			// Too many macro arguments
 			StringBuilder builder = { state->diagnostics->allocator };
 			str_builder_append(&builder, STR_LIT("Too many arguments during a call of macro called '"));
-			str_builder_append(&builder, macro->name);
+			str_builder_append(&builder, macro->name.string);
 			str_builder_append(&builder, STR_LIT("'. Expected "));
 			str_builder_append_int(&builder, macro->parameter_count);
 			str_builder_append(&builder, STR_LIT(" but "));
@@ -1416,7 +1417,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 			str_builder_append(&builder, STR_LIT(" were provided."));
 
 			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
-					source_range_from_sub_string(state->tokenizer.source_code, macro->name),
+					source_string_to_range(macro->name),
 					builder.string,
 					NULL);
 
@@ -1500,7 +1501,8 @@ Token preprocessor_next_token(Preprocessor* state) {
 			//
 			//       In that way the call gets replaced with whatever code was defined in the macro.
 
-			bool result = _preprocessor_get_next_macro_expansion_token(_create_macro_expansion_source_info(state),
+			bool result = _preprocessor_get_next_macro_expansion_token(
+					_preprocessor_current_file(state),
 					&state->macro_call_stack,
 					state->generated_tokens_allocator,
 					&next_token);

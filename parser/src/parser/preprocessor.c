@@ -566,8 +566,17 @@ bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
 	assert(expr);
 
 	switch (expr->kind) {
-	case EXPR_IDENT:
-		break;
+	case EXPR_IDENT: {
+		const MacroDefinition* macro_def = macro_table_find(&state->macro_table, expr->ident.string);
+		if (!macro_def) {
+			return false;
+		}
+
+		// TODO: Expeand the macro here, and parse it into an expression
+
+		assert(macro_def->token_count == 1);
+		return false;
+	}
 	case EXPR_INT_LITERAL:
 		return expr->integer_literal.value > 0;
 	case EXPR_UNARY: {

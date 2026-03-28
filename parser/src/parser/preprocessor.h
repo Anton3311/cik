@@ -97,12 +97,24 @@ typedef struct {
 } MacroCallStack;
 
 typedef struct {
+	Tokenizer* includes;
+	size_t depth;
+	size_t capacity;
+} IncludeStack;
+
+typedef struct {
 	Arena* allocator;
 	Arena* temp_allocator;
 	Arena* generated_tokens_allocator;
 	Diagnostics* diagnostics;
 	SourceStorage* source_storage;
-	Tokenizer tokenizer;
+
+	IncludeStack include_stack;
+
+	// NOTE: This is the current tokenizer,
+	//       which is stored on top of the `include_stack`
+	//       and must at all times reflect it.
+	Tokenizer* tokenizer;
 	MacroTable macro_table;
 	MacroCallStack macro_call_stack;
 

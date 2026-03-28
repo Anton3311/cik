@@ -39,6 +39,8 @@ void _preprocessor_skip_until_newline(Preprocessor* state);
 
 // Returns SIZE_MAX if not found
 size_t _macro_find_param_by_name(const MacroDefinition* macro, String param_name);
+bool _preprocessor_push_file(Preprocessor* state, const SourceFile* source_file);
+void _preprocessor_pop_file(Preprocessor* state);
 
 String directive_kind_to_string(DirectiveKind kind) {
 	switch (kind) {
@@ -82,7 +84,6 @@ void preprocessor_init(Preprocessor* state,
 	state->generated_tokens_allocator = generated_tokens_allocator;
 	state->source_storage = source_storage;
 	state->diagnostics = diagnostics;
-	tokenizer_init(&state->tokenizer, source_file);
 
 	state->macro_table = (MacroTable) {
 		.capacity = 128,
@@ -91,11 +92,18 @@ void preprocessor_init(Preprocessor* state,
 
 	state->macro_table.macros = arena_alloc_array(state->allocator, MacroDefinition, state->macro_table.capacity);
 
+	state->include_stack.depth = 0;
+	state->include_stack.capacity = 32;
+	state->include_stack.includes = arena_alloc_array(state->allocator, Tokenizer, state->include_stack.capacity);
+
+	bool file_included = _preprocessor_push_file(state, source_file);
+	assert_msg(file_included, "Failed to push initial source file to the stack");
+
 	{
 		MacroDefinition line_macro = {
 			.name = (SourceString) {
 				.string = STR_LIT("__LINE__"),
-				.source_file = state->tokenizer.source_file,
+				.source_file = state->tokenizer->source_file,
 			},
 			.builtin_kind = BUILTIN_MACRO_LINE,
 			.token_count = 1,
@@ -106,7 +114,7 @@ void preprocessor_init(Preprocessor* state,
 		MacroDefinition file_macro = {
 			.name = (SourceString) {
 				.string = STR_LIT("__FILE__"),
-				.source_file = state->tokenizer.source_file,
+				.source_file = state->tokenizer->source_file,
 			},
 			.builtin_kind = BUILTIN_MACRO_FILE,
 			.token_count = 1,
@@ -123,8 +131,34 @@ void preprocessor_init(Preprocessor* state,
 	};
 }
 
+bool _preprocessor_push_file(Preprocessor* state, const SourceFile* source_file) {
+	IncludeStack* stack = &state->include_stack;
+
+	if (stack->depth >= stack->capacity) {
+		return false;
+	}
+
+	stack->depth += 1;
+
+	Tokenizer* tokenizer = &stack->includes[stack->depth - 1];
+	tokenizer_init(tokenizer, source_file);
+
+	state->tokenizer = tokenizer;
+	return true;
+}
+
+void _preprocessor_pop_file(Preprocessor* state) {
+	IncludeStack* stack = &state->include_stack;
+	assert(stack->depth > 0);
+
+	Tokenizer* tokenizer = &stack->includes[stack->depth - 1];
+	state->tokenizer = tokenizer;
+
+	stack->depth -= 1;
+}
+
 inline const SourceFile* _preprocessor_current_file(const Preprocessor* state) {
-	return state->tokenizer.source_file;
+	return state->tokenizer->source_file;
 }
 
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
@@ -141,21 +175,21 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 
 	bool next_token_is_part_of_insert_operator = false;
 
-	while (!tokenizer_is_end(&state->tokenizer)) {
-		Token token = tokenizer_view_next(&state->tokenizer);
+	while (!tokenizer_is_end(state->tokenizer)) {
+		Token token = tokenizer_view_next(state->tokenizer);
 		uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line;
 		if (token_line == expected_token_line) {
 			MacroTokenHint token_hint = { .kind = MACRO_TOKEN_HINT_NONE };
 
 			if (token.kind == TOKEN_BACKWARD_SLASH) {
 				expected_token_line += 1;
-				tokenizer_reset_to_token(&state->tokenizer, token);
+				tokenizer_reset_to_token(state->tokenizer, token);
 				continue;
 			}
 
 			switch (token.kind) {
 			case TOKEN_IDENT:
-				tokenizer_reset_to_token(&state->tokenizer, token);
+				tokenizer_reset_to_token(state->tokenizer, token);
 
 				if (macro->style != MACRO_STYLE_FUNCTION) {
 					break;
@@ -175,9 +209,9 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 					is_insert_operator = true;
 				}
 
-				Token maybe_token_insert_operator = tokenizer_view_next(&state->tokenizer);
+				Token maybe_token_insert_operator = tokenizer_view_next(state->tokenizer);
 				if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
-					tokenizer_reset_to_token(&state->tokenizer, maybe_token_insert_operator);
+					tokenizer_reset_to_token(state->tokenizer, maybe_token_insert_operator);
 					is_insert_operator = true;
 					next_token_is_part_of_insert_operator = true;
 				} else if (parameter_index != SIZE_MAX) {
@@ -195,9 +229,9 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 			case TOKEN_HASH: {
 				// Consume TOKEN_HASH, so that we can get the next identifier token,
 				// without tokenizing TOKEN_HASH twice (since `tokenizer_view_next` was used).
-				tokenizer_reset_to_token(&state->tokenizer, token);
+				tokenizer_reset_to_token(state->tokenizer, token);
 
-				Token param_name_token = tokenizer_view_next(&state->tokenizer);
+				Token param_name_token = tokenizer_view_next(state->tokenizer);
 				if (param_name_token.kind != TOKEN_IDENT) {
 					TokenKind expected_token = TOKEN_IDENT;
 
@@ -211,7 +245,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 					return;
 				}
 
-				tokenizer_reset_to_token(&state->tokenizer, param_name_token);
+				tokenizer_reset_to_token(state->tokenizer, param_name_token);
 
 				size_t param_index = _macro_find_param_by_name(macro, param_name_token.string);
 				if (param_index == SIZE_MAX) {
@@ -247,7 +281,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				break;
 			}
 			default:
-				tokenizer_reset_to_token(&state->tokenizer, token);
+				tokenizer_reset_to_token(state->tokenizer, token);
 				break;
 			}
 
@@ -283,7 +317,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	ArenaRegion temp_region = arena_begin_temp(state->allocator);
 
-	Token name_token = tokenizer_next_token(&state->tokenizer);
+	Token name_token = tokenizer_next_token(state->tokenizer);
 	if (name_token.kind != TOKEN_IDENT) {
 		diagnostics_report_error(state->diagnostics, name_token.source_range, STR_LIT("Expected macro name"), NULL);
 		return false;
@@ -292,7 +326,7 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	macro->style = MACRO_STYLE_DEFAULT;
 	macro->name = source_string_from_token(name_token);
 
-	Token maybe_paren = tokenizer_view_next(&state->tokenizer);
+	Token maybe_paren = tokenizer_view_next(state->tokenizer);
 
 	// A function style is defined by a name followed by a left paren right after it (without any whitespace)
 	if (maybe_paren.kind == TOKEN_LEFT_PAREN
@@ -300,24 +334,24 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 
 		macro->style = MACRO_STYLE_FUNCTION;
 		// We have a function style macro => parse paremeter names
-		tokenizer_reset_to_token(&state->tokenizer, maybe_paren);
+		tokenizer_reset_to_token(state->tokenizer, maybe_paren);
 
 		macro->parameter_names = arena_alloc_array(state->allocator, String, 0);
 
 		while (true) {
-			Token token = tokenizer_next_token(&state->tokenizer);
+			Token token = tokenizer_next_token(state->tokenizer);
 			if (token.kind == TOKEN_IDENT) {
 				String* param_name = arena_alloc(state->allocator, String);			
 				*param_name = token.string;
 				macro->parameter_count += 1;
 
-				token = tokenizer_next_token(&state->tokenizer);
+				token = tokenizer_next_token(state->tokenizer);
 				if (token.kind == TOKEN_COMMA) {
 					// There are potentially more paremeters
 					continue;
 				}
 			} else if (token.kind == TOKEN_ELLIPSES) {
-				Token right_paren = tokenizer_next_token(&state->tokenizer);
+				Token right_paren = tokenizer_next_token(state->tokenizer);
 				if (right_paren.kind != TOKEN_RIGHT_PAREN) {
 					TokenKind expected_tokens[] = {
 						TOKEN_RIGHT_PAREN,
@@ -439,14 +473,14 @@ struct Expr {
 };
 
 Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
-	Token token = tokenizer_view_next(&state->tokenizer);
+	Token token = tokenizer_view_next(state->tokenizer);
 
 	if (token.kind == TOKEN_LEFT_PAREN) {
-		tokenizer_reset_to_token(&state->tokenizer, token);
+		tokenizer_reset_to_token(state->tokenizer, token);
 
 		Expr* expr = _preprocessor_parse_expr(state, allocator);
 
-		Token closing_paren = tokenizer_next_token(&state->tokenizer);
+		Token closing_paren = tokenizer_next_token(state->tokenizer);
 		if (closing_paren.kind != TOKEN_RIGHT_PAREN) {
 			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
 			diagnostics_report_unexpected_token(state->diagnostics,
@@ -458,7 +492,7 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
 
 		return expr;
 	} else if (token.kind == TOKEN_EXCLAMATION_MARK || token.kind == TOKEN_MINUS || token.kind == TOKEN_PLUS) {
-		tokenizer_reset_to_token(&state->tokenizer, token);
+		tokenizer_reset_to_token(state->tokenizer, token);
 
 		UnaryOp op = -1;
 		switch (token.kind) {
@@ -487,7 +521,7 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
 		};
 		return expr;
 	} else if (token.kind == TOKEN_IDENT) {
-		tokenizer_reset_to_token(&state->tokenizer, token);
+		tokenizer_reset_to_token(state->tokenizer, token);
 
 		if (str_equal(token.string, STR_LIT("defined"))) {
 			Expr* macro = _preprocessor_parse_expr(state, allocator);
@@ -586,19 +620,19 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 	switch (directive.kind) {
 	case DIRECTIVE_INCLUDE: {
-		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
+		tokenizer_skip_whitespace_and_comments(state->tokenizer);
 
 		Token string_token = {};
 
-		char opening_quote = state->tokenizer.source_code.v[state->tokenizer.read_position];
+		char opening_quote = state->tokenizer->source_code.v[state->tokenizer->read_position];
 		if (opening_quote == '<') {
-			StringTokenizerResult result = _tokenizer_try_create_string_token(&state->tokenizer, '<', '>', &string_token);
+			StringTokenizerResult result = _tokenizer_try_create_string_token(state->tokenizer, '<', '>', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
 		} else if (opening_quote == '"') {
-			StringTokenizerResult result = _tokenizer_try_create_string_token(&state->tokenizer, '"', '"', &string_token);
+			StringTokenizerResult result = _tokenizer_try_create_string_token(state->tokenizer, '"', '"', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
 		} else {
-			Token next_token = tokenizer_next_token(&state->tokenizer);
+			Token next_token = tokenizer_next_token(state->tokenizer);
 			diagnostics_report_error(state->diagnostics,
 					next_token.source_range,
 					STR_LIT("Expected include path"),
@@ -628,7 +662,17 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			return false;
 		}
 
-		// TODO: Actually include the file
+		const SourceFile* included_file = source_storage_append_from_path(state->source_storage,
+				resolved_include_path,
+				state->temp_allocator);
+
+		if (!_preprocessor_push_file(state, included_file)) {
+			diagnostics_report_error(state->diagnostics,
+					directive.source_range,
+					STR_LIT("Include stack overflow"),
+					NULL);
+			return false;
+		}
 
 		break;
 	}
@@ -646,7 +690,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		break;
 	}
 	case DIRECTIVE_UNDEF: {
-		Token macro_name = tokenizer_next_token(&state->tokenizer);
+		Token macro_name = tokenizer_next_token(state->tokenizer);
 		if (_preprocessor_is_current_region_enabled(state)) {
 			if (macro_name.kind != TOKEN_IDENT) {
 				TokenKind expected_tokens[] = { TOKEN_IDENT };
@@ -689,7 +733,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 	}
 	case DIRECTIVE_IFDEF:
 	case DIRECTIVE_IFNDEF: {
-		Token macro_name = tokenizer_next_token(&state->tokenizer);
+		Token macro_name = tokenizer_next_token(state->tokenizer);
 		if (macro_name.kind != TOKEN_IDENT) {
 			TokenKind expected_tokens[] = { TOKEN_IDENT };
 			diagnostics_report_unexpected_token(state->diagnostics,
@@ -825,7 +869,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		Token last_token = { .kind = TOKEN_COUNT };
 
 		while (true) {
-			Token token = tokenizer_view_next(&state->tokenizer);
+			Token token = tokenizer_view_next(state->tokenizer);
 			
 			uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line; 
 
@@ -833,10 +877,10 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 				break;
 			} else if (token.kind == TOKEN_EOF) {
 				// Stop only if the EOF token is on this line
-				tokenizer_reset_to_token(&state->tokenizer, token);
+				tokenizer_reset_to_token(state->tokenizer, token);
 				break;
 			} else {
-				tokenizer_reset_to_token(&state->tokenizer, token);
+				tokenizer_reset_to_token(state->tokenizer, token);
 
 				if (first_token.kind == TOKEN_COUNT) {
 					first_token = token;
@@ -853,7 +897,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 				.end = last_token.source_range.end,
 			};
 
-			String error_message = sub_str(state->tokenizer.source_code,
+			String error_message = sub_str(state->tokenizer->source_code,
 					error_message_range.start,
 					error_message_range.end - error_message_range.start);
 
@@ -872,10 +916,10 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirective* out_directive) {
 	assert(out_directive != NULL);
 
-	Token hash_token = tokenizer_next_token(&state->tokenizer);
+	Token hash_token = tokenizer_next_token(state->tokenizer);
 	assert(hash_token.kind == TOKEN_HASH);
 
-	Token directive_name_token = tokenizer_next_token(&state->tokenizer);
+	Token directive_name_token = tokenizer_next_token(state->tokenizer);
 	if (directive_name_token.kind != TOKEN_IDENT) {
 		TokenKind expected_tokens[] = { TOKEN_IDENT };
 		diagnostics_report_unexpected_token(state->diagnostics,
@@ -911,20 +955,20 @@ void _preprocessor_skip_until_newline(Preprocessor* state) {
 	const SourceFile* source_file = _preprocessor_current_file(state);
 	const LineInfo* line_info = &source_file->line_info;
 
-	uint32_t initial_line = line_info_pos_to_source_location(line_info, state->tokenizer.read_position).line;
+	uint32_t initial_line = line_info_pos_to_source_location(line_info, state->tokenizer->read_position).line;
 
 	while (true) {
-		Token token = tokenizer_view_next(&state->tokenizer);
+		Token token = tokenizer_view_next(state->tokenizer);
 		uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line; 
 
 		if (token_line > initial_line) {
 			break;
 		} else if (token.kind == TOKEN_EOF) {
 			// Stop only if the EOF token is on this line
-			tokenizer_reset_to_token(&state->tokenizer, token);
+			tokenizer_reset_to_token(state->tokenizer, token);
 			break;
 		} else {
-			tokenizer_reset_to_token(&state->tokenizer, token);
+			tokenizer_reset_to_token(state->tokenizer, token);
 		}
 	}
 }
@@ -1323,7 +1367,7 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 			_preprocessor_current_file(state),
 			&state->macro_call_stack,
 			state->generated_tokens_allocator,
-			&state->tokenizer);
+			state->tokenizer);
 
 	if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
 		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
@@ -1354,7 +1398,7 @@ bool _preprocessor_parse_macro_call_args(Preprocessor* state, ParsedMacroCallArg
 				_preprocessor_current_file(state),
 				&state->macro_call_stack,
 				state->generated_tokens_allocator,
-				&state->tokenizer);
+				state->tokenizer);
 
 		if (token.kind == TOKEN_EOF) {
 			arena_end_temp(args_region);
@@ -1505,7 +1549,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 
 	while (true) {
 		if (state->current_branch_state != NULL && !state->current_branch_state->predicate_value) {
-			Token token = tokenizer_view_next(&state->tokenizer);
+			Token token = tokenizer_view_next(state->tokenizer);
 			switch (token.kind) {
 			case TOKEN_HASH:
 				_preprocessor_skip_directive(state);
@@ -1513,7 +1557,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 			case TOKEN_EOF:
 				return token;
 			default:
-				tokenizer_reset_to_token(&state->tokenizer, token);
+				tokenizer_reset_to_token(state->tokenizer, token);
 			}
 
 			continue;
@@ -1539,13 +1583,13 @@ Token preprocessor_next_token(Preprocessor* state) {
 		}
 		
 		if (next_token.kind == TOKEN_COUNT) {
-			next_token = tokenizer_view_next(&state->tokenizer);
+			next_token = tokenizer_view_next(state->tokenizer);
 
 			if (next_token.kind == TOKEN_HASH) {
 				_preprocessor_skip_directive(state);
 				continue;
 			} else {
-				tokenizer_reset_to_token(&state->tokenizer, next_token);
+				tokenizer_reset_to_token(state->tokenizer, next_token);
 			}
 		}
 
@@ -1569,6 +1613,12 @@ Token preprocessor_next_token(Preprocessor* state) {
 			//       after the macro call.
 			continue;
 		} else {
+			if (next_token.kind == TOKEN_EOF && state->include_stack.depth > 0) {
+				// NOTE: We've reached the end of the currently included file
+				_preprocessor_pop_file(state);
+				continue;
+			}
+
 			return next_token;
 		}
 	}

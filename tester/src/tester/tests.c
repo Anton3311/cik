@@ -194,16 +194,16 @@ static void init_preprocessor_test(TestContext* context,
 		Diagnostics* out_diagnostics,
 		LineInfo* out_line_info) {
 
-	SourceFile* source_file = arena_alloc(context->arena, SourceFile);
-	source_file->path = STR_LIT(DEFAULT_SOURCE_PATH);
-	source_file->source_code = source_code;
-	source_file->line_info = line_info_from_source(context->arena, source_code);
+	SourceStorage* source_storage = arena_alloc(context->arena, SourceStorage);
+	source_storage_init(source_storage, (StringArray) {}, context->arena);
+	SourceFile* source_file = source_storage_append(source_storage, STR_LIT(DEFAULT_SOURCE_PATH), source_code);
 
 	*out_diagnostics = (Diagnostics) {
 		.allocator = context->arena,
 	};
 	
 	preprocessor_init(out_preprocessor,
+			source_storage,
 			source_file,
 			out_diagnostics,
 			context->arena,
@@ -736,7 +736,7 @@ void run_parser_test(TestContext* context,
 		String source_code,
 		ParsedAST* out_ast) {
 
-	source_storage_init(out_source_storage, context->arena);
+	source_storage_init(out_source_storage, (StringArray) {}, context->arena);
 	SourceFile* source_file = source_storage_append(out_source_storage, STR_LIT(DEFAULT_SOURCE_PATH), source_code);
 
 	*out_diagnostics = (Diagnostics) {
@@ -745,6 +745,7 @@ void run_parser_test(TestContext* context,
 
 	Preprocessor preprocessor = {};
 	preprocessor_init(&preprocessor,
+			out_source_storage,
 			source_file,
 			out_diagnostics,
 			context->arena,

@@ -73,6 +73,7 @@ struct SourceFile {
 };
 
 typedef struct {
+	StringArray include_dirs;
 	SourceFile* files;
 	size_t count;
 	size_t capacity;
@@ -80,7 +81,14 @@ typedef struct {
 	Arena* allocator;
 } SourceStorage;
 
-void source_storage_init(SourceStorage* storage, Arena* allocator);
+void source_storage_init(SourceStorage* storage, StringArray include_dirs, Arena* allocator);
+
+String source_storage_resolve_include_path(const SourceStorage* storage,
+		String include_path,
+		const SourceFile* current_file,
+		Arena* allocator,
+		Arena* temp_allocator);
+
 SourceFile* source_storage_append(SourceStorage* storage, String path, String source_code);
 SourceFile* source_storage_append_from_path(SourceStorage* storage, String path, Arena* temp_allocator);
 SourceFile* source_storage_find_file(SourceStorage* storage, String path); 

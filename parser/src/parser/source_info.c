@@ -52,13 +52,67 @@ SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_
 // SourceStorage
 //
 
-void source_storage_init(SourceStorage* storage, Arena* allocator) {
+void source_storage_init(SourceStorage* storage, StringArray include_dirs, Arena* allocator) {
 	assert(allocator);
 
 	storage->allocator = allocator;
 	storage->count = 0;
 	storage->capacity = 256;
 	storage->files = arena_alloc_array(storage->allocator, SourceFile, storage->capacity);
+	storage->include_dirs = include_dirs;
+}
+
+String source_storage_resolve_include_path(const SourceStorage* storage,
+		String include_path,
+		const SourceFile* current_file,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	// First check for relative includes
+
+	{
+		ArenaRegion temp = arena_begin_temp(allocator);
+
+		StringBuilder builder = { .arena = temp_allocator };
+		str_builder_append(&builder, path_get_parent(current_file->path));
+		str_builder_append_char(&builder, '/');
+		str_builder_append(&builder, include_path);
+
+		bool exists = path_exists(allocator, builder.string);
+		String result = {};
+		if (exists) {
+			result = path_canonicalize(builder.string, allocator, temp_allocator);
+		}
+
+		arena_end_temp(temp);
+
+		if (exists) {
+			return result;
+		}
+	}
+
+	for (size_t i = 0; i < storage->include_dirs.count; i += 1) {
+		ArenaRegion temp = arena_begin_temp(allocator);
+
+		StringBuilder builder = { .arena = allocator };
+		str_builder_append(&builder, storage->include_dirs.values[i]);
+		str_builder_append_char(&builder, '/');
+		str_builder_append(&builder, include_path);
+
+		bool exists = path_exists(allocator, builder.string);
+		String result = {};
+		if (exists) {
+			result = path_canonicalize(builder.string, allocator, temp_allocator);
+		}
+
+		arena_end_temp(temp);
+
+		if (exists) {
+			return result;
+		}
+	}
+
+	return (String) {};
 }
 
 SourceFile* _source_storage_insert(SourceStorage* storage, String path, Arena* temp_allocator) {

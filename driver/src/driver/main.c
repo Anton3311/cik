@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
 		assert(source_code.v != NULL);
 
 		SourceStorage source_storage = {};
-		source_storage_init(&source_storage, &arena);
+		source_storage_init(&source_storage, (StringArray) {}, &arena);
 		SourceFile* source_file = source_storage_append_from_path(&source_storage, str_from_cstr(argv[1]), &temp_arena);
 
 		Diagnostics diagnostics = (Diagnostics) {
@@ -29,6 +29,7 @@ int main(int argc, char *argv[]) {
 
 		Preprocessor preprocessor = {};
 		preprocessor_init(&preprocessor,
+				&source_storage,
 				source_file,
 				&diagnostics,
 				&arena,

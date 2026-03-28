@@ -71,6 +71,7 @@ String directive_kind_to_string(DirectiveKind kind) {
 }
 
 void preprocessor_init(Preprocessor* state,
+		SourceStorage* source_storage,
 		const SourceFile* source_file,
 		Diagnostics* diagnostics,
 		Arena* allocator,
@@ -79,7 +80,7 @@ void preprocessor_init(Preprocessor* state,
 	state->allocator = allocator;
 	state->temp_allocator = temp_allocator;
 	state->generated_tokens_allocator = generated_tokens_allocator;
-
+	state->source_storage = source_storage;
 	state->diagnostics = diagnostics;
 	tokenizer_init(&state->tokenizer, source_file);
 
@@ -587,13 +588,13 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 	case DIRECTIVE_INCLUDE: {
 		tokenizer_skip_whitespace_and_comments(&state->tokenizer);
 
+		Token string_token = {};
+
 		char opening_quote = state->tokenizer.source_code.v[state->tokenizer.read_position];
 		if (opening_quote == '<') {
-			Token string_token = {};
 			StringTokenizerResult result = _tokenizer_try_create_string_token(&state->tokenizer, '<', '>', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
 		} else if (opening_quote == '"') {
-			Token string_token = {};
 			StringTokenizerResult result = _tokenizer_try_create_string_token(&state->tokenizer, '"', '"', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
 		} else {
@@ -604,6 +605,16 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					NULL);
 			return false;
 		}
+
+		String path_string = sub_str(string_token.string, 1, string_token.string.length - 2);
+		String resolved_include_path = source_storage_resolve_include_path(
+				state->source_storage,
+				path_string,
+				source_file,
+				state->allocator,
+				state->temp_allocator);
+
+		printf("%.*s -> %s\n", STR_FMT(resolved_include_path), (resolved_include_path.length > 0) ? "true" : "false");
 		break;
 	}
 	case DIRECTIVE_PRAGMA: {

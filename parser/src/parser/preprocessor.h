@@ -101,6 +101,7 @@ typedef struct {
 	Arena* temp_allocator;
 	Arena* generated_tokens_allocator;
 	Diagnostics* diagnostics;
+	SourceStorage* source_storage;
 	Tokenizer tokenizer;
 	MacroTable macro_table;
 	MacroCallStack macro_call_stack;
@@ -166,6 +167,7 @@ struct MacroDefinition {
 };
 
 void preprocessor_init(Preprocessor* state,
+		SourceStorage* source_storage,
 		const SourceFile* source_file,
 		Diagnostics* diagnostics,
 		Arena* allocator,

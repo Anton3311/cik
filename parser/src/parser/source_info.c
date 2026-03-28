@@ -95,7 +95,7 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		ArenaRegion temp = arena_begin_temp(allocator);
 
 		StringBuilder builder = { .arena = allocator };
-		str_builder_append(&builder, storage->include_dirs.values[i]);
+		str_builder_append(&builder, path_trim_trailing_slash(storage->include_dirs.values[i]));
 		str_builder_append_char(&builder, '/');
 		str_builder_append(&builder, include_path);
 

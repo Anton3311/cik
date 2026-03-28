@@ -137,6 +137,11 @@ typedef struct {
 	size_t count;
 } StringArray;
 
+inline void str_array_append(StringArray* array, Arena* allocator, String value) {
+	*arena_alloc(allocator, String) = value;
+	array->count += 1;
+}
+
 #define STR_FMT(string) (int)(string).length, (string).v
 #define STR_LIT(string) (String) { .v = string, .length = sizeof(string) - 1 }
 
@@ -251,9 +256,18 @@ StringArray string_to_lines(String string, Arena* allocator);
 // File System
 //
 
+typedef enum {
+	FS_ENTRY_FILE = 1,
+	FS_ENTRY_DIRECTORY = 2,
+} FsEntryType;
+
 String read_entire_file_to_str(const char* file_path, Arena* arena);
 
 StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_path_allocator, Arena* temp_arena);
+StringArray fs_enumerate_entries_in_directory(String directory_path,
+		FsEntryType mask,
+		Arena* file_path_allocator,
+		Arena* temp_arena);
 
 //
 // Hashing
@@ -385,6 +399,12 @@ inline void bit_array_or(const BitArray* a, const BitArray* b, BitArray* out) {
 }
 
 //
+// Registry
+//
+
+bool win_sdk_get_install_path(Arena* allocator, String* out_path);
+
+//
 // Path
 //
 
@@ -394,11 +414,27 @@ bool path_exists(Arena* temp_allocator, String path);
 String path_canonicalize(String path, Arena* allocator, Arena* temp_allocator);
 size_t path_get_file_name_start(String path);
 
+inline String path_trim_trailing_slash(String path) {
+	size_t trimmed_path_length = path.length;
+	for (size_t i = path.length; i > 0; i -= 1) {
+		char c = path.v[i - 1];
+		if (c == '/' || c == '\\') {
+			continue;
+		} else {
+			trimmed_path_length = i;
+			break;
+		}
+	}
+
+	return sub_str(path, 0, trimmed_path_length);
+}
+
 inline String path_get_file_name(String path) {
 	size_t file_name_start = path_get_file_name_start(path);
 	return sub_str(path, file_name_start, path.length - file_name_start);
 }
 
 String path_get_parent(String path);
+String path_append(String parent, String path, Arena* allocator);
 
 #endif

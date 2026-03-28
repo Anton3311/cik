@@ -341,7 +341,23 @@ String read_entire_file_to_str(const char* file_path, Arena* arena) {
 }
 
 StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_path_allocator, Arena* temp_arena) {
+	return fs_enumerate_entries_in_directory(directory_path, FS_ENTRY_FILE, file_path_allocator, temp_arena);
+}
+
+StringArray fs_enumerate_entries_in_directory(String directory_path,
+		FsEntryType mask,
+		Arena* file_path_allocator,
+		Arena* temp_arena) {
 	ArenaRegion temp = arena_begin_temp(temp_arena);
+
+	DWORD file_attributes = 0;
+	if (has_flag(mask, FS_ENTRY_FILE)) {
+		file_attributes |= UINT32_MAX & (~FILE_ATTRIBUTE_DIRECTORY);
+	}
+
+	if (has_flag(mask, FS_ENTRY_DIRECTORY)) {
+		file_attributes |= FILE_ATTRIBUTE_DIRECTORY;
+	}
 
 	StringBuilder builder = { .arena = temp_arena };
 	str_builder_append(&builder, directory_path);
@@ -362,11 +378,19 @@ StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_p
 	size_t file_count = 0;
 
 	while (true) {
-		bool is_file = !has_flag(find_data.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY);
-		if (is_file) {
-			String file_path = str_duplicate_from_cstr(find_data.cFileName, file_path_allocator);
-			*arena_alloc(temp_arena, String) = file_path;
-			file_count += 1;
+		if ((find_data.dwFileAttributes & file_attributes) != 0) {
+			bool skip = false;
+			if (find_data.cFileName[0] == '.' && find_data.cFileName[1] == '.' && find_data.cFileName[2] == 0) {
+				skip = true;
+			} else if (find_data.cFileName[0] == '.' && find_data.cFileName[1] == 0) {
+				skip = true;
+			}
+
+			if (!skip) {
+				String file_path = str_duplicate_from_cstr(find_data.cFileName, file_path_allocator);
+				*arena_alloc(temp_arena, String) = file_path;
+				file_count += 1;
+			}
 		}
 
 		if (FindNextFile(search_handle, &find_data) == 0) {
@@ -384,6 +408,63 @@ StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_p
 	arena_end_temp(temp);
 	return file_paths;
 }
+
+//
+// Registry
+//
+
+bool win_sdk_get_install_path(Arena* allocator, String* out_path) {
+	HKEY key = {};
+	LSTATUS result = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+			"SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
+			0,
+			KEY_QUERY_VALUE,
+			&key);
+
+	if (result != ERROR_SUCCESS) {
+		return false;
+	}
+
+	DWORD value_type = 0;
+	DWORD data_size = 0;
+	LSTATUS status = RegGetValueA(key /* hkey */,
+			NULL /* lpSubKey */,
+			"KitsRoot10" /* lpValue */,
+			RRF_RT_REG_SZ, /* dwFlags */
+			&value_type, /* pdwType */
+			NULL, /* pvDAta */
+			&data_size /* pcbData */);
+
+	if (status != ERROR_SUCCESS) {
+		RegCloseKey(key);
+		return false;
+	}
+
+	assert(value_type == REG_SZ);
+
+	ArenaRegion temp = arena_begin_temp(allocator);
+
+	char* data_buffer = arena_alloc_array(allocator, char, (size_t)data_size);
+	status = RegGetValueA(key /* hkey */,
+			NULL /* lpSubKey */,
+			"KitsRoot10" /* lpValue */,
+			RRF_RT_ANY /* dwFlags */,
+			&value_type /* pdwType */,
+			data_buffer, /* pvDAta */
+			&data_size /* pcbData */);
+
+	if (status != ERROR_SUCCESS) {
+		arena_end_temp(temp);
+		RegCloseKey(key);
+		return false;
+	}
+
+	RegCloseKey(key);
+
+	*out_path = str_from_cstr(data_buffer);
+	return true;
+}
+
 
 //
 // Path
@@ -485,5 +566,15 @@ String path_get_parent(String path) {
 	}
 
 	return sub_str(path, 0, parent_path_end);
+}
+
+String path_append(String parent, String path, Arena* allocator) {
+	StringBuilder builder = { .arena = allocator };
+
+	str_builder_append(&builder, path_trim_trailing_slash(parent));
+	str_builder_append_char(&builder, '/');
+	str_builder_append(&builder, path_trim_trailing_slash(path));
+
+	return builder.string;
 }
 

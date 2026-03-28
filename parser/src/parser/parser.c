@@ -1521,6 +1521,8 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		}
 
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		memset(node, 0, sizeof(*node));
+
 		node->kind = AST_NODE_STRUCT;
 		node->struct_def = struct_def;
 		return node;
@@ -1537,6 +1539,8 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		}
 
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		memset(node, 0, sizeof(*node));
+
 		node->kind = AST_NODE_ENUM;
 		node->enum_def = enum_def;
 		return node;
@@ -1564,6 +1568,8 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		}
 
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		memset(node, 0, sizeof(*node));
+
 		node->kind = AST_NODE_RETURN;
 		node->return_stmt.value = return_value;
 		return node;

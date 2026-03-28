@@ -614,7 +614,22 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 				state->allocator,
 				state->temp_allocator);
 
-		printf("%.*s -> %s\n", STR_FMT(resolved_include_path), (resolved_include_path.length > 0) ? "true" : "false");
+		if (resolved_include_path.length == 0) {
+			StringBuilder builder = { .arena = state->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("File '"));
+			str_builder_append(&builder, path_string);
+			str_builder_append(&builder, STR_LIT("' not found"));
+
+			diagnostics_report_error(state->diagnostics,
+					directive.source_range,
+					builder.string,
+					NULL);
+
+			return false;
+		}
+
+		// TODO: Actually include the file
+
 		break;
 	}
 	case DIRECTIVE_PRAGMA: {

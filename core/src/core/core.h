@@ -128,6 +128,11 @@ typedef struct {
 } String;
 
 typedef struct {
+	const wchar_t* v;
+	size_t length;
+} WideString;
+
+typedef struct {
 	String* values;
 	size_t count;
 } StringArray;
@@ -152,6 +157,9 @@ inline const char* str_to_cstr(String string, Arena* allocator) {
 	cstring[string.length] = 0;
 	return cstring;
 }
+
+WideString str_to_wstr(String string, Arena* allocator, bool include_null_terminator);
+String str_from_wstr(WideString string, Arena* allocator);
 
 inline String sub_str(String str, size_t start, size_t length) {
 	assert(start + length <= str.length);

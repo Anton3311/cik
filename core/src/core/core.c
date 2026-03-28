@@ -175,6 +175,58 @@ void free_executable(void* ptr, size_t size) {
 }
 
 //
+// String
+//
+
+WideString str_to_wstr(String string, Arena* allocator, bool include_null_terminator) {
+	// Doesn't include the null-terminator
+	int32_t required_size = MultiByteToWideChar(CP_UTF8, 0, string.v, string.length, NULL, 0);
+
+	size_t wide_string_length = required_size;
+	if (include_null_terminator) {
+		wide_string_length += 1;
+	}
+
+	wchar_t* wide_string = arena_alloc_array(allocator, wchar_t, wide_string_length);
+	int32_t result = MultiByteToWideChar(CP_UTF8, 0, string.v, string.length, wide_string, required_size);
+
+	if (include_null_terminator) {
+		wide_string[required_size] = 0;
+	} else {
+		assert(wide_string[required_size - 1] == 0);
+	}
+
+	assert(result != 0);
+	return (WideString) { .v = wide_string, .length = wide_string_length };
+}
+
+String str_from_wstr(WideString string, Arena* allocator) {
+	// Doesn't include the null-terminator
+	int32_t required_size = WideCharToMultiByte(CP_UTF8,
+			0,             /* dwFlags */
+			string.v,      /* lpWideCharStr */
+			string.length, /* cchWideChar */
+			NULL,          /* lpMultiByteStr */
+			0,             /* cbMultiByte */
+			NULL,          /* lpDefaultChar */
+			NULL           /* lpUsedDefaultChar */);
+
+	char* buffer = arena_alloc_array(allocator, char, required_size);
+	int32_t result = WideCharToMultiByte(CP_UTF8,
+			0,             /* dwFlags */
+			string.v,      /* lpWideCharStr */
+			string.length, /* cchWideChar */
+			buffer,        /* lpMultiByteStr */
+			required_size, /* cbMultiByte */
+			NULL,          /* lpDefaultChar */
+			NULL           /* lpUsedDefaultChar */);
+
+	assert(result != 0);
+
+	return (String) { .v = buffer, .length = required_size };
+}
+
+//
 // String Builder
 //
 

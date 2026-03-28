@@ -71,14 +71,14 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 	// First check for relative includes
 
 	{
-		ArenaRegion temp = arena_begin_temp(allocator);
+		ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 		StringBuilder builder = { .arena = temp_allocator };
 		str_builder_append(&builder, path_get_parent(current_file->path));
 		str_builder_append_char(&builder, '/');
 		str_builder_append(&builder, include_path);
 
-		bool exists = path_exists(allocator, builder.string);
+		bool exists = path_exists(temp_allocator, builder.string);
 		String result = {};
 		if (exists) {
 			result = path_canonicalize(builder.string, allocator, temp_allocator);
@@ -92,14 +92,14 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 	}
 
 	for (size_t i = 0; i < storage->include_dirs.count; i += 1) {
-		ArenaRegion temp = arena_begin_temp(allocator);
+		ArenaRegion temp = arena_begin_temp(temp_allocator);
 
-		StringBuilder builder = { .arena = allocator };
+		StringBuilder builder = { .arena = temp_allocator };
 		str_builder_append(&builder, path_trim_trailing_slash(storage->include_dirs.values[i]));
 		str_builder_append_char(&builder, '/');
 		str_builder_append(&builder, include_path);
 
-		bool exists = path_exists(allocator, builder.string);
+		bool exists = path_exists(temp_allocator, builder.string);
 		String result = {};
 		if (exists) {
 			result = path_canonicalize(builder.string, allocator, temp_allocator);

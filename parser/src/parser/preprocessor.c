@@ -534,6 +534,7 @@ struct Expr {
 		} bin;
 
 		Token ident;
+		Expr* next_free;
 	};
 };
 
@@ -722,93 +723,102 @@ static Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
 	return expr;
 }
 
-bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
-	assert(expr);
+inline static Expr* _expr_to_int_literal(Expr* expr, uint64_t value) {
+	expr->kind = EXPR_INT_LITERAL;
+	expr->integer_literal.value = value;
+	return expr;
+}
 
+static Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 	switch (expr->kind) {
-	case EXPR_IDENT: {
-		const MacroDefinition* macro_def = macro_table_find(&state->macro_table, expr->ident.string);
-		if (!macro_def) {
-			return false;
+	case EXPR_BINARY: {
+		switch (expr->bin.op_kind) {
+		case BIN_OP_LOGICAL_OR: {
+			Expr* left = _expr_simplify(state, expr->bin.left);
+			assert(left->kind == EXPR_INT_LITERAL);
+			if (left->integer_literal.value) {
+				return _expr_to_int_literal(expr, 1);
+			}
+
+			Expr* right = _expr_simplify(state, expr->bin.right);
+			assert(right->kind == EXPR_INT_LITERAL);
+			return right;
+		}
+		case BIN_OP_LOGICAL_AND: {
+			Expr* left = _expr_simplify(state, expr->bin.left);
+			assert(left->kind == EXPR_INT_LITERAL);
+			if (!left->integer_literal.value) {
+				return _expr_to_int_literal(expr, 0);
+			}
+
+			Expr* right = _expr_simplify(state, expr->bin.right);
+			assert(right->kind == EXPR_INT_LITERAL);
+			return right;
+		}
+		default:
+			break;
 		}
 
-		// TODO: Expand the macro here, and parse it into an expression
+		Expr* left_expr = _expr_simplify(state, expr->bin.left);
+		Expr* right_expr = _expr_simplify(state, expr->bin.right);
 
-		assert(macro_def->token_count == 1);
-		return false;
+		assert(left_expr->kind == EXPR_INT_LITERAL);
+		assert(right_expr->kind == EXPR_INT_LITERAL);
+
+		uint64_t left_value = left_expr->integer_literal.value;
+		uint64_t right_value = right_expr->integer_literal.value;
+
+		switch (expr->bin.op_kind) {
+		case BIN_OP_LOGICAL_OR:
+		case BIN_OP_LOGICAL_AND:
+			unreachable();
+		case BIN_OP_EQUAL:
+			return _expr_to_int_literal(expr, left_value == right_value);
+		case BIN_OP_NOT_EQUAL:
+			return _expr_to_int_literal(expr, left_value != right_value);
+		case BIN_OP_LESS:
+			return _expr_to_int_literal(expr, left_value < right_value);
+		case BIN_OP_GREATER:
+			return _expr_to_int_literal(expr, left_value > right_value);
+		case BIN_OP_LESS_OR_EQUAL:
+			return _expr_to_int_literal(expr, left_value <= right_value);
+		case BIN_OP_GREATER_OR_EQUAL:
+			return _expr_to_int_literal(expr, left_value >= right_value);
+		}
+
+		unreachable();
 	}
-	case EXPR_INT_LITERAL:
-		return expr->integer_literal.value > 0;
 	case EXPR_UNARY: {
-		bool result = _expr_to_boolean(state, expr->unary.operand);
+		Expr* operand = _expr_simplify(state, expr->unary.operand);
+		assert(operand->kind == EXPR_INT_LITERAL);
 
 		switch (expr->unary.op) {
 		case UNARY_PLUS:
+			return operand;
 		case UNARY_NEGATE:
-			assert_msg(false, "todo");
+			assert_msg(false, "Not yet supported");
 		case UNARY_LOGICAL_NOT:
-			return !result;
+			operand->integer_literal.value = !operand->integer_literal.value;
+			return operand;
 		}
 
 		unreachable();
 	}
-	case EXPR_BINARY: {
-
-		switch (expr->bin.op_kind) {
-		case BIN_OP_LOGICAL_OR: {
-			bool left_value = _expr_to_boolean(state, expr->bin.left);
-			if (left_value) {
-				return true;
-			}
-
-			return _expr_to_boolean(state, expr->bin.right);
-		}
-		case BIN_OP_LOGICAL_AND: {
-			bool left_value = _expr_to_boolean(state, expr->bin.left);
-			if (!left_value) {
-				return false;
-			}
-
-			return _expr_to_boolean(state, expr->bin.right);
-		}
-		case BIN_OP_EQUAL:
-			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
-			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
-			return expr->bin.left->integer_literal.value == expr->bin.right->integer_literal.value;
-		case BIN_OP_NOT_EQUAL:
-			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
-			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
-			return expr->bin.left->integer_literal.value != expr->bin.right->integer_literal.value;
-		case BIN_OP_LESS:
-			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
-			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
-			return expr->bin.left->integer_literal.value < expr->bin.right->integer_literal.value;
-		case BIN_OP_GREATER:
-			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
-			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
-			return expr->bin.left->integer_literal.value > expr->bin.right->integer_literal.value;
-		case BIN_OP_LESS_OR_EQUAL:
-			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
-			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
-			return expr->bin.left->integer_literal.value <= expr->bin.right->integer_literal.value;
-		case BIN_OP_GREATER_OR_EQUAL:
-			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
-			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
-			return expr->bin.left->integer_literal.value >= expr->bin.right->integer_literal.value;
-		}
-
-		unreachable();
-		break;
-	}
+	case EXPR_INT_LITERAL:
+		return expr;
 	case EXPR_OP_DEFINED: {
 		assert(expr->op_defined.macro->kind == EXPR_IDENT);
 		const MacroDefinition* macro = macro_table_find(&state->macro_table, expr->op_defined.macro->ident.string);
-		return macro != NULL;
+
+		uint64_t value = macro != NULL;
+		return _expr_to_int_literal(expr, value);
 	}
+	case EXPR_IDENT:
+		unreachable();
 	}
-	
+
 	unreachable();
-	return false;
+	return NULL;
 }
 
 bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
@@ -820,7 +830,15 @@ bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
 		return false;
 	}
 
-	*out_result = _expr_to_boolean(state, expr);
+	expr = _expr_simplify(state, expr);
+
+	switch (expr->kind) {
+	case EXPR_INT_LITERAL:
+		*out_result = expr->integer_literal.value;
+		break;
+	default:
+		unreachable();
+	}
 
 	arena_end_temp(temp);
 	return true;

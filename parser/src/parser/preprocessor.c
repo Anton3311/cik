@@ -191,7 +191,7 @@ void _macro_call_stack_pop(MacroCallStack* call_stack) {
 
 	// NOTE: Deallocate the call memory, by reseting the arena size back,
 	//       to where it was before the call.
-	call_allocator->allocated = macro_call->arena_size_before_call;
+	arena_end_temp((ArenaRegion) {.arena = call_allocator, .allocated_state = macro_call->arena_size_before_call });
 
 	// And finally pop the frame
 	call_stack->depth -= 1;
@@ -1661,9 +1661,11 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 		}
 	}
 
-	if (macro->token_count == 0) {
-		return NULL;
-	}
+	// NOTE: Even if the macro call doesn't produce any tokens,
+	//       still push it onto the stack, so that we don't have
+	//       to deal with the same edge cases (like deallocation of token streams).
+	//       When such macro is pushed onto the stack, it goes through the same common path,
+	//       like all macros do, where all edges are already taken into account.
 
 	if (state->macro_call_stack.depth >= state->macro_call_stack.capacity) {
 		DiagnosticsEntry* overflow_error = diagnostics_report_error(state->diagnostics,

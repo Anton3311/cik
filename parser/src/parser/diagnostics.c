@@ -51,7 +51,7 @@ void _diagnostics_print_entry(const Diagnostics* diagnostics, const DiagnosticsE
 		}
 
 		_print_indent(indent);
-		printf("%.*s\n", STR_FMT(entry->message));
+		printf("%.*s: %.*s\n", STR_FMT(source_file->path), STR_FMT(entry->message));
 
 		if (entry->first_child) {
 			_diagnostics_print_entry(diagnostics, entry->first_child, indent + 1);

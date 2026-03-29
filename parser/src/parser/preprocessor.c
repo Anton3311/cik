@@ -475,12 +475,22 @@ DirectiveKind _directive_kind_from_string(String string) {
 	return INVALID_DIRECTIVE;
 }
 
+//
+// Expr
+//
+
 typedef enum {
 	EXPR_IDENT,
 	EXPR_INT_LITERAL,
 	EXPR_OP_DEFINED,
 	EXPR_UNARY,
+	EXPR_BINARY,
 } ExprKind;
+
+typedef enum {
+	BIN_OP_LOGICAL_AND,
+	BIN_OP_LOGICAL_OR,
+} BinOpKind;
 
 typedef enum {
 	UNARY_NEGATE,
@@ -508,11 +518,31 @@ struct Expr {
 			Expr* operand;
 		} unary;
 
+		struct {
+			Expr* left;
+			Expr* right;
+			BinOpKind op_kind;
+		} bin;
+
 		Token ident;
 	};
 };
 
-Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
+static bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
+	switch (kind) {
+	case TOKEN_LOGIC_AND:
+		*out_op = BIN_OP_LOGICAL_AND;
+		return true;
+	case TOKEN_LOGIC_OR:
+		*out_op = BIN_OP_LOGICAL_OR;
+		return true;
+	}
+
+	return false;
+}
+
+static Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator);
+static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, Arena* allocator) {
 	Token token = tokenizer_view_next(state->tokenizer);
 
 	if (token.kind == TOKEN_LEFT_PAREN) {
@@ -564,7 +594,7 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
 		tokenizer_reset_to_token(state->tokenizer, token);
 
 		if (str_equal(token.string, STR_LIT("defined"))) {
-			Expr* macro = _preprocessor_parse_expr(state, allocator);
+			Expr* macro = _preprocessor_parse_expr_operand(state, allocator);
 			if (!macro) {
 				return NULL;
 			}
@@ -602,6 +632,61 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
 	return NULL;
 }
 
+static uint32_t bin_op_precedence(BinOpKind op) {
+	switch (op) {
+	case BIN_OP_LOGICAL_AND:
+		return 11;
+	case BIN_OP_LOGICAL_OR:
+		return 12;
+	}
+
+	unreachable();
+	return UINT32_MAX;
+}
+
+static Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
+	Expr* expr = _preprocessor_parse_expr_operand(state, allocator);
+	Expr** current_expr = &expr;
+
+	while (true) {
+		Token op_token = tokenizer_view_next(state->tokenizer);
+
+		BinOpKind current_bin_op;
+		if (_token_kind_to_bin_op(op_token.kind, &current_bin_op)) {
+			tokenizer_reset_to_token(state->tokenizer, op_token);
+
+			uint32_t current_op_precedence = bin_op_precedence(current_bin_op);
+			uint32_t next_op_precedence = UINT32_MAX;
+
+			Expr* right_operand = _preprocessor_parse_expr_operand(state, allocator);
+
+			{
+				Token maybe_next_nin_op = tokenizer_view_next(state->tokenizer);
+				BinOpKind next_bin_op;
+				if (_token_kind_to_bin_op(maybe_next_nin_op.kind, &next_bin_op)) {
+					next_op_precedence = bin_op_precedence(next_bin_op);
+				}
+			}
+
+			Expr* bin_expr = arena_alloc(allocator, Expr);
+			bin_expr->kind = EXPR_BINARY;
+			bin_expr->bin.op_kind = current_bin_op;
+			bin_expr->bin.left = *current_expr;
+			bin_expr->bin.right = right_operand;
+
+			*current_expr = bin_expr;
+			
+			if (current_op_precedence > next_op_precedence) {
+				current_expr = &bin_expr->bin.right;
+			}
+		} else {
+			break;
+		}
+	}
+
+	return expr;
+}
+
 bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
 	assert(expr);
 
@@ -612,7 +697,7 @@ bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
 			return false;
 		}
 
-		// TODO: Expeand the macro here, and parse it into an expression
+		// TODO: Expand the macro here, and parse it into an expression
 
 		assert(macro_def->token_count == 1);
 		return false;
@@ -631,6 +716,33 @@ bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
 		}
 
 		unreachable();
+	}
+	case EXPR_BINARY: {
+		bool left_result = _expr_to_boolean(state, expr->bin.left);
+
+		switch (expr->bin.op_kind) {
+		case BIN_OP_LOGICAL_OR:
+			if (left_result) {
+				return true;
+			}
+			break;
+		case BIN_OP_LOGICAL_AND:
+			if (!left_result) {
+				return false;
+			}
+			break;
+		}
+
+		bool right_result = _expr_to_boolean(state, expr->bin.right);
+		switch (expr->bin.op_kind) {
+		case BIN_OP_LOGICAL_OR:
+			return left_result || right_result;
+		case BIN_OP_LOGICAL_AND:
+			return left_result && right_result;
+		}
+
+		unreachable();
+		break;
 	}
 	case EXPR_OP_DEFINED: {
 		assert(expr->op_defined.macro->kind == EXPR_IDENT);

@@ -1449,6 +1449,39 @@ Token macro_or_source_token_provider_next(void* data) {
 // MacroCall parsing
 //
 
+typedef enum {
+	PARSE_MACRO_ARG_END,
+	PARSE_MACRO_ARG_EOF,
+	PARSE_MACRO_ARG_EXPECT_ONE_MORE,
+} ParseMacroArgResult;
+
+ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider token_provider,
+		Arena* token_allocator,
+		MacroArgumentTokens* out_tokens) {
+
+	while (true) {
+		Token token = token_provider_next(&token_provider);
+
+		if (token.kind == TOKEN_EOF) {
+			return PARSE_MACRO_ARG_EOF;
+		}
+
+		if (token.kind == TOKEN_COMMA) {
+			return PARSE_MACRO_ARG_EXPECT_ONE_MORE;
+		} else if (token.kind == TOKEN_RIGHT_PAREN) {
+			return PARSE_MACRO_ARG_END;
+		}
+
+		arena_alloc(token_allocator, Token);
+
+		out_tokens->tokens[out_tokens->count] = token;
+		out_tokens->count += 1;
+	}
+
+	unreachable();
+	return PARSE_MACRO_ARG_EOF;
+}
+
 bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 		TokenProvider token_provider,
 		Arena* allocator,
@@ -1481,17 +1514,13 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 	current_token_stream.tokens = arena_alloc_array(allocator, Token, 0);
 
 	bool arg_is_expected = false;
-	while (true) {
-		Token token = token_provider_next(&token_provider);
+	bool has_reached_end = false;
+	while (!has_reached_end) {
+		ParseMacroArgResult result = _preprocessor_parse_single_macro_call_arg(token_provider,
+				allocator,
+				&current_token_stream);
 
-		if (token.kind == TOKEN_EOF) {
-			arena_end_temp(args_region);
-			arena_end_temp(streams_region);
-			return false;
-		}
-
-		bool argument_end = token.kind == TOKEN_COMMA || token.kind == TOKEN_RIGHT_PAREN;
-		if (argument_end) {
+		if (result == PARSE_MACRO_ARG_END || result == PARSE_MACRO_ARG_EXPECT_ONE_MORE) {
 			arena_alloc(temp_allocator, MacroArgumentTokens);
 
 			if (current_token_stream.count > 0 || arg_is_expected) {
@@ -1505,18 +1534,18 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 			current_token_stream.tokens = arena_alloc_array(allocator, Token, 0);
 		}
 
-		if (token.kind == TOKEN_COMMA) {
+		switch (result) {
+		case PARSE_MACRO_ARG_EOF:
+			arena_end_temp(args_region);
+			arena_end_temp(streams_region);
+			return false;
+		case PARSE_MACRO_ARG_EXPECT_ONE_MORE:
 			arg_is_expected = true;
-			continue;
-		} else if (token.kind == TOKEN_RIGHT_PAREN) {
-			source_range.end = token.source_range.end;
+			break;
+		case PARSE_MACRO_ARG_END:
+			has_reached_end = true;
 			break;
 		}
-
-		arena_alloc(allocator, Token);
-
-		current_token_stream.tokens[current_token_stream.count] = token;
-		current_token_stream.count += 1;
 	}
 
 	// Copy `token_streams` array to the main arena

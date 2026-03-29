@@ -79,6 +79,9 @@ void preprocessor_init(Preprocessor* state,
 		Arena* allocator,
 		Arena* temp_allocator,
 		Arena* generated_tokens_allocator) {
+	assert(allocator != generated_tokens_allocator);
+	assert(temp_allocator != generated_tokens_allocator);
+
 	state->allocator = allocator;
 	state->temp_allocator = temp_allocator;
 	state->generated_tokens_allocator = generated_tokens_allocator;
@@ -155,6 +158,43 @@ void _preprocessor_pop_file(Preprocessor* state) {
 	state->tokenizer = tokenizer;
 
 	stack->depth -= 1;
+}
+
+//
+// MacroCallStack
+//
+
+void _macro_call_stack_pop(MacroCallStack* call_stack) {
+	assert(call_stack);
+	assert(call_stack->depth > 0);
+	assert(call_stack->depth <= call_stack->capacity);
+
+	MacroCall* macro_call = &call_stack->frames[call_stack->depth - 1];
+	Arena* call_allocator = macro_call->used_allocator;
+	
+	// NOTE: The whole process of macro expansion doesn't allocate anything,
+	//       except when it comes to nested macro calls.
+	//       Allocations are only performed during call setup (argument parsing).
+	//       So in order to not overflow the arena, we want to deallocate
+	//       all the memory used by the macro call, after the call has finished.
+	//
+	// WARN: It is prohibited to allocate anything during macro expansion, except the macro calls.
+	//
+	//       So validate here, that nothing was allocated in that process.
+	assert(macro_call->arena_size_before_call <= macro_call->arena_size_after_call);
+	assert_msg(call_allocator->allocated >= macro_call->arena_size_after_call,
+			"`state->allocator` was most likely reset during the expansion of the current macro call");
+	assert_msg(call_allocator->allocated == macro_call->arena_size_after_call,
+			"`state->allocator` was used in an allocation during a macro call expansion. "
+			"Ending the macro call will lead to invalidation of "
+			"all allocations performed during the macro expansion.");
+
+	// NOTE: Deallocate the call memory, by reseting the arena size back,
+	//       to where it was before the call.
+	call_allocator->allocated = macro_call->arena_size_before_call;
+
+	// And finally pop the frame
+	call_stack->depth -= 1;
 }
 
 inline const SourceFile* _preprocessor_current_file(const Preprocessor* state) {
@@ -1277,7 +1317,7 @@ bool _preprocessor_get_next_macro_expansion_token(const SourceFile* source_file,
 	while (macro_call_stack->depth > 0) {
 		MacroCall* call = &macro_call_stack->frames[macro_call_stack->depth - 1];
 		if (_macro_call_finished(call)) {
-			macro_call_stack->depth -= 1;
+			_macro_call_stack_pop(macro_call_stack);
 			continue;
 		}
 
@@ -1494,6 +1534,8 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 	ParsedMacroCallArgs args = {};
 	SourceRange call_source_range = macro_call_ident.source_range;
 
+	size_t arena_size_before_call = state->allocator->allocated;
+
 	if (macro->style == MACRO_STYLE_FUNCTION) {
 		// Parse macro arguments
 
@@ -1578,6 +1620,16 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 	macro_call->state = MACRO_CALL_TOKEN;
 	macro_call->argument_tokens = args.token_streams;
 	macro_call->argument_count = args.count;
+
+	macro_call->used_allocator = state->allocator;
+
+	// Set arena sizes before and after the call,
+	// since they are required for deallocating token
+	// streams and other memory used by the macro call.
+	macro_call->arena_size_before_call = arena_size_before_call;
+	macro_call->arena_size_after_call = state->allocator->allocated;
+
+	assert(macro_call->arena_size_after_call >= macro_call->arena_size_before_call);
 
 	return macro_call;
 }

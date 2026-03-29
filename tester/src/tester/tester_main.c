@@ -112,6 +112,8 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 	Diagnostics diagnostics = (Diagnostics) {
 		.allocator = arena,
 	};
+
+	Arena generated_tokens_arena = arena_alloc_sub_arena(arena, 2 * 4096);
 	
 	Preprocessor preprocessor = {};
 	preprocessor_init(&preprocessor,
@@ -120,7 +122,7 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 			&diagnostics,
 			arena,
 			temp_arena,
-			arena);
+			&generated_tokens_arena);
 
 	Token first_token = {};
 	bool has_token = false;

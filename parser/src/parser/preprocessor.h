@@ -59,6 +59,10 @@ typedef struct {
 	MacroArgumentTokens* argument_tokens;
 	size_t argument_count;
 	SourceRange call_source_range;
+
+	Arena* used_allocator;
+	size_t arena_size_before_call;
+	size_t arena_size_after_call;
 } MacroCall;
 
 typedef enum {

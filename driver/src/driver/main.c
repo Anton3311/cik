@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
 	arena.capacity = align_to_page_size(512 * 4096);
 
 	Arena diagnostics_arena = {};
-	diagnostics_arena .capacity = align_to_page_size(512 * 4096);
+	diagnostics_arena.capacity = align_to_page_size(512 * 4096);
 
 	Arena temp_arena = {};
 	temp_arena.capacity = align_to_page_size(512 * 4096);
@@ -76,6 +76,9 @@ int main(int argc, char *argv[]) {
 			.allocator = &diagnostics_arena,
 		};
 
+		Arena generated_tokens_arena = {};
+		generated_tokens_arena.capacity = 128 * 4096;
+
 		Preprocessor preprocessor = {};
 		preprocessor_init(&preprocessor,
 				&source_storage,
@@ -83,12 +86,13 @@ int main(int argc, char *argv[]) {
 				&diagnostics,
 				&arena,
 				&temp_arena,
-				&arena);
+				&generated_tokens_arena);
 
-		Arena ident_arena = { .capacity = 1024 * 8 };
+		Arena ident_arena = { .capacity = 128 * 4096 };
+		Arena ast_arena = { .capacity = 128 * 4096 };
 
 		Parser parser = {};
-		parser_init(&parser, &arena, &ident_arena, &preprocessor, &diagnostics);
+		parser_init(&parser, &ast_arena, &ident_arena, &preprocessor, &diagnostics);
 
 		ParsedAST parsed_ast = {};
 		parser_parse(&parser, &parsed_ast);
@@ -98,6 +102,8 @@ int main(int argc, char *argv[]) {
 		}
 
 		arena_release(&ident_arena);
+		arena_release(&ast_arena);
+		arena_release(&generated_tokens_arena);
 
 		diagnostics_print(&diagnostics);
 	} else {

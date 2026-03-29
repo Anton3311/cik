@@ -198,6 +198,9 @@ static void init_preprocessor_test(TestContext* context,
 	source_storage_init(source_storage, (StringArray) {}, context->arena);
 	SourceFile* source_file = source_storage_append(source_storage, STR_LIT(DEFAULT_SOURCE_PATH), source_code);
 
+	Arena* generated_tokens_arena = arena_alloc(context->arena, Arena);
+	*generated_tokens_arena = arena_alloc_sub_arena(context->arena, 2 * 4096);
+
 	*out_diagnostics = (Diagnostics) {
 		.allocator = context->arena,
 	};
@@ -208,7 +211,7 @@ static void init_preprocessor_test(TestContext* context,
 			out_diagnostics,
 			context->arena,
 			context->temp_arena,
-			context->arena);
+			generated_tokens_arena);
 }
 
 void test_non_function_style_macro_expansion(TestContext* context) {
@@ -743,6 +746,8 @@ void run_parser_test(TestContext* context,
 		.allocator = context->temp_arena,
 	};
 
+	Arena generated_tokens_arena = arena_alloc_sub_arena(context->arena, 2 * 4096);
+
 	Preprocessor preprocessor = {};
 	preprocessor_init(&preprocessor,
 			out_source_storage,
@@ -750,14 +755,15 @@ void run_parser_test(TestContext* context,
 			out_diagnostics,
 			context->arena,
 			context->temp_arena,
-			context->arena);
+			&generated_tokens_arena);
 
 	// NOTE: This arena is used by the `IdentifierStorage` inside the parser,
 	//       so it's lifetime is no longer than the one of the parser.
 	Arena ident_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
+	Arena ast_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
 
 	Parser parser = {};
-	parser_init(&parser, context->arena, &ident_arena, &preprocessor, out_diagnostics);
+	parser_init(&parser, &ast_arena, &ident_arena, &preprocessor, out_diagnostics);
 
 	parser_parse(&parser, out_ast);
 }

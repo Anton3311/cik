@@ -32,6 +32,30 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 }
 
 //
+// TokenProvider
+//
+
+typedef Token(*TokenProvider_Next)(void* data);
+typedef Token(*TokenProvider_ViewNext)(void* data);
+
+typedef struct {
+	void* data;
+	
+	struct {
+		TokenProvider_Next next;
+		TokenProvider_ViewNext view_next;
+	} vtable;
+} TokenProvider;
+
+inline Token token_provider_next(TokenProvider self) {
+	return self.vtable.next(self.data);
+}
+
+inline Token token_provider_view_next(TokenProvider self) {
+	return self.vtable.view_next(self.data);
+}
+
+//
 // Preprocessor
 //
 
@@ -569,16 +593,16 @@ static bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 	return false;
 }
 
-static Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator);
-static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, Arena* allocator) {
-	Token token = tokenizer_view_next(state->tokenizer);
+static Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator);
+static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
+	Token token = token_provider_view_next(token_provider);
 
 	if (token.kind == TOKEN_LEFT_PAREN) {
-		tokenizer_reset_to_token(state->tokenizer, token);
+		token_provider_next(token_provider);
 
-		Expr* expr = _preprocessor_parse_expr(state, allocator);
+		Expr* expr = _preprocessor_parse_expr(state, token_provider, allocator);
 
-		Token closing_paren = tokenizer_next_token(state->tokenizer);
+		Token closing_paren = token_provider_next(token_provider);
 		if (closing_paren.kind != TOKEN_RIGHT_PAREN) {
 			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
 			diagnostics_report_unexpected_token(state->diagnostics,
@@ -590,7 +614,7 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, Arena* alloca
 
 		return expr;
 	} else if (token.kind == TOKEN_EXCLAMATION_MARK || token.kind == TOKEN_MINUS || token.kind == TOKEN_PLUS) {
-		tokenizer_reset_to_token(state->tokenizer, token);
+		token_provider_next(token_provider);
 
 		UnaryOp op = -1;
 		switch (token.kind) {
@@ -607,7 +631,7 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, Arena* alloca
 			unreachable();
 		}
 
-		Expr* operand = _preprocessor_parse_expr_operand(state, allocator);
+		Expr* operand = _preprocessor_parse_expr_operand(state, token_provider, allocator);
 
 		Expr* expr = arena_alloc(allocator, Expr);
 		expr->kind = EXPR_UNARY;
@@ -619,10 +643,10 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, Arena* alloca
 		};
 		return expr;
 	} else if (token.kind == TOKEN_IDENT) {
-		tokenizer_reset_to_token(state->tokenizer, token);
+		token_provider_next(token_provider);
 
 		if (str_equal(token.string, STR_LIT("defined"))) {
-			Expr* macro = _preprocessor_parse_expr_operand(state, allocator);
+			Expr* macro = _preprocessor_parse_expr_operand(state, token_provider, allocator);
 			if (!macro) {
 				return NULL;
 			}
@@ -680,24 +704,24 @@ static uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
-static Expr* _preprocessor_parse_expr(Preprocessor* state, Arena* allocator) {
-	Expr* expr = _preprocessor_parse_expr_operand(state, allocator);
+static Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
+	Expr* expr = _preprocessor_parse_expr_operand(state, token_provider, allocator);
 	Expr** current_expr = &expr;
 
 	while (true) {
-		Token op_token = tokenizer_view_next(state->tokenizer);
+		Token op_token = token_provider_view_next(token_provider);
 
 		BinOpKind current_bin_op;
 		if (_token_kind_to_bin_op(op_token.kind, &current_bin_op)) {
-			tokenizer_reset_to_token(state->tokenizer, op_token);
+			token_provider_next(token_provider);
 
 			uint32_t current_op_precedence = bin_op_precedence(current_bin_op);
 			uint32_t next_op_precedence = UINT32_MAX;
 
-			Expr* right_operand = _preprocessor_parse_expr_operand(state, allocator);
+			Expr* right_operand = _preprocessor_parse_expr_operand(state, token_provider, allocator);
 
 			{
-				Token maybe_next_nin_op = tokenizer_view_next(state->tokenizer);
+				Token maybe_next_nin_op = token_provider_view_next(token_provider);
 				BinOpKind next_bin_op;
 				if (_token_kind_to_bin_op(maybe_next_nin_op.kind, &next_bin_op)) {
 					next_op_precedence = bin_op_precedence(next_bin_op);
@@ -823,7 +847,13 @@ static Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 
 bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
 	ArenaRegion temp = arena_begin_temp(state->temp_allocator);
-	Expr* expr = _preprocessor_parse_expr(state, state->temp_allocator);
+
+	TokenProvider token_provider = {};
+	token_provider.data = state->tokenizer;
+	token_provider.vtable.next = (TokenProvider_Next)tokenizer_next_token;
+	token_provider.vtable.view_next = (TokenProvider_ViewNext)tokenizer_view_next;
+
+	Expr* expr = _preprocessor_parse_expr(state, token_provider, state->temp_allocator);
 
 	if (!expr) {
 		arena_end_temp(temp);
@@ -1599,18 +1629,6 @@ typedef struct {
 	size_t count;
 } ParsedMacroCallArgs;
 
-typedef struct {
-	void* data;
-	
-	struct {
-		Token(*next)(void* data);
-	} vtable;
-} TokenProvider;
-
-inline Token token_provider_next(TokenProvider* self) {
-	return self->vtable.next(self->data);
-}
-
 //
 // MacroOrSourceTokenProviderState
 //
@@ -1650,7 +1668,7 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 	TokenKind paren_stack[paren_stack_capacity];
 
 	while (true) {
-		Token token = token_provider_next(&token_provider);
+		Token token = token_provider_next(token_provider);
 
 		if (token.kind == TOKEN_EOF) {
 			return PARSE_MACRO_ARG_EOF;
@@ -1710,7 +1728,7 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 		Arena* temp_allocator,
 		ParsedMacroCallArgs* out_args) {
 
-	Token maybe_left_paren = token_provider_next(&token_provider);
+	Token maybe_left_paren = token_provider_next(token_provider);
 
 	if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
 		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };

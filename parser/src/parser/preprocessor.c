@@ -607,7 +607,7 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, Arena* alloca
 			unreachable();
 		}
 
-		Expr* operand = _preprocessor_parse_expr(state, allocator);
+		Expr* operand = _preprocessor_parse_expr_operand(state, allocator);
 
 		Expr* expr = arena_alloc(allocator, Expr);
 		expr->kind = EXPR_UNARY;

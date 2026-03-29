@@ -490,6 +490,15 @@ typedef enum {
 typedef enum {
 	BIN_OP_LOGICAL_AND,
 	BIN_OP_LOGICAL_OR,
+
+	BIN_OP_EQUAL,
+	BIN_OP_NOT_EQUAL,
+
+	BIN_OP_LESS,
+	BIN_OP_GREATER,
+
+	BIN_OP_LESS_OR_EQUAL,
+	BIN_OP_GREATER_OR_EQUAL,
 } BinOpKind;
 
 typedef enum {
@@ -535,6 +544,24 @@ static bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 		return true;
 	case TOKEN_LOGIC_OR:
 		*out_op = BIN_OP_LOGICAL_OR;
+		return true;
+	case TOKEN_DOUBLE_EQUAL:
+		*out_op = BIN_OP_EQUAL;
+		return true;
+	case TOKEN_NOT_EQUAL:
+		*out_op = BIN_OP_NOT_EQUAL;
+		return true;
+	case TOKEN_LESS:
+		*out_op = BIN_OP_LESS;
+		return true;
+	case TOKEN_LESS_OR_EQUAL:
+		*out_op = BIN_OP_LESS_OR_EQUAL;
+		return true;
+	case TOKEN_GREATER:
+		*out_op = BIN_OP_GREATER;
+		return true;
+	case TOKEN_GREATER_OR_EQUAL:
+		*out_op = BIN_OP_GREATER_OR_EQUAL;
 		return true;
 	}
 
@@ -634,6 +661,14 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, Arena* alloca
 
 static uint32_t bin_op_precedence(BinOpKind op) {
 	switch (op) {
+	case BIN_OP_LESS:
+	case BIN_OP_GREATER:
+	case BIN_OP_LESS_OR_EQUAL:
+	case BIN_OP_GREATER_OR_EQUAL:
+		return 6;
+	case BIN_OP_EQUAL:
+	case BIN_OP_NOT_EQUAL:
+		return 7;
 	case BIN_OP_LOGICAL_AND:
 		return 11;
 	case BIN_OP_LOGICAL_OR:
@@ -718,27 +753,48 @@ bool _expr_to_boolean(Preprocessor* state, Expr* expr) {
 		unreachable();
 	}
 	case EXPR_BINARY: {
-		bool left_result = _expr_to_boolean(state, expr->bin.left);
 
 		switch (expr->bin.op_kind) {
-		case BIN_OP_LOGICAL_OR:
-			if (left_result) {
+		case BIN_OP_LOGICAL_OR: {
+			bool left_value = _expr_to_boolean(state, expr->bin.left);
+			if (left_value) {
 				return true;
 			}
-			break;
-		case BIN_OP_LOGICAL_AND:
-			if (!left_result) {
+
+			return _expr_to_boolean(state, expr->bin.right);
+		}
+		case BIN_OP_LOGICAL_AND: {
+			bool left_value = _expr_to_boolean(state, expr->bin.left);
+			if (!left_value) {
 				return false;
 			}
-			break;
-		}
 
-		bool right_result = _expr_to_boolean(state, expr->bin.right);
-		switch (expr->bin.op_kind) {
-		case BIN_OP_LOGICAL_OR:
-			return left_result || right_result;
-		case BIN_OP_LOGICAL_AND:
-			return left_result && right_result;
+			return _expr_to_boolean(state, expr->bin.right);
+		}
+		case BIN_OP_EQUAL:
+			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
+			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
+			return expr->bin.left->integer_literal.value == expr->bin.right->integer_literal.value;
+		case BIN_OP_NOT_EQUAL:
+			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
+			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
+			return expr->bin.left->integer_literal.value != expr->bin.right->integer_literal.value;
+		case BIN_OP_LESS:
+			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
+			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
+			return expr->bin.left->integer_literal.value < expr->bin.right->integer_literal.value;
+		case BIN_OP_GREATER:
+			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
+			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
+			return expr->bin.left->integer_literal.value > expr->bin.right->integer_literal.value;
+		case BIN_OP_LESS_OR_EQUAL:
+			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
+			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
+			return expr->bin.left->integer_literal.value <= expr->bin.right->integer_literal.value;
+		case BIN_OP_GREATER_OR_EQUAL:
+			assert(expr->bin.left->kind == EXPR_INT_LITERAL);
+			assert(expr->bin.right->kind == EXPR_INT_LITERAL);
+			return expr->bin.left->integer_literal.value >= expr->bin.right->integer_literal.value;
 		}
 
 		unreachable();

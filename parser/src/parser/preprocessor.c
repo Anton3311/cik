@@ -1459,6 +1459,10 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 		Arena* token_allocator,
 		MacroArgumentTokens* out_tokens) {
 
+	const size_t paren_stack_capacity = 64;
+	size_t paren_stack_size = 0;
+	TokenKind paren_stack[paren_stack_capacity];
+
 	while (true) {
 		Token token = token_provider_next(&token_provider);
 
@@ -1466,10 +1470,42 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 			return PARSE_MACRO_ARG_EOF;
 		}
 
-		if (token.kind == TOKEN_COMMA) {
-			return PARSE_MACRO_ARG_EXPECT_ONE_MORE;
-		} else if (token.kind == TOKEN_RIGHT_PAREN) {
-			return PARSE_MACRO_ARG_END;
+		if (paren_stack_size == 0) {
+			if (token.kind == TOKEN_COMMA) {
+				return PARSE_MACRO_ARG_EXPECT_ONE_MORE;
+			} else if (token.kind == TOKEN_RIGHT_PAREN) {
+				return PARSE_MACRO_ARG_END;
+			}
+		}
+
+		if (token.kind == TOKEN_LEFT_PAREN
+				|| token.kind == TOKEN_LEFT_BRACKET
+				|| token.kind == TOKEN_LEFT_BRACE) {
+			assert(paren_stack_size < paren_stack_capacity);
+			paren_stack[paren_stack_size] = token.kind;
+			paren_stack_size += 1;
+		} else {
+			TokenKind expected_paren = paren_stack[paren_stack_size - 1];
+
+			bool match = false;
+			switch (expected_paren) {
+			case TOKEN_LEFT_PAREN:
+				match = token.kind == TOKEN_RIGHT_PAREN;
+				break;
+			case TOKEN_LEFT_BRACKET:
+				match = token.kind == TOKEN_RIGHT_BRACKET;
+				break;
+			case TOKEN_LEFT_BRACE:
+				match = token.kind == TOKEN_RIGHT_BRACE;
+				break;
+			}
+
+			if (match) {
+				// We got a matching closing paren, 
+				// so pop it off of the stack,
+				// but still add it to the tokens list
+				paren_stack_size -= 1;
+			}
 		}
 
 		arena_alloc(token_allocator, Token);

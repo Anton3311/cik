@@ -595,11 +595,9 @@ static bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 
 static Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator);
 static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
-	Token token = token_provider_view_next(token_provider);
+	Token token = token_provider_next(token_provider);
 
 	if (token.kind == TOKEN_LEFT_PAREN) {
-		token_provider_next(token_provider);
-
 		Expr* expr = _preprocessor_parse_expr(state, token_provider, allocator);
 
 		Token closing_paren = token_provider_next(token_provider);
@@ -614,8 +612,6 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider
 
 		return expr;
 	} else if (token.kind == TOKEN_EXCLAMATION_MARK || token.kind == TOKEN_MINUS || token.kind == TOKEN_PLUS) {
-		token_provider_next(token_provider);
-
 		UnaryOp op = -1;
 		switch (token.kind) {
 		case TOKEN_EXCLAMATION_MARK:
@@ -643,8 +639,6 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider
 		};
 		return expr;
 	} else if (token.kind == TOKEN_IDENT) {
-		token_provider_next(token_provider);
-
 		if (str_equal(token.string, STR_LIT("defined"))) {
 			Expr* macro = _preprocessor_parse_expr_operand(state, token_provider, allocator);
 			if (!macro) {

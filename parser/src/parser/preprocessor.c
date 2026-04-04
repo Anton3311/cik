@@ -1005,9 +1005,11 @@ static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result)
 
 	MacroOrSourceTokenProviderState token_provider_state = {};
 	TokenProvider token_provider = {};
-	_tokenizer_token_provider_init(&token_provider, state->tokenizer);
+	_macro_or_source_token_provider_init(state, &token_provider, &token_provider_state);
 
 	Expr* expr = _preprocessor_parse_expr(state, token_provider, state->temp_allocator, true);
+
+	assert(state->macro_call_stack.depth == 0);
 
 	if (!expr) {
 		arena_end_temp(temp);

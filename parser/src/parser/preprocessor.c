@@ -469,38 +469,10 @@ size_t _macro_find_param_by_name(const MacroDefinition* macro, String param_name
 	return SIZE_MAX;
 }
 
-const DirectiveKind INVALID_DIRECTIVE = -1;
-
-DirectiveKind _directive_kind_from_string(String string) {
-	if (str_equal(string, STR_LIT("include"))) {
-		return DIRECTIVE_INCLUDE;
-	} else if (str_equal(string, STR_LIT("define"))) {
-		return DIRECTIVE_DEFINE;
-	} else if (str_equal(string, STR_LIT("undef"))) {
-		return DIRECTIVE_UNDEF;
-	} else if (str_equal(string, STR_LIT("if"))) {
-		return DIRECTIVE_IF;
-	} else if (str_equal(string, STR_LIT("elif"))) {
-		return DIRECTIVE_ELIF;
-	} else if (str_equal(string, STR_LIT("else"))) {
-		return DIRECTIVE_ELSE;
-	} else if (str_equal(string, STR_LIT("endif"))) {
-		return DIRECTIVE_ENDIF;
-	} else if (str_equal(string, STR_LIT("ifdef"))) {
-		return DIRECTIVE_IFDEF;
-	} else if (str_equal(string, STR_LIT("ifndef"))) {
-		return DIRECTIVE_IFNDEF;
-	} else if (str_equal(string, STR_LIT("pragma"))) {
-		return DIRECTIVE_PRAGMA;
-	} else if (str_equal(string, STR_LIT("error"))) {
-		return DIRECTIVE_ERROR;
-	}
-
-	return INVALID_DIRECTIVE;
-}
-
 //
-// Expr
+// Expr and Expr parsing
+//
+// These are the expressions used in conditional directives like #if and #elif
 //
 
 typedef enum {
@@ -562,6 +534,12 @@ struct Expr {
 	};
 };
 
+inline static Expr* _expr_to_int_literal(Expr* expr, uint64_t value) {
+	expr->kind = EXPR_INT_LITERAL;
+	expr->integer_literal.value = value;
+	return expr;
+}
+
 static bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 	switch (kind) {
 	case TOKEN_LOGIC_AND:
@@ -593,8 +571,31 @@ static bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 	return false;
 }
 
+static uint32_t bin_op_precedence(BinOpKind op) {
+	switch (op) {
+	case BIN_OP_LESS:
+	case BIN_OP_GREATER:
+	case BIN_OP_LESS_OR_EQUAL:
+	case BIN_OP_GREATER_OR_EQUAL:
+		return 6;
+	case BIN_OP_EQUAL:
+	case BIN_OP_NOT_EQUAL:
+		return 7;
+	case BIN_OP_LOGICAL_AND:
+		return 11;
+	case BIN_OP_LOGICAL_OR:
+		return 12;
+	}
+
+	unreachable();
+	return UINT32_MAX;
+}
+
 static Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator);
-static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
+static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_provider, Arena* allocator);
+static Expr* _expr_simplify(Preprocessor* state, Expr* expr);
+
+Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
 	Token token = token_provider_next(token_provider);
 
 	if (token.kind == TOKEN_LEFT_PAREN) {
@@ -678,27 +679,7 @@ static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider
 	return NULL;
 }
 
-static uint32_t bin_op_precedence(BinOpKind op) {
-	switch (op) {
-	case BIN_OP_LESS:
-	case BIN_OP_GREATER:
-	case BIN_OP_LESS_OR_EQUAL:
-	case BIN_OP_GREATER_OR_EQUAL:
-		return 6;
-	case BIN_OP_EQUAL:
-	case BIN_OP_NOT_EQUAL:
-		return 7;
-	case BIN_OP_LOGICAL_AND:
-		return 11;
-	case BIN_OP_LOGICAL_OR:
-		return 12;
-	}
-
-	unreachable();
-	return UINT32_MAX;
-}
-
-static Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
+Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
 	Expr* expr = _preprocessor_parse_expr_operand(state, token_provider, allocator);
 	Expr** current_expr = &expr;
 
@@ -741,13 +722,7 @@ static Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_p
 	return expr;
 }
 
-inline static Expr* _expr_to_int_literal(Expr* expr, uint64_t value) {
-	expr->kind = EXPR_INT_LITERAL;
-	expr->integer_literal.value = value;
-	return expr;
-}
-
-static Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
+Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 	switch (expr->kind) {
 	case EXPR_BINARY: {
 		switch (expr->bin.op_kind) {
@@ -837,6 +812,40 @@ static Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 
 	unreachable();
 	return NULL;
+}
+
+//
+// Directive parsing
+//
+
+const DirectiveKind INVALID_DIRECTIVE = -1;
+
+DirectiveKind _directive_kind_from_string(String string) {
+	if (str_equal(string, STR_LIT("include"))) {
+		return DIRECTIVE_INCLUDE;
+	} else if (str_equal(string, STR_LIT("define"))) {
+		return DIRECTIVE_DEFINE;
+	} else if (str_equal(string, STR_LIT("undef"))) {
+		return DIRECTIVE_UNDEF;
+	} else if (str_equal(string, STR_LIT("if"))) {
+		return DIRECTIVE_IF;
+	} else if (str_equal(string, STR_LIT("elif"))) {
+		return DIRECTIVE_ELIF;
+	} else if (str_equal(string, STR_LIT("else"))) {
+		return DIRECTIVE_ELSE;
+	} else if (str_equal(string, STR_LIT("endif"))) {
+		return DIRECTIVE_ENDIF;
+	} else if (str_equal(string, STR_LIT("ifdef"))) {
+		return DIRECTIVE_IFDEF;
+	} else if (str_equal(string, STR_LIT("ifndef"))) {
+		return DIRECTIVE_IFNDEF;
+	} else if (str_equal(string, STR_LIT("pragma"))) {
+		return DIRECTIVE_PRAGMA;
+	} else if (str_equal(string, STR_LIT("error"))) {
+		return DIRECTIVE_ERROR;
+	}
+
+	return INVALID_DIRECTIVE;
 }
 
 bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {

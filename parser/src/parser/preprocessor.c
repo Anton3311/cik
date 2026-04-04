@@ -72,6 +72,11 @@ static Token _preprocessor_next_macro_or_source_token(const SourceFile* source_f
 		Arena* generated_tokens_allocator,
 		Tokenizer* tokenizer);
 
+static MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
+		TokenProvider token_provider,
+		const MacroDefinition* macro,
+		Token macro_call_ident);
+
 inline const SourceFile* _preprocessor_current_file(const Preprocessor* state) {
 	return state->tokenizer->source_file;
 }
@@ -656,15 +661,25 @@ static uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
-static Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator);
-static Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_provider, Arena* allocator);
+static Expr* _preprocessor_parse_expr(Preprocessor* state,
+		TokenProvider token_provider,
+		Arena* allocator,
+		bool expand_macro_calls);
+static Expr* _preprocessor_parse_expr_operand(Preprocessor* state,
+		TokenProvider token_provider,
+		Arena* allocator,
+		bool expand_macro_calls);
 static Expr* _expr_simplify(Preprocessor* state, Expr* expr);
 
-Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
+Expr* _preprocessor_parse_expr_operand(Preprocessor* state,
+		TokenProvider token_provider,
+		Arena* allocator,
+		bool expand_macro_calls) {
+
 	Token token = token_provider_next(token_provider);
 
 	if (token.kind == TOKEN_LEFT_PAREN) {
-		Expr* expr = _preprocessor_parse_expr(state, token_provider, allocator);
+		Expr* expr = _preprocessor_parse_expr(state, token_provider, allocator, expand_macro_calls);
 
 		Token closing_paren = token_provider_next(token_provider);
 		if (closing_paren.kind != TOKEN_RIGHT_PAREN) {
@@ -693,7 +708,10 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_
 			unreachable();
 		}
 
-		Expr* operand = _preprocessor_parse_expr_operand(state, token_provider, allocator);
+		Expr* operand = _preprocessor_parse_expr_operand(state, token_provider, allocator, expand_macro_calls);
+		if (!operand) {
+			return NULL;
+		}
 
 		Expr* expr = arena_alloc(allocator, Expr);
 		expr->kind = EXPR_UNARY;
@@ -706,7 +724,7 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_
 		return expr;
 	} else if (token.kind == TOKEN_IDENT) {
 		if (str_equal(token.string, STR_LIT("defined"))) {
-			Expr* macro = _preprocessor_parse_expr_operand(state, token_provider, allocator);
+			Expr* macro = _preprocessor_parse_expr_operand(state, token_provider, allocator, false);
 			if (!macro) {
 				return NULL;
 			}
@@ -733,6 +751,14 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_
 
 			return expr;
 		} else {
+			if (expand_macro_calls) {
+				const MacroDefinition* macro = macro_table_find(&state->macro_table, token.string);
+				if (macro != NULL) {
+					_preprocessor_init_macro_call(state, token_provider, macro, token);
+					return _preprocessor_parse_expr_operand(state, token_provider, allocator, expand_macro_calls);
+				}
+			}
+
 			Expr* expr = arena_alloc(allocator, Expr);
 			expr->kind = EXPR_IDENT;
 			expr->ident = token;
@@ -744,8 +770,8 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state, TokenProvider token_
 	return NULL;
 }
 
-Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator) {
-	Expr* expr = _preprocessor_parse_expr_operand(state, token_provider, allocator);
+Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator, bool expand_macro_calls) {
+	Expr* expr = _preprocessor_parse_expr_operand(state, token_provider, allocator, expand_macro_calls);
 	Expr** current_expr = &expr;
 
 	while (true) {
@@ -758,7 +784,7 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider
 			uint32_t current_op_precedence = bin_op_precedence(current_bin_op);
 			uint32_t next_op_precedence = UINT32_MAX;
 
-			Expr* right_operand = _preprocessor_parse_expr_operand(state, token_provider, allocator);
+			Expr* right_operand = _preprocessor_parse_expr_operand(state, token_provider, allocator, expand_macro_calls);
 
 			{
 				Token maybe_next_nin_op = token_provider_view_next(token_provider);
@@ -946,10 +972,11 @@ DirectiveKind _directive_kind_from_string(String string) {
 static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
 	ArenaRegion temp = arena_begin_temp(state->temp_allocator);
 
+	MacroOrSourceTokenProviderState token_provider_state = {};
 	TokenProvider token_provider = {};
 	_tokenizer_token_provider_init(&token_provider, state->tokenizer);
 
-	Expr* expr = _preprocessor_parse_expr(state, token_provider, state->temp_allocator);
+	Expr* expr = _preprocessor_parse_expr(state, token_provider, state->temp_allocator, true);
 
 	if (!expr) {
 		arena_end_temp(temp);
@@ -1047,6 +1074,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
 			if (_preprocessor_is_current_region_enabled(state)) {
+				debug_log_info("define %.*s", STR_FMT(macro.name.string));
 				macro_table_append(&state->macro_table, &macro);
 			}
 		}

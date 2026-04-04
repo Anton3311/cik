@@ -77,6 +77,11 @@ static MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 		const MacroDefinition* macro,
 		Token macro_call_ident);
 
+static bool _preprocessor_get_next_macro_expansion_token(const SourceFile* source_file,
+		MacroCallStack* macro_call_stack,
+		Arena* generated_tokens_allocator,
+		Token* out_token);
+
 inline const SourceFile* _preprocessor_current_file(const Preprocessor* state) {
 	return state->tokenizer->source_file;
 }
@@ -181,6 +186,7 @@ typedef struct {
 
 	Token next_token;
 	bool has_next;
+	bool next_token_generated_by_tokenizer;
 } MacroOrSourceTokenProviderState;
 
 static TokenProviderVTable s_macro_or_source_token_provider_vtable;
@@ -212,6 +218,17 @@ Token _macro_or_source_token_provider_next(void* data) {
 	MacroOrSourceTokenProviderState* state = (MacroOrSourceTokenProviderState*)data;
 	if (state->has_next) {
 		state->has_next = false;
+
+		if (state->next_token_generated_by_tokenizer) {
+			state->next_token_generated_by_tokenizer = false;
+			Token token = tokenizer_next_token(state->tokenizer);
+			Token next_token = state->next_token;
+
+			assert(token.kind == next_token.kind);
+			assert(token.string.v == next_token.string.v);
+			assert(token.string.length == next_token.string.length);
+		}
+
 		return state->next_token;
 	}
 
@@ -228,15 +245,29 @@ Token _macro_or_source_token_provider_view_next(void* data) {
 		return state->next_token;
 	}
 
-	Token next_token = _preprocessor_next_macro_or_source_token(
-			state->source_file,
-			state->macro_call_stack,
-			state->generated_tokens_allocator,
-			state->tokenizer);
+	MacroCallStack* macro_call_stack = state->macro_call_stack;
+
+	Token token = {};
+	if (macro_call_stack->depth > 0) {
+		bool result = _preprocessor_get_next_macro_expansion_token(state->source_file,
+				macro_call_stack,
+				state->generated_tokens_allocator,
+				&token);
+
+		if (result) {
+			state->has_next = true;
+			state->next_token = token;
+			state->next_token_generated_by_tokenizer = false;
+			return token;
+		}
+	}
+
+	token = tokenizer_view_next(state->tokenizer);
 
 	state->has_next = true;
-	state->next_token = next_token;
-	return next_token;
+	state->next_token = token;
+	state->next_token_generated_by_tokenizer = true;
+	return token;
 }
 
 //

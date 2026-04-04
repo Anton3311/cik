@@ -1107,8 +1107,12 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		branch_state->current_directive = directive;
 
 		bool predicate_value = false;
-		if (!_preprocessor_parse_condition(state, &predicate_value)) {
-			return false;
+		if (branch_state->parent && !branch_state->parent->predicate_value) {
+			_preprocessor_skip_until_newline(state);
+		} else {
+			if (!_preprocessor_parse_condition(state, &predicate_value)) {
+				return false;
+			}
 		}
 
 		branch_state->has_enabled_alternative_branch = predicate_value;

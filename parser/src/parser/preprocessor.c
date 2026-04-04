@@ -39,20 +39,21 @@ typedef Token(*TokenProvider_Next)(void* data);
 typedef Token(*TokenProvider_ViewNext)(void* data);
 
 typedef struct {
+	TokenProvider_Next next;
+	TokenProvider_ViewNext view_next;
+} TokenProviderVTable;
+
+typedef struct {
 	void* data;
-	
-	struct {
-		TokenProvider_Next next;
-		TokenProvider_ViewNext view_next;
-	} vtable;
+	TokenProviderVTable* vtable;
 } TokenProvider;
 
 inline Token token_provider_next(TokenProvider self) {
-	return self.vtable.next(self.data);
+	return self.vtable->next(self.data);
 }
 
 inline Token token_provider_view_next(TokenProvider self) {
-	return self.vtable.view_next(self.data);
+	return self.vtable->view_next(self.data);
 }
 
 //
@@ -66,34 +67,13 @@ size_t _macro_find_param_by_name(const MacroDefinition* macro, String param_name
 bool _preprocessor_push_file(Preprocessor* state, const SourceFile* source_file);
 void _preprocessor_pop_file(Preprocessor* state);
 
-String directive_kind_to_string(DirectiveKind kind) {
-	switch (kind) {
-	case DIRECTIVE_INCLUDE:
-		return STR_LIT("include");
-	case DIRECTIVE_DEFINE:
-		return STR_LIT("define");
-	case DIRECTIVE_UNDEF:
-		return STR_LIT("undef");
-	case DIRECTIVE_IF:
-		return STR_LIT("if");
-	case DIRECTIVE_ELIF:
-		return STR_LIT("elif");
-	case DIRECTIVE_ELSE:
-		return STR_LIT("else");
-	case DIRECTIVE_ENDIF:
-		return STR_LIT("endif");
-	case DIRECTIVE_IFDEF:
-		return STR_LIT("ifdef");
-	case DIRECTIVE_IFNDEF:
-		return STR_LIT("ifndef");
-	case DIRECTIVE_PRAGMA:
-		return STR_LIT("pragma");
-	case DIRECTIVE_ERROR:
-		return STR_LIT("error");
-	}
+static Token _preprocessor_next_macro_or_source_token(const SourceFile* source_file,
+		MacroCallStack* macro_call_stack,
+		Arena* generated_tokens_allocator,
+		Tokenizer* tokenizer);
 
-	unreachable();
-	return (String) {};
+inline const SourceFile* _preprocessor_current_file(const Preprocessor* state) {
+	return state->tokenizer->source_file;
 }
 
 void preprocessor_init(Preprocessor* state,
@@ -185,6 +165,95 @@ void _preprocessor_pop_file(Preprocessor* state) {
 }
 
 //
+// MacroOrSourceTokenProviderState
+//
+
+typedef struct {
+	const SourceFile* source_file;
+	MacroCallStack* macro_call_stack;
+	Arena* generated_tokens_allocator;
+	Tokenizer* tokenizer;
+
+	Token next_token;
+	bool has_next;
+} MacroOrSourceTokenProviderState;
+
+static TokenProviderVTable s_macro_or_source_token_provider_vtable;
+
+static Token _macro_or_source_token_provider_next(void* data);
+static Token _macro_or_source_token_provider_view_next(void* data);
+
+void _macro_or_source_token_provider_init(Preprocessor* preprocessor,
+		TokenProvider* provider,
+		MacroOrSourceTokenProviderState* state) {
+	assert(provider);
+	assert(state);
+
+	if (s_macro_or_source_token_provider_vtable.next == NULL) {
+		s_macro_or_source_token_provider_vtable.next = _macro_or_source_token_provider_next;
+		s_macro_or_source_token_provider_vtable.view_next = _macro_or_source_token_provider_view_next;
+	}
+
+	state->source_file = _preprocessor_current_file(preprocessor);
+	state->macro_call_stack = &preprocessor->macro_call_stack;
+	state->generated_tokens_allocator = preprocessor->generated_tokens_allocator;
+	state->tokenizer = preprocessor->tokenizer;
+
+	provider->data = (void*)state;
+	provider->vtable = &s_macro_or_source_token_provider_vtable;
+}
+
+Token _macro_or_source_token_provider_next(void* data) {
+	MacroOrSourceTokenProviderState* state = (MacroOrSourceTokenProviderState*)data;
+	if (state->has_next) {
+		state->has_next = false;
+		return state->next_token;
+	}
+
+	return _preprocessor_next_macro_or_source_token(
+			state->source_file,
+			state->macro_call_stack,
+			state->generated_tokens_allocator,
+			state->tokenizer);
+}
+
+Token _macro_or_source_token_provider_view_next(void* data) {
+	MacroOrSourceTokenProviderState* state = (MacroOrSourceTokenProviderState*)data;
+	if (state->has_next) {
+		return state->next_token;
+	}
+
+	Token next_token = _preprocessor_next_macro_or_source_token(
+			state->source_file,
+			state->macro_call_stack,
+			state->generated_tokens_allocator,
+			state->tokenizer);
+
+	state->has_next = true;
+	state->next_token = next_token;
+	return next_token;
+}
+
+//
+// TokenizerTokenProvider
+//
+
+static TokenProviderVTable s_tokenizer_token_provider_vtable;
+
+static void _tokenizer_token_provider_init(TokenProvider* token_provider, Tokenizer* tokenizer) {
+	assert(token_provider);
+	assert(tokenizer);
+
+	if (s_tokenizer_token_provider_vtable.next == NULL) {
+		s_tokenizer_token_provider_vtable.next = (TokenProvider_Next)tokenizer_next_token;
+		s_tokenizer_token_provider_vtable.view_next = (TokenProvider_ViewNext)tokenizer_view_next;
+	}
+
+	token_provider->data = (void*)tokenizer;
+	token_provider->vtable = &s_tokenizer_token_provider_vtable;
+}
+
+//
 // MacroCallStack
 //
 
@@ -219,10 +288,6 @@ void _macro_call_stack_pop(MacroCallStack* call_stack) {
 
 	// And finally pop the frame
 	call_stack->depth -= 1;
-}
-
-inline const SourceFile* _preprocessor_current_file(const Preprocessor* state) {
-	return state->tokenizer->source_file;
 }
 
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
@@ -820,6 +885,36 @@ Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 
 const DirectiveKind INVALID_DIRECTIVE = -1;
 
+String directive_kind_to_string(DirectiveKind kind) {
+	switch (kind) {
+	case DIRECTIVE_INCLUDE:
+		return STR_LIT("include");
+	case DIRECTIVE_DEFINE:
+		return STR_LIT("define");
+	case DIRECTIVE_UNDEF:
+		return STR_LIT("undef");
+	case DIRECTIVE_IF:
+		return STR_LIT("if");
+	case DIRECTIVE_ELIF:
+		return STR_LIT("elif");
+	case DIRECTIVE_ELSE:
+		return STR_LIT("else");
+	case DIRECTIVE_ENDIF:
+		return STR_LIT("endif");
+	case DIRECTIVE_IFDEF:
+		return STR_LIT("ifdef");
+	case DIRECTIVE_IFNDEF:
+		return STR_LIT("ifndef");
+	case DIRECTIVE_PRAGMA:
+		return STR_LIT("pragma");
+	case DIRECTIVE_ERROR:
+		return STR_LIT("error");
+	}
+
+	unreachable();
+	return (String) {};
+}
+
 DirectiveKind _directive_kind_from_string(String string) {
 	if (str_equal(string, STR_LIT("include"))) {
 		return DIRECTIVE_INCLUDE;
@@ -848,13 +943,11 @@ DirectiveKind _directive_kind_from_string(String string) {
 	return INVALID_DIRECTIVE;
 }
 
-bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
+static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
 	ArenaRegion temp = arena_begin_temp(state->temp_allocator);
 
 	TokenProvider token_provider = {};
-	token_provider.data = state->tokenizer;
-	token_provider.vtable.next = (TokenProvider_Next)tokenizer_next_token;
-	token_provider.vtable.view_next = (TokenProvider_ViewNext)tokenizer_view_next;
+	_tokenizer_token_provider_init(&token_provider, state->tokenizer);
 
 	Expr* expr = _preprocessor_parse_expr(state, token_provider, state->temp_allocator);
 
@@ -1565,7 +1658,7 @@ bool _preprocessor_get_next_macro_expansion_token(const SourceFile* source_file,
 // In case `_preprocessor_get_next_macro_expansion_token` fails
 // (when the preprocessor isn't expanding a macro)
 // falls back to the source tokenizer.
-inline Token _preprocessor_next_macro_or_source_token(const SourceFile* source_file,
+Token _preprocessor_next_macro_or_source_token(const SourceFile* source_file,
 		MacroCallStack* macro_call_stack,
 		Arena* generated_tokens_allocator,
 		Tokenizer* tokenizer) {
@@ -1631,26 +1724,6 @@ typedef struct {
 	MacroArgumentTokens* token_streams;
 	size_t count;
 } ParsedMacroCallArgs;
-
-//
-// MacroOrSourceTokenProviderState
-//
-
-typedef struct {
-	const SourceFile* source_file;
-	MacroCallStack* macro_call_stack;
-	Arena* generated_tokens_allocator;
-	Tokenizer* tokenizer;
-} MacroOrSourceTokenProviderState;
-
-Token macro_or_source_token_provider_next(void* data) {
-	MacroOrSourceTokenProviderState* state = (MacroOrSourceTokenProviderState*)data;
-	return _preprocessor_next_macro_or_source_token(
-			state->source_file,
-			state->macro_call_stack,
-			state->generated_tokens_allocator,
-			state->tokenizer);
-}
 
 //
 // MacroCall parsing
@@ -1802,7 +1875,11 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 }
 
 // NOTE: Returns null in case a call to a macro doesn't produce any tokens
-MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinition* macro, Token macro_call_ident) {
+MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
+		TokenProvider token_provider,
+		const MacroDefinition* macro,
+		Token macro_call_ident) {
+
 	ParsedMacroCallArgs args = {};
 	SourceRange call_source_range = macro_call_ident.source_range;
 
@@ -1810,16 +1887,6 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state, const MacroDefinit
 
 	if (macro->style == MACRO_STYLE_FUNCTION) {
 		// Parse macro arguments
-
-		MacroOrSourceTokenProviderState token_provider_state = {};
-		token_provider_state.source_file = _preprocessor_current_file(state);
-		token_provider_state.macro_call_stack = &state->macro_call_stack;
-		token_provider_state.generated_tokens_allocator = state->generated_tokens_allocator;
-		token_provider_state.tokenizer = state->tokenizer;
-
-		TokenProvider token_provider = {};
-		token_provider.data = &token_provider_state;
-		token_provider.vtable.next = macro_or_source_token_provider_next;
 
 		if (!_preprocessor_parse_macro_call_args(state->diagnostics,
 					token_provider,
@@ -1980,7 +2047,10 @@ Token preprocessor_next_token(Preprocessor* state) {
 				return next_token;
 			}
 
-			_preprocessor_init_macro_call(state, macro, next_token);
+			MacroOrSourceTokenProviderState token_provider_state = {};
+			TokenProvider token_provider = {};
+			_macro_or_source_token_provider_init(state, &token_provider, &token_provider_state);
+			_preprocessor_init_macro_call(state, token_provider, macro, next_token);
 
 			// NOTE: Possible cases:
 			//       1. The macro call started successfully, because it produces tokens.

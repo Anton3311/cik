@@ -142,6 +142,17 @@ void preprocessor_init(Preprocessor* state,
 		};
 
 		macro_table_append(&state->macro_table, &file_macro);
+
+		MacroDefinition stdc_macro = {
+			.name = (SourceString) {
+				.string = STR_LIT("__STDC__"),
+				.source_file = state->tokenizer->source_file,
+			},
+			.builtin_kind = BUILTIN_MACRO_STDC,
+			.token_count = 1,
+		};
+
+		macro_table_append(&state->macro_table, &stdc_macro);
 	}
 
 	const size_t call_stack_capacity = 32;
@@ -1859,6 +1870,23 @@ bool _preprocessor_expand_builtin_macro(const SourceFile* source_file,
 		};
 
 		// Mark the call as finished
+		call->token_index = macro->token_count;
+
+		*out_token = generated_token;
+		return true;
+	}
+	case BUILTIN_MACRO_STDC: {
+		SourceRange first_call_range = call_stack->frames[0].call_source_range;
+
+		// TODO: Move to preprocessor flags/options
+		bool conform_to_stdc = true;
+		Token generated_token = (Token) {
+			.kind = TOKEN_IDENT,
+			.source_range = first_call_range,
+			.string = conform_to_stdc ? STR_LIT("1") : STR_LIT("0"),
+		};
+
+		// Macro call finished
 		call->token_index = macro->token_count;
 
 		*out_token = generated_token;

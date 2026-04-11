@@ -171,6 +171,7 @@ typedef enum {
 	BUILTIN_MACRO_NONE,
 	BUILTIN_MACRO_LINE,
 	BUILTIN_MACRO_FILE,
+	BUILTIN_MACRO_STDC,
 } BuiltinMacroKind;
 
 struct MacroDefinition {

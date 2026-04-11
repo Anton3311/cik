@@ -807,6 +807,7 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state,
 		}
 	}
 
+	unreachable_msg("Unhandled token during parsing of preprocessor expression");
 	return NULL;
 }
 

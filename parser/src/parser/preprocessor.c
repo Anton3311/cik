@@ -113,6 +113,15 @@ void preprocessor_init(Preprocessor* state,
 	state->include_stack.capacity = 32;
 	state->include_stack.includes = arena_alloc_array(state->allocator, Tokenizer, state->include_stack.capacity);
 
+	state->branch_stack_depth = MIN_BRANCH_REGION_STACK_DEPTH;
+	state->branch_stack_capacity = 64;
+	state->branch_stack = arena_alloc_array(
+			state->allocator,
+			PreprocessorBranchRegion,
+			sizeof(*state->branch_stack) * state->branch_stack_capacity);
+
+	state->branch_stack[0].is_enabled = true;
+
 	bool file_included = _preprocessor_push_file(state, source_file);
 	assert_msg(file_included, "Failed to push initial source file to the stack");
 
@@ -1030,14 +1039,43 @@ static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result)
 	return true;
 }
 
-bool _preprocessor_is_current_region_enabled(Preprocessor* state) {
-	return state->current_branch_state == NULL
-		|| (state->current_branch_state && state->current_branch_state->predicate_value);
+inline bool _is_root_branch_region(Preprocessor* state) {
+	return state->branch_stack_depth == MIN_BRANCH_REGION_STACK_DEPTH;
+}
+
+inline bool _is_current_region_enabled(Preprocessor* state) {
+	assert(state->branch_stack_depth >= MIN_BRANCH_REGION_STACK_DEPTH);
+	return state->branch_stack[state->branch_stack_depth - 1].is_enabled;
+}
+
+inline bool _is_parent_region_enabled(Preprocessor* state) {
+	assert_msg(state->branch_stack_depth >= MIN_BRANCH_REGION_STACK_DEPTH + 1, "Root region doesn't have a parent");
+	return state->branch_stack[state->branch_stack_depth - 2].is_enabled;
+}
+
+inline PreprocessorBranchRegion* _current_branch_region(Preprocessor* state) {
+	return &state->branch_stack[state->branch_stack_depth - 1];
+}
+
+inline PreprocessorBranchRegion* _push_branch_region(Preprocessor* state) {
+	assert(state->branch_stack_depth < state->branch_stack_capacity);
+	PreprocessorBranchRegion* region = &state->branch_stack[state->branch_stack_depth];
+	state->branch_stack_depth += 1;
+
+	memset(region, 0, sizeof(*region));
+	return region;
+}
+
+inline void _pop_branch_region(Preprocessor* state) {
+	assert_msg(state->branch_stack_depth > MIN_BRANCH_REGION_STACK_DEPTH, "Can't remove root region from the stack");
+	state->branch_stack_depth -= 1;
 }
 
 bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directive) {
 	const SourceFile* source_file = _preprocessor_current_file(state);
 	const LineInfo* line_info = &source_file->line_info;
+
+	uint32_t directive_line = line_info_pos_to_source_location(line_info, directive.source_range.end).line + 1;
 
 	switch (directive.kind) {
 	case DIRECTIVE_INCLUDE: {
@@ -1061,7 +1099,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			return false;
 		}
 
-		if (_preprocessor_is_current_region_enabled(state)) {
+		if (_is_current_region_enabled(state)) {
 			String path_string = sub_str(string_token.string, 1, string_token.string.length - 2);
 			String resolved_include_path = source_storage_resolve_include_path(
 					state->source_storage,
@@ -1095,6 +1133,8 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 						NULL);
 				return false;
 			}
+
+			debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
 		}
 
 		break;
@@ -1106,8 +1146,8 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 	case DIRECTIVE_DEFINE: {
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
-			if (_preprocessor_is_current_region_enabled(state)) {
-				debug_log_info("define %.*s", STR_FMT(macro.name.string));
+			if (_is_current_region_enabled(state)) {
+				debug_log_info("line: %u define %.*s", directive_line, STR_FMT(macro.name.string));
 				macro_table_append(&state->macro_table, &macro);
 			}
 		}
@@ -1115,7 +1155,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 	}
 	case DIRECTIVE_UNDEF: {
 		Token macro_name = tokenizer_next_token(state->tokenizer);
-		if (_preprocessor_is_current_region_enabled(state)) {
+		if (_is_current_region_enabled(state)) {
 			if (macro_name.kind != TOKEN_IDENT) {
 				TokenKind expected_tokens[] = { TOKEN_IDENT };
 				diagnostics_report_unexpected_token(state->diagnostics,
@@ -1127,72 +1167,65 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 			bool result = macro_table_remove(&state->macro_table, macro_name.string);
 			if (result) {
-				debug_log_info("undef %.*s", STR_FMT(macro_name.string));
+				debug_log_info("line: %u undef %.*s", directive_line, STR_FMT(macro_name.string));
 			} else {
-				debug_log_warn("undef %.*s failed", STR_FMT(macro_name.string));
+				debug_log_warn("line: %u undef %.*s failed", directive_line, STR_FMT(macro_name.string));
 			}
 		}
 		break;
 	}
 	case DIRECTIVE_IF: {
-		PreprocessorBranchState* branch_state = arena_alloc(state->allocator, PreprocessorBranchState);
-		branch_state->parent = state->current_branch_state;
+		PreprocessorBranchRegion* branch_state = _push_branch_region(state);
 		branch_state->current_directive = directive;
 
-		bool predicate_value = false;
-		if (branch_state->parent && !branch_state->parent->predicate_value) {
-			_preprocessor_skip_until_newline(state);
-		} else {
-			if (!_preprocessor_parse_condition(state, &predicate_value)) {
+		bool predicate = false;
+		if (_is_parent_region_enabled(state)) {
+			if (!_preprocessor_parse_condition(state, &predicate)) {
 				return false;
 			}
-		}
 
-		branch_state->has_enabled_alternative_branch = predicate_value;
+			branch_state->alternative_branch_is_taken = predicate;
+			branch_state->is_enabled = predicate;
 
-		if (branch_state->parent) {
-			branch_state->predicate_value = predicate_value && branch_state->parent->predicate_value;
+			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
-			branch_state->predicate_value = predicate_value;
+			_preprocessor_skip_until_newline(state);
 		}
 
-		state->current_branch_state = branch_state;
 		break;
 	}
 	case DIRECTIVE_IFDEF:
 	case DIRECTIVE_IFNDEF: {
-		Token macro_name = tokenizer_next_token(state->tokenizer);
-		if (macro_name.kind != TOKEN_IDENT) {
-			TokenKind expected_tokens[] = { TOKEN_IDENT };
-			diagnostics_report_unexpected_token(state->diagnostics,
-					macro_name,
-					expected_tokens,
-					array_size(expected_tokens));
-			return false;
-		}
-
-		PreprocessorBranchState* branch_state = arena_alloc(state->allocator, PreprocessorBranchState);
-		branch_state->parent = state->current_branch_state;
+		PreprocessorBranchRegion* branch_state = _push_branch_region(state);
 		branch_state->current_directive = directive;
-		
-		bool flip_predicate = directive.kind == DIRECTIVE_IFNDEF;
-		bool is_macro_defined = macro_table_find(&state->macro_table, macro_name.string) != NULL;
-		bool predicate_value = is_macro_defined ^ flip_predicate;
 
-		branch_state->has_enabled_alternative_branch = predicate_value;
+		if (_is_parent_region_enabled(state)) {
+			Token macro_name = tokenizer_next_token(state->tokenizer);
+			if (macro_name.kind != TOKEN_IDENT) {
+				TokenKind expected_tokens[] = { TOKEN_IDENT };
+				diagnostics_report_unexpected_token(state->diagnostics,
+						macro_name,
+						expected_tokens,
+						array_size(expected_tokens));
+				return false;
+			}
+			
+			bool flip_predicate = directive.kind == DIRECTIVE_IFNDEF;
+			bool is_macro_defined = macro_table_find(&state->macro_table, macro_name.string) != NULL;
+			bool predicate = is_macro_defined ^ flip_predicate;
 
-		if (branch_state->parent) {
-			branch_state->predicate_value = predicate_value && branch_state->parent->predicate_value;
+			branch_state->alternative_branch_is_taken = predicate;
+			branch_state->is_enabled = predicate;
+
+			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
-			branch_state->predicate_value = predicate_value;
+			_preprocessor_skip_until_newline(state);
 		}
 
-		state->current_branch_state = branch_state;
 		break;
 	}
 	case DIRECTIVE_ELSE: {
-		PreprocessorBranchState* branch_state = state->current_branch_state;
-		if (branch_state == NULL) {
+		if (_is_root_branch_region(state)) {
 			diagnostics_report_error(state->diagnostics,
 					directive.source_range,
 					STR_LIT("#else has no matching #if directive"),
@@ -1200,6 +1233,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			return false;
 		}
 
+		PreprocessorBranchRegion* branch_state = _current_branch_region(state);
 		switch (branch_state->current_directive.kind) {
 		case DIRECTIVE_IF:
 		case DIRECTIVE_IFDEF:
@@ -1224,19 +1258,16 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		}
 		}
 
-		if (branch_state->parent) {
-			branch_state->predicate_value = !branch_state->has_enabled_alternative_branch
-				&& !branch_state->parent->predicate_value;
-		} else {
-			branch_state->predicate_value = !branch_state->has_enabled_alternative_branch;
+		if (_is_parent_region_enabled(state)) {
+			branch_state->is_enabled = !branch_state->alternative_branch_is_taken;
+			debug_log_info("line: %u else %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		}
 
 		branch_state->current_directive = directive;
 		break;
 	}
 	case DIRECTIVE_ELIF: {
-		PreprocessorBranchState* branch_state = state->current_branch_state;
-		if (branch_state == NULL) {
+		if (_is_root_branch_region(state)) {
 			diagnostics_report_error(state->diagnostics,
 					directive.source_range,
 					STR_LIT("#elif has no matching #if directive"),
@@ -1244,6 +1275,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			return false;
 		}
 
+		PreprocessorBranchRegion* branch_state = _current_branch_region(state);
 		switch (branch_state->current_directive.kind) {
 		case DIRECTIVE_IF:
 		case DIRECTIVE_IFDEF:
@@ -1268,26 +1300,34 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		}
 		}
 
-		bool predicate_value = false;
-		if (!_preprocessor_parse_condition(state, &predicate_value)) {
-			return false;
+		if (_is_parent_region_enabled(state)) {
+			bool current_predicate_value = false;
+			if (!_preprocessor_parse_condition(state, &current_predicate_value)) {
+				return false;
+			}
+
+			bool is_taken = !branch_state->alternative_branch_is_taken && current_predicate_value;
+			branch_state->is_enabled = is_taken;
+			branch_state->alternative_branch_is_taken |= is_taken;
+
+			debug_log_info("line: %u elif %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+		} else {
+			_preprocessor_skip_until_newline(state);
 		}
 
-		branch_state->has_enabled_alternative_branch = predicate_value;
-
-		branch_state->predicate_value = !branch_state->predicate_value && predicate_value;
 		branch_state->current_directive = directive;
 		break;
 	}
 	case DIRECTIVE_ENDIF: {
-		if (state->current_branch_state == NULL) {
+		if (_is_root_branch_region(state)) {
 			diagnostics_report_error(state->diagnostics,
 					directive.source_range,
 					STR_LIT("#endif used without #if"),
 					NULL);
 			return false;
 		}
-		state->current_branch_state = state->current_branch_state->parent;
+
+		_pop_branch_region(state);
 		break;
 	}
 	case DIRECTIVE_ERROR: {
@@ -1319,7 +1359,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			}
 		}
 
-		if (_preprocessor_is_current_region_enabled(state)) {
+		if (_is_current_region_enabled(state)) {
 			SourceRange error_message_range = (SourceRange) {
 				.start = first_token.source_range.start,
 				.end = last_token.source_range.end,
@@ -2061,7 +2101,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 	}
 
 	while (true) {
-		if (state->current_branch_state != NULL && !state->current_branch_state->predicate_value) {
+		if (!_is_current_region_enabled(state)) {
 			Token token = tokenizer_view_next(state->tokenizer);
 			switch (token.kind) {
 			case TOKEN_HASH:

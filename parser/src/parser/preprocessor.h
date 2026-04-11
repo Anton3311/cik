@@ -6,7 +6,7 @@
 #include "parser/diagnostics.h"
 
 typedef struct MacroDefinition MacroDefinition;
-typedef struct PreprocessorBranchState PreprocessorBranchState;
+typedef struct PreprocessorBranchRegion PreprocessorBranchRegion;
 
 typedef struct {
 	size_t capacity;
@@ -86,12 +86,11 @@ typedef struct {
 	SourceRange source_range;
 } ParsedDirective;
 
-struct PreprocessorBranchState {
-	bool predicate_value;
-	bool has_enabled_alternative_branch;
+// Here a region is piece of code between conditional directives, like #if and #endif or #if, #else and #endif.
+struct PreprocessorBranchRegion {
 	ParsedDirective current_directive; // are we in an #if, #elif or #else etc block?
-
-	PreprocessorBranchState* parent;
+	bool is_enabled;
+	bool alternative_branch_is_taken;
 };
 
 typedef struct {
@@ -105,6 +104,8 @@ typedef struct {
 	size_t depth;
 	size_t capacity;
 } IncludeStack;
+
+static size_t MIN_BRANCH_REGION_STACK_DEPTH = 1;
 
 typedef struct {
 	Arena* allocator;
@@ -125,7 +126,13 @@ typedef struct {
 	bool has_pending_next_token;
 	Token pending_next_token;
 
-	PreprocessorBranchState* current_branch_state;
+	// Used to keep track of regions marked by #if and #endif (and other #else, #elif directives)
+	//
+	// There must always be at least one active region in the stack.
+	// This region represents is the root of the file. It is always enabled
+	PreprocessorBranchRegion* branch_stack;
+	size_t branch_stack_depth;
+	size_t branch_stack_capacity;
 } Preprocessor;
 
 typedef enum {

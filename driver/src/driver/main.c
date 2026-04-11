@@ -47,12 +47,14 @@ int main(int argc, char *argv[]) {
 		String sdk_path = path_append(install_path, sdks.values[0], &arena);
 		String um_include_path = path_append(sdk_path, STR_LIT("um"), &arena);
 		String ucrt_include_path = path_append(sdk_path, STR_LIT("ucrt"), &arena);
+		String shared_include_path = path_append(sdk_path, STR_LIT("shared"), &arena);
 
 		StringArray include_dirs = {};
 		include_dirs.values = arena_alloc_array(&arena, String, 0);
 
 		str_array_append(&include_dirs, &arena, um_include_path);
 		str_array_append(&include_dirs, &arena, ucrt_include_path);
+		str_array_append(&include_dirs, &arena, shared_include_path);
 
 		for (size_t i = 2; i < (size_t)argc; i += 1) {
 			String arg = str_from_cstr(argv[i]);

@@ -67,11 +67,6 @@ size_t _macro_find_param_by_name(const MacroDefinition* macro, String param_name
 bool _preprocessor_push_file(Preprocessor* state, const SourceFile* source_file);
 void _preprocessor_pop_file(Preprocessor* state);
 
-static Token _preprocessor_next_macro_or_source_token(const SourceFile* source_file,
-		MacroCallStack* macro_call_stack,
-		Arena* generated_tokens_allocator,
-		Tokenizer* tokenizer);
-
 static MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 		TokenProvider token_provider,
 		const MacroDefinition* macro,
@@ -1903,32 +1898,6 @@ bool _preprocessor_get_next_macro_expansion_token(const SourceFile* source_file,
 	}
 
 	return false;
-}
-
-// Returns the next token from the macro call expansion
-// (Uses `_preprocessor_get_next_macro_expansion_token` for that).
-//
-// In case `_preprocessor_get_next_macro_expansion_token` fails
-// (when the preprocessor isn't expanding a macro)
-// falls back to the source tokenizer.
-Token _preprocessor_next_macro_or_source_token(const SourceFile* source_file,
-		MacroCallStack* macro_call_stack,
-		Arena* generated_tokens_allocator,
-		Tokenizer* tokenizer) {
-
-	Token token = {};
-	if (macro_call_stack->depth > 0) {
-		bool result = _preprocessor_get_next_macro_expansion_token(source_file,
-				macro_call_stack,
-				generated_tokens_allocator,
-				&token);
-
-		if (result) {
-			return token;
-		}
-	}
-
-	return tokenizer_next_token(tokenizer);
 }
 
 void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,

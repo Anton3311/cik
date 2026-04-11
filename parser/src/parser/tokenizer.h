@@ -95,6 +95,11 @@ typedef struct {
 	SourceRange source_range;
 } Token;
 
+typedef struct {
+	Token* tokens;
+	size_t count;
+} TokenArray;
+
 typedef enum {
 	STR_TOKEN_RESULT_NONE,
 	STR_TOKEN_RESULT_NO_CLOSING_CHAR,

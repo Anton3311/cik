@@ -380,61 +380,49 @@ Token _array_token_provider_view_next(void* data) {
 	return state->tokens[state->next_index];
 }
 
+// Generates an array of tokens that are encountered on the same line.
+// Whenever a backslash is encountered, it continues consuming tokens of the next line.
 //
-// DirectiveTokenStream
-//
-
-typedef struct {
-	Arena* allocator;
-	Token* tokens;
-	size_t token_count;
-
-	uint32_t current_line_index;
-	SourceRange current_line_range;
-} DirectiveTokenStream;
-
-void _directive_token_stream_init(DirectiveTokenStream* stream,
-		Arena* allocator,
+// Used to get an array of tokens that belong to a directive.
+TokenArray _generate_directive_token_stream(Arena* allocator,
+		Tokenizer* tokenizer,
 		const SourceFile* source_file,
 		uint32_t initial_line_index) {
 
-	SourceRange source_range = line_info_get_line_range(&source_file->line_info, initial_line_index);
-	source_range.source_file = source_file;
+	TokenArray tokens = {};
+	tokens.tokens = arena_alloc_array(allocator, Token, 0);
+	tokens.count = 0;
 
-	stream->current_line_range = source_range;
-	stream->allocator = allocator;
-	stream->current_line_index = initial_line_index;
-	stream->tokens = arena_alloc_array(allocator, Token, 0);
-	stream->token_count = 0;
-}
+	uint32_t current_line_index = initial_line_index;
+	SourceRange current_line_range  = line_info_get_line_range(&source_file->line_info, current_line_index);
+	current_line_range.source_file = source_file;
 
-void _directive_token_stream_generate(DirectiveTokenStream* stream, Tokenizer* tokenizer) {
 	while (true) {
 		Token token = tokenizer_view_next(tokenizer);
 		if (token.kind == TOKEN_BACKWARD_SLASH) {
-			stream->current_line_index += 1;
+			current_line_index += 1;
 			tokenizer_reset_to_token(tokenizer, token);
 
-			const SourceFile* source_file = stream->current_line_range.source_file;
-
-			SourceRange source_range = line_info_get_line_range(&source_file->line_info, stream->current_line_index);
-			stream->current_line_range.start = source_range.start;
-			stream->current_line_range.end = source_range.end;
+			SourceRange source_range = line_info_get_line_range(&source_file->line_info, current_line_index);
+			current_line_range.start = source_range.start;
+			current_line_range.end = source_range.end;
 			continue;
 		}
 
-		bool is_on_current_line = token.source_range.start >= stream->current_line_range.start
-			&& token.source_range.end <= stream->current_line_range.end;
+		bool is_on_current_line = token.source_range.start >= current_line_range.start
+			&& token.source_range.end <= current_line_range.end;
 
 		if (is_on_current_line) {
-			*arena_alloc(stream->allocator, Token) = token;
-			stream->token_count += 1;
+			*arena_alloc(allocator, Token) = token;
+			tokens.count += 1;
 
 			tokenizer_reset_to_token(tokenizer, token);
 		} else {
 			break;
 		}
 	}
+
+	return tokens;
 }
 
 //
@@ -1155,20 +1143,18 @@ static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result,
 	ArrayTokenProvider fallback_provider_state;
 
 	{
-		DirectiveTokenStream stream = {};
 		const SourceFile* file = _preprocessor_current_file(state);
 		uint32_t line = line_info_pos_to_source_location(&file->line_info, directive.source_range.end).line;
-		_directive_token_stream_init(&stream,
-				state->temp_allocator,
+
+		TokenArray tokens = _generate_directive_token_stream(state->temp_allocator,
+				state->tokenizer,
 				file,
 				line);
 
-		_directive_token_stream_generate(&stream, state->tokenizer);
-
-		fallback_provider_state.tokens = stream.tokens;
-		fallback_provider_state.count = stream.token_count;
+		fallback_provider_state.tokens = tokens.tokens;
+		fallback_provider_state.count = tokens.count;
 		fallback_provider_state.next_index = 0;
-		fallback_provider_state.source_file = _preprocessor_current_file(state);
+		fallback_provider_state.source_file = file;
 	}
 
 	TokenProvider fallback_token_provider;

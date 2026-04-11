@@ -1262,6 +1262,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 						builder.string,
 						NULL);
 
+				debug_log_error("line: %u include %.*s failed", directive_line, STR_FMT(path_string));
 				return false;
 			}
 

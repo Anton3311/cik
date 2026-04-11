@@ -303,6 +303,63 @@ static void _tokenizer_token_provider_init(TokenProvider* token_provider, Tokeni
 }
 
 //
+// DirectiveTokenStream
+//
+
+typedef struct {
+	Arena* allocator;
+	Token* tokens;
+	size_t token_count;
+
+	uint32_t current_line_index;
+	SourceRange current_line_range;
+} DirectiveTokenStream;
+
+void _directive_token_stream_init(DirectiveTokenStream* stream,
+		Arena* allocator,
+		const SourceFile* source_file,
+		uint32_t initial_line_index) {
+
+	SourceRange source_range = line_info_get_line_range(&source_file->line_info, initial_line_index);
+	source_range.source_file = source_file;
+
+	stream->current_line_range = source_range;
+	stream->allocator = allocator;
+	stream->current_line_index = initial_line_index;
+	stream->tokens = arena_alloc_array(allocator, Token, 0);
+	stream->token_count = 0;
+}
+
+void _directive_token_stream_generate(DirectiveTokenStream* stream, Tokenizer* tokenizer) {
+	while (true) {
+		Token token = tokenizer_view_next(tokenizer);
+		if (token.kind == TOKEN_BACKWARD_SLASH) {
+			stream->current_line_index += 1;
+			tokenizer_reset_to_token(tokenizer, token);
+
+			const SourceFile* source_file = stream->current_line_range.source_file;
+
+			SourceRange source_range = line_info_get_line_range(&source_file->line_info, stream->current_line_index);
+			stream->current_line_range.start = source_range.start;
+			stream->current_line_range.end = source_range.end;
+			continue;
+		}
+
+		bool is_on_current_line = token.source_range.start >= stream->current_line_range.start
+			&& token.source_range.end <= stream->current_line_range.end;
+
+		if (is_on_current_line) {
+			*arena_alloc(stream->allocator, Token) = token;
+			stream->token_count += 1;
+
+			tokenizer_reset_to_token(tokenizer, token);
+		} else {
+			break;
+		}
+	}
+}
+
+//
 // MacroCallStack
 //
 
@@ -1014,12 +1071,28 @@ DirectiveKind _directive_kind_from_string(String string) {
 	return INVALID_DIRECTIVE;
 }
 
-static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result) {
+static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result, ParsedDirective directive) {
 	ArenaRegion temp = arena_begin_temp(state->temp_allocator);
 
 	MacroOrSourceTokenProviderState token_provider_state = {};
 	TokenProvider token_provider = {};
 	_macro_or_source_token_provider_init(state, &token_provider, &token_provider_state);
+
+#if 0
+	{
+		DirectiveTokenStream stream = {};
+		const SourceFile* file = _preprocessor_current_file(state);
+		uint32_t line = line_info_pos_to_source_location(&file->line_info, directive.source_range.end).line;
+		_directive_token_stream_init(&stream,
+				state->temp_allocator,
+				file,
+				line);
+
+		_directive_token_stream_generate(&stream, state->tokenizer);
+
+		debug_log_info("generated directive token stream");
+	}
+#endif
 
 	Expr* expr = _preprocessor_parse_expr(state, token_provider, state->temp_allocator, true);
 
@@ -1185,7 +1258,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 		bool predicate = false;
 		if (_is_parent_region_enabled(state)) {
-			if (!_preprocessor_parse_condition(state, &predicate)) {
+			if (!_preprocessor_parse_condition(state, &predicate, directive)) {
 				return false;
 			}
 
@@ -1307,7 +1380,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 		if (_is_parent_region_enabled(state)) {
 			bool current_predicate_value = false;
-			if (!_preprocessor_parse_condition(state, &current_predicate_value)) {
+			if (!_preprocessor_parse_condition(state, &current_predicate_value, directive)) {
 				return false;
 			}
 

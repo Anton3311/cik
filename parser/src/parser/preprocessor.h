@@ -22,11 +22,6 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name);
 // Preprocessor
 //
 
-typedef struct {
-	Token* tokens;
-	size_t count;
-} MacroArgumentTokens;
-
 typedef enum {
 	MACRO_CALL_TOKEN,
 	MACRO_CALL_ARGUMENT_EXPANSION,
@@ -56,7 +51,7 @@ typedef struct {
 	};
 
 	// Size matches the number of macro parameters
-	MacroArgumentTokens* argument_tokens;
+	TokenArray* argument_tokens;
 	size_t argument_count;
 	SourceRange call_source_range;
 

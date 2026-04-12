@@ -1682,7 +1682,7 @@ bool _preprocessor_apply_token_insert_operator(Arena* generated_tokens_allocator
 		} else {
 			assert(param_index < macro->parameter_count);
 
-			const MacroArgumentTokens argument_tokens = macro_call->argument_tokens[param_index];
+			const TokenArray argument_tokens = macro_call->argument_tokens[param_index];
 			assert(argument_tokens.count == 1);
 			str_builder_append(&builder, argument_tokens.tokens[0].string);
 		}
@@ -1746,7 +1746,7 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 
 				assert(hint.string_op.param_index < macro->parameter_count);
 
-				MacroArgumentTokens argument_tokens = call->argument_tokens[hint.string_op.param_index];
+				TokenArray argument_tokens = call->argument_tokens[hint.string_op.param_index];
 
 				if (argument_tokens.count > 0) {
 					str_builder_append(&builder, argument_tokens.tokens[0].string);
@@ -1787,7 +1787,7 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 			MacroCallArgExpansion* expansion = &call->arg_expansion;
 			assert(expansion->arg_index < call->macro->parameter_count);
 
-			MacroArgumentTokens argument_tokens = call->argument_tokens[expansion->arg_index];
+			TokenArray argument_tokens = call->argument_tokens[expansion->arg_index];
 			bool argument_is_fully_expanded = expansion->arg_token_index == argument_tokens.count;
 			if (argument_is_fully_expanded) {
 				call->state = MACRO_CALL_TOKEN;
@@ -1840,7 +1840,7 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 				}
 			}
 
-			MacroArgumentTokens argument_tokens = call->argument_tokens[expansion->arg_index];
+			TokenArray argument_tokens = call->argument_tokens[expansion->arg_index];
 			assert(expansion->arg_token_index < argument_tokens.count);
 
 			*out_token = argument_tokens.tokens[expansion->arg_token_index];
@@ -2006,7 +2006,7 @@ void _preprocessor_macro_call_stack_to_diagnostics(const Preprocessor* state, Di
 
 typedef struct {
 	SourceRange source_range;
-	MacroArgumentTokens* token_streams;
+	TokenArray* token_streams;
 	size_t count;
 } ParsedMacroCallArgs;
 
@@ -2022,7 +2022,7 @@ typedef enum {
 
 ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider token_provider,
 		Arena* token_allocator,
-		MacroArgumentTokens* out_tokens) {
+		TokenArray* out_tokens) {
 
 	const size_t paren_stack_capacity = 64;
 	size_t paren_stack_size = 0;
@@ -2111,10 +2111,10 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 	ArenaRegion args_region = arena_begin_temp(temp_allocator);
 	ArenaRegion streams_region = arena_begin_temp(allocator);
 
-	MacroArgumentTokens* token_streams = arena_alloc_array(temp_allocator, MacroArgumentTokens, 0);
+	TokenArray* token_streams = arena_alloc_array(temp_allocator, TokenArray, 0);
 	size_t token_stream_count = 0;
 
-	MacroArgumentTokens current_token_stream = {};
+	TokenArray current_token_stream = {};
 	current_token_stream.tokens = arena_alloc_array(allocator, Token, 0);
 
 	bool arg_is_expected = false;
@@ -2125,7 +2125,7 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 				&current_token_stream);
 
 		if (result == PARSE_MACRO_ARG_END || result == PARSE_MACRO_ARG_EXPECT_ONE_MORE) {
-			arena_alloc(temp_allocator, MacroArgumentTokens);
+			arena_alloc(temp_allocator, TokenArray);
 
 			if (current_token_stream.count > 0 || arg_is_expected) {
 				token_streams[token_stream_count] = current_token_stream;
@@ -2155,7 +2155,7 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 	// Copy `token_streams` array to the main arena
 	out_args->source_range = source_range;
 	out_args->count = token_stream_count;
-	out_args->token_streams = arena_alloc_array(allocator, MacroArgumentTokens, token_stream_count);
+	out_args->token_streams = arena_alloc_array(allocator, TokenArray, token_stream_count);
 	memcpy(out_args->token_streams, token_streams, sizeof(*token_streams) * token_stream_count);
 
 	arena_end_temp(args_region);

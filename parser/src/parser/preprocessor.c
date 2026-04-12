@@ -2049,7 +2049,7 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 			assert(paren_stack_size < paren_stack_capacity);
 			paren_stack[paren_stack_size] = token.kind;
 			paren_stack_size += 1;
-		} else {
+		} else if (paren_stack_size > 0) {
 			TokenKind expected_paren = paren_stack[paren_stack_size - 1];
 
 			bool match = false;
@@ -2063,6 +2063,9 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 			case TOKEN_LEFT_BRACE:
 				match = token.kind == TOKEN_RIGHT_BRACE;
 				break;
+			default:
+				unreachable_msg("Some other token type which is not a paren, square bracket nor a curly brace"
+						"was pushed onto the stack");
 			}
 
 			if (match) {

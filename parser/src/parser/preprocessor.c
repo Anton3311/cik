@@ -1033,6 +1033,10 @@ Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 			break;
 		}
 
+		if (expr->bin.left == NULL || expr->bin.right == NULL) {
+			return _expr_to_int_literal(expr, 0);
+		}
+
 		Expr* left_expr = _expr_simplify(state, expr->bin.left);
 		Expr* right_expr = _expr_simplify(state, expr->bin.right);
 

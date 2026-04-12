@@ -1072,7 +1072,7 @@ Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 		return _expr_to_int_literal(expr, value);
 	}
 	case EXPR_IDENT:
-		unreachable();
+		return _expr_to_int_literal(expr, 0);
 	}
 
 	unreachable();

@@ -738,6 +738,12 @@ typedef enum {
 
 	BIN_OP_LESS_OR_EQUAL,
 	BIN_OP_GREATER_OR_EQUAL,
+
+	BIN_OP_BITWISE_AND,
+	BIN_OP_BITWISE_OR,
+	BIN_OP_BITWISE_XOR,
+
+	BIN_OP_COUNT,
 } BinOpKind;
 
 typedef enum {
@@ -783,35 +789,34 @@ inline static Expr* _expr_to_int_literal(Expr* expr, uint64_t value) {
 	return expr;
 }
 
-static bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
+static BinOpKind _token_kind_to_bin_op(TokenKind kind) {
 	switch (kind) {
 	case TOKEN_LOGIC_AND:
-		*out_op = BIN_OP_LOGICAL_AND;
-		return true;
+		return BIN_OP_LOGICAL_AND;
 	case TOKEN_LOGIC_OR:
-		*out_op = BIN_OP_LOGICAL_OR;
-		return true;
+		return BIN_OP_LOGICAL_OR;
 	case TOKEN_DOUBLE_EQUAL:
-		*out_op = BIN_OP_EQUAL;
-		return true;
+		return BIN_OP_EQUAL;
 	case TOKEN_NOT_EQUAL:
-		*out_op = BIN_OP_NOT_EQUAL;
-		return true;
+		return BIN_OP_NOT_EQUAL;
 	case TOKEN_LESS:
-		*out_op = BIN_OP_LESS;
-		return true;
+		return BIN_OP_LESS;
 	case TOKEN_LESS_OR_EQUAL:
-		*out_op = BIN_OP_LESS_OR_EQUAL;
-		return true;
+		return BIN_OP_LESS_OR_EQUAL;
 	case TOKEN_GREATER:
-		*out_op = BIN_OP_GREATER;
-		return true;
+		return BIN_OP_GREATER;
 	case TOKEN_GREATER_OR_EQUAL:
-		*out_op = BIN_OP_GREATER_OR_EQUAL;
-		return true;
+		return BIN_OP_GREATER_OR_EQUAL;
+	
+	case TOKEN_AMPERSAND:
+		return BIN_OP_BITWISE_AND;
+	case TOKEN_PIPE:
+		return BIN_OP_BITWISE_OR;
+	case TOKEN_BITWISE_XOR:
+		return BIN_OP_BITWISE_XOR;
 	}
 
-	return false;
+	return BIN_OP_COUNT;
 }
 
 static uint32_t bin_op_precedence(BinOpKind op) {
@@ -824,10 +829,18 @@ static uint32_t bin_op_precedence(BinOpKind op) {
 	case BIN_OP_EQUAL:
 	case BIN_OP_NOT_EQUAL:
 		return 7;
+	case BIN_OP_BITWISE_AND:
+		return 8;
+	case BIN_OP_BITWISE_XOR:
+		return 9;
+	case BIN_OP_BITWISE_OR:
+		return 10;
 	case BIN_OP_LOGICAL_AND:
 		return 11;
 	case BIN_OP_LOGICAL_OR:
 		return 12;
+	case BIN_OP_COUNT:
+		unreachable();
 	}
 
 	unreachable();
@@ -951,8 +964,8 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider
 	while (true) {
 		Token op_token = token_provider_view_next(token_provider);
 
-		BinOpKind current_bin_op;
-		if (_token_kind_to_bin_op(op_token.kind, &current_bin_op)) {
+		BinOpKind current_bin_op = _token_kind_to_bin_op(op_token.kind);
+		if (current_bin_op != BIN_OP_COUNT) {
 			token_provider_next(token_provider);
 
 			uint32_t current_op_precedence = bin_op_precedence(current_bin_op);
@@ -962,8 +975,8 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider
 
 			{
 				Token maybe_next_nin_op = token_provider_view_next(token_provider);
-				BinOpKind next_bin_op;
-				if (_token_kind_to_bin_op(maybe_next_nin_op.kind, &next_bin_op)) {
+				BinOpKind next_bin_op = _token_kind_to_bin_op(maybe_next_nin_op.kind);
+				if (next_bin_op != BIN_OP_COUNT) {
 					next_op_precedence = bin_op_precedence(next_bin_op);
 				}
 			}
@@ -1042,6 +1055,16 @@ Expr* _expr_simplify(Preprocessor* state, Expr* expr) {
 			return _expr_to_int_literal(expr, left_value <= right_value);
 		case BIN_OP_GREATER_OR_EQUAL:
 			return _expr_to_int_literal(expr, left_value >= right_value);
+
+		case BIN_OP_BITWISE_AND:
+			return _expr_to_int_literal(expr, left_value & right_value);
+		case BIN_OP_BITWISE_OR:
+			return _expr_to_int_literal(expr, left_value | right_value);
+		case BIN_OP_BITWISE_XOR:
+			return _expr_to_int_literal(expr, left_value ^ right_value);
+
+		case BIN_OP_COUNT:
+			unreachable();
 		}
 
 		unreachable();

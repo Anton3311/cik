@@ -817,8 +817,12 @@ static BinOpKind _token_kind_to_bin_op(TokenKind kind) {
 		return BIN_OP_BITWISE_OR;
 	case TOKEN_BITWISE_XOR:
 		return BIN_OP_BITWISE_XOR;
+	
+	default:
+		return BIN_OP_COUNT;
 	}
 
+	unreachable();
 	return BIN_OP_COUNT;
 }
 

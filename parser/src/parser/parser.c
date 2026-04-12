@@ -911,17 +911,18 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 		return NULL;
 	}
 
-	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, new_name.string);
-	assert(entry == NULL);
-
 	ParsedTypeDef* type_def = arena_alloc(parser->ast_allocator, ParsedTypeDef);
 	memset(type_def, 0, sizeof(*type_def));
 	
 	type_def->new_name = source_string_from_token(new_name);
 	type_def->aliased_type = aliased_type;
 
-	entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, source_string_from_token(new_name));
-	entry->kind = IDENT_TYPE_DEF;
+	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, new_name.string);
+	if (!entry) {
+		entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, source_string_from_token(new_name));
+		entry->kind = IDENT_TYPE_DEF;
+	}
+
 	entry->type_def = type_def;
 
 	ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);

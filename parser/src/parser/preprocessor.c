@@ -183,10 +183,13 @@ void _preprocessor_pop_file(Preprocessor* state) {
 	IncludeStack* stack = &state->include_stack;
 	assert(stack->depth > 0);
 
-	Tokenizer* tokenizer = &stack->includes[stack->depth - 1];
-	state->tokenizer = tokenizer;
+	const SourceFile* included_file = stack->includes[stack->depth - 1].source_file;
+	debug_log_info("end of include %.*s", STR_FMT(included_file->path));
 
 	stack->depth -= 1;
+
+	Tokenizer* tokenizer = &stack->includes[stack->depth - 1];
+	state->tokenizer = tokenizer;
 }
 
 //

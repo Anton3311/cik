@@ -517,6 +517,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				bool is_insert_operator = false;
 				if (next_token_is_part_of_insert_operator) {
 					is_insert_operator = true;
+					next_token_is_part_of_insert_operator = false;
 				}
 
 				Token maybe_token_insert_operator = tokenizer_view_next(state->tokenizer);

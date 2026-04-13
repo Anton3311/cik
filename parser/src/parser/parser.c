@@ -144,7 +144,8 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		ident_namespace->entries[ident_namespace->count] = entry;
 		ident_namespace->count += 1;
 	} else {
-		assert(ident_namespace->entries[existing_entry_index]->owner_scope != storage->current_scope);
+		assert_msg(ident_namespace->entries[existing_entry_index]->owner_scope != storage->current_scope,
+				"Indetifier with the given name is already defined in the current scope");
 
 		entry = arena_alloc(storage->allocator, IdentifierEntry);
 		memset(entry, 0, sizeof(*entry));
@@ -1377,6 +1378,28 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 	} else if (token.kind == TOKEN_SEMICOLON) {
 		preprocessor_next_token(parser->preprocessor);
 
+	 	IdentifierEntry* existing_identifier = ident_storage_find(&parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				name.string);
+
+		if (existing_identifier != NULL) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Redefinition of '"));
+			str_builder_append(&builder, name.string);
+			str_builder_append_char(&builder, '\'');
+
+			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+					source_string_to_range(name),
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(parser->diagnostics,
+					source_string_to_range(existing_identifier->name),
+					STR_LIT("Previously defined here"),
+					error);
+			return false;
+		} 
+
 		// A variable declaration
 		out_node->kind = AST_NODE_VARIABLE;
 		out_node->variable = (ParsedVariable) {
@@ -1385,7 +1408,10 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			.value = NULL,
 		};
 
-		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, out_node->variable.name);
+		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				out_node->variable.name);
+
 		entry->kind = IDENT_VARIABLE;
 		entry->variable = &out_node->variable;
 
@@ -1736,7 +1762,7 @@ void parser_parse(Parser* parser, ParsedAST* ast) {
 			break;
 		} else if (token.kind == TOKEN_SEMICOLON) {
 			preprocessor_next_token(parser->preprocessor);
-			break;
+			continue;
 		}
 
 		ParsedNode* node = _parser_parse_single_node(parser, token);

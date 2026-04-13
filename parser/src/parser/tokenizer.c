@@ -75,6 +75,9 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_KEYWORD_ENUM] = STR_LIT("enum"),
 	[TOKEN_KEYWORD_CONST] = STR_LIT("const"),
 	[TOKEN_KEYWORD_RETURN] = STR_LIT("return"),
+	[TOKEN_KEYWORD_INLINE] = STR_LIT("inline"),
+	[TOKEN_KEYWORD_EXTERN] = STR_LIT("extern"),
+	[TOKEN_KEYWORD_STATIC] = STR_LIT("static"),
 };
 
 void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file) {
@@ -143,6 +146,12 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_CONST;
 	} else if (str_equal(token_string, STR_LIT("return"))) {
 		token_kind = TOKEN_KEYWORD_RETURN;
+	} else if (str_equal(token_string, STR_LIT("inline"))) {
+		token_kind = TOKEN_KEYWORD_INLINE;
+	} else if (str_equal(token_string, STR_LIT("extern"))) {
+		token_kind = TOKEN_KEYWORD_EXTERN;
+	} else if (str_equal(token_string, STR_LIT("static"))) {
+		token_kind = TOKEN_KEYWORD_STATIC;
 	}
 
 	*out_token = (Token) {

@@ -1270,6 +1270,8 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		return false;
 	}
 
+	FunctionCallingConvention call_conv = FUNC_CALL_CONV_DEFAULT;
+
 	Token name_token = preprocessor_next_token(parser->preprocessor);
 	if (name_token.kind != TOKEN_IDENT) {
 		TokenKind expected_tokens[] = { TOKEN_IDENT };
@@ -1281,9 +1283,25 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		return false;
 	}
 
+	if (str_equal(name_token.string, STR_LIT("__cdecl"))) {
+		call_conv = FUNC_CALL_CONV_CDECL;
+
+		// TODO: Clean this up a bit
+		name_token = preprocessor_next_token(parser->preprocessor);
+		if (name_token.kind != TOKEN_IDENT) {
+			TokenKind expected_tokens[] = { TOKEN_IDENT };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					name_token,
+					expected_tokens,
+					array_size(expected_tokens));
+			
+			return false;
+		}
+	}
+
 	SourceString name = source_string_from_token(name_token);
 
-	bool has_param_list = false;
+	bool is_function = false;
 	ParsedFunctionParam* param_list = NULL;
 	size_t param_count = 0;
 
@@ -1293,7 +1311,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			return false;
 		}
 
-		has_param_list = true;
+		is_function = true;
 	} else if (token.kind == TOKEN_EQUAL) {
 		preprocessor_next_token(parser->preprocessor);
 
@@ -1320,7 +1338,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		entry->kind = IDENT_VARIABLE;
 		entry->variable = &out_node->variable;
 
-		if (!_parser_expect_semicolon(parser, STR_LIT("Expected semicolon after the variable defintion"))) {
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected semicolon after the variable definition"))) {
 			return false;
 		}
 
@@ -1343,7 +1361,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		return true;
 	}
 
-	if (has_param_list) {
+	if (is_function) {
 		bool is_forward_declared = true;
 
 		ParsedScope* body = {};
@@ -1469,6 +1487,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		} else {
 			function_def->body = body;
 			function_def->is_forward_declared = false;
+			function_def->calling_convention = call_conv;
 		}
 
 		out_node->kind = AST_NODE_FUNCTION;

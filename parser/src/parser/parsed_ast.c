@@ -33,6 +33,18 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
+String function_calling_convetion_to_string(FunctionCallingConvention conv) {
+	switch (conv) {
+	case FUNC_CALL_CONV_DEFAULT:
+		return STR_LIT("default");
+	case FUNC_CALL_CONV_CDECL:
+		return STR_LIT("__cdecl");
+	}
+
+	unreachable();
+	return (String) {};
+}
+
 //
 // AST
 //
@@ -345,6 +357,8 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	printer_begin_struct(printer, "function");
 
 	printer_string_field(printer, "name", function_def->name.string);
+	printer_string_field(printer, "calling_convetion", function_calling_convetion_to_string(function_def->calling_convention));
+
 	printer_field(printer, "return_type");
 	print_type(printer, &function_def->return_type);
 

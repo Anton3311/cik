@@ -226,6 +226,13 @@ struct ParsedTypeDef {
 // Function
 //
 
+typedef enum {
+	FUNC_CALL_CONV_DEFAULT,
+	FUNC_CALL_CONV_CDECL,
+} FunctionCallingConvention;
+
+String function_calling_convetion_to_string(FunctionCallingConvention conv);
+
 struct ParsedFunctionParam {
 	ParsedType type;
 	SourceString name;
@@ -238,6 +245,7 @@ struct ParsedFunction {
 	SourceString name;
 
 	bool is_forward_declared;
+	FunctionCallingConvention calling_convention;
 	size_t parameter_count;
 	ParsedFunctionParam* parameter_list;
 	ParsedScope* body;

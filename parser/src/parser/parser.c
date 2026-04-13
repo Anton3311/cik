@@ -1027,6 +1027,26 @@ bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 	return false;
 }
 
+bool _token_kind_to_unary_pre_op(TokenKind kind, UnaryOpKind* out_op) {
+#define ret(op) *out_op = op; return true;
+	switch (kind) {
+	case TOKEN_PLUS: ret(UNARY_OP_PLUS);
+	case TOKEN_MINUS: ret(UNARY_OP_NEGATE);
+	case TOKEN_DOUBLE_PLUS: ret(UNARY_OP_PRE_INCREMENT);
+	case TOKEN_DOUBLE_MINUS: ret(UNARY_OP_PRE_DECREMENT);
+	case TOKEN_AMPERSAND: ret(UNARY_OP_ADDRESS);
+	case TOKEN_ASTERISK: ret(UNARY_OP_DEREFERENCE);
+	case TOKEN_EXCLAMATION_MARK: ret(UNARY_OP_LOGICAL_NOT);
+	case TOKEN_BITWISE_NOT: ret(UNARY_OP_BITWISE_NOT);
+	default:
+		return false;
+	}
+#undef ret
+
+	unreachable();
+	return false;
+}
+
 typedef enum {
 	EXPR_PARSE_OK,
 	EXPR_PARSE_NOT_PARSED,
@@ -1035,6 +1055,17 @@ typedef enum {
 
 ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
 	Token token = preprocessor_view_next(parser->preprocessor);
+
+	UnaryOpKind unary_op;
+	if (_token_kind_to_unary_pre_op(token.kind, &unary_op)) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_expr->kind = EXPR_UNARY;
+		out_expr->unary.operand = arena_alloc(parser->ast_allocator, ParsedExpr);
+		out_expr->unary.op = unary_op;
+
+		return _parser_try_parse_bin_expr_operand(parser, out_expr->unary.operand);
+	}
 	
 	if (token.kind == TOKEN_IDENT) {
 		preprocessor_next_token(parser->preprocessor);

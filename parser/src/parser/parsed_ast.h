@@ -20,6 +20,7 @@ typedef struct ParsedScope ParsedScope;
 typedef struct ParsedCall ParsedCall;
 typedef struct ParsedExpr ParsedExpr;
 typedef struct ParsedBinExpr ParsedBinExpr;
+typedef struct ParsedUnaryExpr ParsedUnaryExpr;
 typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
 typedef struct ParsedReturnStmt ParsedReturnStmt;
 
@@ -132,13 +133,36 @@ typedef enum {
 	BIN_OP_MOD,
 } BinOpKind;
 
+typedef enum {
+	UNARY_OP_NEGATE,
+	UNARY_OP_PLUS,
+	UNARY_OP_ADDRESS,
+	UNARY_OP_DEREFERENCE,
+
+	UNARY_OP_LOGICAL_NOT,
+
+	UNARY_OP_BITWISE_NOT,
+
+	UNARY_OP_PRE_INCREMENT,
+	UNARY_OP_POST_INCREMENT,
+
+	UNARY_OP_PRE_DECREMENT,
+	UNARY_OP_POST_DECREMENT,
+} UnaryOpKind;
+
 String bin_op_kind_to_string(BinOpKind op);
+String unary_op_kind_to_string(UnaryOpKind op);
 uint32_t bin_op_precedence(BinOpKind op);
 
 struct ParsedBinExpr {
 	BinOpKind op;
 	ParsedExpr* left;
 	ParsedExpr* right;
+};
+
+struct ParsedUnaryExpr {
+	UnaryOpKind op;
+	ParsedExpr* operand;
 };
 
 struct ParsedCall {
@@ -157,6 +181,7 @@ struct ParsedIntegerLiteral {
 typedef enum {
 	EXPR_CALL,
 	EXPR_BINARY,
+	EXPR_UNARY,
 	EXPR_FUNCTION_REFERENCE,
 	EXPR_VARIABLE_REFERENCE,
 	EXPR_INTEGER_LITERAL,
@@ -170,6 +195,7 @@ struct ParsedExpr {
 		ParsedFunction* function_ref;
 		ParsedVariable* variable_ref;
 		ParsedBinExpr binary;
+		ParsedUnaryExpr unary;
 		ParsedIntegerLiteral int_literal;
 	};
 };

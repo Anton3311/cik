@@ -18,6 +18,34 @@ String bin_op_kind_to_string(BinOpKind op) {
 	return (String) {};
 }
 
+String unary_op_kind_to_string(UnaryOpKind op) {
+	switch (op) {
+	case UNARY_OP_NEGATE:
+		return STR_LIT("-");
+	case UNARY_OP_PLUS:
+		return STR_LIT("+");
+	case UNARY_OP_ADDRESS:
+		return STR_LIT("&");
+	case UNARY_OP_DEREFERENCE:
+		return STR_LIT("*");
+	case UNARY_OP_LOGICAL_NOT:
+		return STR_LIT("!");
+	case UNARY_OP_BITWISE_NOT:
+		return STR_LIT("~");
+	case UNARY_OP_PRE_INCREMENT:
+		return STR_LIT("pre ++");
+	case UNARY_OP_POST_INCREMENT:
+		return STR_LIT("post ++");
+	case UNARY_OP_PRE_DECREMENT:
+		return STR_LIT("pre --");
+	case UNARY_OP_POST_DECREMENT:
+		return STR_LIT("post --");
+	}
+
+	unreachable();
+	return (String) {};
+}
+
 uint32_t bin_op_precedence(BinOpKind op) {
 	switch (op) {
 	case BIN_OP_ADD:
@@ -155,6 +183,13 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		print_expr(printer, expr->binary.left);
 		printer_field(printer, "right");
 		print_expr(printer, expr->binary.right);
+		printer_end_struct(printer);
+		break;
+	case EXPR_UNARY:
+		printer_begin_struct(printer, "unary_expr");
+		printer_string_field(printer, "kind", unary_op_kind_to_string(expr->unary.op));
+		printer_field(printer, "operand");
+		print_expr(printer, expr->unary.operand);
 		printer_end_struct(printer);
 		break;
 	case EXPR_INTEGER_LITERAL:

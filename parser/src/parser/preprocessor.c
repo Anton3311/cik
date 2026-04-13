@@ -32,6 +32,61 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 }
 
 //
+// IncludeHistory
+//
+
+const SourceFile** _include_history_find_entry(IncludeHistory* history, const SourceFile* source_file) {
+	assert(source_file);
+
+	size_t index = hash_ptr(source_file) % history->capacity;
+	const SourceFile** it = history->entries + index;
+	const SourceFile** end = history->entries + history->capacity;
+	while (*it != NULL && it != end) {
+		it += 1;
+	}
+
+	if (it == end) {
+		return NULL;
+	}
+
+	return it;
+}
+
+bool include_history_contains(IncludeHistory* history, const SourceFile* source_file) {
+	size_t index = hash_ptr(source_file) % history->capacity;
+	const SourceFile** it = history->entries + index;
+	const SourceFile** end = history->entries + history->capacity;
+	while (it != end) {
+		if (*it == source_file) {
+			return true;
+		} else if (*it == NULL) {
+			return false;
+		}
+
+		it += 1;
+	}
+
+	return false;
+}
+
+bool include_history_try_insert(IncludeHistory* history, const SourceFile* source_file) {
+	if (history->size >= history->capacity) {
+		return false;
+	}
+
+	const SourceFile** entry = _include_history_find_entry(history, source_file);
+	if (entry == NULL) {
+		return false;
+	}
+	
+	assert(*entry == NULL);
+
+	*entry = source_file;
+	history->size += 1;
+	return true;
+}
+
+//
 // TokenProvider
 //
 
@@ -107,6 +162,11 @@ void preprocessor_init(Preprocessor* state,
 	state->include_stack.depth = 0;
 	state->include_stack.capacity = 32;
 	state->include_stack.includes = arena_alloc_array(state->allocator, Tokenizer, state->include_stack.capacity);
+	
+	state->include_history.size = 0;
+	state->include_history.capacity = 128;
+	state->include_history.entries = arena_alloc_array(state->allocator, const SourceFile*, state->include_history.capacity);
+	memset(state->include_history.entries, 0, sizeof(*state->include_history.entries) * state->include_history.capacity);
 
 	state->branch_stack_depth = MIN_BRANCH_REGION_STACK_DEPTH;
 	state->branch_stack_capacity = 64;
@@ -1312,25 +1372,44 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 				return false;
 			}
 
-			const SourceFile* included_file = source_storage_append_from_path(state->source_storage,
-					resolved_include_path,
-					state->temp_allocator);
-
-			if (!_preprocessor_push_file(state, included_file)) {
-				diagnostics_report_error(state->diagnostics,
-						directive.source_range,
-						STR_LIT("Include stack overflow"),
-						NULL);
-				return false;
+			const SourceFile* included_file = source_storage_find_file(state->source_storage, resolved_include_path);
+			if (included_file == NULL) {
+				included_file = source_storage_append_from_path(state->source_storage,
+						resolved_include_path,
+						state->temp_allocator);
 			}
 
-			debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
+			if (include_history_contains(&state->include_history, included_file)) {
+				debug_log_info("lone: %u include %.*s found in include history and was skipped",
+						directive_line,
+						STR_FMT(included_file->path));
+			} else {
+				if (!_preprocessor_push_file(state, included_file)) {
+					diagnostics_report_error(state->diagnostics,
+							directive.source_range,
+							STR_LIT("Include stack overflow"),
+							NULL);
+					return false;
+				}
+
+				debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
+			}
 		}
 
 		break;
 	}
 	case DIRECTIVE_PRAGMA: {
-		_preprocessor_skip_until_newline(state);
+		Token token = tokenizer_view_next(state->tokenizer);
+		if (token.kind == TOKEN_IDENT && str_equal(token.string, STR_LIT("once"))) {
+			tokenizer_reset_to_token(state->tokenizer, token);
+
+			bool inserted = include_history_try_insert(&state->include_history, _preprocessor_current_file(state));
+			debug_log_info("inserted file in include history");
+			assert(inserted);
+		} else {
+			_preprocessor_skip_until_newline(state);
+		}
+
 		return true;
 	}
 	case DIRECTIVE_DEFINE: {

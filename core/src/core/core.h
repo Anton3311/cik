@@ -331,6 +331,10 @@ inline size_t hash_string(String string) {
 	return hash_bytes(string.v, string.length);
 }
 
+inline size_t hash_ptr(const void* ptr) {
+	return hash_bytes(&ptr, sizeof(ptr));
+}
+
 //
 // Bit Array
 //

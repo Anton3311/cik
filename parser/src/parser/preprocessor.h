@@ -100,6 +100,15 @@ typedef struct {
 	size_t capacity;
 } IncludeStack;
 
+typedef struct {
+	size_t capacity;
+	size_t size;
+	const SourceFile** entries;
+} IncludeHistory;
+
+bool include_history_contains(IncludeHistory* history, const SourceFile* source_file);
+bool include_history_try_insert(IncludeHistory* history, const SourceFile* source_file);
+
 static size_t MIN_BRANCH_REGION_STACK_DEPTH = 1;
 
 typedef struct {
@@ -110,6 +119,7 @@ typedef struct {
 	SourceStorage* source_storage;
 
 	IncludeStack include_stack;
+	IncludeHistory include_history;
 
 	// NOTE: This is the current tokenizer,
 	//       which is stored on top of the `include_stack`

@@ -95,6 +95,66 @@ void _query_system_memory_spec() {
 	s_sys_mem_spec.page_size = (size_t)sys_info.dwPageSize;
 }
 
+//
+// Allocator
+//
+
+static void* _heap_allocator_procedure(void* allocator_data,
+		void* ptr,
+		size_t size,
+		size_t alignment,
+		AllocatorOperation op) {
+
+	switch (op) {
+	case ALLOC_OP_ALLOC:
+		assert_msg(alignment <= alignof(max_align_t), "Cannot guarantee given alignment");
+		return malloc(size);
+	case ALLOC_OP_FREE:
+		free(ptr);
+		return NULL;
+	}
+
+	unreachable();
+	return NULL;
+}
+
+Allocator heap_allocator_new() {
+	Allocator allocator = {};
+	allocator.allocator_data = NULL;
+	allocator.procedure = _heap_allocator_procedure;
+	return allocator;
+}
+
+//
+// Arena
+//
+
+static void* _arena_allocator_procedure(void* allocator_data,
+		void* ptr,
+		size_t size,
+		size_t alignment,
+		AllocatorOperation op) {
+
+	Arena* arena = (Arena*)allocator_data;
+
+	switch (op) {
+	case ALLOC_OP_ALLOC:
+		return arena_alloc_aligned(arena, size, alignment);
+	case ALLOC_OP_FREE:
+		panic("`ALLOC_OP_FREE` is not supported by the arena allocator");
+	}
+
+	unreachable();
+	return NULL;
+}
+
+Allocator arena_allocator_new(Arena* arena) {
+	Allocator allocator = {};
+	allocator.allocator_data = arena;
+	allocator.procedure = _arena_allocator_procedure;
+	return allocator;
+}
+
 // NOTE: Assumes the sys mem spec had already been queried
 inline size_t _compute_page_count(size_t bytes) {
 	return (bytes + s_sys_mem_spec.page_size - 1) / s_sys_mem_spec.page_size;

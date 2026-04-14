@@ -69,6 +69,57 @@ inline size_t align(size_t value, size_t alignment) {
 size_t align_to_page_size(size_t bytes);
 
 //
+// Allocator
+//
+
+typedef enum {
+	ALLOC_OP_ALLOC,
+	ALLOC_OP_FREE,
+} AllocatorOperation;
+
+typedef void*(*AllocatorProcedure)(void* allocator_data,
+		void* ptr,
+		size_t size,
+		size_t alignment,
+		AllocatorOperation op);
+
+typedef struct {
+	void* allocator_data;
+	AllocatorProcedure procedure;
+} Allocator;
+
+inline void* allocator_alloc_bytes(Allocator allocator, size_t count, size_t alignment) {
+	return allocator.procedure(allocator.allocator_data, NULL, count, alignment, ALLOC_OP_ALLOC);
+}
+
+inline void allocator_release(Allocator allocator, void* ptr) {
+	assert(ptr != NULL);
+	allocator.procedure(allocator.allocator_data, ptr, 0, 0, ALLOC_OP_FREE);
+}
+
+#define allocator_alloc(allocator, type) (type)allocator_alloc_bytes(allocator, sizeof(type), alignof(type));
+#define allocator_alloc_array(allocator, type, count) \
+	(type)allocator_alloc_bytes(allocator, sizeof(type) * count, alignof(type));
+
+//
+// Heap Allocator
+//
+
+inline void* heap_alloc_bytes(size_t count) {
+	return malloc(count);
+}
+
+#define heap_alloc(type) (type)heap_alloc_bytes(sizeof(type))
+#define heap_alloc_array(type, count) (type)heap_alloc_bytes(sizeof(type) * count)
+
+inline void heap_release(void* ptr) {
+	assert(ptr);
+	free(ptr);
+}
+
+Allocator heap_allocator_new();
+
+//
 // Arena
 //
 
@@ -78,6 +129,8 @@ typedef struct {
 	size_t allocated;
 	uint8_t* base;
 } Arena;
+
+Allocator arena_allocator_new(Arena* arena);
 
 void _arena_reserve(Arena* arena, size_t initial_size);
 void _arena_commit(Arena* arena, size_t size);
@@ -139,22 +192,6 @@ inline void arena_end_temp(ArenaRegion save_point) {
 
 void* allocate_executable(size_t size);
 void free_executable(void* ptr, size_t size);
-
-//
-// Heap Allocator
-//
-
-inline void* heap_alloc_bytes(size_t count) {
-	return malloc(count);
-}
-
-#define heap_alloc(type) (type)heap_alloc_bytes(sizeof(type))
-#define heap_alloc_array(type, count) (type)heap_alloc_bytes(sizeof(type) * count)
-
-inline void heap_release(void* ptr) {
-	assert(ptr);
-	free(ptr);
-}
 
 //
 // String

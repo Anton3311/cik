@@ -405,7 +405,11 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	while (param != NULL) {
 		printer_array_element(printer, param_index);
 		printer_begin_struct(printer, "param");
-		printer_string_field(printer, "name", param->name.string);
+
+		if (param->name.string.length > 0) {
+			printer_string_field(printer, "name", param->name.string);
+		}
+
 		printer_field(printer, "type");
 		print_type(printer, &param->type);
 		printer_end_struct(printer);

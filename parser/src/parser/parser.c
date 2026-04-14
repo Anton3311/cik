@@ -1069,6 +1069,7 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 		}
 
 		ParsedFunctionParam* param = arena_alloc(parser->ast_allocator, ParsedFunctionParam);
+		param->next = NULL;
 
 		if (!_parser_parse_type(parser, &param->type)) {
 			arena_end_temp(temp);

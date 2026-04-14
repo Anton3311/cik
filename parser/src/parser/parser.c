@@ -91,7 +91,7 @@ static size_t _ident_storage_try_find_entry(IdentifierNamespace* ident_namespace
 	assert(name.length > 0);
 
 	size_t entry_index = hash_string(name) % ident_namespace->capacity;
-	while (entry_index < ident_namespace->capacity) {
+	while (true) {
 		String key = ident_namespace->keys[entry_index];
 		if (key.v == NULL) {
 			return SIZE_MAX;
@@ -101,7 +101,7 @@ static size_t _ident_storage_try_find_entry(IdentifierNamespace* ident_namespace
 			return entry_index;
 		}
 
-		entry_index += 1;
+		entry_index = (entry_index + 1) % ident_namespace->capacity;
 	}
 
 	return SIZE_MAX;
@@ -112,20 +112,62 @@ static size_t _ident_storage_try_find_empty_entry(IdentifierNamespace* ident_nam
 	assert(name.length > 0);
 
 	size_t entry_index = hash_string(name) % ident_namespace->capacity;
-	while (entry_index < ident_namespace->capacity) {
+	while (true) {
 		String key = ident_namespace->keys[entry_index];
 		if (key.v == NULL || key.v == REMOVED_SLOT_FLAG) {
 			return entry_index;
 		}
 
-		entry_index += 1;
+		entry_index = (entry_index + 1) % ident_namespace->capacity;
 	}
 
 	return SIZE_MAX;
 }
 
+inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_namespace) {
+	size_t key_size = sizeof(String);
+	size_t entry_size = sizeof(IdentifierEntry*);
+	size_t buffer_size = (key_size + entry_size) * ident_namespace->capacity;
+	uint8_t* new_buffer = heap_alloc_bytes(buffer_size);
+
+	memset(new_buffer, 0, buffer_size);
+
+	ident_namespace->keys = (String*)new_buffer;
+	ident_namespace->entries = (IdentifierEntry**)(new_buffer + key_size * ident_namespace->capacity);
+}
+
+static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace) {
+	assert(ident_namespace);
+
+	if (ident_namespace->count == 0) {
+		assert(ident_namespace->keys == NULL);
+		assert(ident_namespace->entries == NULL);
+	}
+
+	size_t old_capacity = ident_namespace->capacity;
+	String* old_keys = ident_namespace->keys;
+	IdentifierEntry** old_entries = ident_namespace->entries;
+
+	ident_namespace->capacity = ident_namespace->capacity + ident_namespace->capacity / 2;
+	_ident_storage_alloc_namespace_hash_map(ident_namespace);
+
+	for (size_t i = 0; i < old_capacity; i += 1) {
+		if (old_keys[i].v == NULL || old_keys[i].v == REMOVED_SLOT_FLAG) {
+			continue;
+		}
+
+		size_t empty_slot = _ident_storage_try_find_empty_entry(ident_namespace, old_keys[i]);
+		assert(empty_slot != SIZE_MAX);
+
+		ident_namespace->keys[empty_slot] = old_keys[i];
+		ident_namespace->entries[empty_slot] = old_entries[i];
+	}
+}
+
 inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace, String name, IdentifierEntry* entry) {
-	assert(ident_namespace->count + 1 <= ident_namespace->capacity / 2);
+	if (ident_namespace->count + 1 == ident_namespace->capacity / 2) {
+		_ident_storage_grow_namespace(ident_namespace);
+	}
 	
 	size_t empty_slot = _ident_storage_try_find_empty_entry(ident_namespace, name);
 	if (empty_slot == SIZE_MAX) {
@@ -137,8 +179,6 @@ inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace, Stri
 	ident_namespace->count += 1;
 	return true;
 }
-
-_Static_assert(sizeof(IdentifierEntry) == 64, "IdentifierEntry must be 64 bytes in size");
 
 inline IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
@@ -153,44 +193,7 @@ void _ident_storage_init_namespace(IdentifierNamespace* ident_namespace) {
 	ident_namespace->count = 0;
 	ident_namespace->capacity = 64;
 
-	size_t key_size = sizeof(String);
-	size_t entry_size = sizeof(IdentifierEntry*);
-	size_t buffer_size = (key_size + entry_size) * ident_namespace->capacity;
-	uint8_t* new_buffer = heap_alloc_bytes(buffer_size);
-
-	memset(new_buffer, 0, buffer_size);
-
-	String* new_keys = (String*)new_buffer;
-	IdentifierEntry** new_entries = (IdentifierEntry**)(new_buffer + key_size * ident_namespace->capacity);
-
-	ident_namespace->keys = new_keys;
-	ident_namespace->entries = new_entries;
-}
-
-void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace) {
-	assert(ident_namespace);
-
-	size_t new_capacity = ident_namespace->capacity + ident_namespace->capacity / 2;
-	
-	size_t key_size = sizeof(String);
-	size_t entry_size = sizeof(IdentifierEntry*);
-	uint8_t* new_buffer = heap_alloc_bytes((key_size + entry_size) * new_capacity);
-
-	String* new_keys = (String*)new_buffer;
-	IdentifierEntry** new_entries = (IdentifierEntry**)(new_buffer + key_size * new_capacity);
-
-	if (ident_namespace->count == 0) {
-		assert(ident_namespace->keys == NULL);
-		assert(ident_namespace->entries == NULL);
-
-		ident_namespace->keys = new_keys;
-		ident_namespace->entries = new_entries;
-	} else {
-		assert(ident_namespace->keys != NULL);
-		assert(ident_namespace->entries != NULL);
-
-		unreachable();
-	}
+	_ident_storage_alloc_namespace_hash_map(ident_namespace);
 }
 
 void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {

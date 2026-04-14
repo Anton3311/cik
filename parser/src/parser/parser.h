@@ -123,12 +123,12 @@ typedef struct {
 	Diagnostics* diagnostics;
 	Preprocessor* preprocessor;
 
-	IdentifierStorage ident_storage;
+	IdentifierStorage* ident_storage;
 } Parser;
 
 void parser_init(Parser* parser,
 		Arena* ast_allocator,
-		Arena* ident_allocator,
+		IdentifierStorage* ident_storage,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics);
 

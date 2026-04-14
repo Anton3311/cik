@@ -93,8 +93,11 @@ int main(int argc, char *argv[]) {
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 128 * 4096 };
 
+		IdentifierStorage ident_storage = {};
+		ident_storage_init(&ident_storage, &ident_arena);
+
 		Parser parser = {};
-		parser_init(&parser, &ast_arena, &ident_arena, &preprocessor, &diagnostics);
+		parser_init(&parser, &ast_arena, &ident_storage, &preprocessor, &diagnostics);
 
 		ParsedAST parsed_ast = {};
 		parser_parse(&parser, &parsed_ast);
@@ -102,6 +105,8 @@ int main(int argc, char *argv[]) {
 		if (parsed_ast.root_nodes.first) {
 			print_parsed_node(parsed_ast.root_nodes.first);
 		}
+
+		ident_storage_release(&ident_storage);
 
 		arena_release(&ident_arena);
 		arena_release(&ast_arena);

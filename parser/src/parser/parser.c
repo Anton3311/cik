@@ -520,7 +520,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 
 		struct_def_initialized = false;
 	} else {
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name.string);
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_STRUCT)) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
@@ -563,7 +563,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 				return false;
 			}
 		} else {
-			entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name);
+			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name);
 			entry->kind = IDENT_STRUCT;
 
 			struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
@@ -696,7 +696,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 
 	ParsedEnum* enum_def = NULL;
 	if (enum_name.string.length > 0) {
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name.string);
 
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_ENUM)) {
@@ -738,7 +738,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 				return false;
 			}
 		} else {
-			entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name);
+			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name);
 			entry->kind = IDENT_ENUM;
 
 			enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
@@ -894,7 +894,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 			break;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, token.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_ALIAS, token.string);
 		if (entry == NULL) {
 			return PARSE_TYPE_NOT_PARSED;
 
@@ -1035,9 +1035,9 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	type_def->new_name = source_string_from_token(new_name);
 	type_def->aliased_type = aliased_type;
 
-	IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, new_name.string);
+	IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_ALIAS, new_name.string);
 	if (!entry) {
-		entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_ALIAS, source_string_from_token(new_name));
+		entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_ALIAS, source_string_from_token(new_name));
 		entry->kind = IDENT_TYPE_DEF;
 	}
 
@@ -1218,7 +1218,7 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 			return EXPR_PARSE_OK;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, token.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, token.string);
 		if (entry == NULL) {
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
@@ -1484,7 +1484,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		out_node->variable.type = *type;
 		out_node->variable.value = value;
 
-		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, out_node->variable.name);
+		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, out_node->variable.name);
 		entry->kind = IDENT_VARIABLE;
 		entry->variable = &out_node->variable;
 
@@ -1496,7 +1496,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 	} else if (token.kind == TOKEN_SEMICOLON) {
 		preprocessor_next_token(parser->preprocessor);
 
-	 	IdentifierEntry* existing_identifier = ident_storage_find(&parser->ident_storage,
+	 	IdentifierEntry* existing_identifier = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				name.string);
 
@@ -1526,7 +1526,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			.value = NULL,
 		};
 
-		IdentifierEntry* entry = ident_storage_insert(&parser->ident_storage,
+		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				out_node->variable.name);
 
@@ -1561,7 +1561,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			return false;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name.string);
 		ParsedFunction* function_def = NULL;
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_FUNCTION)) {
@@ -1640,7 +1640,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 				}
 			}
 		} else {
-			entry = ident_storage_insert(&parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name);
+			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name);
 			entry->kind = IDENT_FUNCTION;
 
 			function_def = arena_alloc(parser->ast_allocator, ParsedFunction); 
@@ -1821,7 +1821,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 }
 
 bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
-	ident_storage_begin_scope(&parser->ident_storage);
+	ident_storage_begin_scope(parser->ident_storage);
 
 	Token token = preprocessor_next_token(parser->preprocessor);
 	assert(token.kind == TOKEN_LEFT_BRACE);
@@ -1836,7 +1836,7 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 					STR_LIT("Unexpected end of file"),
 					NULL);
 
-			ident_storage_end_scope(&parser->ident_storage);
+			ident_storage_end_scope(parser->ident_storage);
 			return false;
 		} else if (token.kind == TOKEN_RIGHT_BRACE) {
 			preprocessor_next_token(parser->preprocessor);
@@ -1852,21 +1852,19 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 		}
 	}
 
-	ident_storage_end_scope(&parser->ident_storage);
+	ident_storage_end_scope(parser->ident_storage);
 
 	return true;
 }
 
 void parser_init(Parser* parser,
 		Arena* ast_allocator,
-		Arena* ident_allocator,
+		IdentifierStorage* ident_storage,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics) {
 	parser->ast_allocator = ast_allocator;
 	parser->diagnostics = diagnostics;
 	parser->preprocessor = preprocessor;
-
-	ident_storage_init(&parser->ident_storage, ident_allocator);
 }
 
 void parser_parse(Parser* parser, ParsedAST* ast) {

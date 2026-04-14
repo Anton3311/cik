@@ -66,7 +66,7 @@ struct IdentifierScope {
 	union {
 		IdentifierScope* parent;
 
-		// NOTE: Only valid used for reusing the instances in `IdentifierStorage`
+		// NOTE: Only used for reusing instances in `IdentifierStorage`
 		IdentifierScope* next_free;
 	};
 
@@ -75,10 +75,11 @@ struct IdentifierScope {
 };
 
 struct IdentifierNamespace {
-	String debug_name;
-
 	size_t count;
 	size_t capacity;
+
+	// NOTE: Keys and entries are allocated from the same memory region
+	String* keys;
 	IdentifierEntry** entries;
 };
 
@@ -95,6 +96,7 @@ struct IdentifierStorage {
 };
 
 void ident_storage_init(IdentifierStorage* storage, Arena* allocator);
+void ident_storage_release(IdentifierStorage* storage);
 
 IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,

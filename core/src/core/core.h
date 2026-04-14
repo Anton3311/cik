@@ -133,8 +133,28 @@ inline void arena_end_temp(ArenaRegion save_point) {
 	save_point.arena->allocated = save_point.allocated_state;
 }
 
+//
+// Virtual Memory
+//
+
 void* allocate_executable(size_t size);
 void free_executable(void* ptr, size_t size);
+
+//
+// Heap Allocator
+//
+
+inline void* heap_alloc_bytes(size_t count) {
+	return malloc(count);
+}
+
+#define heap_alloc(type) (type)heap_alloc_bytes(sizeof(type))
+#define heap_alloc_array(type, count) (type)heap_alloc_bytes(sizeof(type) * count)
+
+inline void heap_release(void* ptr) {
+	assert(ptr);
+	free(ptr);
+}
 
 //
 // String

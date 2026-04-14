@@ -63,26 +63,84 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 // IdentifierStorage
 //
 
-IdentifierNamespace* _ident_storage_get_namespace(IdentifierStorage* storage, IdentifierNamespaceKind namespace_kind) {
+const void* REMOVED_SLOT_FLAG = (void*)0x1;
+
+inline IdentifierNamespace* _ident_storage_get_namespace(IdentifierStorage* storage,
+		IdentifierNamespaceKind namespace_kind) {
+
 	assert(namespace_kind >= 0);
 	assert(namespace_kind < IDENT_NAMESPACE_COUNT);
 	return &storage->namespaces[namespace_kind];
 }
 
-size_t _ident_storage_try_find_entry(IdentifierNamespace* ident_namespace, String name) {
+inline bool _ident_storage_remove_entry_at(IdentifierNamespace* ident_namespace, size_t index) {
+	assert(ident_namespace->count > 0);
+
+	assert(index < ident_namespace->capacity);
+
+	assert_msg(ident_namespace->keys[index].v != NULL, "Cannot remove empty slot");
+	assert_msg(ident_namespace->keys[index].v != REMOVED_SLOT_FLAG, "Cannot remove already removed slot");
+
+	ident_namespace->keys[index] = (String) { .v = REMOVED_SLOT_FLAG, .length = 0 };
+	ident_namespace->count -= 1;
+	return true;
+}
+
+static size_t _ident_storage_try_find_entry(IdentifierNamespace* ident_namespace, String name) {
 	assert(ident_namespace != NULL);
 	assert(name.length > 0);
 
-	for (size_t i = 0; i < ident_namespace->count; i += 1) {
-		if (str_equal(ident_namespace->entries[i]->name.string, name)) {
-			return i;
+	size_t entry_index = hash_string(name) % ident_namespace->capacity;
+	while (entry_index < ident_namespace->capacity) {
+		String key = ident_namespace->keys[entry_index];
+		if (key.v == NULL) {
+			return SIZE_MAX;
 		}
+
+		if (str_equal(key, name)) {
+			return entry_index;
+		}
+
+		entry_index += 1;
 	}
 
 	return SIZE_MAX;
 }
 
-IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
+static size_t _ident_storage_try_find_empty_entry(IdentifierNamespace* ident_namespace, String name) {
+	assert(ident_namespace != NULL);
+	assert(name.length > 0);
+
+	size_t entry_index = hash_string(name) % ident_namespace->capacity;
+	while (entry_index < ident_namespace->capacity) {
+		String key = ident_namespace->keys[entry_index];
+		if (key.v == NULL || key.v == REMOVED_SLOT_FLAG) {
+			return entry_index;
+		}
+
+		entry_index += 1;
+	}
+
+	return SIZE_MAX;
+}
+
+inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace, String name, IdentifierEntry* entry) {
+	assert(ident_namespace->count + 1 <= ident_namespace->capacity / 2);
+	
+	size_t empty_slot = _ident_storage_try_find_empty_entry(ident_namespace, name);
+	if (empty_slot == SIZE_MAX) {
+		return false;
+	}
+
+	ident_namespace->keys[empty_slot] = name;
+	ident_namespace->entries[empty_slot] = entry;
+	ident_namespace->count += 1;
+	return true;
+}
+
+_Static_assert(sizeof(IdentifierEntry) == 64, "IdentifierEntry must be 64 bytes in size");
+
+inline IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
 		String name) {
 
@@ -91,11 +149,48 @@ IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 	return index == SIZE_MAX ? NULL : ident_namespace->entries[index];
 }
 
-void _ident_storage_init_namespace(IdentifierNamespace* ident_namespace, Arena* allocator) {
+void _ident_storage_init_namespace(IdentifierNamespace* ident_namespace) {
 	ident_namespace->count = 0;
-	ident_namespace->capacity = 128;
-	ident_namespace->entries = arena_alloc_array(allocator, IdentifierEntry*, ident_namespace->capacity);
-	memset(ident_namespace->entries, 0, sizeof(*ident_namespace->entries) * ident_namespace->capacity);
+	ident_namespace->capacity = 64;
+
+	size_t key_size = sizeof(String);
+	size_t entry_size = sizeof(IdentifierEntry*);
+	size_t buffer_size = (key_size + entry_size) * ident_namespace->capacity;
+	uint8_t* new_buffer = heap_alloc_bytes(buffer_size);
+
+	memset(new_buffer, 0, buffer_size);
+
+	String* new_keys = (String*)new_buffer;
+	IdentifierEntry** new_entries = (IdentifierEntry**)(new_buffer + key_size * ident_namespace->capacity);
+
+	ident_namespace->keys = new_keys;
+	ident_namespace->entries = new_entries;
+}
+
+void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace) {
+	assert(ident_namespace);
+
+	size_t new_capacity = ident_namespace->capacity + ident_namespace->capacity / 2;
+	
+	size_t key_size = sizeof(String);
+	size_t entry_size = sizeof(IdentifierEntry*);
+	uint8_t* new_buffer = heap_alloc_bytes((key_size + entry_size) * new_capacity);
+
+	String* new_keys = (String*)new_buffer;
+	IdentifierEntry** new_entries = (IdentifierEntry**)(new_buffer + key_size * new_capacity);
+
+	if (ident_namespace->count == 0) {
+		assert(ident_namespace->keys == NULL);
+		assert(ident_namespace->entries == NULL);
+
+		ident_namespace->keys = new_keys;
+		ident_namespace->entries = new_entries;
+	} else {
+		assert(ident_namespace->keys != NULL);
+		assert(ident_namespace->entries != NULL);
+
+		unreachable();
+	}
 }
 
 void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
@@ -104,7 +199,7 @@ void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
 	storage->allocator = allocator;
 
 	for (size_t i = 0; i < IDENT_NAMESPACE_COUNT; i += 1) {
-		_ident_storage_init_namespace(&storage->namespaces[i], allocator);
+		_ident_storage_init_namespace(&storage->namespaces[i]);
 	}
 
 	storage->current_scope = arena_alloc(storage->allocator, IdentifierScope);
@@ -113,6 +208,23 @@ void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
 	storage->next_scope_id = 1;
 	storage->next_free_entry = NULL;
 	storage->next_free_scope = NULL;
+}
+
+void ident_storage_release(IdentifierStorage* storage) {
+	for (size_t i = 0; i < IDENT_NAMESPACE_COUNT; i += 1) {
+		IdentifierNamespace* ident_namespace = &storage->namespaces[i];
+
+		if (ident_namespace->count > 0) {
+			assert(ident_namespace->keys);
+			assert(ident_namespace->entries);
+
+			heap_release(ident_namespace->keys);
+
+			ident_namespace->keys = NULL;
+			ident_namespace->entries = NULL;
+		}
+	}
+	
 }
 
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
@@ -125,8 +237,9 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 
 	IdentifierNamespace* ident_namespace = _ident_storage_get_namespace(storage, namespace_kind);
 
-	size_t existing_entry_index = _ident_storage_try_find_entry(ident_namespace, name.string);
 	IdentifierEntry* entry = NULL;
+
+	size_t existing_entry_index = _ident_storage_try_find_entry(ident_namespace, name.string);
 	if (existing_entry_index == SIZE_MAX) {
 		assert(ident_namespace->count < ident_namespace->capacity);
 
@@ -140,12 +253,11 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 
 		memset(entry, 0, sizeof(*entry));
 
-		assert(ident_namespace->entries[ident_namespace->count] == NULL);
-		ident_namespace->entries[ident_namespace->count] = entry;
-		ident_namespace->count += 1;
+		bool entry_inserted = _ident_storage_try_insert(ident_namespace, name.string, entry);
+		assert(entry_inserted);
 	} else {
 		assert_msg(ident_namespace->entries[existing_entry_index]->owner_scope != storage->current_scope,
-				"Indetifier with the given name is already defined in the current scope");
+				"Identifier with the given name is already defined in the current scope");
 
 		entry = arena_alloc(storage->allocator, IdentifierEntry);
 		memset(entry, 0, sizeof(*entry));
@@ -189,11 +301,13 @@ void ident_storage_remove(IdentifierStorage* storage,
 	IdentifierEntry* entry = ident_namespace->entries[existing_entry_index];
 	memset(entry, 0, sizeof(*entry));
 
-	entry->next_in_scope = storage->next_free_entry;
+	if (entry->next_in_scope == NULL) {
+		_ident_storage_remove_entry_at(ident_namespace, existing_entry_index);
+	} else {
+		ident_namespace->entries[existing_entry_index] = entry->next_in_scope;
+	}
 
-	ident_namespace->entries[existing_entry_index] = ident_namespace->entries[ident_namespace->count - 1];
-	ident_namespace->entries[ident_namespace->count - 1] = NULL;
-	ident_namespace->count -= 1;
+	entry->next_in_scope = storage->next_free_entry;
 }
 
 IdentifierScope* ident_storage_begin_scope(IdentifierStorage* storage) {

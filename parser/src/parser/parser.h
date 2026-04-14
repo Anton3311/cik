@@ -86,6 +86,7 @@ struct IdentifierNamespace {
 struct IdentifierStorage {
 	Arena* allocator;
 
+	Allocator namespace_allocator;
 	IdentifierNamespace namespaces[IDENT_NAMESPACE_COUNT];
 
 	uint64_t next_scope_id;
@@ -95,7 +96,7 @@ struct IdentifierStorage {
 	IdentifierScope* next_free_scope;
 };
 
-void ident_storage_init(IdentifierStorage* storage, Arena* allocator);
+void ident_storage_init(IdentifierStorage* storage, Allocator namespace_allocator, Arena* allocator);
 void ident_storage_release(IdentifierStorage* storage);
 
 IdentifierEntry* ident_storage_find(IdentifierStorage* storage,

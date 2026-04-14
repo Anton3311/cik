@@ -124,11 +124,11 @@ static size_t _ident_storage_try_find_empty_entry(IdentifierNamespace* ident_nam
 	return SIZE_MAX;
 }
 
-inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_namespace) {
+inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_namespace, Allocator allocator) {
 	size_t key_size = sizeof(String);
 	size_t entry_size = sizeof(IdentifierEntry*);
 	size_t buffer_size = (key_size + entry_size) * ident_namespace->capacity;
-	uint8_t* new_buffer = heap_alloc_bytes(buffer_size);
+	uint8_t* new_buffer = allocator_alloc_bytes(allocator, buffer_size, alignof(max_align_t));
 
 	memset(new_buffer, 0, buffer_size);
 
@@ -136,7 +136,7 @@ inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_n
 	ident_namespace->entries = (IdentifierEntry**)(new_buffer + key_size * ident_namespace->capacity);
 }
 
-static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace) {
+static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace, Allocator allocator) {
 	assert(ident_namespace);
 
 	if (ident_namespace->count == 0) {
@@ -149,7 +149,7 @@ static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace) 
 	IdentifierEntry** old_entries = ident_namespace->entries;
 
 	ident_namespace->capacity = ident_namespace->capacity + ident_namespace->capacity / 2;
-	_ident_storage_alloc_namespace_hash_map(ident_namespace);
+	_ident_storage_alloc_namespace_hash_map(ident_namespace, allocator);
 
 	for (size_t i = 0; i < old_capacity; i += 1) {
 		if (old_keys[i].v == NULL || old_keys[i].v == REMOVED_SLOT_FLAG) {
@@ -164,9 +164,13 @@ static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace) 
 	}
 }
 
-inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace, String name, IdentifierEntry* entry) {
+inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace,
+		Allocator allocator,
+		String name,
+		IdentifierEntry* entry) {
+
 	if (ident_namespace->count + 1 == ident_namespace->capacity / 2) {
-		_ident_storage_grow_namespace(ident_namespace);
+		_ident_storage_grow_namespace(ident_namespace, allocator);
 	}
 	
 	size_t empty_slot = _ident_storage_try_find_empty_entry(ident_namespace, name);
@@ -190,19 +194,21 @@ inline IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 }
 
 void _ident_storage_init_namespace(IdentifierNamespace* ident_namespace) {
-	ident_namespace->count = 0;
-	ident_namespace->capacity = 64;
-
-	_ident_storage_alloc_namespace_hash_map(ident_namespace);
 }
 
-void ident_storage_init(IdentifierStorage* storage, Arena* allocator) {
+void ident_storage_init(IdentifierStorage* storage, Allocator namespace_allocator, Arena* allocator) {
 	assert(storage != NULL);
 
 	storage->allocator = allocator;
+	storage->namespace_allocator = namespace_allocator;
 
 	for (size_t i = 0; i < IDENT_NAMESPACE_COUNT; i += 1) {
 		_ident_storage_init_namespace(&storage->namespaces[i]);
+
+		storage->namespaces[i].count = 0;
+		storage->namespaces[i].capacity = 64;
+
+		_ident_storage_alloc_namespace_hash_map(&storage->namespaces[i], storage->namespace_allocator);
 	}
 
 	storage->current_scope = arena_alloc(storage->allocator, IdentifierScope);
@@ -221,7 +227,7 @@ void ident_storage_release(IdentifierStorage* storage) {
 			assert(ident_namespace->keys);
 			assert(ident_namespace->entries);
 
-			heap_release(ident_namespace->keys);
+			allocator_release(storage->namespace_allocator, ident_namespace->keys);
 
 			ident_namespace->keys = NULL;
 			ident_namespace->entries = NULL;
@@ -256,7 +262,7 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 
 		memset(entry, 0, sizeof(*entry));
 
-		bool entry_inserted = _ident_storage_try_insert(ident_namespace, name.string, entry);
+		bool entry_inserted = _ident_storage_try_insert(ident_namespace, storage->namespace_allocator, name.string, entry);
 		assert(entry_inserted);
 	} else {
 		assert_msg(ident_namespace->entries[existing_entry_index]->owner_scope != storage->current_scope,
@@ -1865,6 +1871,7 @@ void parser_init(Parser* parser,
 	parser->ast_allocator = ast_allocator;
 	parser->diagnostics = diagnostics;
 	parser->preprocessor = preprocessor;
+	parser->ident_storage = ident_storage;
 }
 
 void parser_parse(Parser* parser, ParsedAST* ast) {

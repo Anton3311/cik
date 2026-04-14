@@ -757,13 +757,17 @@ void run_parser_test(TestContext* context,
 			context->temp_arena,
 			&generated_tokens_arena);
 
+	IdentifierStorage* ident_storage = arena_alloc(context->arena, IdentifierStorage);
+
 	// NOTE: This arena is used by the `IdentifierStorage` inside the parser,
 	//       so it's lifetime is no longer than the one of the parser.
 	Arena ident_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
 	Arena ast_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
 
+	ident_storage_init(ident_storage, arena_allocator_new(&ident_arena), &ident_arena);
+
 	Parser parser = {};
-	parser_init(&parser, &ast_arena, &ident_arena, &preprocessor, out_diagnostics);
+	parser_init(&parser, &ast_arena, ident_storage, &preprocessor, out_diagnostics);
 
 	parser_parse(&parser, out_ast);
 }

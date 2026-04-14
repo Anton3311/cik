@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
 		Arena ast_arena = { .capacity = 128 * 4096 };
 
 		IdentifierStorage ident_storage = {};
-		ident_storage_init(&ident_storage, &ident_arena);
+		ident_storage_init(&ident_storage, heap_allocator_new(), &ident_arena);
 
 		Parser parser = {};
 		parser_init(&parser, &ast_arena, &ident_storage, &preprocessor, &diagnostics);

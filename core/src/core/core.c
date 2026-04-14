@@ -124,11 +124,12 @@ void _arena_reserve(Arena* arena, size_t initial_size) {
 	arena->commited = aligned_allocation;
 }
 
-void _arena_commit_page(Arena* arena, size_t page_count) {
+void _arena_commit(Arena* arena, size_t size) {
+	size_t page_count = _compute_page_count(size);
+
 	size_t commit_size = page_count * s_sys_mem_spec.page_size;
 	if (arena->commited + commit_size > arena->capacity) {
-		printf("Out of arena memory");
-		assert(false);
+		panic("Out of arena memory");
 	}
 
 	void* result = VirtualAlloc(arena->base + arena->commited,
@@ -141,27 +142,13 @@ void _arena_commit_page(Arena* arena, size_t page_count) {
 	arena->commited += commit_size;
 }
 
-void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment) {
-	size_t allocation_base = align(arena->allocated, alignment);
-	size_t new_allocated_ptr = allocation_base + size;
-
-	if (arena->base == NULL) {
-		_arena_reserve(arena, size);
-	} else if (new_allocated_ptr > arena->commited) {
-		_arena_commit_page(arena, _compute_page_count(new_allocated_ptr - arena->allocated));
-	}
-
-	void* allocation = arena->base + allocation_base;
-	arena->allocated = new_allocated_ptr;
-	return allocation;
-}
-
 void arena_release(Arena* arena) {
 	if (arena->base == NULL) {
 		return;
 	}
 
-	assert(VirtualFree(arena->base, 0, MEM_RELEASE) && "Failed to free arena");
+	BOOL result = VirtualFree(arena->base, 0, MEM_RELEASE);
+	assert_msg(result, "Failed to free arena memory");
 
 	arena->base = NULL;
 	arena->allocated = 0;

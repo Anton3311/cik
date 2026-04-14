@@ -53,6 +53,11 @@ void print_assertion_stack_trace();
 	printf("%s:%u: %s\n", __FILE__, __LINE__, msg); \
 	crash();
 
+#define panic(msg) \
+	print_assertion_stack_trace(); \
+	printf("%s:%u: \033[31;1mPanic: '%s'\033[0m\n", __FILE__, __LINE__, msg); \
+	crash();
+
 #define debug_log_info(...) { printf("%s:%u: \033[32;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
 #define debug_log_warn(...) { printf("%s:%u: \033[33;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
 #define debug_log_error(...) { printf("%s:%u: \033[31;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
@@ -74,7 +79,24 @@ typedef struct {
 	uint8_t* base;
 } Arena;
 
-void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment);
+void _arena_reserve(Arena* arena, size_t initial_size);
+void _arena_commit(Arena* arena, size_t size);
+
+inline void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment) {
+	size_t allocation_base = align(arena->allocated, alignment);
+	size_t new_allocated_ptr = allocation_base + size;
+
+	if (arena->base == NULL) {
+		_arena_reserve(arena, size);
+	} else if (new_allocated_ptr > arena->commited) {
+		_arena_commit(arena, new_allocated_ptr - arena->allocated);
+	}
+
+	void* allocation = arena->base + allocation_base;
+	arena->allocated = new_allocated_ptr;
+	return allocation;
+}
+
 inline Arena arena_alloc_sub_arena(Arena* arena, size_t size) {
 	assert(arena != NULL);
 	return (Arena) {

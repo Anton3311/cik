@@ -1469,7 +1469,7 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 	return true;
 }
 
-bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, ParsedType* type) {
+bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, ParsedType* type, ParsedDeclSpec* decl_spec) {
 	assert(out_node != NULL);
 	assert(type != NULL);
 
@@ -1522,6 +1522,8 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 	} else if (token.kind == TOKEN_EQUAL) {
 		preprocessor_next_token(parser->preprocessor);
 
+		assert(decl_spec == NULL);
+
 		ParsedExpr* value = arena_alloc(parser->ast_allocator, ParsedExpr);
 		switch (_parser_try_parse_expr(parser, value)) {
 		case EXPR_PARSE_OK:
@@ -1552,6 +1554,8 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		return true;
 	} else if (token.kind == TOKEN_SEMICOLON) {
 		preprocessor_next_token(parser->preprocessor);
+
+		assert(decl_spec == NULL);
 
 	 	IdentifierEntry* existing_identifier = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
@@ -1708,9 +1712,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			function_def->parameter_list = param_list;
 			function_def->parameter_count = param_count;
 			function_def->is_forward_declared = is_forward_declared;
-			function_def->decl_spec = parser->current_decl_spec;
-
-			parser->current_decl_spec = NULL;
+			function_def->decl_spec = decl_spec;
 
 			entry->function_def = function_def;
 		}
@@ -1723,9 +1725,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			function_def->body = body;
 			function_def->is_forward_declared = false;
 			function_def->calling_convention = call_conv;
-			function_def->decl_spec = parser->current_decl_spec;
-
-			parser->current_decl_spec = NULL;
+			function_def->decl_spec = decl_spec;
 		}
 
 		out_node->kind = AST_NODE_FUNCTION;
@@ -1743,7 +1743,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 	return true;
 }
 
-bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node) {
+bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node, ParsedDeclSpec* decl_spec) {
 	assert(out_node != NULL);
 
 	bool has_type = false;
@@ -1773,8 +1773,10 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 	}
 
 	if (has_type) {
-		return _parser_parse_type_declaration(parser, out_node, &type);
+		return _parser_parse_type_declaration(parser, out_node, &type, decl_spec);
 	} else {
+		assert(decl_spec == NULL);
+
 		ExprParseResult result = _parser_try_parse_expr(parser, &out_node->expr);
 		if (result == EXPR_PARSE_OK) {
 			out_node->kind = AST_NODE_EXPR;
@@ -1794,10 +1796,16 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 }
 
 static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
-	{
-		Token decl_spec_token = preprocessor_next_token(parser->preprocessor);
-		assert(str_equal(decl_spec_token.string, STR_LIT("__declspec")));
+	Token decl_spec_token = preprocessor_view_next(parser->preprocessor);
+	if (decl_spec_token.kind != TOKEN_IDENT) {
+		return NULL;
 	}
+
+	if (!str_equal(decl_spec_token.string, STR_LIT("__declspec"))) {
+		return NULL;
+	}
+
+	preprocessor_next_token(parser->preprocessor);
 
 	Token left_paren = preprocessor_next_token(parser->preprocessor);
 	if (left_paren.kind != TOKEN_LEFT_PAREN) {
@@ -1918,20 +1926,14 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		node->return_stmt.value = return_value;
 		return node;
 	}
-	case TOKEN_IDENT: {
-		if (str_equal(initial_token.string, STR_LIT("__declspec"))) {
-			assert(parser->current_decl_spec == NULL);
-
-			parser->current_decl_spec = _parser_parse_decl_spec(parser);
-			return NULL;
-		}
-	}
 	default: {
+		ParsedDeclSpec* decl_spec = _parser_parse_decl_spec(parser);
+
 		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
 		memset(node, 0, sizeof(*node));
 
-		if (_parser_parse_variable_or_function_def(parser, node)) {
+		if (_parser_parse_variable_or_function_def(parser, node, decl_spec)) {
 			return node;
 		} else {
 			arena_end_temp(temp);

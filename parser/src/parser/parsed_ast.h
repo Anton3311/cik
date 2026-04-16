@@ -283,6 +283,11 @@ typedef enum {
 
 struct ParsedDeclSpec {
 	DeclSpecKind kind;
+
+	union {
+		ParsedStringLiteral deprecation_text;
+	};
+
 	ParsedDeclSpec* next;
 };
 

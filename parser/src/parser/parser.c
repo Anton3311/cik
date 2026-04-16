@@ -1842,6 +1842,32 @@ static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 		return NULL;
 	}
 
+	ParsedStringLiteral deprecation_text;
+
+	if (kind == DECL_SPEC_DEPRECATED) {
+		Token left_paren = preprocessor_next_token(parser->preprocessor);
+		if (left_paren.kind != TOKEN_LEFT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					left_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			return NULL;
+		}
+
+		_parser_parse_string_literal(parser, &deprecation_text);
+
+		Token right_paren = preprocessor_next_token(parser->preprocessor);
+		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			return NULL;
+		}
+	}
+
 	Token right_paren = preprocessor_next_token(parser->preprocessor);
 	if (right_paren.kind != TOKEN_RIGHT_PAREN) {
 		TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
@@ -1854,6 +1880,11 @@ static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 
 	ParsedDeclSpec* decl_spec = arena_alloc(parser->ast_allocator, ParsedDeclSpec);
 	decl_spec->kind = kind;
+
+	if (kind == DECL_SPEC_DEPRECATED) {
+		decl_spec->deprecation_text = deprecation_text;
+	}
+
 	return decl_spec;
 }
 

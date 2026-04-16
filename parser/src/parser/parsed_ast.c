@@ -161,6 +161,39 @@ void printer_bool_field(PrinterState* printer, const char* name, bool value) {
 
 void print_type(PrinterState* printer, const ParsedType* type);
 void print_single_node(PrinterState* printer, const ParsedNode* node);
+void print_decl_spec(PrinterState* printer, const ParsedDeclSpec* decl_spec) {
+	String decl_spec_name = {};
+
+	switch (decl_spec->kind) {
+	case DECL_SPEC_DEPRECATED:
+		decl_spec_name = STR_LIT("deprecated");
+		break;
+	case DECL_SPEC_NO_INLINE:
+		decl_spec_name = STR_LIT("noinline");
+		break;
+	case DECL_SPEC_NO_RETURN:
+		decl_spec_name = STR_LIT("noreturn");
+		break;
+	case DECL_SPEC_DLL_IMPORT:
+		decl_spec_name = STR_LIT("dllimport");
+		break;
+	case DECL_SPEC_DLL_EXPORT:
+		decl_spec_name = STR_LIT("dllexport");
+		break;
+	case DECL_SPEC_RESTRICT:
+		decl_spec_name = STR_LIT("restrict");
+		break;
+	}
+
+	printer_begin_struct(printer, "decl_spec");
+	printer_string_field(printer, "name", decl_spec_name);
+
+	if (decl_spec->kind == DECL_SPEC_DEPRECATED) {
+		printer_string_field(printer, "deprecation_text", decl_spec->deprecation_text.full_string);
+	}
+
+	printer_end_struct(printer);
+}
 
 void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 	assert(expr != NULL);
@@ -419,6 +452,11 @@ void print_scope(PrinterState* printer, const ParsedScope* scope) {
 
 void print_function_def(PrinterState* printer, const ParsedFunction* function_def) {
 	printer_begin_struct(printer, "function");
+
+	if (function_def->decl_spec) {
+		printer_field(printer, "decl_spec");
+		print_decl_spec(printer, function_def->decl_spec);
+	}
 
 	printer_string_field(printer, "name", function_def->name.string);
 	printer_string_field(printer, "calling_convetion", function_calling_convetion_to_string(function_def->calling_convention));

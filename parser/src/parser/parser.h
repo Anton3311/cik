@@ -125,6 +125,8 @@ typedef struct {
 	Preprocessor* preprocessor;
 
 	IdentifierStorage* ident_storage;
+
+	ParsedDeclSpec* current_decl_spec;
 } Parser;
 
 void parser_init(Parser* parser,

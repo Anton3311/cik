@@ -23,6 +23,7 @@ typedef struct ParsedBinExpr ParsedBinExpr;
 typedef struct ParsedUnaryExpr ParsedUnaryExpr;
 typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
 typedef struct ParsedReturnStmt ParsedReturnStmt;
+typedef struct ParsedDeclSpec ParsedDeclSpec;
 
 //
 // AST
@@ -261,6 +262,24 @@ struct ParsedTypeDef {
 };
 
 //
+// DeclSpec
+// 
+
+typedef enum {
+	DECL_SPEC_DEPRECATED,
+	DECL_SPEC_NO_INLINE,
+	DECL_SPEC_NO_RETURN,
+	DECL_SPEC_DLL_IMPORT,
+	DECL_SPEC_DLL_EXPORT,
+	DECL_SPEC_RESTRICT,
+} DeclSpecKind;
+
+struct ParsedDeclSpec {
+	DeclSpecKind kind;
+	ParsedDeclSpec* next;
+};
+
+//
 // Function
 //
 
@@ -287,6 +306,7 @@ struct ParsedFunction {
 	size_t parameter_count;
 	ParsedFunctionParam* parameter_list;
 	ParsedScope* body;
+	ParsedDeclSpec* decl_spec;
 };
 
 //

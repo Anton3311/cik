@@ -1688,6 +1688,9 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			function_def->parameter_list = param_list;
 			function_def->parameter_count = param_count;
 			function_def->is_forward_declared = is_forward_declared;
+			function_def->decl_spec = parser->current_decl_spec;
+
+			parser->current_decl_spec = NULL;
 
 			entry->function_def = function_def;
 		}
@@ -1700,6 +1703,9 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			function_def->body = body;
 			function_def->is_forward_declared = false;
 			function_def->calling_convention = call_conv;
+			function_def->decl_spec = parser->current_decl_spec;
+
+			parser->current_decl_spec = NULL;
 		}
 
 		out_node->kind = AST_NODE_FUNCTION;
@@ -1765,6 +1771,62 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 
 	unreachable();
 	return false;
+}
+
+static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
+	{
+		Token decl_spec_token = preprocessor_next_token(parser->preprocessor);
+		assert(str_equal(decl_spec_token.string, STR_LIT("__declspec")));
+	}
+
+	Token left_paren = preprocessor_next_token(parser->preprocessor);
+	if (left_paren.kind != TOKEN_LEFT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				left_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		return NULL;
+	}
+
+	Token token = preprocessor_next_token(parser->preprocessor);
+
+	DeclSpecKind kind = -1;
+	if (str_equal(token.string, STR_LIT("deprecated"))) {
+		kind = DECL_SPEC_DEPRECATED;
+	} else if (str_equal(token.string, STR_LIT("noinline"))) {
+		kind = DECL_SPEC_NO_INLINE;
+	} else if (str_equal(token.string, STR_LIT("noreturn"))) {
+		kind = DECL_SPEC_NO_RETURN;
+	} else if (str_equal(token.string, STR_LIT("dllimport"))) {
+		kind = DECL_SPEC_DLL_IMPORT;
+	} else if (str_equal(token.string, STR_LIT("dllexport"))) {
+		kind = DECL_SPEC_DLL_EXPORT;
+	} else if (str_equal(token.string, STR_LIT("restrict"))) {
+		kind = DECL_SPEC_RESTRICT;
+	}
+
+	if (kind == -1) {
+		diagnostics_report_error(parser->diagnostics,
+				token.source_range,
+				STR_LIT("Unsupported __declspec modifier"),
+				NULL);
+		return NULL;
+	}
+
+	Token right_paren = preprocessor_next_token(parser->preprocessor);
+	if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				right_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		return NULL;
+	}
+
+	ParsedDeclSpec* decl_spec = arena_alloc(parser->ast_allocator, ParsedDeclSpec);
+	decl_spec->kind = kind;
+	return decl_spec;
 }
 
 ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
@@ -1835,6 +1897,14 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		node->kind = AST_NODE_RETURN;
 		node->return_stmt.value = return_value;
 		return node;
+	}
+	case TOKEN_IDENT: {
+		if (str_equal(initial_token.string, STR_LIT("__declspec"))) {
+			assert(parser->current_decl_spec == NULL);
+
+			parser->current_decl_spec = _parser_parse_decl_spec(parser);
+			return NULL;
+		}
 	}
 	default: {
 		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);

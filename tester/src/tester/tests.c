@@ -1297,3 +1297,21 @@ void test_parse_return_stmt_without_value(TestContext* context) {
 	assert(return_node->kind == AST_NODE_RETURN);
 	assert(return_node->return_stmt.value == NULL);
 }
+
+void test_multi_part_string_merging(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("const char* s = \"hello\" \"world\";"), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* var = &node->variable;
+	assert(var->value != NULL);
+	assert(var->value->kind == EXPR_STRING_LITERAL);
+	assert(str_equal(var->value->string_literal.full_string, STR_LIT("helloworld")));
+}

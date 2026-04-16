@@ -18,6 +18,7 @@ typedef struct ParsedFunctionParam ParsedFunctionParam;
 typedef struct ParsedVariable ParsedVariable;
 typedef struct ParsedScope ParsedScope;
 typedef struct ParsedCall ParsedCall;
+typedef struct ParsedStringLiteral ParsedStringLiteral;
 typedef struct ParsedExpr ParsedExpr;
 typedef struct ParsedBinExpr ParsedBinExpr;
 typedef struct ParsedUnaryExpr ParsedUnaryExpr;
@@ -184,6 +185,10 @@ struct ParsedCall {
 	ParsedExpr** arguments;
 };
 
+struct ParsedStringLiteral {
+	String full_string;
+};
+
 struct ParsedIntegerLiteral {
 	SourceRange source_range;
 	IntergerLiteralFormat format;
@@ -198,6 +203,7 @@ typedef enum {
 	EXPR_FUNCTION_REFERENCE,
 	EXPR_VARIABLE_REFERENCE,
 	EXPR_INTEGER_LITERAL,
+	EXPR_STRING_LITERAL,
 } ExprKind;
 
 struct ParsedExpr {
@@ -210,6 +216,7 @@ struct ParsedExpr {
 		ParsedBinExpr binary;
 		ParsedUnaryExpr unary;
 		ParsedIntegerLiteral int_literal;
+		ParsedStringLiteral string_literal;
 	};
 };
 

@@ -1209,6 +1209,22 @@ typedef enum {
 	EXPR_PARSE_ERROR,
 } ExprParseResult;
 
+static void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* out_literal) {
+	StringBuilder builder = { .arena = parser->ast_allocator };
+
+	while (true) {
+		Token string_token = preprocessor_view_next(parser->preprocessor);
+		if (string_token.kind != TOKEN_STRING) {
+			break;
+		}
+
+		preprocessor_next_token(parser->preprocessor);
+		str_builder_append(&builder, sub_str(string_token.string, 1, string_token.string.length - 2));
+	}
+
+	out_literal->full_string = builder.string;
+}
+
 ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
 	Token token = preprocessor_view_next(parser->preprocessor);
 
@@ -1280,6 +1296,10 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 		}
 
 		unreachable();
+	} else if (token.kind == TOKEN_STRING) {
+		_parser_parse_string_literal(parser, &out_expr->string_literal);
+		out_expr->kind = EXPR_STRING_LITERAL;
+		return EXPR_PARSE_OK;
 	}
 
 	return EXPR_PARSE_NOT_PARSED;

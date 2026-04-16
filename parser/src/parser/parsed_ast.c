@@ -203,6 +203,11 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		printf("%llu\n", expr->int_literal.value);
 		printer_end_struct(printer);
 		break;
+	case EXPR_STRING_LITERAL:
+		printer_begin_struct(printer, "string");
+		printer_string_field(printer, "value", expr->string_literal.full_string);
+		printer_end_struct(printer);
+		break;
 	}
 }
 

@@ -61,6 +61,7 @@ static TestCase parser_tests[] = {
 	test(test_parse_variable_ref_expr),
 	test(test_parse_return_stmt),
 	test(test_parse_return_stmt_without_value),
+	test(test_multi_part_string_merging),
 };
 
 static TestSuite s_test_suites[] = {

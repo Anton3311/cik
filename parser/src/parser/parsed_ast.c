@@ -289,18 +289,30 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 	case PARSED_TYPE_SHORT:
 	case PARSED_TYPE_LONG:
 	case PARSED_TYPE_LONG_LONG:
+	case PARSED_TYPE_INT8:
+	case PARSED_TYPE_INT16:
+	case PARSED_TYPE_INT32:
+	case PARSED_TYPE_INT64:
 
 	case PARSED_TYPE_SIGNED_CHAR:
 	case PARSED_TYPE_SIGNED_INT:
 	case PARSED_TYPE_SIGNED_SHORT:
 	case PARSED_TYPE_SIGNED_LONG:
 	case PARSED_TYPE_SIGNED_LONG_LONG:
+	case PARSED_TYPE_SIGNED_INT8:
+	case PARSED_TYPE_SIGNED_INT16:
+	case PARSED_TYPE_SIGNED_INT32:
+	case PARSED_TYPE_SIGNED_INT64:
 
 	case PARSED_TYPE_UNSIGNED_CHAR:
 	case PARSED_TYPE_UNSIGNED_INT:
 	case PARSED_TYPE_UNSIGNED_SHORT:
 	case PARSED_TYPE_UNSIGNED_LONG:
-	case PARSED_TYPE_UNSIGNED_LONG_LONG: {
+	case PARSED_TYPE_UNSIGNED_LONG_LONG:
+	case PARSED_TYPE_UNSIGNED_INT8:
+	case PARSED_TYPE_UNSIGNED_INT16:
+	case PARSED_TYPE_UNSIGNED_INT32:
+	case PARSED_TYPE_UNSIGNED_INT64: {
 		ParsedTypeKind base_kind = type->kind & (~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
 		const char* prefix = "";
 		const char* base_type_name = "";
@@ -326,6 +338,18 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 			break;
 		case PARSED_TYPE_LONG_LONG:
 			base_type_name = "long long";
+			break;
+		case PARSED_TYPE_INT8:
+			base_type_name = "__int8";
+			break;
+		case PARSED_TYPE_INT16:
+			base_type_name = "__int16";
+			break;
+		case PARSED_TYPE_INT32:
+			base_type_name = "__int32";
+			break;
+		case PARSED_TYPE_INT64:
+			base_type_name = "__int64";
 			break;
 		default:
 			unreachable();

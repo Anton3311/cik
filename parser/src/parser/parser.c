@@ -29,18 +29,31 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 	case PARSED_TYPE_SHORT:
 	case PARSED_TYPE_LONG:
 	case PARSED_TYPE_LONG_LONG:
+	case PARSED_TYPE_INT8:
+	case PARSED_TYPE_INT16:
+	case PARSED_TYPE_INT32:
+	case PARSED_TYPE_INT64:
 
 	case PARSED_TYPE_SIGNED_CHAR:
 	case PARSED_TYPE_SIGNED_INT:
 	case PARSED_TYPE_SIGNED_SHORT:
 	case PARSED_TYPE_SIGNED_LONG:
 	case PARSED_TYPE_SIGNED_LONG_LONG:
+	case PARSED_TYPE_SIGNED_INT8:
+	case PARSED_TYPE_SIGNED_INT16:
+	case PARSED_TYPE_SIGNED_INT32:
+	case PARSED_TYPE_SIGNED_INT64:
+
 
 	case PARSED_TYPE_UNSIGNED_CHAR:
 	case PARSED_TYPE_UNSIGNED_INT:
 	case PARSED_TYPE_UNSIGNED_SHORT:
 	case PARSED_TYPE_UNSIGNED_LONG:
 	case PARSED_TYPE_UNSIGNED_LONG_LONG:
+	case PARSED_TYPE_UNSIGNED_INT8:
+	case PARSED_TYPE_UNSIGNED_INT16:
+	case PARSED_TYPE_UNSIGNED_INT32:
+	case PARSED_TYPE_UNSIGNED_INT64:
 
 	case PARSED_TYPE_FLOAT:
 	case PARSED_TYPE_DOUBLE:
@@ -861,6 +874,18 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out
 		} else if (str_equal(token.string, STR_LIT("short"))) {
 			preprocessor_next_token(parser->preprocessor);
 			type_kind = PARSED_TYPE_SHORT;
+		} else if (str_equal(token.string, STR_LIT("__int8"))) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = PARSED_TYPE_INT8;
+		} else if (str_equal(token.string, STR_LIT("__int16"))) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = PARSED_TYPE_INT16;
+		} else if (str_equal(token.string, STR_LIT("__int32"))) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = PARSED_TYPE_INT32;
+		} else if (str_equal(token.string, STR_LIT("__int64"))) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = PARSED_TYPE_INT64;
 		} else if (str_equal(token.string, STR_LIT("long"))) {
 			preprocessor_next_token(parser->preprocessor);
 

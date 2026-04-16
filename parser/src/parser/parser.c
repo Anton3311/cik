@@ -1775,7 +1775,9 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 	if (has_type) {
 		return _parser_parse_type_declaration(parser, out_node, &type, decl_spec);
 	} else {
-		assert(decl_spec == NULL);
+		if (decl_spec) {
+			debug_log_info("__declspec ignore before expression");
+		}
 
 		ExprParseResult result = _parser_try_parse_expr(parser, &out_node->expr);
 		if (result == EXPR_PARSE_OK) {

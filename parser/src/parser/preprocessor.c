@@ -1,5 +1,7 @@
 #include "preprocessor.h"
 
+#include "core/profiler.h"
+
 #include "parser/parse_tools.h"
 
 void macro_table_append(MacroTable* table, const MacroDefinition* macro) {

@@ -1,6 +1,7 @@
 clang ^
 	driver\src\driver\main.c ^
 	core\src\core\core.c ^
+	core\src\core\profiler.c ^
 	parser\src\parser\tokenizer.c ^
 	parser\src\parser\preprocessor.c ^
 	parser\src\parser\source_info.c ^
@@ -13,6 +14,7 @@ clang ^
 
 clang ^
 	core\src\core\core.c ^
+	core\src\core\profiler.c ^
 	tester\src\tester\tester_main.c ^
 	tester\src\tester\tests.c ^
 	parser\src\parser\tokenizer.c ^
@@ -27,6 +29,7 @@ clang ^
 
 clang ^
 	core\src\core\core.c ^
+	core\src\core\profiler.c ^
 	tester\src\tester\test_runner.c ^
 	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib ^
 	-m64 -Wall -o bin\test_runner.exe -Icore\src\ -Itester\src\

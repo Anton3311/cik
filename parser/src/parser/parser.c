@@ -1,5 +1,7 @@
 #include "parser.h"
 
+#include "core/profiler.h"
+
 #include "parser/parse_tools.h"
 
 bool type_equal(const ParsedType* a, const ParsedType* b) {
@@ -137,6 +139,8 @@ inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_n
 }
 
 static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace, Allocator allocator) {
+	profile_scope_start("_ident_storage_grow_namespace");
+
 	assert(ident_namespace);
 
 	if (ident_namespace->count == 0) {
@@ -162,6 +166,8 @@ static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace, 
 		ident_namespace->keys[empty_slot] = old_keys[i];
 		ident_namespace->entries[empty_slot] = old_entries[i];
 	}
+
+	profile_scope_end();
 }
 
 inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace,

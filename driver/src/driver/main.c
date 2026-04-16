@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "core/core.h"
+#include "core/profiler.h"
 #include "parser/preprocessor.h"
 #include "parser/parser.h"
 
@@ -15,6 +16,10 @@ static bool enum_installed_win_sdks(String sdk_install_path,
 }
 
 int main(int argc, char *argv[]) {
+	profile_init(1000 * 1000);
+
+	profile_scope_start("main");
+
 	Arena arena = {};
 	arena.capacity = align_to_page_size(512 * 4096);
 
@@ -100,7 +105,11 @@ int main(int argc, char *argv[]) {
 		parser_init(&parser, &ast_arena, &ident_storage, &preprocessor, &diagnostics);
 
 		ParsedAST parsed_ast = {};
-		parser_parse(&parser, &parsed_ast);
+		{
+			profile_scope_start("parse");
+			parser_parse(&parser, &parsed_ast);
+			profile_scope_end();
+		}
 
 		if (parsed_ast.root_nodes.first) {
 			print_parsed_node(parsed_ast.root_nodes.first);
@@ -120,6 +129,10 @@ int main(int argc, char *argv[]) {
 	arena_release(&arena);
 	arena_release(&diagnostics_arena);
 	arena_release(&temp_arena);
+
+	profile_scope_end();
+
+	profile_finish();
 
 	return EXIT_SUCCESS;
 }

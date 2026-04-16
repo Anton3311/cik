@@ -66,6 +66,7 @@ inline size_t align(size_t value, size_t alignment) {
 	return (value + alignment - 1) / alignment * alignment;
 }
 
+uint64_t hardware_timer_get_frequency();
 size_t align_to_page_size(size_t bytes);
 
 //
@@ -109,8 +110,8 @@ inline void* heap_alloc_bytes(size_t count) {
 	return malloc(count);
 }
 
-#define heap_alloc(type) (type)heap_alloc_bytes(sizeof(type))
-#define heap_alloc_array(type, count) (type)heap_alloc_bytes(sizeof(type) * count)
+#define heap_alloc(type) (type*)heap_alloc_bytes(sizeof(type))
+#define heap_alloc_array(type, count) (type*)heap_alloc_bytes(sizeof(type) * count)
 
 inline void heap_release(void* ptr) {
 	assert(ptr);

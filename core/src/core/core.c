@@ -95,6 +95,12 @@ void _query_system_memory_spec() {
 	s_sys_mem_spec.page_size = (size_t)sys_info.dwPageSize;
 }
 
+uint64_t hardware_timer_get_frequency() {
+	LARGE_INTEGER freq = {};
+	QueryPerformanceFrequency(&freq);
+	return freq.QuadPart;
+}
+
 //
 // Allocator
 //

@@ -133,7 +133,7 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 		if (token.kind == TOKEN_EOF) {
 			break;
 		} else {
-			assert(!has_token);
+			assert_msg(!has_token, "Preprocessor generated multiple tokens");
 			first_token = token;
 			has_token = true;
 		}
@@ -147,9 +147,9 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 
 	bool is_pass = str_equal(pass_string, first_token.string);
 	bool is_fail = str_equal(fail_string, first_token.string);
-	assert(is_pass || is_fail);
+	assert_msg(is_pass || is_fail, "Expected to get `pass` or `fail` token");
 
-	assert(is_pass);
+	assert_msg(is_pass, "Failed");
 }
 
 int main(int argc, char* argv[]) {

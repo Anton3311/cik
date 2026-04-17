@@ -1469,7 +1469,12 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 	return true;
 }
 
-bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, ParsedType* type, ParsedDeclSpec* decl_spec) {
+bool _parser_parse_type_declaration(Parser* parser,
+		ParsedNode* out_node,
+		ParsedType* type,
+		ParsedDeclSpec* decl_spec,
+		StorageSpecifier storage_specifier) {
+
 	assert(out_node != NULL);
 	assert(type != NULL);
 
@@ -1542,6 +1547,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 		out_node->variable.name = name;
 		out_node->variable.type = *type;
 		out_node->variable.value = value;
+		out_node->variable.storage_specifier = storage_specifier;
 
 		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, out_node->variable.name);
 		entry->kind = IDENT_VARIABLE;
@@ -1585,6 +1591,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			.name = name,
 			.type = *type,
 			.value = NULL,
+			.storage_specifier = storage_specifier,
 		};
 
 		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
@@ -1713,6 +1720,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			function_def->parameter_count = param_count;
 			function_def->is_forward_declared = is_forward_declared;
 			function_def->decl_spec = decl_spec;
+			function_def->storage_specifier = storage_specifier;
 
 			entry->function_def = function_def;
 		}
@@ -1726,6 +1734,7 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 			function_def->is_forward_declared = false;
 			function_def->calling_convention = call_conv;
 			function_def->decl_spec = decl_spec;
+			function_def->storage_specifier = storage_specifier;
 		}
 
 		out_node->kind = AST_NODE_FUNCTION;
@@ -1743,7 +1752,11 @@ bool _parser_parse_type_declaration(Parser* parser, ParsedNode* out_node, Parsed
 	return true;
 }
 
-bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node, ParsedDeclSpec* decl_spec) {
+bool _parser_parse_variable_or_function_def(Parser* parser,
+		ParsedNode* out_node,
+		ParsedDeclSpec* decl_spec,
+		StorageSpecifier storage_specifier) {
+
 	assert(out_node != NULL);
 
 	bool has_type = false;
@@ -1773,10 +1786,14 @@ bool _parser_parse_variable_or_function_def(Parser* parser, ParsedNode* out_node
 	}
 
 	if (has_type) {
-		return _parser_parse_type_declaration(parser, out_node, &type, decl_spec);
+		return _parser_parse_type_declaration(parser, out_node, &type, decl_spec, storage_specifier);
 	} else {
 		if (decl_spec) {
 			debug_log_info("__declspec ignore before expression");
+		}
+
+		if (storage_specifier != STORAGE_SPEC_NONE) {
+			debug_log_info("storage specifier skipped before expression");
 		}
 
 		ExprParseResult result = _parser_try_parse_expr(parser, &out_node->expr);
@@ -1961,12 +1978,22 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	}
 	default: {
 		ParsedDeclSpec* decl_spec = _parser_parse_decl_spec(parser);
+		StorageSpecifier storage_specifier = STORAGE_SPEC_NONE;
+
+		Token maybe_storage_specifier = preprocessor_view_next(parser->preprocessor);
+		if (maybe_storage_specifier.kind == TOKEN_KEYWORD_STATIC) {
+			preprocessor_next_token(parser->preprocessor);
+			storage_specifier = STORAGE_SPEC_STATIC;
+		} else if (maybe_storage_specifier.kind == TOKEN_KEYWORD_EXTERN) {
+			preprocessor_next_token(parser->preprocessor);
+			storage_specifier = STORAGE_SPEC_EXTERNAL;
+		}
 
 		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
 		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
 		memset(node, 0, sizeof(*node));
 
-		if (_parser_parse_variable_or_function_def(parser, node, decl_spec)) {
+		if (_parser_parse_variable_or_function_def(parser, node, decl_spec, storage_specifier)) {
 			return node;
 		} else {
 			arena_end_temp(temp);

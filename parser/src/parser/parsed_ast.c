@@ -458,6 +458,21 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 		print_decl_spec(printer, function_def->decl_spec);
 	}
 
+	String storage_spec_string = {};
+	switch (function_def->storage_specifier) {
+	case STORAGE_SPEC_NONE:
+		storage_spec_string = STR_LIT("none");
+		break;
+	case STORAGE_SPEC_EXTERNAL:
+		storage_spec_string = STR_LIT("extern");
+		break;
+	case STORAGE_SPEC_STATIC:
+		storage_spec_string = STR_LIT("static");
+		break;
+	}
+
+	printer_string_field(printer, "storage_spec", storage_spec_string);
+
 	printer_string_field(printer, "name", function_def->name.string);
 	printer_string_field(printer, "calling_convetion", function_calling_convetion_to_string(function_def->calling_convention));
 

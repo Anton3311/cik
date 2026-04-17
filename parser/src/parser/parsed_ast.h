@@ -40,6 +40,12 @@ typedef enum {
 	AST_NODE_RETURN,
 } AstNodeKind;
 
+typedef enum {
+	STORAGE_SPEC_NONE,
+	STORAGE_SPEC_EXTERNAL,
+	STORAGE_SPEC_STATIC,
+} StorageSpecifier;
+
 typedef struct {
 	ParsedNode* first;
 	ParsedNode* last;
@@ -319,6 +325,7 @@ struct ParsedFunction {
 	ParsedFunctionParam* parameter_list;
 	ParsedScope* body;
 	ParsedDeclSpec* decl_spec;
+	StorageSpecifier storage_specifier;
 };
 
 //
@@ -329,6 +336,7 @@ struct ParsedVariable {
 	SourceString name;
 	ParsedType type;
 	ParsedExpr* value;
+	StorageSpecifier storage_specifier;
 };
 
 //

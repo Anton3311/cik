@@ -151,6 +151,12 @@ inline void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment) {
 	return allocation;
 }
 
+inline void* arena_alloc_zeroed_aligned(Arena* arena, size_t size, size_t alignment) {
+	void* ptr = arena_alloc_aligned(arena, size, alignment);
+	memset(ptr, 0, size);
+	return ptr;
+}
+
 inline Arena arena_alloc_sub_arena(Arena* arena, size_t size) {
 	assert(arena != NULL);
 	return (Arena) {
@@ -168,6 +174,7 @@ inline void arena_reset(Arena* arena) {
 void arena_release(Arena* arena);
 
 #define arena_alloc(arena, type) (type*)arena_alloc_aligned(arena, sizeof(type), alignof(type))
+#define arena_alloc_zeroed(arena, type) (type*)arena_alloc_zeroed_aligned(arena, sizeof(type), alignof(type))
 #define arena_alloc_array(arena, type, count) (type*)arena_alloc_aligned(arena, sizeof(type) * count, alignof(type))
 
 //

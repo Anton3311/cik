@@ -148,6 +148,8 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_RETURN;
 	} else if (str_equal(token_string, STR_LIT("inline"))) {
 		token_kind = TOKEN_KEYWORD_INLINE;
+	} else if (str_equal(token_string, STR_LIT("__inline"))) {
+		token_kind = TOKEN_KEYWORD_INLINE;
 	} else if (str_equal(token_string, STR_LIT("extern"))) {
 		token_kind = TOKEN_KEYWORD_EXTERN;
 	} else if (str_equal(token_string, STR_LIT("static"))) {

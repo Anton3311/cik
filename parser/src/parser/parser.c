@@ -1080,7 +1080,7 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 
 	entry->type_def = type_def;
 
-	ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+	ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
 	node->kind = AST_NODE_TYPE_DEF;
 	node->type_def = type_def;
 	return node;
@@ -1469,17 +1469,41 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 	return true;
 }
 
-bool _parser_parse_type_declaration(Parser* parser,
-		ParsedNode* out_node,
+bool _check_for_var_redefinition(Parser* parser, SourceString var_name) {
+	IdentifierEntry* existing_identifier = ident_storage_find(parser->ident_storage,
+			IDENT_NAMESPACE_DEFAULT,
+			var_name.string);
+
+	if (existing_identifier != NULL) {
+		StringBuilder builder = { .arena = parser->diagnostics->allocator };
+		str_builder_append(&builder, STR_LIT("Redefinition of '"));
+		str_builder_append(&builder, var_name.string);
+		str_builder_append_char(&builder, '\'');
+
+		DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+				source_string_to_range(var_name),
+				builder.string,
+				NULL);
+
+		diagnostics_report_error(parser->diagnostics,
+				source_string_to_range(existing_identifier->name),
+				STR_LIT("Previously defined here"),
+				error);
+		return false;
+	} 
+
+	return true;
+}
+
+ParsedNode* _parser_parse_type_declaration(Parser* parser,
 		ParsedType* type,
 		ParsedDeclSpec* decl_spec,
 		StorageSpecifier storage_specifier) {
 
-	assert(out_node != NULL);
 	assert(type != NULL);
 
 	if (!_parser_parse_pre_declaration_modifiers(parser, type, type, true)) {
-		return false;
+		return NULL;
 	}
 
 	FunctionCallingConvention call_conv = FUNC_CALL_CONV_DEFAULT;
@@ -1492,7 +1516,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 				expected_tokens,
 				array_size(expected_tokens));
 		
-		return false;
+		return NULL;
 	}
 
 	if (str_equal(name_token.string, STR_LIT("__cdecl"))) {
@@ -1507,7 +1531,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 					expected_tokens,
 					array_size(expected_tokens));
 			
-			return false;
+			return NULL;
 		}
 	}
 
@@ -1520,7 +1544,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_LEFT_PAREN) {
 		if (!_parser_parse_function_param_list(parser, &param_list, &param_count)) {
-			return false;
+			return NULL;
 		}
 
 		is_function = true;
@@ -1534,74 +1558,57 @@ bool _parser_parse_type_declaration(Parser* parser,
 		case EXPR_PARSE_OK:
 			break;
 		case EXPR_PARSE_ERROR:
-			return false;
+			return NULL;
 		case EXPR_PARSE_NOT_PARSED:
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
 					STR_LIT("Expected variable value after the '='"),
 					NULL);
-			return false;
+			return NULL;
 		}
-
-		out_node->kind = AST_NODE_VARIABLE;
-		out_node->variable.name = name;
-		out_node->variable.type = *type;
-		out_node->variable.value = value;
-		out_node->variable.storage_specifier = storage_specifier;
-
-		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, out_node->variable.name);
-		entry->kind = IDENT_VARIABLE;
-		entry->variable = &out_node->variable;
 
 		if (!_parser_expect_semicolon(parser, STR_LIT("Expected semicolon after the variable definition"))) {
-			return false;
+			return NULL;
 		}
 
-		return true;
+		if (!_check_for_var_redefinition(parser, name)) {
+			return NULL;
+		}
+
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_VARIABLE;
+		node->variable.name = name;
+		node->variable.type = *type;
+		node->variable.value = value;
+		node->variable.storage_specifier = storage_specifier;
+
+		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, node->variable.name);
+		entry->kind = IDENT_VARIABLE;
+		entry->variable = &node->variable;
+		return node;
 	} else if (token.kind == TOKEN_SEMICOLON) {
 		preprocessor_next_token(parser->preprocessor);
 
 		assert(decl_spec == NULL);
 
-	 	IdentifierEntry* existing_identifier = ident_storage_find(parser->ident_storage,
-				IDENT_NAMESPACE_DEFAULT,
-				name.string);
-
-		if (existing_identifier != NULL) {
-			StringBuilder builder = { .arena = parser->diagnostics->allocator };
-			str_builder_append(&builder, STR_LIT("Redefinition of '"));
-			str_builder_append(&builder, name.string);
-			str_builder_append_char(&builder, '\'');
-
-			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-					source_string_to_range(name),
-					builder.string,
-					NULL);
-
-			diagnostics_report_error(parser->diagnostics,
-					source_string_to_range(existing_identifier->name),
-					STR_LIT("Previously defined here"),
-					error);
-			return false;
-		} 
+		if (!_check_for_var_redefinition(parser, name)) {
+			return NULL;
+		}
 
 		// A variable declaration
-		out_node->kind = AST_NODE_VARIABLE;
-		out_node->variable = (ParsedVariable) {
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_VARIABLE;
+		node->variable = (ParsedVariable) {
 			.name = name,
 			.type = *type,
 			.value = NULL,
 			.storage_specifier = storage_specifier,
 		};
 
-		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
-				IDENT_NAMESPACE_DEFAULT,
-				out_node->variable.name);
-
+		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name);
 		entry->kind = IDENT_VARIABLE;
-		entry->variable = &out_node->variable;
-
-		return true;
+		entry->variable = &node->variable;
+		return node;
 	}
 
 	if (is_function) {
@@ -1616,7 +1623,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 			memset(body, 0, sizeof(*body));
 
 			if (!_parser_parse_scope(parser, body)) {
-				return false;
+				return NULL;
 			}
 		} else if (token.kind == TOKEN_SEMICOLON) {
 			preprocessor_next_token(parser->preprocessor);
@@ -1626,7 +1633,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 					token,
 					expected_tokens,
 					array_size(expected_tokens));
-			return false;
+			return NULL;
 		}
 
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name.string);
@@ -1647,7 +1654,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
-				return false;
+				return NULL;
 			}
 
 			function_def = entry->function_def;
@@ -1669,7 +1676,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
-				return false;
+				return NULL;
 			}
 
 			if (function_def->parameter_count != param_count) {
@@ -1682,7 +1689,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
-				return false;
+				return NULL;
 			} else {
 				ParsedFunctionParam* prev_def_param = function_def->parameter_list;
 				ParsedFunctionParam* new_def_param = param_list;
@@ -1700,7 +1707,7 @@ bool _parser_parse_type_declaration(Parser* parser,
 								prev_def_param->type.source_range,
 								STR_LIT("Previously defined here"),
 								error);
-						return false;
+						return NULL;
 					}
 					
 					prev_def_param = prev_def_param->next;
@@ -1737,27 +1744,26 @@ bool _parser_parse_type_declaration(Parser* parser,
 			function_def->storage_specifier = storage_specifier;
 		}
 
-		out_node->kind = AST_NODE_FUNCTION;
-		out_node->function_def = function_def;
-		return true;
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_FUNCTION;
+		node->function_def = function_def;
+		return node;
 	} else {
 		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
 		diagnostics_report_unexpected_token(parser->diagnostics,
 				token,
 				expected_tokens,
 				array_size(expected_tokens));
-		return false;
+		return NULL;
 	}
 
-	return true;
+	unreachable();
+	return NULL;
 }
 
-bool _parser_parse_variable_or_function_def(Parser* parser,
-		ParsedNode* out_node,
+ParsedNode* _parser_parse_variable_or_function_def(Parser* parser,
 		ParsedDeclSpec* decl_spec,
 		StorageSpecifier storage_specifier) {
-
-	assert(out_node != NULL);
 
 	bool has_type = false;
 	TypeQualifiers type_qualifiers = _parser_parse_type_qualifiers(parser);
@@ -1777,16 +1783,16 @@ bool _parser_parse_variable_or_function_def(Parser* parser,
 					STR_LIT("Expected type specifier"),
 					NULL);
 
-			return false;
+			return NULL;
 		}
 
 		break;
 	case PARSE_TYPE_ERROR:
-		return false;
+		return NULL;
 	}
 
 	if (has_type) {
-		return _parser_parse_type_declaration(parser, out_node, &type, decl_spec, storage_specifier);
+		return _parser_parse_type_declaration(parser, &type, decl_spec, storage_specifier);
 	} else {
 		if (decl_spec) {
 			debug_log_info("__declspec ignore before expression");
@@ -1796,22 +1802,25 @@ bool _parser_parse_variable_or_function_def(Parser* parser,
 			debug_log_info("storage specifier skipped before expression");
 		}
 
-		ExprParseResult result = _parser_try_parse_expr(parser, &out_node->expr);
+		ParsedExpr expr;
+		ExprParseResult result = _parser_try_parse_expr(parser, &expr);
 		if (result == EXPR_PARSE_OK) {
-			out_node->kind = AST_NODE_EXPR;
-
 			if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
-				return false;
+				return NULL;
 			}
 
-			return true;
+			ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+			node->kind = AST_NODE_EXPR;
+			node->expr = expr;
+
+			return node;
 		} else {
-			return false;
+			return NULL;
 		}
 	}
 
 	unreachable();
-	return false;
+	return NULL;
 }
 
 static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
@@ -1922,7 +1931,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
 		memset(node, 0, sizeof(*node));
 
 		node->kind = AST_NODE_STRUCT;
@@ -1940,7 +1949,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
 		memset(node, 0, sizeof(*node));
 
 		node->kind = AST_NODE_ENUM;
@@ -1969,7 +1978,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
 		memset(node, 0, sizeof(*node));
 
 		node->kind = AST_NODE_RETURN;
@@ -1989,19 +1998,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			storage_specifier = STORAGE_SPEC_EXTERNAL;
 		}
 
-		ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
-		ParsedNode* node = arena_alloc(parser->ast_allocator, ParsedNode);
-		memset(node, 0, sizeof(*node));
-
-		if (_parser_parse_variable_or_function_def(parser, node, decl_spec, storage_specifier)) {
-			return node;
-		} else {
-			arena_end_temp(temp);
-			_parser_skip_until_semicolon(parser);
-			return NULL;
-		}
-
-		break;
+		return _parser_parse_variable_or_function_def(parser, decl_spec, storage_specifier);
 	}
 	}
 

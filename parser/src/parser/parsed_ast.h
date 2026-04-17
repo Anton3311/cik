@@ -319,6 +319,7 @@ struct ParsedFunction {
 	ParsedType return_type;
 	SourceString name;
 
+	bool is_inline;
 	bool is_forward_declared;
 	FunctionCallingConvention calling_convention;
 	size_t parameter_count;

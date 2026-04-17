@@ -1159,6 +1159,10 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 	return true;
 }
 
+//
+// Expr
+//
+
 bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
 	switch (kind) {
 	case TOKEN_PLUS:
@@ -1209,6 +1213,9 @@ typedef enum {
 	EXPR_PARSE_ERROR,
 } ExprParseResult;
 
+static ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr);
+static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr);
+
 static void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* out_literal) {
 	StringBuilder builder = { .arena = parser->ast_allocator };
 
@@ -1225,7 +1232,7 @@ static void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* ou
 	out_literal->full_string = builder.string;
 }
 
-ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
+static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
 	Token token = preprocessor_view_next(parser->preprocessor);
 
 	UnaryOpKind unary_op;
@@ -1299,6 +1306,26 @@ ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* o
 	} else if (token.kind == TOKEN_STRING) {
 		_parser_parse_string_literal(parser, &out_expr->string_literal);
 		out_expr->kind = EXPR_STRING_LITERAL;
+		return EXPR_PARSE_OK;
+	} else if (token.kind == TOKEN_LEFT_PAREN) {
+		preprocessor_next_token(parser->preprocessor);
+
+		ExprParseResult result = _parser_try_parse_expr(parser, out_expr);
+		if (result != EXPR_PARSE_OK) {
+			return result;
+		}
+
+		Token right_paren = preprocessor_next_token(parser->preprocessor);
+		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			return EXPR_PARSE_ERROR;
+		}
+
 		return EXPR_PARSE_OK;
 	}
 

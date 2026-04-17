@@ -67,5 +67,6 @@ void test_parse_variable_ref_expr(TestContext* context);
 void test_parse_return_stmt(TestContext* context);
 void test_parse_return_stmt_without_value(TestContext* context);
 void test_multi_part_string_merging(TestContext* context);
+void test_parse_expr_inside_parens(TestContext* context);
 
 #endif

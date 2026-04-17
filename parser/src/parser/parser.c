@@ -1825,11 +1825,7 @@ ParsedNode* _parser_parse_variable_or_function_def(Parser* parser,
 
 static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 	Token decl_spec_token = preprocessor_view_next(parser->preprocessor);
-	if (decl_spec_token.kind != TOKEN_IDENT) {
-		return NULL;
-	}
-
-	if (!str_equal(decl_spec_token.string, STR_LIT("__declspec"))) {
+	if (decl_spec_token.kind != TOKEN_DECLSPEC) {
 		return NULL;
 	}
 

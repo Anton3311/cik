@@ -5,6 +5,7 @@
 #include "core/profiler.h"
 #include "parser/preprocessor.h"
 #include "parser/parser.h"
+#include "compiler/compiler.h"
 
 static bool enum_installed_win_sdks(String sdk_install_path,
 		Arena* allocator,
@@ -113,6 +114,20 @@ int main(int argc, char *argv[]) {
 
 		if (parsed_ast.root_nodes.first) {
 			print_parsed_node(parsed_ast.root_nodes.first);
+		}
+
+		for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+			if (node->kind == AST_NODE_FUNCTION) {
+				FunctionCompiler c = {};
+				c.function = node->function_def;
+				c.instr_allocator = &arena;
+				c.temp_allocator = &temp_arena;
+
+				instr_buffer_init(&c.instr_buffer, c.instr_allocator);
+
+				function_compiler_compile(&c);
+				instr_print_all(c.instr_buffer);
+			}
 		}
 
 		ident_storage_release(&ident_storage);

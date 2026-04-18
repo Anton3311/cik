@@ -55,8 +55,22 @@ struct Instr {
 
 struct InstrBuffer {
 	Instr* instr;
-	size_t count;
+	uint16_t count;
 };
+
+inline void instr_buffer_init(InstrBuffer* buffer, Arena* allocator) {
+	buffer->instr = arena_alloc_array(allocator, Instr, 0);
+	buffer->count = 0;
+}
+
+inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
+	assert(buffer->count <= UINT16_MAX);
+	InstrIndex i = { .value = buffer->count };
+	buffer->count += 1;
+	return i;
+}
+
+#define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[index.value]
 
 String instr_name(InstrKind instr_kind);
 void instr_print(const Instr* instr);

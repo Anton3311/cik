@@ -78,6 +78,8 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_KEYWORD_INLINE] = STR_LIT("inline"),
 	[TOKEN_KEYWORD_EXTERN] = STR_LIT("extern"),
 	[TOKEN_KEYWORD_STATIC] = STR_LIT("static"),
+	[TOKEN_KEYWORD_IF] = STR_LIT("if"),
+	[TOKEN_KEYWORD_ELSE] = STR_LIT("else"),
 
 	[TOKEN_DECLSPEC] = STR_LIT("__declspec"),
 };
@@ -158,6 +160,10 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_STATIC;
 	} else if (str_equal(token_string, STR_LIT("__declspec"))) {
 		token_kind = TOKEN_DECLSPEC;
+	} else if (str_equal(token_string, STR_LIT("if"))) {
+		token_kind = TOKEN_KEYWORD_IF;
+	} else if (str_equal(token_string, STR_LIT("else"))) {
+		token_kind = TOKEN_KEYWORD_ELSE;
 	}
 
 	*out_token = (Token) {

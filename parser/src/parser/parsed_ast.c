@@ -564,6 +564,12 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 	case AST_NODE_RETURN:
 		print_return_stmt(printer, &node->return_stmt);
 		break;
+	case AST_NODE_BLOCK:
+		printer_begin_struct(printer, "block");
+		printer_field(printer, "body");
+		print_scope(printer, &node->block);
+		printer_end_struct(printer);
+		break;
 	}
 }
 

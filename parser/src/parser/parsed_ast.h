@@ -38,6 +38,7 @@ typedef enum {
 	AST_NODE_EXPR,
 	AST_NODE_VARIABLE,
 	AST_NODE_RETURN,
+	AST_NODE_BLOCK,
 } AstNodeKind;
 
 typedef enum {
@@ -364,6 +365,7 @@ struct ParsedNode {
 		ParsedExpr expr;
 		ParsedVariable variable;
 		ParsedReturnStmt return_stmt;
+		ParsedScope block;
 	};
 };
 

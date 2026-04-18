@@ -1669,7 +1669,9 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 	assert(hash_token.kind == TOKEN_HASH);
 
 	Token directive_name_token = tokenizer_next_token(state->tokenizer);
-	if (directive_name_token.kind != TOKEN_IDENT) {
+	if (directive_name_token.kind != TOKEN_IDENT
+			&& directive_name_token.kind != TOKEN_KEYWORD_IF
+			&& directive_name_token.kind != TOKEN_KEYWORD_ELSE) {
 		TokenKind expected_tokens[] = { TOKEN_IDENT };
 		diagnostics_report_unexpected_token(state->diagnostics,
 				directive_name_token,

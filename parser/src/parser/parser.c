@@ -1941,6 +1941,17 @@ static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 
 ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
+	case TOKEN_LEFT_BRACE: {
+		ParsedScope scope = {};
+		if (!_parser_parse_scope(parser, &scope)) {
+			return NULL;
+		}
+
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		node->kind = AST_NODE_BLOCK;
+		node->block = scope;
+		return node;
+	}
 	case TOKEN_KEYWORD_TYPEDEF: {
 		return _parser_parse_type_def(parser);
 	}

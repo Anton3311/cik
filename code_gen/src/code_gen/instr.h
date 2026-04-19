@@ -19,6 +19,9 @@ typedef enum {
 	INSTR_BIN_OP_32,
 	INSTR_BIN_OP_64,
 
+	INSTR_BRANCH,
+	INSTR_JUMP,
+
 	INSTR_REGION,
 } InstrKind;
 
@@ -69,6 +72,16 @@ struct Instr {
 		} bin_op;
 
 		struct {
+			InstrIndex condition;
+			InstrIndex true_region;
+			InstrIndex false_region;
+		} branch;
+
+		struct {
+			InstrIndex target_region;
+		} jump;
+
+		struct {
 			InstrIndex last_instr;
 		} region;
 	};
@@ -96,6 +109,22 @@ inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 }
 
 #define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[index.value]
+
+inline InstrIndex instr_new_region(InstrBuffer* buffer, Arena* allocator) {
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_REGION;
+	instr->region.last_instr.value = UINT16_MAX;
+	return i;
+}
+
+inline InstrIndex instr_new_jump(InstrBuffer* buffer, Arena* allocator, InstrIndex target) {
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_JUMP;
+	instr->jump.target_region = target;
+	return i;
+}
 
 String instr_name(InstrKind instr_kind);
 void instr_print(const Instr* instr);

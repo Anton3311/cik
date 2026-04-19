@@ -10,6 +10,8 @@ static String instr_kind_to_string[] = {
 	[INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
 	[INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
 	[INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
+	[INSTR_BRANCH] = STR_LIT("branch"),
+	[INSTR_JUMP] = STR_LIT("jump"),
 	[INSTR_REGION] = STR_LIT("region"),
 };
 
@@ -52,6 +54,15 @@ void instr_print(const Instr* instr) {
 				instr->const_64.i64,
 				instr->const_64.u64,
 				instr->const_64.f64);
+		break;
+	case INSTR_BRANCH:
+		printf("condition: %u true: %u false: %u",
+				(uint32_t)instr->branch.condition.value,
+				(uint32_t)instr->branch.true_region.value,
+				(uint32_t)instr->branch.false_region.value);
+		break;
+	case INSTR_JUMP:
+		printf("%u", (uint32_t)instr->jump.target_region.value);
 		break;
 	case INSTR_REGION:
 		printf("%u", (uint32_t)instr->region.last_instr.value);

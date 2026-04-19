@@ -52,6 +52,72 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	return (InstrIndex) {};
 }
 
+static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNode* first_node) {
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	InstrIndex region_instr_index = instr_new_region(instr_buffer, instr_allocator);
+
+	for (const ParsedNode* node = first_node; node != NULL; node = node->next) {
+		Instr* region_instr = instr_buffer_at(instr_buffer, region_instr_index);
+
+		switch (node->kind) {
+		case AST_NODE_VARIABLE:
+			assert(node->variable.id < compiler->var_count);
+
+			compiler->vars[node->variable.id].var_def = &node->variable;
+			if (node->variable.value) {
+				compiler->vars[node->variable.id].value = _compile_expr(compiler, node->variable.value);
+			}
+
+			break;
+		case AST_NODE_IF: {
+			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+			instr->kind = INSTR_BRANCH;
+			instr->branch.condition = _compile_expr(compiler, &node->if_stmt.condition);
+
+			InstrIndex post_branch_region_index = instr_new_region(instr_buffer, instr_allocator);
+			InstrIndex post_branch_jump_index = instr_new_jump(instr_buffer, instr_allocator, post_branch_region_index);
+
+			InstrIndex true_region_index = INVALID_INSTR_INDEX;
+			InstrIndex false_region_index = INVALID_INSTR_INDEX;
+			if (node->if_stmt.true_node->kind == AST_NODE_BLOCK) {
+				true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node->block.nodes.first);
+			} else {
+				true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
+			}
+
+			{
+				Instr* true_region = instr_buffer_at(instr_buffer, true_region_index);
+				true_region->region.last_instr = post_branch_jump_index;
+			}
+
+			{
+				false_region_index = instr_new_region(instr_buffer, instr_allocator);
+				Instr* false_region = instr_buffer_at(instr_buffer, false_region_index);
+				false_region->region.last_instr = post_branch_jump_index;
+			}
+
+			instr->branch.true_region = true_region_index;
+			instr->branch.false_region = false_region_index;
+
+			assert(node->if_stmt.false_node == NULL);
+
+			region_instr->region.last_instr = instr_index;
+
+			region_instr_index = post_branch_region_index;
+			break;
+		}
+		case AST_NODE_EXPR:
+			_compile_expr(compiler, &node->expr);
+			break;
+		}
+	}
+
+	return region_instr_index;
+}
+
 void function_compiler_compile(FunctionCompiler* compiler) {
 	const ParsedScope* body = compiler->function->body;
 	if (!body) {
@@ -67,20 +133,8 @@ void function_compiler_compile(FunctionCompiler* compiler) {
 		compiler->vars[i].value = INVALID_INSTR_INDEX;
 	}
 
-	for (const ParsedNode* node = body->nodes.first; node != NULL; node = node->next) {
-		switch (node->kind) {
-		case AST_NODE_VARIABLE:
-			assert(node->variable.id < compiler->var_count);
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
 
-			compiler->vars[node->variable.id].var_def = &node->variable;
-			if (node->variable.value) {
-				compiler->vars[node->variable.id].value = _compile_expr(compiler, node->variable.value);
-			}
-
-			break;
-		case AST_NODE_EXPR:
-			_compile_expr(compiler, &node->expr);
-			break;
-		}
-	}
+	InstrIndex region = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
 }

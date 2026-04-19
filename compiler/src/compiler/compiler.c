@@ -56,7 +56,8 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
-	InstrIndex region_instr_index = instr_new_region(instr_buffer, instr_allocator);
+	InstrIndex initial_region = instr_new_region(instr_buffer, instr_allocator);
+	InstrIndex region_instr_index = initial_region;
 
 	for (const ParsedNode* node = first_node; node != NULL; node = node->next) {
 		Instr* region_instr = instr_buffer_at(instr_buffer, region_instr_index);
@@ -80,13 +81,8 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			InstrIndex post_branch_region_index = instr_new_region(instr_buffer, instr_allocator);
 			InstrIndex post_branch_jump_index = instr_new_jump(instr_buffer, instr_allocator, post_branch_region_index);
 
-			InstrIndex true_region_index = INVALID_INSTR_INDEX;
+			InstrIndex true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
 			InstrIndex false_region_index = INVALID_INSTR_INDEX;
-			if (node->if_stmt.true_node->kind == AST_NODE_BLOCK) {
-				true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node->block.nodes.first);
-			} else {
-				true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
-			}
 
 			{
 				Instr* true_region = instr_buffer_at(instr_buffer, true_region_index);
@@ -109,13 +105,28 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			region_instr_index = post_branch_region_index;
 			break;
 		}
+		case AST_NODE_BLOCK: {
+			InstrIndex inner_region = _compile_block_to_region(compiler, node->block.nodes.first);
+			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer, instr_allocator, inner_region);
+
+			InstrIndex post_block_region = instr_new_region(instr_buffer, instr_allocator);
+			InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer, instr_allocator, post_block_region);
+
+			region_instr->region.last_instr = jump_to_inner_region;
+
+			Instr* inner_region_instr = instr_buffer_at(instr_buffer, inner_region);
+			inner_region_instr->region.last_instr = jump_to_post_block_region;
+
+			region_instr_index = post_block_region;
+			break;
+		}
 		case AST_NODE_EXPR:
 			_compile_expr(compiler, &node->expr);
 			break;
 		}
 	}
 
-	return region_instr_index;
+	return initial_region;
 }
 
 void function_compiler_compile(FunctionCompiler* compiler) {

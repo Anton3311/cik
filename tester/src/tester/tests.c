@@ -1373,3 +1373,38 @@ void test_parse_expr_inside_parens(TestContext* context) {
 	assert(bin_expr->binary.right->kind == EXPR_INTEGER_LITERAL);
 	assert(bin_expr->binary.right->int_literal.value == 1);
 }
+
+void test_allow_variable_shadowing_in_nested_blocks(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT(
+				"int a = 1;"
+				"{"
+				"	int a = 10;"
+				"}"
+				), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* var = &node->variable;
+	assert(var->value != NULL);
+	assert(var->value->kind == EXPR_INTEGER_LITERAL);
+	assert(var->value->int_literal.value == 1);
+
+	ParsedNode* block_node = node->next;
+	assert(block_node->block.nodes.count == 1);
+
+	ParsedNode* var2_node = block_node->block.nodes.first;
+	assert(var2_node->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* var2 = &var2_node->variable;
+	assert(var2->value != NULL);
+	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
+	assert(var2->value->int_literal.value == 10);
+}

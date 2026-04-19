@@ -66,6 +66,13 @@ struct IdentifierEntry {
 	};
 };
 
+typedef enum {
+	IDENT_FIND_IN_CURRENT_SCOPE,
+	IDENT_FIND_IN_ALL_PARENT_SCOPES,
+
+	IDENT_FIND_DEFAULT = IDENT_FIND_IN_ALL_PARENT_SCOPES,
+} IdentifierFindOption;
+
 struct IdentifierScope {
 	// Incremented by 1 for each new instance.
 	uint64_t id;
@@ -111,6 +118,7 @@ void ident_storage_release(IdentifierStorage* storage);
 
 IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
+		IdentifierFindOption option,
 		String name);
 
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,

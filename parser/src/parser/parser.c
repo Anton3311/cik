@@ -203,13 +203,31 @@ inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace,
 	return true;
 }
 
-inline IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
+IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
+		IdentifierFindOption option,
 		String name) {
 
 	IdentifierNamespace* ident_namespace = _ident_storage_get_namespace(storage, namespace_kind);
 	size_t index = _ident_storage_try_find_entry(ident_namespace, name);
-	return index == SIZE_MAX ? NULL : ident_namespace->entries[index];
+	if (index == SIZE_MAX) {
+		return NULL;
+	}
+
+	IdentifierEntry* entry = ident_namespace->entries[index];
+	switch (option) {
+	case IDENT_FIND_IN_CURRENT_SCOPE:
+		if (entry->owner_scope == storage->current_scope) {
+			return entry;
+		}
+
+		return NULL;
+	case IDENT_FIND_IN_ALL_PARENT_SCOPES:
+		return entry;
+	}
+
+	unreachable();
+	return NULL;
 }
 
 void _ident_storage_init_namespace(IdentifierNamespace* ident_namespace) {
@@ -569,7 +587,10 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 
 		struct_def_initialized = false;
 	} else {
-		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_TAGGED,
+				IDENT_FIND_DEFAULT,
+				struct_name.string);
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_STRUCT)) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
@@ -744,7 +765,10 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 
 	ParsedEnum* enum_def = NULL;
 	if (enum_name.string.length > 0) {
-		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_TAGGED,
+				IDENT_FIND_DEFAULT,
+				enum_name.string);
 
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_ENUM)) {
@@ -953,7 +977,10 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 			break;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_ALIAS, token.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_ALIAS,
+				IDENT_FIND_DEFAULT,
+				token.string);
 		if (entry == NULL) {
 			return PARSE_TYPE_NOT_PARSED;
 
@@ -1094,7 +1121,10 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	type_def->new_name = source_string_from_token(new_name);
 	type_def->aliased_type = aliased_type;
 
-	IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_ALIAS, new_name.string);
+	IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+			IDENT_NAMESPACE_ALIAS,
+			IDENT_FIND_DEFAULT,
+			new_name.string);
 	if (!entry) {
 		entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_ALIAS,
@@ -1302,7 +1332,10 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Parsed
 			return EXPR_PARSE_OK;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, token.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				IDENT_FIND_DEFAULT,
+				token.string);
 		if (entry == NULL) {
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
@@ -1523,6 +1556,7 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 bool _check_for_var_redefinition(Parser* parser, SourceString var_name) {
 	IdentifierEntry* existing_identifier = ident_storage_find(parser->ident_storage,
 			IDENT_NAMESPACE_DEFAULT,
+			IDENT_FIND_IN_CURRENT_SCOPE,
 			var_name.string);
 
 	if (existing_identifier != NULL) {
@@ -1707,7 +1741,10 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			return NULL;
 		}
 
-		IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name.string);
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				IDENT_FIND_DEFAULT,
+				name.string);
 		ParsedFunction* function_def = NULL;
 		if (entry) {
 			if (!has_flag(entry->kind, IDENT_FUNCTION)) {

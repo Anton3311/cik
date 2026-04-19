@@ -71,4 +71,6 @@ void test_parse_return_stmt_without_value(TestContext* context);
 void test_multi_part_string_merging(TestContext* context);
 void test_parse_expr_inside_parens(TestContext* context);
 
+void test_allow_variable_shadowing_in_nested_blocks(TestContext* context);
+
 #endif

@@ -1624,7 +1624,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		while (true) {
 			Token token = tokenizer_view_next(state->tokenizer);
 			
-			uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line; 
+			uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line;
 
 			if (token_line > initial_line) {
 				break;

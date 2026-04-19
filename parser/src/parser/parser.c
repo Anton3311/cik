@@ -1218,25 +1218,46 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 //
 
 bool _token_kind_to_bin_op(TokenKind kind, BinOpKind* out_op) {
+#define ret(op) *out_op = op; return true;
+
 	switch (kind) {
-	case TOKEN_PLUS:
-		*out_op = BIN_OP_ADD;
-		return true;
-	case TOKEN_MINUS:
-		*out_op = BIN_OP_SUB;
-		return true;
-	case TOKEN_ASTERISK:
-		*out_op = BIN_OP_MUL;
-		return true;
-	case TOKEN_FORWARD_SLASH:
-		*out_op = BIN_OP_DIV;
-		return true;
-	case TOKEN_PERCENT:
-		*out_op = BIN_OP_MOD;
-		return true;
+	case TOKEN_PLUS: ret(BIN_OP_ADD);
+	case TOKEN_MINUS: ret(BIN_OP_SUB);
+	case TOKEN_ASTERISK: ret(BIN_OP_MUL);
+	case TOKEN_FORWARD_SLASH: ret(BIN_OP_DIV);
+	case TOKEN_PERCENT: ret(BIN_OP_MOD);
+
+	case TOKEN_LOGIC_AND: ret(BIN_OP_LOGICAL_AND);
+	case TOKEN_LOGIC_OR: ret(BIN_OP_LOGICAL_OR);
+
+	case TOKEN_DOUBLE_EQUAL: ret(BIN_OP_LOGICAL_EQUAL);
+	case TOKEN_NOT_EQUAL: ret(BIN_OP_LOGICAL_NOT_EQUAL);
+	case TOKEN_LESS: ret(BIN_OP_LOGICAL_LESS);
+	case TOKEN_GREATER: ret(BIN_OP_LOGICAL_GREATER);
+	case TOKEN_LESS_OR_EQUAL: ret(BIN_OP_LOGICAL_LESS_OR_EQUAL);
+	case TOKEN_GREATER_OR_EQUAL: ret(BIN_OP_LOGICAL_GREATER_OR_EQUAL);
+
+	case TOKEN_AMPERSAND: ret(BIN_OP_BITWISE_AND);
+	case TOKEN_PIPE: ret(BIN_OP_BITWISE_OR);
+	case TOKEN_BITWISE_XOR: ret(BIN_OP_BITWISE_XOR);
+
+	case TOKEN_EQUAL: ret(BIN_OP_ASSIGNMENT);
+
+	case TOKEN_ASSIGNMENT_BY_SUM: ret(BIN_OP_ASSIGNMENT_BY_SUM);
+	case TOKEN_ASSIGNMENT_BY_DIFFERENCE: ret(BIN_OP_ASSIGNMENT_BY_DIFFERENCE);
+	case TOKEN_ASSIGNMENT_BY_PRODUCT: ret(BIN_OP_ASSIGNMENT_BY_PRODUCT);
+	case TOKEN_ASSIGNMENT_BY_QUOTIENT: ret(BIN_OP_ASSIGNMENT_BY_QUOTIENT);
+	case TOKEN_ASSIGNMENT_BY_REMAINDER: ret(BIN_OP_ASSIGNMENT_BY_REMAINDER);
+
+	case TOKEN_ASSIGNMENT_BY_BITWISE_AND: ret(BIN_OP_ASSIGNMENT_BY_BITWISE_AND);
+	case TOKEN_ASSIGNMENT_BY_BITWISE_OR: ret(BIN_OP_ASSIGNMENT_BY_BITWISE_OR);
+	case TOKEN_ASSIGNMENT_BY_BITWISE_XOR: ret(BIN_OP_ASSIGNMENT_BY_BITWISE_XOR);
+
 	default:
 		return false;
 	}
+
+#undef ret
 
 	return false;
 }

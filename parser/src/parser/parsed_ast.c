@@ -1,21 +1,41 @@
 #include "parsed_ast.h"
 
-String bin_op_kind_to_string(BinOpKind op) {
-	switch (op) {
-	case BIN_OP_ADD:
-		return STR_LIT("+");
-	case BIN_OP_SUB:
-		return STR_LIT("-");
-	case BIN_OP_MUL:
-		return STR_LIT("*");
-	case BIN_OP_DIV:
-		return STR_LIT("/");
-	case BIN_OP_MOD:
-		return STR_LIT("%");
-	}
+static String s_bin_op_kind_to_string[] = {
+	[BIN_OP_ADD] = STR_LIT("+"),
+	[BIN_OP_SUB] = STR_LIT("-"),
+	[BIN_OP_MUL] = STR_LIT("*"),
+	[BIN_OP_DIV] = STR_LIT("/"),
+	[BIN_OP_MOD] = STR_LIT("%"),
 
-	unreachable();
-	return (String) {};
+	[BIN_OP_LOGICAL_AND] = STR_LIT("&&"),
+	[BIN_OP_LOGICAL_OR] = STR_LIT("||"),
+
+	[BIN_OP_LOGICAL_EQUAL] = STR_LIT("=="),
+	[BIN_OP_LOGICAL_NOT_EQUAL] = STR_LIT("!="),
+	[BIN_OP_LOGICAL_LESS] = STR_LIT("<"),
+	[BIN_OP_LOGICAL_GREATER] = STR_LIT(">"),
+	[BIN_OP_LOGICAL_LESS_OR_EQUAL] = STR_LIT("<="),
+	[BIN_OP_LOGICAL_GREATER_OR_EQUAL] = STR_LIT(">="),
+
+	[BIN_OP_BITWISE_AND] = STR_LIT("&"),
+	[BIN_OP_BITWISE_OR] = STR_LIT("|"),
+	[BIN_OP_BITWISE_XOR] = STR_LIT("^"),
+
+	[BIN_OP_ASSIGNMENT] = STR_LIT("="),
+
+	[BIN_OP_ASSIGNMENT_BY_SUM] = STR_LIT("+="),
+	[BIN_OP_ASSIGNMENT_BY_DIFFERENCE] = STR_LIT("-="),
+	[BIN_OP_ASSIGNMENT_BY_PRODUCT] = STR_LIT("*="),
+	[BIN_OP_ASSIGNMENT_BY_QUOTIENT] = STR_LIT("/="),
+	[BIN_OP_ASSIGNMENT_BY_REMAINDER] = STR_LIT("%="),
+
+	[BIN_OP_ASSIGNMENT_BY_BITWISE_AND] = STR_LIT("&="),
+	[BIN_OP_ASSIGNMENT_BY_BITWISE_OR] = STR_LIT("|="),
+	[BIN_OP_ASSIGNMENT_BY_BITWISE_XOR] = STR_LIT("^="),
+};
+
+String bin_op_kind_to_string(BinOpKind op) {
+	return s_bin_op_kind_to_string[op];
 }
 
 String unary_op_kind_to_string(UnaryOpKind op) {
@@ -51,10 +71,45 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	case BIN_OP_ADD:
 	case BIN_OP_SUB:
 		return 4;
+
 	case BIN_OP_MUL:
 	case BIN_OP_DIV:
 	case BIN_OP_MOD:
 		return 3;
+
+	case BIN_OP_LOGICAL_AND:
+		return 11;
+	case BIN_OP_LOGICAL_OR:
+		return 12;
+
+	case BIN_OP_LOGICAL_EQUAL:
+	case BIN_OP_LOGICAL_NOT_EQUAL:
+		return 7;
+
+	case BIN_OP_LOGICAL_LESS:
+	case BIN_OP_LOGICAL_GREATER:
+	case BIN_OP_LOGICAL_LESS_OR_EQUAL:
+	case BIN_OP_LOGICAL_GREATER_OR_EQUAL:
+		return 6;
+
+	case BIN_OP_BITWISE_AND:
+		return 8;
+	case BIN_OP_BITWISE_OR:
+		return 10;
+	case BIN_OP_BITWISE_XOR:
+		return 9;
+
+	case BIN_OP_ASSIGNMENT:
+	case BIN_OP_ASSIGNMENT_BY_SUM:
+	case BIN_OP_ASSIGNMENT_BY_DIFFERENCE:
+	case BIN_OP_ASSIGNMENT_BY_PRODUCT:
+	case BIN_OP_ASSIGNMENT_BY_QUOTIENT:
+	case BIN_OP_ASSIGNMENT_BY_REMAINDER:
+
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_AND:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_OR:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_XOR:
+		return 14;
 	}
 
 	unreachable();

@@ -2049,8 +2049,6 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 	while (true) {
 		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_EOF) {
-			preprocessor_next_token(parser->preprocessor);
-
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
 					STR_LIT("Unexpected end of file"),

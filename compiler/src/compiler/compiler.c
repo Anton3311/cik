@@ -29,6 +29,10 @@ static InstrIndex _compile_expr(InstrBuffer* instr_buffer, Arena* instr_allocato
 
 void function_compiler_compile(FunctionCompiler* compiler) {
 	const ParsedScope* body = compiler->function->body;
+	if (!body) {
+		return;
+	}
+
 	for (const ParsedNode* node = body->nodes.first; node != NULL; node = node->next) {
 		if (node->kind == AST_NODE_EXPR) {
 			_compile_expr(&compiler->instr_buffer, compiler->instr_allocator, &node->expr);

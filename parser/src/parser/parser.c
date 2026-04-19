@@ -273,6 +273,7 @@ static IdentifierEntry* _ident_storage_alloc_entry(IdentifierStorage* storage) {
 
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
+		IdentifierEntryKind entry_kind,
 		SourceString name) {
 
 	assert(storage != NULL);
@@ -280,14 +281,12 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 	assert(storage->current_scope);
 
 	IdentifierNamespace* ident_namespace = _ident_storage_get_namespace(storage, namespace_kind);
-
 	IdentifierEntry* entry = NULL;
 
 	size_t existing_entry_index = _ident_storage_try_find_entry(ident_namespace, name.string);
 	if (existing_entry_index == SIZE_MAX) {
-		assert(ident_namespace->count < ident_namespace->capacity);
-
 		entry = _ident_storage_alloc_entry(storage);
+		entry->kind = entry_kind;
 
 		bool entry_inserted = _ident_storage_try_insert(ident_namespace, storage->namespace_allocator, name.string, entry);
 		assert(entry_inserted);
@@ -296,7 +295,7 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 				"Identifier with the given name is already defined in the current scope");
 
 		entry = _ident_storage_alloc_entry(storage);
-		memset(entry, 0, sizeof(*entry));
+		entry->kind = entry_kind;
 
 		entry->prev = ident_namespace->entries[existing_entry_index];
 		ident_namespace->entries[existing_entry_index] = entry;
@@ -306,16 +305,25 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 	entry->owner_namespace = namespace_kind;
 	entry->owner_scope = storage->current_scope;
 
-	// Add to the current scope
-	if (storage->current_scope->first_identifier == NULL) {
-		storage->current_scope->first_identifier = entry;
-	} else {
-		storage->current_scope->last_identifier->next_in_scope = entry;
+	{
+		IdentifierScope* current_scope = storage->current_scope;
+
+		// Add to the current scope
+		if (current_scope->first_identifier == NULL) {
+			current_scope->first_identifier = entry;
+		} else {
+			current_scope->last_identifier->next_in_scope = entry;
+		}
+
+		current_scope->last_identifier = entry;
+
+		uint8_t entry_kind_index = ((uint8_t)entry_kind) & IDENT_ENTRY_INDEX_MASK;
+		assert((size_t)entry_kind_index < IDENT_ENTRY_KIND_COUNT);
+
+		current_scope->nested_entry_count[entry_kind_index] += 1;
+		current_scope->entry_count[entry_kind_index] += 1;
 	}
 
-	storage->current_scope->last_identifier = entry;
-
-	assert(entry != NULL);
 	return entry;
 }
 
@@ -382,6 +390,13 @@ void ident_storage_end_scope(IdentifierStorage* storage) {
 	}
 
 	IdentifierScope* parent_scope = scope->parent;
+	if (parent_scope) {
+		for (size_t i = 0; i < IDENT_ENTRY_KIND_COUNT; i += 1) {
+			parent_scope->nested_entry_count[i] += scope->nested_entry_count[i];
+
+			assert(parent_scope->nested_entry_count[i] >= parent_scope->entry_count[i]);
+		}
+	}
 
 	scope->next_free = storage->next_free_scope;
 	storage->next_free_scope = scope;
@@ -597,8 +612,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 				return false;
 			}
 		} else {
-			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, struct_name);
-			entry->kind = IDENT_STRUCT;
+			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, IDENT_STRUCT, struct_name);
 
 			struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
 			memset(struct_def, 0, sizeof(*struct_def));
@@ -772,8 +786,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 				return false;
 			}
 		} else {
-			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, enum_name);
-			entry->kind = IDENT_ENUM;
+			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, IDENT_ENUM, enum_name);
 
 			enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
 			memset(enum_def, 0, sizeof(*enum_def));
@@ -1083,8 +1096,10 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 
 	IdentifierEntry* entry = ident_storage_find(parser->ident_storage, IDENT_NAMESPACE_ALIAS, new_name.string);
 	if (!entry) {
-		entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_ALIAS, source_string_from_token(new_name));
-		entry->kind = IDENT_TYPE_DEF;
+		entry = ident_storage_insert(parser->ident_storage,
+				IDENT_NAMESPACE_ALIAS,
+				IDENT_TYPE_DEF,
+				source_string_from_token(new_name));
 	}
 
 	entry->type_def = type_def;
@@ -1618,8 +1633,11 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 		node->variable.value = value;
 		node->variable.storage_specifier = storage_specifier;
 
-		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, node->variable.name);
-		entry->kind = IDENT_VARIABLE;
+		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				IDENT_VARIABLE,
+				node->variable.name);
+
 		entry->variable = &node->variable;
 		return node;
 	} else if (token.kind == TOKEN_SEMICOLON) {
@@ -1641,8 +1659,11 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			.storage_specifier = storage_specifier,
 		};
 
-		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name);
-		entry->kind = IDENT_VARIABLE;
+		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				IDENT_VARIABLE,
+				name);
+
 		entry->variable = &node->variable;
 		return node;
 	}
@@ -1751,8 +1772,10 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 				}
 			}
 		} else {
-			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_DEFAULT, name);
-			entry->kind = IDENT_FUNCTION;
+			entry = ident_storage_insert(parser->ident_storage,
+					IDENT_NAMESPACE_DEFAULT,
+					IDENT_FUNCTION,
+					name);
 
 			function_def = arena_alloc(parser->ast_allocator, ParsedFunction); 
 			memset(function_def, 0, sizeof(*function_def));

@@ -33,6 +33,9 @@ typedef enum {
 	IDENT_FUNCTION = IDENT_CATEGORY_VAR_OR_FUNC | 4,
 } IdentifierEntryKind;
 
+#define IDENT_ENTRY_KIND_COUNT 5
+static const uint8_t IDENT_ENTRY_INDEX_MASK = 0b1111;
+
 typedef enum {
 	IDENT_NAMESPACE_DEFAULT,
 	IDENT_NAMESPACE_TAGGED,
@@ -72,6 +75,9 @@ struct IdentifierScope {
 
 	IdentifierEntry* first_identifier;
 	IdentifierEntry* last_identifier;
+
+	uint32_t nested_entry_count[IDENT_ENTRY_KIND_COUNT];
+	uint32_t entry_count[IDENT_ENTRY_KIND_COUNT];
 };
 
 struct IdentifierNamespace {
@@ -105,6 +111,7 @@ IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
+		IdentifierEntryKind entry_kind,
 		SourceString name);
 
 void ident_storage_remove(IdentifierStorage* storage,

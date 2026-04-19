@@ -6,7 +6,18 @@ static String instr_kind_to_string[] = {
 	[INSTR_CONST_16] = STR_LIT("const_16"),
 	[INSTR_CONST_32] = STR_LIT("const_32"),
 	[INSTR_CONST_64] = STR_LIT("const_64"),
+	[INSTR_BIN_OP_8] = STR_LIT("bin_op_8"),
+	[INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
+	[INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
+	[INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
 	[INSTR_REGION] = STR_LIT("region"),
+};
+
+static String s_instr_bin_op_kind_to_string[] = {
+	[INSTR_BIN_ADD] = STR_LIT("add"),
+	[INSTR_BIN_SUB] = STR_LIT("sub"),
+	[INSTR_BIN_MUL] = STR_LIT("mul"),
+	[INSTR_BIN_DIV] = STR_LIT("div"),
 };
 
 String instr_name(InstrKind instr_kind) {
@@ -45,6 +56,16 @@ void instr_print(const Instr* instr) {
 	case INSTR_REGION:
 		printf("%u", (uint32_t)instr->region.last_instr.value);
 		break;
+	case INSTR_BIN_OP_8:
+	case INSTR_BIN_OP_16:
+	case INSTR_BIN_OP_32:
+	case INSTR_BIN_OP_64: {
+		printf("op: %.*s left: %u right: %u",
+				STR_FMT(s_instr_bin_op_kind_to_string[instr->bin_op.kind]),
+				(uint32_t)instr->bin_op.left.value,
+				(uint32_t)instr->bin_op.right.value);
+		break;
+	}
 	}
 
 	printf("\n");

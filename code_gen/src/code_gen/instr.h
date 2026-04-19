@@ -14,8 +14,20 @@ typedef enum {
 	INSTR_CONST_32,
 	INSTR_CONST_64,
 
+	INSTR_BIN_OP_8,
+	INSTR_BIN_OP_16,
+	INSTR_BIN_OP_32,
+	INSTR_BIN_OP_64,
+
 	INSTR_REGION,
 } InstrKind;
+
+typedef enum {
+	INSTR_BIN_ADD,
+	INSTR_BIN_SUB,
+	INSTR_BIN_MUL,
+	INSTR_BIN_DIV,
+} InstrBinOp;
 
 typedef struct {
 	uint16_t value;
@@ -48,6 +60,13 @@ struct Instr {
 			int64_t i64;
 			double f64;
 		} const_64;
+
+		// The same for all INSTR_BIN_OP_*
+		struct {
+			InstrBinOp kind;
+			InstrIndex left;
+			InstrIndex right;
+		} bin_op;
 
 		struct {
 			InstrIndex last_instr;

@@ -6,8 +6,18 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	switch (expr->kind) {
 	case EXPR_CALL:
 		break;
-	case EXPR_BINARY:
-		break;
+	case EXPR_BINARY: {
+		InstrIndex left = _compile_expr(compiler, expr->binary.left);
+		InstrIndex right = _compile_expr(compiler, expr->binary.right);
+
+		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+		instr->kind = INSTR_BIN_OP_64;
+		instr->bin_op.kind = INSTR_BIN_ADD;
+		instr->bin_op.left = left;
+		instr->bin_op.right = right;
+		return instr_index;
+	}
 	case EXPR_UNARY:
 		break;
 	case EXPR_FUNCTION_REFERENCE:

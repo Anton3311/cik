@@ -255,6 +255,22 @@ void ident_storage_release(IdentifierStorage* storage) {
 	
 }
 
+static IdentifierEntry* _ident_storage_alloc_entry(IdentifierStorage* storage) {
+	IdentifierEntry* entry = NULL;
+	if (storage->next_free_entry) {
+		// Reuse a free entry
+		entry = storage->next_free_entry;
+		storage->next_free_entry = storage->next_free_entry->next_in_scope;
+	} else {
+		entry = arena_alloc(storage->allocator, IdentifierEntry);
+	}
+
+	assert(entry);
+
+	memset(entry, 0, sizeof(*entry));
+	return entry;
+}
+
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
 		SourceString name) {
@@ -271,15 +287,7 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 	if (existing_entry_index == SIZE_MAX) {
 		assert(ident_namespace->count < ident_namespace->capacity);
 
-		if (storage->next_free_entry) {
-			// Reuse a free entry
-			entry = storage->next_free_entry;
-			storage->next_free_entry = storage->next_free_entry->next_in_scope;
-		} else {
-			entry = arena_alloc(storage->allocator, IdentifierEntry);
-		}
-
-		memset(entry, 0, sizeof(*entry));
+		entry = _ident_storage_alloc_entry(storage);
 
 		bool entry_inserted = _ident_storage_try_insert(ident_namespace, storage->namespace_allocator, name.string, entry);
 		assert(entry_inserted);
@@ -287,7 +295,7 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		assert_msg(ident_namespace->entries[existing_entry_index]->owner_scope != storage->current_scope,
 				"Identifier with the given name is already defined in the current scope");
 
-		entry = arena_alloc(storage->allocator, IdentifierEntry);
+		entry = _ident_storage_alloc_entry(storage);
 		memset(entry, 0, sizeof(*entry));
 
 		entry->prev = ident_namespace->entries[existing_entry_index];
@@ -336,6 +344,7 @@ void ident_storage_remove(IdentifierStorage* storage,
 	}
 
 	entry->next_in_scope = storage->next_free_entry;
+	storage->next_free_entry = entry;
 }
 
 IdentifierScope* ident_storage_begin_scope(IdentifierStorage* storage) {

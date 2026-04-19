@@ -72,5 +72,7 @@ void test_multi_part_string_merging(TestContext* context);
 void test_parse_expr_inside_parens(TestContext* context);
 
 void test_allow_variable_shadowing_in_nested_blocks(TestContext* context);
+void test_allow_variable_shadowing_in_if_statements(TestContext* context);
+void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* context);
 
 #endif

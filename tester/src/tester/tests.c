@@ -1408,3 +1408,74 @@ void test_allow_variable_shadowing_in_nested_blocks(TestContext* context) {
 	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var2->value->int_literal.value == 10);
 }
+
+void test_allow_variable_shadowing_in_if_statements(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT(
+				"int a = 1;"
+				"if (1)"
+				"	int a = 10;"
+				), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* var = &node->variable;
+	assert(var->value != NULL);
+	assert(var->value->kind == EXPR_INTEGER_LITERAL);
+	assert(var->value->int_literal.value == 1);
+
+	ParsedNode* if_stmt_node = node->next;
+	assert(if_stmt_node->kind == AST_NODE_IF);
+	assert(if_stmt_node->if_stmt.true_node != NULL);
+
+	ParsedNode* var2_node = if_stmt_node->if_stmt.true_node;
+	assert(var2_node->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* var2 = &var2_node->variable;
+	assert(var2->value != NULL);
+	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
+	assert(var2->value->int_literal.value == 10);
+}
+
+void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT(
+				"int a = 1;"
+				"if (1) {}"
+				"else"
+				"	int a = 10;"
+				), &ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 2);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* var = &node->variable;
+	assert(var->value != NULL);
+	assert(var->value->kind == EXPR_INTEGER_LITERAL);
+	assert(var->value->int_literal.value == 1);
+
+	ParsedNode* if_stmt_node = node->next;
+	assert(if_stmt_node->kind == AST_NODE_IF);
+	assert(if_stmt_node->if_stmt.true_node != NULL);
+
+	ParsedNode* var2_node = if_stmt_node->if_stmt.false_node;
+	assert(var2_node->kind == AST_NODE_VARIABLE);
+
+	ParsedVariable* var2 = &var2_node->variable;
+	assert(var2->value != NULL);
+	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
+	assert(var2->value->int_literal.value == 10);
+}

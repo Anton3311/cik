@@ -2053,9 +2053,16 @@ static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
 		return NULL;
 	}
 
-	Token true_node_token = preprocessor_view_next(parser->preprocessor);
-	ParsedNode* true_node = _parser_parse_single_node(parser, true_node_token);
+	ParsedNode* true_node = NULL;
 	ParsedNode* false_node = NULL;
+
+	Token true_node_token = preprocessor_view_next(parser->preprocessor);
+
+	{
+		ident_storage_begin_scope(parser->ident_storage);
+		true_node = _parser_parse_single_node(parser, true_node_token);
+		ident_storage_end_scope(parser->ident_storage);
+	}
 
 	if (true_node == NULL) {
 		diagnostics_report_error(parser->diagnostics,
@@ -2070,7 +2077,12 @@ static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
 		preprocessor_next_token(parser->preprocessor);
 
 		Token false_node_token = preprocessor_view_next(parser->preprocessor);
-		false_node = _parser_parse_single_node(parser, false_node_token);
+
+		{
+			ident_storage_begin_scope(parser->ident_storage);
+			false_node = _parser_parse_single_node(parser, false_node_token);
+			ident_storage_end_scope(parser->ident_storage);
+		}
 
 		if (false_node == NULL) {
 			diagnostics_report_error(parser->diagnostics,

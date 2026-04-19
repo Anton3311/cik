@@ -420,7 +420,7 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 		ParsedType* out_type,
 		bool duplicate_base_type);
 
-
+static ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token);
 
 void _parser_skip_until_semicolon(Parser* parser) {
 	while (true) {
@@ -1987,6 +1987,71 @@ static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 	return decl_spec;
 }
 
+static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
+	Token if_token = preprocessor_next_token(parser->preprocessor);
+	assert(if_token.kind == TOKEN_KEYWORD_IF);
+
+	Token left_paren = preprocessor_next_token(parser->preprocessor);
+	if (left_paren.kind != TOKEN_LEFT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				left_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		return NULL;
+	}
+
+	ParsedExpr condition = {};
+	if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
+		return NULL;
+	}
+	
+	Token right_paren = preprocessor_next_token(parser->preprocessor);
+	if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				right_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		return NULL;
+	}
+
+	Token true_node_token = preprocessor_view_next(parser->preprocessor);
+	ParsedNode* true_node = _parser_parse_single_node(parser, true_node_token);
+	ParsedNode* false_node = NULL;
+
+	if (true_node == NULL) {
+		diagnostics_report_error(parser->diagnostics,
+				true_node_token.source_range,
+				STR_LIT("Expected a statement if condition"),
+				NULL);
+		return NULL;
+	}
+
+	Token maybe_else = preprocessor_view_next(parser->preprocessor);
+	if (maybe_else.kind == TOKEN_KEYWORD_ELSE) {
+		preprocessor_next_token(parser->preprocessor);
+
+		Token false_node_token = preprocessor_view_next(parser->preprocessor);
+		false_node = _parser_parse_single_node(parser, false_node_token);
+
+		if (false_node == NULL) {
+			diagnostics_report_error(parser->diagnostics,
+					false_node_token.source_range,
+					STR_LIT("Expected a statement after else"),
+					NULL);
+			return NULL;
+		}
+	}
+
+	ParsedNode* if_stmt_node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+	if_stmt_node->kind = AST_NODE_IF;
+	if_stmt_node->if_stmt.condition = condition;
+	if_stmt_node->if_stmt.true_node = true_node;
+	if_stmt_node->if_stmt.false_node = false_node;
+	return if_stmt_node;
+}
+
 ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
 	case TOKEN_LEFT_BRACE: {
@@ -2066,6 +2131,9 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		node->kind = AST_NODE_RETURN;
 		node->return_stmt.value = return_value;
 		return node;
+	}
+	case TOKEN_KEYWORD_IF: {
+		return _parser_parse_if_stmt(parser);
 	}
 	default: {
 		ParsedDeclSpec* decl_spec = _parser_parse_decl_spec(parser);

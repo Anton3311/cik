@@ -25,6 +25,7 @@ typedef struct ParsedUnaryExpr ParsedUnaryExpr;
 typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
 typedef struct ParsedReturnStmt ParsedReturnStmt;
 typedef struct ParsedDeclSpec ParsedDeclSpec;
+typedef struct ParsedIfStmt ParsedIfStmt;
 
 //
 // AST
@@ -39,6 +40,7 @@ typedef enum {
 	AST_NODE_VARIABLE,
 	AST_NODE_RETURN,
 	AST_NODE_BLOCK,
+	AST_NODE_IF,
 } AstNodeKind;
 
 typedef enum {
@@ -352,6 +354,18 @@ struct ParsedReturnStmt {
 };
 
 //
+// IfStmt
+//
+
+struct ParsedIfStmt {
+	ParsedExpr condition;
+	ParsedNode* true_node;
+
+	// This one can be optional
+	ParsedNode* false_node;
+};
+
+//
 // Node
 //
 
@@ -368,6 +382,7 @@ struct ParsedNode {
 		ParsedVariable variable;
 		ParsedReturnStmt return_stmt;
 		ParsedScope block;
+		ParsedIfStmt if_stmt;
 	};
 };
 

@@ -570,6 +570,22 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 		print_scope(printer, &node->block);
 		printer_end_struct(printer);
 		break;
+	case AST_NODE_IF:
+		printer_begin_struct(printer, "if");
+
+		printer_field(printer, "condition");
+		print_expr(printer, &node->if_stmt.condition);
+
+		printer_field(printer, "true_node");
+		print_single_node(printer, node->if_stmt.true_node);
+
+		if (node->if_stmt.false_node) {
+			printer_field(printer, "false_node");
+			print_single_node(printer, node->if_stmt.false_node);
+		}
+
+		printer_end_struct(printer);
+		break;
 	}
 }
 

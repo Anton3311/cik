@@ -9,6 +9,7 @@
 static TestCase source_info_tests[] = {
 	test(test_text_start_position_to_source_location),
 	test(test_last_line_postion_to_source_location),
+	test(test_line_range_of_one_line_source_code),
 };
 
 static TestCase tokenizer_tests[] = { 

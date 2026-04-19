@@ -5,6 +5,7 @@
 
 void test_text_start_position_to_source_location(TestContext* context);
 void test_last_line_postion_to_source_location(TestContext* context);
+void test_line_range_of_one_line_source_code(TestContext* context);
 
 
 

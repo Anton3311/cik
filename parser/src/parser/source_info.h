@@ -35,9 +35,10 @@ LineInfo line_info_from_source(Arena* allocator, String source);
 SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_t string_pos);
 
 inline SourceRange line_info_get_line_range(const LineInfo* line_info, size_t line_index) {
+	assert(line_index < (size_t)line_info->line_count);
 	return (SourceRange) {
 		.start = line_info->line_starts[line_index],
-		.end = line_info->line_starts[line_index + 1] - 1,
+		.end = line_info->line_starts[line_index + 1],
 	};
 }
 

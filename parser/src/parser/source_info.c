@@ -21,6 +21,11 @@ LineInfo line_info_from_source(Arena* allocator, String source) {
 
 	arena_alloc(allocator, uint32_t);
 	line_info.line_starts[line_info.line_count] = (uint32_t)line_start;
+	line_info.line_count += 1;
+
+	arena_alloc(allocator, uint32_t);
+	line_info.line_starts[line_info.line_count] = (uint32_t)source.length;
+
 	line_info.source_length = source.length;
 
 	return line_info;
@@ -28,6 +33,12 @@ LineInfo line_info_from_source(Arena* allocator, String source) {
 
 SourceLocation line_info_pos_to_source_location(const LineInfo* line_info, size_t string_pos) {
 	assert(string_pos <= line_info->source_length);
+	if (string_pos == line_info->source_length) {
+		SourceLocation location = {};
+		location.line = line_info->line_count - 1;
+		location.column = (uint32_t)string_pos - line_info->line_starts[location.line];
+		return location;
+	}
 
 	uint32_t left = 0;
 	uint32_t right = line_info->line_count + 1;

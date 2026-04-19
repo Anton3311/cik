@@ -29,6 +29,16 @@ void test_last_line_postion_to_source_location(TestContext* context) {
 	assert(position.column == 2);
 }
 
+void test_line_range_of_one_line_source_code(TestContext* context) {
+	String source_code = STR_LIT("hello");
+
+	LineInfo line_info = line_info_from_source(context->arena, source_code);
+
+	SourceRange range = line_info_get_line_range(&line_info, 0);
+	assert(range.start == 0);
+	assert(range.end == 5);
+}
+
 //
 // Tokenizer
 //

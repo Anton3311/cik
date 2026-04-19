@@ -7,6 +7,16 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	case EXPR_CALL:
 		break;
 	case EXPR_BINARY: {
+		if (expr->binary.op == BIN_OP_ASSIGNMENT) {
+			assert(expr->binary.left->kind == EXPR_VARIABLE_REFERENCE);
+
+			InstrIndex value = _compile_expr(compiler, expr->binary.right);
+			const ParsedVariable* variable = expr->binary.left->variable_ref;
+
+			compiler->vars[variable->id].value = value;
+			return value;
+		}
+
 		InstrIndex left = _compile_expr(compiler, expr->binary.left);
 		InstrIndex right = _compile_expr(compiler, expr->binary.right);
 

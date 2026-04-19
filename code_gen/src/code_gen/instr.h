@@ -21,6 +21,8 @@ typedef struct {
 	uint16_t value;
 } InstrIndex;
 
+static const InstrIndex INVALID_INSTR_INDEX = (InstrIndex) { .value = UINT16_MAX };
+
 struct Instr {
 	InstrKind kind;
 
@@ -65,6 +67,10 @@ inline void instr_buffer_init(InstrBuffer* buffer, Arena* allocator) {
 
 inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 	assert(buffer->count <= UINT16_MAX);
+
+	Instr* instr = arena_alloc(allocator, Instr);
+	(void)instr;
+
 	InstrIndex i = { .value = buffer->count };
 	buffer->count += 1;
 	return i;

@@ -1632,6 +1632,9 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 		node->variable.type = *type;
 		node->variable.value = value;
 		node->variable.storage_specifier = storage_specifier;
+		node->variable.id = parser->next_var_id;
+
+		parser->next_var_id += 1;
 
 		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
@@ -1657,7 +1660,10 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			.type = *type,
 			.value = NULL,
 			.storage_specifier = storage_specifier,
+			.id = parser->next_var_id,
 		};
+
+		parser->next_var_id += 1;
 
 		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
@@ -1668,6 +1674,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 		return node;
 	}
 
+	uint32_t var_count = 0;
 	if (is_function) {
 		bool is_forward_declared = true;
 
@@ -1679,7 +1686,14 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			body = arena_alloc(parser->ast_allocator, ParsedScope);
 			memset(body, 0, sizeof(*body));
 
-			if (!_parser_parse_scope(parser, body)) {
+			uint32_t last_var_id_state = parser->next_var_id;
+
+			bool result = _parser_parse_scope(parser, body);
+
+			var_count = parser->next_var_id;
+			parser->next_var_id = last_var_id_state;
+
+			if (!result) {
 				return NULL;
 			}
 		} else if (token.kind == TOKEN_SEMICOLON) {
@@ -1787,6 +1801,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			function_def->is_forward_declared = is_forward_declared;
 			function_def->decl_spec = decl_spec;
 			function_def->storage_specifier = storage_specifier;
+			function_def->var_count = var_count;
 
 			entry->function_def = function_def;
 		}
@@ -1801,6 +1816,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			function_def->calling_convention = call_conv;
 			function_def->decl_spec = decl_spec;
 			function_def->storage_specifier = storage_specifier;
+			function_def->var_count = var_count;
 		}
 
 		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);

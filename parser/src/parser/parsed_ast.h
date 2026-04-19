@@ -328,6 +328,7 @@ struct ParsedFunction {
 	ParsedScope* body;
 	ParsedDeclSpec* decl_spec;
 	StorageSpecifier storage_specifier;
+	uint32_t var_count;
 };
 
 //
@@ -339,6 +340,7 @@ struct ParsedVariable {
 	ParsedType type;
 	ParsedExpr* value;
 	StorageSpecifier storage_specifier;
+	uint32_t id;
 };
 
 //

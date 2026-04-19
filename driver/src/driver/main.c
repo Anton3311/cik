@@ -120,10 +120,9 @@ int main(int argc, char *argv[]) {
 			if (node->kind == AST_NODE_FUNCTION) {
 				FunctionCompiler c = {};
 				c.function = node->function_def;
+				c.allocator = &arena;
 				c.instr_allocator = &arena;
 				c.temp_allocator = &temp_arena;
-
-				instr_buffer_init(&c.instr_buffer, c.instr_allocator);
 
 				function_compiler_compile(&c);
 				instr_print_all(c.instr_buffer);

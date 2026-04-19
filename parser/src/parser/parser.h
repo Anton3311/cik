@@ -34,7 +34,11 @@ typedef enum {
 } IdentifierEntryKind;
 
 #define IDENT_ENTRY_KIND_COUNT 5
-static const uint8_t IDENT_ENTRY_INDEX_MASK = 0b1111;
+#define IDENT_ENTRY_INDEX_MASK 0b1111
+
+inline uint8_t ident_entry_kind_index(IdentifierEntryKind kind) {
+	return (uint8_t)kind & IDENT_ENTRY_INDEX_MASK;
+}
 
 typedef enum {
 	IDENT_NAMESPACE_DEFAULT,
@@ -132,6 +136,8 @@ typedef struct {
 	Preprocessor* preprocessor;
 
 	IdentifierStorage* ident_storage;
+
+	uint32_t next_var_id;
 } Parser;
 
 void parser_init(Parser* parser,

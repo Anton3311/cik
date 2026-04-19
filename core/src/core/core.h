@@ -293,6 +293,44 @@ inline bool str_equal(String str, String other) {
 	return true;
 }
 
+typedef enum {
+	LINE_ENDING_NONE,
+	LINE_ENDING_LF,
+	LINE_ENDING_CRLF,
+} LineEndingType;
+
+inline LineEndingType str_get_line_ending_type(String str) {
+	if (str.length >= 2) {
+		size_t last_index = str.length - 1;
+		if (str.v[last_index - 1] == '\r' && str.v[last_index] == '\n') {
+			return LINE_ENDING_CRLF;
+		}
+	}
+
+	if (str.length >= 1) {
+		size_t last_index = str.length - 1;
+		if (str.v[last_index] == '\n') {
+			return LINE_ENDING_LF;
+		}
+	}
+
+	return LINE_ENDING_NONE;
+}
+
+inline String str_trim_line_ending(String str) {
+	switch (str_get_line_ending_type(str)) {
+	case LINE_ENDING_NONE:
+		return str;
+	case LINE_ENDING_LF:
+		return (String) { .v = str.v, .length = str.length - 1 };
+	case LINE_ENDING_CRLF:
+		return (String) { .v = str.v, .length = str.length - 2 };
+	}
+
+	unreachable();
+	return (String) {};
+}
+
 //
 // String Builder
 //

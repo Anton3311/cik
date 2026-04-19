@@ -29,8 +29,22 @@ void _diagnostics_print_entry(const Diagnostics* diagnostics, const DiagnosticsE
 			String source_line = line_info_get_line_string(line_info, source_file->source_code, line);
 
 			SourceRange line_range = line_info_get_line_range(line_info, line);
-			SourceRange highlight_range = entry->highlighted_ranges[highlight_index];
 
+			// Remove line ending from the line string
+			switch (str_get_line_ending_type(source_line)) {
+			case LINE_ENDING_NONE:
+				break;
+			case LINE_ENDING_LF:
+				line_range.end -= 1;
+				source_line.length -= 1;
+				break;
+			case LINE_ENDING_CRLF:
+				line_range.end -= 2;
+				source_line.length -= 2;
+				break;
+			}
+
+			SourceRange highlight_range = entry->highlighted_ranges[highlight_index];
 			size_t highlight_start = min(max(highlight_range.start, line_range.start), line_range.end);
 			size_t highlight_end = min(max(highlight_range.end, line_range.start), line_range.end);
 

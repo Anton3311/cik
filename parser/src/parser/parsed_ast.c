@@ -557,6 +557,7 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 
 	printer_end_array(printer);
 	printer_bool_field(printer, "is_forward_declared", function_def->is_forward_declared);
+	printer_bool_field(printer, "has_va_args", function_def->has_va_args);
 
 	if (!function_def->is_forward_declared) {
 		printer_field(printer, "body");

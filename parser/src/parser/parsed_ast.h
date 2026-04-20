@@ -350,6 +350,7 @@ struct ParsedFunction {
 
 	bool is_inline;
 	bool is_forward_declared;
+	bool has_va_args;
 	FunctionCallingConvention calling_convention;
 	size_t parameter_count;
 	ParsedFunctionParam* parameter_list;

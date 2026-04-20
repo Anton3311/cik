@@ -1141,7 +1141,11 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	return node;
 }
 
-bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out_param_list, size_t* out_param_count) {
+static bool _parser_parse_function_param_list(Parser* parser,
+		ParsedFunctionParam** out_param_list,
+		size_t* out_param_count,
+		bool* out_has_va_args) {
+
 	Token left_paren = preprocessor_next_token(parser->preprocessor);
 	assert(left_paren.kind == TOKEN_LEFT_PAREN);
 
@@ -1150,12 +1154,28 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 	ParsedFunctionParam* first_param = NULL;
 	ParsedFunctionParam* last_param = NULL;
 	size_t param_count = 0;
+	bool has_va_args = false;
 
 	while (true) {
 		{
 			Token token = preprocessor_view_next(parser->preprocessor);
 			if (token.kind == TOKEN_RIGHT_PAREN) {
 				preprocessor_next_token(parser->preprocessor);
+				break;
+			} else if (token.kind == TOKEN_ELLIPSES) {
+				preprocessor_next_token(parser->preprocessor);
+				has_va_args = true;
+
+				Token right_paren = preprocessor_next_token(parser->preprocessor);
+				if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+					TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+					diagnostics_report_unexpected_token(parser->diagnostics,
+							right_paren,
+							expected_tokens,
+							array_size(expected_tokens));
+					return false;
+				}
+
 				break;
 			}
 		}
@@ -1211,6 +1231,7 @@ bool _parser_parse_function_param_list(Parser* parser, ParsedFunctionParam** out
 
 	*out_param_list = first_param;
 	*out_param_count = param_count;
+	*out_has_va_args = has_va_args;
 	return true;
 }
 
@@ -1638,10 +1659,11 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 	bool is_function = false;
 	ParsedFunctionParam* param_list = NULL;
 	size_t param_count = 0;
+	bool has_va_args = false;
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_LEFT_PAREN) {
-		if (!_parser_parse_function_param_list(parser, &param_list, &param_count)) {
+		if (!_parser_parse_function_param_list(parser, &param_list, &param_count, &has_va_args)) {
 			return NULL;
 		}
 
@@ -1800,7 +1822,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 				return NULL;
 			}
 
-			if (function_def->parameter_count != param_count) {
+			if (function_def->parameter_count != param_count || function_def->has_va_args != has_va_args) {
 				DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
 						source_string_to_range(name),
 						STR_LIT("Function was previously defined with a different parameter count"),
@@ -1852,6 +1874,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			function_def->decl_spec = decl_spec;
 			function_def->storage_specifier = storage_specifier;
 			function_def->var_count = var_count;
+			function_def->has_va_args = has_va_args;
 
 			entry->function_def = function_def;
 		}
@@ -1867,6 +1890,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			function_def->decl_spec = decl_spec;
 			function_def->storage_specifier = storage_specifier;
 			function_def->var_count = var_count;
+			function_def->has_va_args = has_va_args;
 		}
 
 		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);

@@ -1069,6 +1069,7 @@ bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
 	case PARSE_TYPE_NOT_PARSED:
 		return false;
 	case PARSE_TYPE_PARSED:
+		out_type->qualifiers |= _parser_parse_type_qualifiers(parser);
 		return true;
 	}
 
@@ -1480,11 +1481,11 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 	}
 
 	while (true) {
-		TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
-
 		Token maybe_asterisk = preprocessor_view_next(parser->preprocessor);
 		if (maybe_asterisk.kind == TOKEN_ASTERISK) {
 			preprocessor_next_token(parser->preprocessor);
+
+			TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
 
 			assert(duplicate_base_type);
 
@@ -1497,18 +1498,9 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 				.qualifiers = qualifiers,
 			};
 		} else {
-			if (qualifiers != TYPE_QUALIFIER_NONE) {
-				preprocessor_next_token(parser->preprocessor);
-
-				TokenKind expected_tokens[] = { TOKEN_ASTERISK };
-				diagnostics_report_unexpected_token(parser->diagnostics,
-						maybe_asterisk,
-						expected_tokens,
-						array_size(expected_tokens));
-				return false;
-			} else {
-				break;
-			}
+			TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
+			out_type->qualifiers |= qualifiers;
+			break;
 		}
 	}
 
@@ -1923,6 +1915,8 @@ ParsedNode* _parser_parse_variable_or_function_def(Parser* parser,
 	case PARSE_TYPE_ERROR:
 		return NULL;
 	}
+
+	type.qualifiers |= _parser_parse_type_qualifiers(parser);
 
 	if (has_type) {
 		return _parser_parse_type_declaration(parser, &type, decl_spec, storage_specifier);

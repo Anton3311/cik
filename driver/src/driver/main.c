@@ -116,16 +116,18 @@ int main(int argc, char *argv[]) {
 			print_parsed_node(parsed_ast.root_nodes.first);
 		}
 
-		for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-			if (node->kind == AST_NODE_FUNCTION) {
-				FunctionCompiler c = {};
-				c.function = node->function_def;
-				c.allocator = &arena;
-				c.instr_allocator = &arena;
-				c.temp_allocator = &temp_arena;
+		if (diagnostics.first == NULL) {
+			for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+				if (node->kind == AST_NODE_FUNCTION) {
+					FunctionCompiler c = {};
+					c.function = node->function_def;
+					c.allocator = &arena;
+					c.instr_allocator = &arena;
+					c.temp_allocator = &temp_arena;
 
-				function_compiler_compile(&c);
-				instr_print_all(c.instr_buffer);
+					function_compiler_compile(&c);
+					instr_print_all(c.instr_buffer);
+				}
 			}
 		}
 

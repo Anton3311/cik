@@ -41,17 +41,11 @@ const SourceFile** _include_history_find_entry(IncludeHistory* history, const So
 	assert(source_file);
 
 	size_t index = hash_ptr(source_file) % history->capacity;
-	const SourceFile** it = history->entries + index;
-	const SourceFile** end = history->entries + history->capacity;
-	while (*it != NULL && it != end) {
-		it += 1;
+	while (history->entries[index] != NULL) {
+		index = (index + 1) % history->capacity;
 	}
 
-	if (it == end) {
-		return NULL;
-	}
-
-	return it;
+	return &history->entries[index];
 }
 
 bool include_history_contains(IncludeHistory* history, const SourceFile* source_file) {

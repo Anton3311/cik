@@ -1820,12 +1820,12 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 
 					if (!param_types_are_equal) {
 						DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
-							new_def_param->type.source_range,
+							source_string_to_range(new_def_param->name),
 							STR_LIT("Function previously defined with different parameter types"),
 							NULL);
 
 						diagnostics_report_error(parser->diagnostics,
-								prev_def_param->type.source_range,
+								source_string_to_range(prev_def_param->name),
 								STR_LIT("Previously defined here"),
 								error);
 						return NULL;

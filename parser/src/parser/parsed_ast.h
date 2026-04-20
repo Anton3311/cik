@@ -20,6 +20,7 @@ typedef struct ParsedScope ParsedScope;
 typedef struct ParsedCall ParsedCall;
 typedef struct ParsedStringLiteral ParsedStringLiteral;
 typedef struct ParsedExpr ParsedExpr;
+typedef struct ParsedExprArray ParsedExprArray;
 typedef struct ParsedBinExpr ParsedBinExpr;
 typedef struct ParsedUnaryExpr ParsedUnaryExpr;
 typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
@@ -57,6 +58,11 @@ typedef struct {
 
 struct ParsedScope {
 	ParsedNodeList nodes;
+};
+
+struct ParsedExprArray {
+	ParsedExpr** exprs;
+	size_t count;
 };
 
 void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node);
@@ -216,8 +222,7 @@ struct ParsedUnaryExpr {
 
 struct ParsedCall {
 	ParsedExpr* callable;
-	size_t argument_count;
-	ParsedExpr** arguments;
+	ParsedExprArray args;
 };
 
 struct ParsedStringLiteral {

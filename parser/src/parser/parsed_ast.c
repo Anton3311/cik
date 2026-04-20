@@ -296,6 +296,23 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		printer_string_field(printer, "value", expr->string_literal.full_string);
 		printer_end_struct(printer);
 		break;
+	case EXPR_CALL: {
+		printer_begin_struct(printer, "call");
+		printer_field(printer, "callable");
+		print_expr(printer, expr->call.callable);
+
+		printer_field(printer, "args");
+		printer_begin_array(printer);
+		printer_end_array(printer);
+
+		for (size_t i = 0; i < expr->call.args.count; i += 1) {
+			printer_array_element(printer, i);
+			print_expr(printer, expr->call.args.exprs[i]);
+		}
+
+		printer_end_struct(printer);
+		break;
+	}
 	}
 }
 

@@ -139,6 +139,7 @@ void ident_storage_end_scope(IdentifierStorage* storage);
 
 typedef struct {
 	Arena* ast_allocator;
+	Arena* temp_allocator;
 
 	Diagnostics* diagnostics;
 	Preprocessor* preprocessor;
@@ -150,6 +151,7 @@ typedef struct {
 
 void parser_init(Parser* parser,
 		Arena* ast_allocator,
+		Arena* temp_allocator,
 		IdentifierStorage* ident_storage,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics);

@@ -1329,7 +1329,7 @@ static void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* ou
 	out_literal->full_string = builder.string;
 }
 
-static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
+static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(Parser* parser, ParsedExpr* out_expr) {
 	Token token = preprocessor_view_next(parser->preprocessor);
 
 	UnaryOpKind unary_op;
@@ -1430,6 +1430,92 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Parsed
 	}
 
 	return EXPR_PARSE_NOT_PARSED;
+}
+
+static ExprParseResult _parser_parse_arg_list(Parser* parser, ParsedExprArray* out_expr_array) {
+	Token left_paren = preprocessor_next_token(parser->preprocessor);
+	assert(left_paren.kind == TOKEN_LEFT_PAREN);
+
+	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
+
+	ParsedExprArray args = {};
+	args.count = 0;
+	args.exprs = arena_alloc_array(parser->temp_allocator, ParsedExpr*, 0);
+
+	while (true) {
+		Token maybe_right_paren = preprocessor_view_next(parser->preprocessor);
+		if (maybe_right_paren.kind == TOKEN_RIGHT_PAREN) {
+			preprocessor_next_token(parser->preprocessor);
+			break;
+		}
+
+		ParsedExpr* arg = arena_alloc(parser->ast_allocator, ParsedExpr);
+		ExprParseResult result = _parser_try_parse_expr(parser, arg);
+		if (result != EXPR_PARSE_OK) {
+			arena_end_temp(temp);
+			return result;
+		}
+
+		arena_alloc(parser->temp_allocator, ParsedExpr);
+		args.exprs[args.count] = arg;
+		args.count += 1;
+
+		Token comma_or_right_paren = preprocessor_next_token(parser->preprocessor);
+		if (comma_or_right_paren.kind == TOKEN_COMMA) {
+			continue;
+		} else if (comma_or_right_paren.kind == TOKEN_RIGHT_PAREN) {
+			break;
+		} else {
+			TokenKind expected_tokens[] = { TOKEN_COMMA, TOKEN_RIGHT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					comma_or_right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			
+			arena_end_temp(temp);
+			return EXPR_PARSE_ERROR;
+		}
+	}
+
+	out_expr_array->count = args.count;
+	out_expr_array->exprs = arena_alloc_array(parser->ast_allocator, ParsedExpr*, args.count);
+	memcpy(out_expr_array->exprs, args.exprs, sizeof(*args.exprs) * args.count);
+
+	arena_end_temp(temp);
+	return EXPR_PARSE_OK;
+}
+
+// Tries to parse an expression operand + any post fix operators,
+// like increment, decrement, array access, member access or a call
+static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
+	ExprParseResult result = _parser_try_parse_expr_operand_without_post_fix_operator(parser, out_expr);
+	if (result != EXPR_PARSE_OK) {
+		return result;
+	}
+
+	while (true) {
+		Token operator_token = preprocessor_view_next(parser->preprocessor);
+		if (operator_token.kind == TOKEN_LEFT_PAREN) {
+			// We've got a function call
+			
+			ParsedExprArray args;
+			ExprParseResult result = _parser_parse_arg_list(parser, &args);
+			if (result != EXPR_PARSE_OK) {
+				return result;
+			}
+
+			ParsedExpr* callable = arena_alloc(parser->ast_allocator, ParsedExpr);
+			memcpy(callable, out_expr, sizeof(*out_expr));
+
+			out_expr->kind = EXPR_CALL;
+			out_expr->call.callable = callable;
+			out_expr->call.args = args;
+		} else {
+			break;
+		}
+	}
+
+	return EXPR_PARSE_OK;
 }
 
 ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
@@ -2281,10 +2367,12 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 
 void parser_init(Parser* parser,
 		Arena* ast_allocator,
+		Arena* temp_allocator,
 		IdentifierStorage* ident_storage,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics) {
 	parser->ast_allocator = ast_allocator;
+	parser->temp_allocator = temp_allocator;
 	parser->diagnostics = diagnostics;
 	parser->preprocessor = preprocessor;
 	parser->ident_storage = ident_storage;

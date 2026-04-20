@@ -801,7 +801,7 @@ void run_parser_test(TestContext* context,
 	ident_storage_init(ident_storage, arena_allocator_new(&ident_arena), &ident_arena);
 
 	Parser parser = {};
-	parser_init(&parser, &ast_arena, ident_storage, &preprocessor, out_diagnostics);
+	parser_init(&parser, &ast_arena, context->temp_arena, ident_storage, &preprocessor, out_diagnostics);
 
 	parser_parse(&parser, out_ast);
 }

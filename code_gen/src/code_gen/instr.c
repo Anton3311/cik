@@ -16,6 +16,8 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_BRANCH] = INSTR_FEATURE_CONTROL,
 	[INSTR_JUMP] = INSTR_FEATURE_CONTROL,
 
+	[INSTR_RETURN_VALUE] = INSTR_FEATURE_CONTROL,
+
 	[INSTR_REGION] = 0,
 };
 
@@ -31,6 +33,7 @@ static String instr_kind_to_string[] = {
 	[INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
 	[INSTR_BRANCH] = STR_LIT("branch"),
 	[INSTR_JUMP] = STR_LIT("jump"),
+	[INSTR_RETURN_VALUE] = STR_LIT("return_value"),
 	[INSTR_REGION] = STR_LIT("region"),
 };
 
@@ -84,6 +87,10 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
 
 	case INSTR_JUMP:
 		instr_stack_push(out_dependencies, instr->jump.target_region);
+		break;
+
+	case INSTR_RETURN_VALUE:
+		instr_stack_push(out_dependencies, instr->ret.value);
 		break;
 
 	case INSTR_REGION:
@@ -203,6 +210,9 @@ void instr_print(const Instr* instr) {
 		break;
 	case INSTR_JUMP:
 		printf("%u", (uint32_t)instr->jump.target_region.value);
+		break;
+	case INSTR_RETURN_VALUE:
+		printf("%u", (uint32_t)instr->ret.value.value);
 		break;
 	case INSTR_REGION:
 		printf("%u", (uint32_t)instr->region.last_instr.value);

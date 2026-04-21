@@ -120,6 +120,11 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			region_instr_index = post_block_region;
 			break;
 		}
+		case AST_NODE_RETURN:
+			assert(node->return_stmt.value != NULL);
+			InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
+			region_instr->region.last_instr = instr_new_return_value(instr_buffer, instr_allocator, value);
+			break;
 		case AST_NODE_EXPR:
 			_compile_expr(compiler, &node->expr);
 			break;

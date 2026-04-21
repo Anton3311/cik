@@ -24,6 +24,8 @@ typedef enum {
 	INSTR_BRANCH,
 	INSTR_JUMP,
 
+	INSTR_RETURN_VALUE,
+
 	INSTR_REGION,
 
 	INSTR_COUNT,
@@ -97,6 +99,10 @@ struct Instr {
 		struct {
 			InstrIndex target_region;
 		} jump;
+		
+		struct {
+			InstrIndex value;
+		} ret;
 
 		struct {
 			InstrIndex last_instr;
@@ -191,6 +197,14 @@ inline InstrIndex instr_new_jump(InstrBuffer* buffer, Arena* allocator, InstrInd
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_JUMP;
 	instr->jump.target_region = target;
+	return i;
+}
+
+inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, InstrIndex value) {
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_RETURN_VALUE;
+	instr->ret.value = value;
 	return i;
 }
 

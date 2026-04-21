@@ -1,5 +1,7 @@
 #include "compiler.h"
 
+#include "code_gen/backends/x64.h"
+
 static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -166,4 +168,12 @@ void function_compiler_compile(FunctionCompiler* compiler) {
 				(uint32_t)usage_ranges[i].first_usage.value,
 				(uint32_t)usage_ranges[i].last_usage.value);
 	}
+
+	X64CodeGenerator gen;
+	gen.instr_buffer = compiler->instr_buffer;
+	gen.usage_ranges = usage_ranges;
+	gen.allocator = compiler->allocator;
+	gen.temp_allocator = compiler->temp_allocator;
+
+	x64_alloc_registers(&gen);
 }

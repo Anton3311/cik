@@ -51,7 +51,7 @@ typedef struct {
 } InstrIndex;
 
 typedef struct {
-	InstrIndex* values;
+	InstrIndex* instr;
 	size_t count;
 } InstrIndexArray;
 
@@ -211,6 +211,21 @@ inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, 
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);
 
 void instr_enumerate_dependencies(const InstrBuffer buffer, InstrIndex instr_index, InstrStack* out_dependencies);
+
+typedef struct {
+	InstrIndex* instr;
+	size_t count;
+} InstrUsageGroup;
+
+typedef struct {
+	InstrUsageGroup* groups;
+	size_t count;
+} InstrUsageGroupArray;
+
+InstrUsageGroupArray instr_group_by_overlapping_usages(const InstrBuffer buffer,
+		const InstrUsageRange* usage_ranges,
+		Arena* allocator,
+		Arena* temp_allocator);
 
 // Returns an array of `InstrUsageRange` of size `buffer->count`
 InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,

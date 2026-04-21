@@ -34,6 +34,9 @@ typedef enum {
 	REG_15,
 } X64Register;
 
+// `size_index` - one of [0, 1, 2, 3]
+#define make_reg_id(base_reg_name, size_index) ((base_reg_name) | ((1 << size_index) << REG_INDEX_MASK_BIT_COUNT))
+
 typedef enum {
 	INSTR_STORAGE_REG,
 	INSTR_STORAGE_NONE,
@@ -61,6 +64,6 @@ typedef struct {
 	Arena* temp_allocator;
 } X64CodeGenerator;
 
-void x64_alloc_registers(X64CodeGenerator* gen);
+void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers);
 
 #endif

@@ -169,11 +169,22 @@ void function_compiler_compile(FunctionCompiler* compiler) {
 				(uint32_t)usage_ranges[i].last_usage.value);
 	}
 
+	uint16_t allowed_registers = UINT16_MAX;
+	allowed_registers &= ~REG_SP;
+	allowed_registers &= ~REG_BP;
+
+	uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_8, REG_9 };
+	size_t cdecl_arg_regs_count = array_size(cdecl_arg_regs);
+
+	for (size_t i = 0; i < cdecl_arg_regs_count; i += 1) {
+		allowed_registers &= ~cdecl_arg_regs[i];
+	}
+
 	X64CodeGenerator gen;
 	gen.instr_buffer = compiler->instr_buffer;
 	gen.usage_ranges = usage_ranges;
 	gen.allocator = compiler->allocator;
 	gen.temp_allocator = compiler->temp_allocator;
 
-	x64_alloc_registers(&gen);
+	x64_alloc_registers(&gen, allowed_registers);
 }

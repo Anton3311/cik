@@ -51,17 +51,17 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 		name_sufix = 'L';
 		break;
 	case 16:
-		if (reg_index <= 4) {
+		if (reg_index < 4) {
 			name_sufix = 'X';
 		} else if (reg_index >= 8) {
 			name_sufix = 'W';
 		}
 		break;
 	case 32:
-		if (reg_index <= 4) {
+		if (reg_index < 4) {
 			name_prefix = 'E';
 			name_sufix = 'X';
-		} else if (reg_index <= 8) {
+		} else if (reg_index < 8) {
 			name_prefix = 'E';
 		} else {
 			name_sufix = 'D';
@@ -69,10 +69,10 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 		
 		break;
 	case 64:
-		if (reg_index <= 4) {
+		if (reg_index < 4) {
 			name_prefix = 'R';
 			name_sufix = 'X';
-		} else if (reg_index <= 8) {
+		} else if (reg_index < 8) {
 			name_prefix = 'R';
 		}
 		break;
@@ -261,7 +261,7 @@ static InstrOverlapClusters _x64_build_overlapping_instr_clusters(const InstrInd
 	return result;
 }
 
-void x64_alloc_registers(X64CodeGenerator* gen) {
+void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 	InstrIndexArray instr_with_storage_requirement = _x64_gather_instr_with_storage_requirement(
 			gen->instr_buffer,
 			gen->usage_ranges,
@@ -314,7 +314,7 @@ void x64_alloc_registers(X64CodeGenerator* gen) {
 			ArenaRegion temp = arena_begin_temp(gen->allocator);
 
 			String allowed_registers_string = _format_reg_names(gen->allocator,
-					storage_requirement.allowed_registers,
+					storage_requirement.allowed_registers & allowed_registers,
 					storage_requirement.reg_size);
 
 			printf("\t%.*s\n", STR_FMT(allowed_registers_string));

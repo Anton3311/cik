@@ -5,6 +5,8 @@
 
 typedef struct Instr Instr;
 typedef struct InstrBuffer InstrBuffer;
+typedef struct InstrUsageRange InstrUsageRange;
+typedef struct InstrStack InstrStack;
 
 typedef enum {
 	INSTR_NO_OP,
@@ -23,6 +25,8 @@ typedef enum {
 	INSTR_JUMP,
 
 	INSTR_REGION,
+
+	INSTR_COUNT,
 } InstrKind;
 
 typedef enum {
@@ -32,9 +36,22 @@ typedef enum {
 	INSTR_BIN_DIV,
 } InstrBinOp;
 
+typedef enum {
+	INSTR_FEATURE_NONE                 = 0,
+	INSTR_FEATURE_CONTROL              = 1 << 0,
+	INSTR_FEATURE_REG_STORAGE          = 1 << 1,
+} InstrFeatureFlag;
+
+extern InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT];
+
 typedef struct {
 	uint16_t value;
 } InstrIndex;
+
+typedef struct {
+	InstrIndex* values;
+	size_t count;
+} InstrIndexArray;
 
 static const InstrIndex INVALID_INSTR_INDEX = (InstrIndex) { .value = UINT16_MAX };
 
@@ -92,6 +109,57 @@ struct InstrBuffer {
 	uint16_t count;
 };
 
+struct InstrStack {
+	InstrIndex* instr;
+	size_t count;
+	size_t capacity;
+};
+
+inline void instr_stack_alloc(InstrStack* stack, Arena* allocator, size_t capacity) {
+	stack->count = 0;
+	stack->capacity = capacity;
+	stack->instr = arena_alloc_array(allocator, InstrIndex, capacity);
+}
+
+inline void instr_stack_push(InstrStack* stack, InstrIndex instr) {
+	assert(stack->count < stack->capacity);
+	stack->instr[stack->count] = instr;
+	stack->count += 1;
+}
+
+inline InstrIndex instr_stack_pop(InstrStack* stack) {
+	assert(stack->count > 0);
+	stack->count -= 1;
+	return stack->instr[stack->count];
+}
+
+struct InstrUsageRange {
+	union {
+		struct {
+			InstrIndex first_usage;
+			InstrIndex last_usage;
+		};
+
+		uint32_t value;
+	};
+};
+
+inline bool instr_usage_range_is_valid(const InstrUsageRange range) {
+	return range.value != UINT32_MAX && range.first_usage.value <= range.last_usage.value;
+}
+
+inline bool instr_usage_range_is_empty(const InstrUsageRange range) {
+	return range.value == UINT32_MAX;
+}
+
+// Returns a new range that includes the given instruction index
+inline InstrUsageRange instr_usage_range_extended(const InstrUsageRange range, InstrIndex instr_index) {
+	InstrUsageRange new_range;
+	new_range.first_usage.value = min(range.first_usage.value, instr_index.value);
+	new_range.last_usage.value = max(range.last_usage.value, instr_index.value);
+	return new_range;
+}
+
 inline void instr_buffer_init(InstrBuffer* buffer, Arena* allocator) {
 	buffer->instr = arena_alloc_array(allocator, Instr, 0);
 	buffer->count = 0;
@@ -125,6 +193,16 @@ inline InstrIndex instr_new_jump(InstrBuffer* buffer, Arena* allocator, InstrInd
 	instr->jump.target_region = target;
 	return i;
 }
+
+bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);
+
+void instr_enumerate_dependencies(const InstrBuffer buffer, InstrIndex instr_index, InstrStack* out_dependencies);
+
+// Returns an array of `InstrUsageRange` of size `buffer->count`
+InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
+		InstrIndex root_instr,
+		Arena* allocator,
+		Arena* temp_allocator);
 
 String instr_name(InstrKind instr_kind);
 void instr_print(const Instr* instr);

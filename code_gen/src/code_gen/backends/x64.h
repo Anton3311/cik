@@ -41,6 +41,11 @@ typedef enum {
 } InstrStorageKind;
 
 typedef struct {
+	uint16_t allowed_registers;
+	uint8_t reg_size;
+} X64InstrStorageRequirement;
+
+typedef struct {
 	InstrStorageKind kind;
 	union {
 		X64Register reg;

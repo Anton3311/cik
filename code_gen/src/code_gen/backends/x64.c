@@ -1,5 +1,112 @@
 #include "x64.h"
 
+static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
+	[INSTR_NO_OP]        = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+
+	[INSTR_CONST_8]      = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_CONST_16]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_CONST_32]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_CONST_64]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
+	[INSTR_BIN_OP_8]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_BIN_OP_16]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_BIN_OP_32]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_BIN_OP_64]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
+	[INSTR_BRANCH]       = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_JUMP]         = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+
+	[INSTR_RETURN_VALUE] = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+
+	[INSTR_REGION]       = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+};
+
+static const char* REG_BASE_NAMES[] = {
+	"A",
+	"C",
+	"D",
+	"B",
+	"SP",
+	"BP",
+	"SI",
+	"DI",
+	"R8",
+	"R9",
+	"R10",
+	"R11",
+	"R12",
+	"R13",
+	"R14",
+	"R15",
+};
+
+static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t reg_bit_count) {
+	assert(reg_index < 16);
+
+	char name_prefix = 0;
+	char name_sufix = 0;
+
+	switch (reg_bit_count) {
+	case 8:
+		name_sufix = 'L';
+		break;
+	case 16:
+		if (reg_index <= 4) {
+			name_sufix = 'X';
+		} else if (reg_index >= 8) {
+			name_sufix = 'W';
+		}
+		break;
+	case 32:
+		if (reg_index <= 4) {
+			name_prefix = 'E';
+			name_sufix = 'X';
+		} else if (reg_index <= 8) {
+			name_prefix = 'E';
+		} else {
+			name_sufix = 'D';
+		}
+		
+		break;
+	case 64:
+		if (reg_index <= 4) {
+			name_prefix = 'R';
+			name_sufix = 'X';
+		} else if (reg_index <= 8) {
+			name_prefix = 'R';
+		}
+		break;
+	}
+
+	if (name_prefix) {
+		str_builder_append_char(builder, name_prefix);
+	}
+
+	str_builder_append_cstr(builder, REG_BASE_NAMES[reg_index]);
+
+	if (name_sufix) {
+		str_builder_append_char(builder, name_sufix);
+	}
+}
+
+static String _format_reg_names(Arena* allocator, uint16_t reg_mask, uint8_t reg_bit_count) {
+	StringBuilder builder = { .arena = allocator };
+
+	for (uint16_t i = 0; i < 16; i += 1) {
+		if (!has_flag(reg_mask, 1 << i)) {
+			continue;
+		}
+			
+		if (builder.string.length > 0) {
+			str_builder_append_char(&builder, ' ');
+		}
+
+		_format_reg_name(&builder, i, reg_bit_count);
+	}
+
+	return builder.string;
+}
+
 static InstrIndexArray _x64_gather_instr_with_storage_requirement(const InstrBuffer instr_buffer,
 		const InstrUsageRange* usage_ranges,
 		Arena* allocator) {
@@ -192,5 +299,27 @@ void x64_alloc_registers(X64CodeGenerator* gen) {
 		}
 
 		printf("\n");
+	}
+
+	for (size_t i = 0; i < clusters.count; i += 1) {
+		printf("%zu:\n", i);
+
+		UInt16Array cluster = clusters.clusters[i];
+		for (size_t j = 0; j < cluster.count; j += 1) {
+			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[cluster.values[j]];
+			const Instr* instr = &gen->instr_buffer.instr[overlapping_instr.value];
+
+			X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr->kind];
+
+			ArenaRegion temp = arena_begin_temp(gen->allocator);
+
+			String allowed_registers_string = _format_reg_names(gen->allocator,
+					storage_requirement.allowed_registers,
+					storage_requirement.reg_size);
+
+			printf("\t%.*s\n", STR_FMT(allowed_registers_string));
+
+			arena_end_temp(temp);
+		}
 	}
 }

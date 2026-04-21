@@ -205,6 +205,22 @@ void* allocate_executable(size_t size);
 void free_executable(void* ptr, size_t size);
 
 //
+// Arrays
+// 
+
+typedef struct {
+	uint16_t* values;
+	size_t count;
+} UInt16Array;
+
+inline UInt16Array uint16_array_alloc(Arena* allocator, size_t count) {
+	return (UInt16Array) {
+		.values = arena_alloc_array(allocator, uint16_t, count),
+		.count = count
+	};
+}
+
+//
 // String
 //
 

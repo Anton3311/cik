@@ -27,29 +27,19 @@ static InstrIndexArray _x64_gather_instr_with_storage_requirement(const InstrBuf
 	return result;
 }
 
-static InstrIndexArray _x64_gather_overlapping_instr_into_cluster(const InstrBuffer instr_buffer,
-		const InstrUsageRange* usage_ranges,
-		Arena* allocator) {
-
-}
-
-typedef struct {
-	InstrIndexArray* edges;
-} InstrOverlapGraph;
-
 // Returned array stores a list of edges for each instruction in `instr_with_storage_requirement`
-static InstrIndexArray* _x64_build_overlapping_instr_graph(const InstrBuffer instr_buffer,
-		InstrIndexArray instr_with_storage_requirement,
+static UInt16Array* _x64_build_overlapping_instr_graph(const InstrBuffer instr_buffer,
+		const InstrIndexArray instr_with_storage_requirement,
 		const InstrUsageRange* usage_ranges,
 		Arena* allocator) {
 
-	InstrIndexArray* graph_edges = arena_alloc_array_zeroed(allocator,
-			InstrIndexArray,
+	UInt16Array* graph_edges = arena_alloc_array_zeroed(allocator,
+			UInt16Array,
 			instr_with_storage_requirement.count);
 
 	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndexArray* edges = &graph_edges[i];
-		edges->instr = arena_alloc_array(allocator, InstrIndex, 0);
+		UInt16Array* edges = &graph_edges[i];
+		edges->values = arena_alloc_array(allocator, uint16_t, 0);
 	
 		InstrUsageRange usage_range_a = usage_ranges[instr_with_storage_requirement.instr[i].value];
 		for (size_t j = 0; j < instr_with_storage_requirement.count; j += 1) {
@@ -65,7 +55,7 @@ static InstrIndexArray* _x64_build_overlapping_instr_graph(const InstrBuffer ins
 			bool overlap = min_end > max_start;
 			if (overlap) {
 				arena_alloc(allocator, InstrIndex);
-				edges->instr[edges->count] = instr_with_storage_requirement.instr[j];
+				edges->values[edges->count] = (uint16_t)j;
 				edges->count += 1;
 			}
 		}
@@ -74,23 +64,130 @@ static InstrIndexArray* _x64_build_overlapping_instr_graph(const InstrBuffer ins
 	return graph_edges;
 }
 
+typedef struct {
+	UInt16Array* clusters;
+	size_t count;
+} InstrOverlapClusters;
+
+static InstrOverlapClusters _x64_build_overlapping_instr_clusters(const InstrIndexArray instr_with_storage_requirement,
+		const UInt16Array* graph,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	size_t instr_count = instr_with_storage_requirement.count;
+	
+	// The sum of instruction counts in of all clusters is exactly
+	// the size of `instr_with_storage_requirement`,
+	// since the instruction can only belong to one cluster.
+	//
+	// Here we can just preallocate the buffer for all clusters,
+	// although we don't know how many clusters we will end up with.
+
+	UInt16Array cluster_instr_buffer;
+	cluster_instr_buffer.values = arena_alloc_array(allocator, uint16_t, instr_count);
+	cluster_instr_buffer.count = 0;
+
+	UInt16Array* clusters = arena_alloc_array(allocator, UInt16Array, 0);
+	size_t cluster_count = 0;
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	BitArray visited_instr = bit_array_alloc(temp_allocator, instr_count);
+	bit_array_clear(&visited_instr);
+
+	UInt16Array visited_stack = uint16_array_alloc(temp_allocator, instr_count);
+	size_t visited_stack_size = 0;
+
+	for (size_t i = 0; i < instr_count; i += 1) {
+		if (bit_array_get(&visited_instr, i)) {
+			continue;
+		}
+
+		// Begin a new cluster
+		size_t current_cluster_start = cluster_instr_buffer.count;
+
+		assert(visited_stack_size < visited_stack.count);
+		visited_stack.values[visited_stack_size] = (uint16_t)i;
+		visited_stack_size += 1;
+
+		while (visited_stack_size > 0) {
+			visited_stack_size -= 1;
+			uint16_t vertex_index = visited_stack.values[visited_stack_size];
+
+			assert(!bit_array_get(&visited_instr, vertex_index));
+
+			bit_array_set(&visited_instr, vertex_index, true);
+
+			UInt16Array edges = graph[vertex_index];
+
+			assert(cluster_instr_buffer.count < instr_count);
+			cluster_instr_buffer.values[cluster_instr_buffer.count] = vertex_index;
+			cluster_instr_buffer.count += 1;
+
+			for (size_t j = 0; j < edges.count; j += 1) {
+				if (bit_array_get(&visited_instr, edges.values[j])) {
+					continue;
+				}
+
+				assert(visited_stack_size < visited_stack.count);
+				visited_stack.values[visited_stack_size] = edges.values[j];
+				visited_stack_size += 1;
+			}
+		}
+
+		size_t current_cluster_size = cluster_instr_buffer.count - current_cluster_start;
+		assert(current_cluster_size > 0);
+
+		arena_alloc(allocator, UInt16Array);
+		clusters[cluster_count].values = cluster_instr_buffer.values + current_cluster_start;
+		clusters[cluster_count].count = current_cluster_size;
+		cluster_count += 1;
+
+		current_cluster_start = cluster_instr_buffer.count;
+	}
+
+	arena_end_temp(temp);
+
+	InstrOverlapClusters result;
+	result.clusters = clusters;
+	result.count = cluster_count;
+	return result;
+}
+
 void x64_alloc_registers(X64CodeGenerator* gen) {
 	InstrIndexArray instr_with_storage_requirement = _x64_gather_instr_with_storage_requirement(
 			gen->instr_buffer,
 			gen->usage_ranges,
 			gen->allocator);
 
-	InstrIndexArray* graph = _x64_build_overlapping_instr_graph(gen->instr_buffer, 
+	UInt16Array* graph = _x64_build_overlapping_instr_graph(gen->instr_buffer, 
 			instr_with_storage_requirement,
 			gen->usage_ranges,
 			gen->allocator);
 
 	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndexArray overlap = graph[i];
+		UInt16Array overlap = graph[i];
 		printf("%u:\n\t", (uint32_t)instr_with_storage_requirement.instr[i].value);
 
 		for (size_t j = 0; j < overlap.count; j += 1) {
-			InstrIndex overlapping_instr = overlap.instr[j];
+			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[overlap.values[j]];
+			printf("%u ", (uint32_t)overlapping_instr.value);
+		}
+
+		printf("\n");
+	}
+
+	InstrOverlapClusters clusters = _x64_build_overlapping_instr_clusters(instr_with_storage_requirement,
+			graph,
+			gen->allocator,
+			gen->temp_allocator);
+
+	for (size_t i = 0; i < clusters.count; i += 1) {
+		printf("%zu: ", i);
+
+		UInt16Array cluster = clusters.clusters[i];
+		for (size_t j = 0; j < cluster.count; j += 1) {
+			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[cluster.values[j]];
 			printf("%u ", (uint32_t)overlapping_instr.value);
 		}
 

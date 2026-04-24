@@ -71,6 +71,13 @@ uint64_t hardware_timer_get_frequency();
 size_t align_to_page_size(size_t bytes);
 
 //
+// Bit Operations
+//
+
+#define count_leading_zeros(a) __builtin_clz(a)
+#define count_trailing_zeros(a) __builtin_ctz(a)
+
+//
 // Allocator
 //
 

@@ -43,7 +43,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 		instr->kind = INSTR_CONST_64;
-		instr->const_64.u64 = expr->int_literal.value;
+		instr->const_64.u = expr->int_literal.value;
 		return instr_index;
 	}
 	case EXPR_STRING_LITERAL:
@@ -170,14 +170,12 @@ void function_compiler_compile(FunctionCompiler* compiler) {
 	}
 
 	uint16_t allowed_registers = UINT16_MAX;
-	allowed_registers &= ~REG_SP;
-	allowed_registers &= ~REG_BP;
+	allowed_registers &= ~(1 << REG_SP);
+	allowed_registers &= ~(1 << REG_BP);
 
 	uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_8, REG_9 };
-	size_t cdecl_arg_regs_count = array_size(cdecl_arg_regs);
-
-	for (size_t i = 0; i < cdecl_arg_regs_count; i += 1) {
-		allowed_registers &= ~cdecl_arg_regs[i];
+	for (size_t i = 0; i < array_size(cdecl_arg_regs); i += 1) {
+		allowed_registers &= ~(1 << cdecl_arg_regs[i]);
 	}
 
 	X64CodeGenerator gen;

@@ -38,8 +38,8 @@ typedef enum {
 #define make_reg_id(base_reg_name, size_index) ((base_reg_name) | ((1 << size_index) << REG_INDEX_MASK_BIT_COUNT))
 
 typedef enum {
-	INSTR_STORAGE_REG,
 	INSTR_STORAGE_NONE,
+	INSTR_STORAGE_REG,
 	INSTR_STORAGE_STACK,
 } InstrStorageKind;
 

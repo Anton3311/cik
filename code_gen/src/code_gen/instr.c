@@ -251,22 +251,22 @@ void instr_print(const Instr* instr) {
 		break;
 
 	case INSTR_CONST_8:
-		printf("%u %d", (uint32_t)instr->const_8.u8, (int32_t)instr->const_8.i8);
+		printf("%u %d", (uint32_t)instr->const_8.u, (int32_t)instr->const_8.i);
 		break;
 	case INSTR_CONST_16:
-		printf("%u %d", (uint32_t)instr->const_16.u16, (int32_t)instr->const_16.i16);
+		printf("%u %d", (uint32_t)instr->const_16.u, (int32_t)instr->const_16.i);
 		break;
 	case INSTR_CONST_32:
 		printf("%u %d %f",
-				instr->const_32.u32,
-				instr->const_32.i32,
-				instr->const_32.f32);
+				instr->const_32.u,
+				instr->const_32.i,
+				instr->const_32.f);
 		break;
 	case INSTR_CONST_64:
 		printf("%llu %lld %f",
-				instr->const_64.i64,
-				instr->const_64.u64,
-				instr->const_64.f64);
+				instr->const_64.i,
+				instr->const_64.u,
+				instr->const_64.f);
 		break;
 	case INSTR_BRANCH:
 		printf("condition: %u true: %u false: %u",

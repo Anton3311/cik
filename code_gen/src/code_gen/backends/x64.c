@@ -1,5 +1,7 @@
 #include "x64.h"
 
+#include "core/profiler.h"
+
 static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_NO_OP]        = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
@@ -262,6 +264,8 @@ static InstrOverlapClusters _x64_build_overlapping_instr_clusters(const InstrInd
 }
 
 void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
+	profile_scope_start(__func__);
+
 	InstrIndexArray instr_with_storage_requirement = _x64_gather_instr_with_storage_requirement(
 			gen->instr_buffer,
 			gen->usage_ranges,
@@ -313,8 +317,10 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 
 			ArenaRegion temp = arena_begin_temp(gen->allocator);
 
+			uint16_t potential_instr_registers = storage_requirement.allowed_registers & allowed_registers;
+
 			String allowed_registers_string = _format_reg_names(gen->allocator,
-					storage_requirement.allowed_registers & allowed_registers,
+					potential_instr_registers,
 					storage_requirement.reg_size);
 
 			printf("\t%.*s\n", STR_FMT(allowed_registers_string));
@@ -322,4 +328,55 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			arena_end_temp(temp);
 		}
 	}
+
+	InstrStorageLocation* instr_storage = arena_alloc_array_zeroed(gen->allocator,
+			InstrStorageLocation,
+			gen->instr_buffer.count);
+
+	for (size_t i = 0; i < clusters.count; i += 1) {
+		uint16_t allowed_cluster_registers = allowed_registers;
+		UInt16Array cluster = clusters.clusters[i];
+
+		for (size_t j = 0; j < cluster.count; j += 1) {
+			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[cluster.values[j]];
+			const Instr* instr = &gen->instr_buffer.instr[overlapping_instr.value];
+
+			X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr->kind];
+			uint16_t potential_instr_registers = storage_requirement.allowed_registers & allowed_cluster_registers;
+
+			assert(potential_instr_registers != 0);
+
+			uint16_t first_potential_register = count_trailing_zeros(potential_instr_registers);
+			assert(first_potential_register < 16);
+
+			instr_storage[overlapping_instr.value].kind = INSTR_STORAGE_REG;
+			instr_storage[overlapping_instr.value].reg = first_potential_register;
+
+			allowed_cluster_registers &= ~(1 << first_potential_register);
+		}
+	}
+
+	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+
+		String storage_string = STR_LIT("none");
+
+		if (instr_storage[i].kind == INSTR_STORAGE_REG) {
+			StringBuilder builder = { .arena = gen->temp_allocator };
+
+			const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
+			const X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr_kind];
+
+			_format_reg_name(&builder, instr_storage[i].reg, storage_requirement.reg_size);
+			storage_string = builder.string;
+		}
+
+		printf("\t%zu: %.*s\n", i, STR_FMT(storage_string));
+
+		arena_end_temp(temp);
+	}
+
+	gen->instr_storage = instr_storage;
+
+	profile_scope_end();
 }

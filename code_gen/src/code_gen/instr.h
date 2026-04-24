@@ -62,25 +62,25 @@ struct Instr {
 
 	union {
 		union {
-			uint8_t u8;
-			int8_t i8;
+			uint8_t u;
+			int8_t i;
 		} const_8;
 
 		union {
-			uint16_t u16;
-			int16_t i16;
+			uint16_t u;
+			int16_t i;
 		} const_16;
 
 		union {
-			uint32_t u32;
-			int32_t i32;
-			float f32;
+			uint32_t u;
+			int32_t i;
+			float f;
 		} const_32;
 
 		union {
-			uint64_t u64;
-			int64_t i64;
-			double f64;
+			uint64_t u;
+			int64_t i;
+			double f;
 		} const_64;
 
 		// The same for all INSTR_BIN_OP_*

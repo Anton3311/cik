@@ -225,7 +225,16 @@ static InstrOverlapClusters _x64_build_overlapping_instr_clusters(const InstrInd
 			visited_stack_size -= 1;
 			uint16_t vertex_index = visited_stack.values[visited_stack_size];
 
-			assert(!bit_array_get(&visited_instr, vertex_index));
+			// Don't assert here, because the vertex might get pushed onto the stack
+			// multiple times before it actually gets marked as visited, so when the loop
+			// reaches the first occurance of the vertex on the stack, it processes it
+			// and marks it as visited.
+			//
+			// However later when it reaches the next occurance, that vertex is already
+			// visited and added to the cluster, so we should just skip it, instead of asserting.
+			if (bit_array_get(&visited_instr, vertex_index)) {
+				continue;
+			}
 
 			bit_array_set(&visited_instr, vertex_index, true);
 

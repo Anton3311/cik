@@ -28,6 +28,8 @@ typedef enum {
 
 	INSTR_REGION,
 
+	INSTR_CALL_INTERNAL,
+
 	INSTR_COUNT,
 } InstrKind;
 
@@ -103,6 +105,11 @@ struct Instr {
 		struct {
 			InstrIndex value;
 		} ret;
+
+		struct {
+			InstrIndex arg;
+			uint8_t function_index;
+		} call_internal;
 
 		struct {
 			InstrIndex last_instr;

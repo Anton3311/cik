@@ -18,6 +18,8 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 
 	[INSTR_RETURN_VALUE] = INSTR_FEATURE_CONTROL,
 
+	[INSTR_CALL_INTERNAL] = INSTR_FEATURE_CONTROL | INSTR_FEATURE_REG_STORAGE,
+
 	[INSTR_REGION] = 0,
 };
 
@@ -34,6 +36,7 @@ static String instr_kind_to_string[] = {
 	[INSTR_BRANCH] = STR_LIT("branch"),
 	[INSTR_JUMP] = STR_LIT("jump"),
 	[INSTR_RETURN_VALUE] = STR_LIT("return_value"),
+	[INSTR_CALL_INTERNAL] = STR_LIT("call_internal"),
 	[INSTR_REGION] = STR_LIT("region"),
 };
 
@@ -95,6 +98,10 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
 
 	case INSTR_REGION:
 		instr_stack_push(out_dependencies, instr->region.last_instr);
+		break;
+	
+	case INSTR_CALL_INTERNAL:
+		instr_stack_push(out_dependencies, instr->call_internal.arg);
 		break;
 
 	case INSTR_COUNT:
@@ -282,6 +289,11 @@ void instr_print(const Instr* instr) {
 		break;
 	case INSTR_REGION:
 		printf("%u", (uint32_t)instr->region.last_instr.value);
+		break;
+	case INSTR_CALL_INTERNAL:
+		printf("arg: %u func: %u",
+				(uint32_t)instr->call_internal.arg.value,
+				(uint32_t)instr->call_internal.function_index);
 		break;
 	case INSTR_BIN_OP_8:
 	case INSTR_BIN_OP_16:

@@ -20,6 +20,8 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 
 	[INSTR_RETURN_VALUE] = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
+	[INSTR_CALL_INTERNAL] = (X64InstrStorageRequirement) { .allowed_registers = (1 << REG_A), .reg_size = 64 },
+
 	[INSTR_REGION]       = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 };
 
@@ -318,7 +320,6 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			ArenaRegion temp = arena_begin_temp(gen->allocator);
 
 			uint16_t potential_instr_registers = storage_requirement.allowed_registers & allowed_registers;
-
 			String allowed_registers_string = _format_reg_names(gen->allocator,
 					potential_instr_registers,
 					storage_requirement.reg_size);
@@ -343,6 +344,11 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 
 			X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr->kind];
 			uint16_t potential_instr_registers = storage_requirement.allowed_registers & allowed_cluster_registers;
+
+			// HACK: Call instruction can only store it's return value in one specific register
+			if (instr->kind == INSTR_CALL_INTERNAL) {
+				potential_instr_registers = storage_requirement.allowed_registers;
+			}
 
 			assert(potential_instr_registers != 0);
 
@@ -453,6 +459,12 @@ inline uint8_t _mod_rm(X64Register reg, uint8_t rm) {
 	return 0b11000000 | (reg << 3) | (rm);
 }
 
+inline uint8_t _mod_rm_with_ext(uint8_t extension, uint8_t reg) {
+	assert(extension < 8);
+	assert(reg < 8);
+	return 0b11000000 | (extension << 3) | (reg);
+}
+
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
 	uint8_t* bytes = _code_buffer_append(buffer, 2);
 	bytes[0] = 0b01000000 | (1 << 3) | (reg >> 3);
@@ -487,6 +499,62 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 	default:
 		 unreachable();
 	}
+}
+
+inline void _emit_push_reg(CodeBuffer* buffer, X64Register reg, uint8_t reg_bit_count) {
+	switch (reg_bit_count) {
+	case 8:
+	case 16:
+	case 32:
+		unreachable();
+	case 64:
+		// The register index dones't fit in 3-bit,
+		// so we need a REX prefix with R set 1,
+		// for an extension of the register index in MODRM
+		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		if (reg >= 8) {
+			bytes[0] = _rex_prefix(0, 0, (reg >> 3), 1);
+			bytes[1] = 0x50 + (reg & 0b111);
+		} else {
+			bytes[0] = 0xff;
+			bytes[1] = _mod_rm_with_ext(6, reg);
+		}
+
+		break;
+	default:
+		unreachable();
+	}
+}
+
+inline void _emit_pop_reg(CodeBuffer* buffer, X64Register dst_reg, uint8_t reg_bit_count) {
+
+	switch (reg_bit_count) {
+	case 8:
+	case 16:
+	case 32:
+		unreachable();
+	case 64:
+		// The register index dones't fit in 3-bit,
+		// so we need a REX prefix with R set 1,
+		// for an extension of the register index in MODRM
+
+		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		if (dst_reg >= 8) {
+			bytes[0] = _rex_prefix(0, 0, (dst_reg >> 3), 1);
+			bytes[1] = 0x58 + (dst_reg & 0b111);
+		} else {
+			bytes[0] = 0x8f;
+			bytes[1] = _mod_rm_with_ext(0, dst_reg);
+		}
+		break;
+	default:
+		unreachable();
+	}
+}
+
+int _internal_assert(uint64_t predicate) {
+	assert(predicate);
+	return 0;
 }
 
 //
@@ -558,6 +626,43 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		_emit_return(buffer);
 		break;
+	
+	case INSTR_CALL_INTERNAL: {
+
+		X64Register saved_registers[] = {
+			REG_A,
+			REG_C,
+			REG_D,
+			REG_8,
+			REG_9,
+			REG_10,
+			REG_11,
+		};
+
+		_x64_generate_code(gen, instr->call_internal.arg, buffer);
+
+		// Push saved registers
+		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
+			_emit_push_reg(buffer, saved_registers[i], 64);
+		}
+
+		InstrIndex arg_instr_index = instr->call_internal.arg;
+		const InstrStorageLocation arg_storage_loc = gen->instr_storage[arg_instr_index.value];
+		_emit_mov_regs(buffer, arg_storage_loc.reg, REG_C, 64);
+
+		_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_assert);
+
+		uint8_t* instr_bytes = _code_buffer_append(buffer, 2);
+		instr_bytes[0] = 0xff;
+		instr_bytes[1] = _mod_rm_with_ext(2, 0);
+
+		// Pop saved registers in reverse order
+		for (size_t i = array_size(saved_registers); i > 0; i -= 1) {
+			_emit_pop_reg(buffer, saved_registers[i - 1], 64);
+		}
+
+		break;
+	}
 
 	case INSTR_REGION:
 		_x64_generate_code(gen, instr->region.last_instr, buffer);

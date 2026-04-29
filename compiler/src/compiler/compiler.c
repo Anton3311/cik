@@ -6,8 +6,20 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 	switch (expr->kind) {
-	case EXPR_CALL:
-		break;
+	case EXPR_CALL: {
+		const ParsedExpr* callable = expr->call.callable;
+		assert(callable->kind == EXPR_FUNCTION_REFERENCE);
+
+		assert(expr->call.args.count == 1);
+		const ParsedExpr* first_arg = expr->call.args.exprs[0];
+
+		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
+		call_instr->kind = INSTR_CALL_INTERNAL;
+		call_instr->call_internal.arg = _compile_expr(compiler, first_arg);
+		call_instr->call_internal.function_index = 0;
+		return call_instr_index;
+	}
 	case EXPR_BINARY: {
 		if (expr->binary.op == BIN_OP_ASSIGNMENT) {
 			assert(expr->binary.left->kind == EXPR_VARIABLE_REFERENCE);

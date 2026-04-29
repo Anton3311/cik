@@ -416,7 +416,9 @@ static void _code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity) {
 	size_t capacity_delta = expected_capacity - buffer->capacity;
 	size_t allocation_size = (capacity_delta + CODE_BUFFER_ALLOCATION_STEP - 1) & ~CODE_BUFFER_ALLOCATION_STEP_MASK;
 
-	assert(buffer->buffer + buffer->size == buffer->allocator->base + buffer->allocator->allocated);
+	assert_msg(buffer->buffer + buffer->capacity == buffer->allocator->base + buffer->allocator->allocated,
+			"Trying to grow CodeBuffer, however since the last grow there were allocations done, "
+			"with the arena associated to this code buffer");
 
 	arena_alloc_array(buffer->allocator, uint8_t, allocation_size);
 
@@ -564,7 +566,24 @@ inline void _emit_pop_reg(CodeBuffer* buffer, X64Register dst_reg, uint8_t reg_b
 	}
 }
 
-inline void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
+static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
+	if (offset == 0) {
+		return;
+	}
+
+	uint8_t* bytes = _code_buffer_append(buffer, 3);
+	bytes[0] = _rex_prefix(1, 0, 0, 0);
+	bytes[1] = 0x81;
+	bytes[2] = _mod_rm_with_ext(5, REG_SP);
+
+	_code_buffer_push_32(buffer, offset);
+}
+
+static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
+	if (offset == 0) {
+		return;
+	}
+
 	uint8_t* bytes = _code_buffer_append(buffer, 3);
 	bytes[0] = _rex_prefix(1, 0, 0, 0);
 	bytes[1] = 0x81;
@@ -651,6 +670,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_CALL_INTERNAL: {
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
 
+		const uint32_t SHADOW_SPACE_SIZE = 32;
+
 		X64Register saved_registers[] = {
 			REG_A,
 			REG_C,
@@ -674,10 +695,16 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_assert);
 
+		// push shadow space
+		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
+
 		// call
 		uint8_t* instr_bytes = _code_buffer_append(buffer, 2);
 		instr_bytes[0] = 0xff;
 		instr_bytes[1] = _mod_rm_with_ext(2, 0);
+
+		// pop shadow space
+		_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);
 
 		// Now move the return value into a the proper register dedicated
 		// exactly for the return value of this call instruction

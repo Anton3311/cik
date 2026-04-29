@@ -249,7 +249,7 @@ String instr_name(InstrKind instr_kind) {
 void instr_print(const Instr* instr) {
 	String name = instr_name(instr->kind);
 
-	size_t name_width = 12;
+	size_t name_width = 24;
 
 	printf("\033[32;1m%.*s\033[0m \033[%uC", STR_FMT(name), (uint32_t)(name_width - name.length));
 

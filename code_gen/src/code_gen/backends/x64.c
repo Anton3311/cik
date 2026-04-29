@@ -465,6 +465,10 @@ inline void _emit_return(CodeBuffer* buffer) {
 }
 
 inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst, uint8_t reg_bit_count) {
+	if (src == dst) {
+		return;
+	}
+
 	switch (reg_bit_count) {
 	case 8:
 	case 16:

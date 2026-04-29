@@ -185,4 +185,5 @@ void function_compiler_compile(FunctionCompiler* compiler) {
 	gen.temp_allocator = compiler->temp_allocator;
 
 	x64_alloc_registers(&gen, allowed_registers);
+	x64_generate_code(&gen, region);
 }

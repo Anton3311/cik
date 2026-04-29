@@ -65,5 +65,6 @@ typedef struct {
 } X64CodeGenerator;
 
 void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers);
+void x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
 
 #endif

@@ -380,3 +380,176 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 
 	profile_scope_end();
 }
+
+//
+// CodeBuffer
+//
+
+static const size_t CODE_BUFFER_ALLOCATION_STEP = 64;
+static const size_t CODE_BUFFER_ALLOCATION_STEP_MASK = CODE_BUFFER_ALLOCATION_STEP - 1;
+
+typedef struct {
+	uint8_t* buffer;
+	size_t size;
+	size_t capacity;
+	Arena* allocator;
+} CodeBuffer;
+
+static void _code_buffer_init(CodeBuffer* buffer, Arena* allocator) {
+	buffer->allocator = allocator;
+	buffer->capacity = 0;
+	buffer->size = 0;
+	buffer->buffer = arena_alloc_array(allocator, uint8_t, 0);
+}
+
+static void _code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity) {
+	size_t capacity_delta = expected_capacity - buffer->capacity;
+	size_t allocation_size = (capacity_delta + CODE_BUFFER_ALLOCATION_STEP - 1) & ~CODE_BUFFER_ALLOCATION_STEP_MASK;
+
+	assert(buffer->buffer + buffer->size == buffer->allocator->base + buffer->allocator->allocated);
+
+	arena_alloc_array(buffer->allocator, uint8_t, allocation_size);
+
+	buffer->capacity += allocation_size;
+}
+
+inline uint8_t* _code_buffer_append(CodeBuffer* buffer, size_t byte_count) {
+	if (buffer->size + byte_count > buffer->capacity) {
+		_code_buffer_grow(buffer, buffer->size + byte_count);
+	}
+
+	uint8_t* bytes = buffer->buffer + buffer->size;
+	buffer->size += byte_count;
+	return bytes;
+}
+
+inline void _code_buffer_push_64(CodeBuffer* buffer, uint64_t value) {
+	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
+	a[7] = (uint8_t)(value >> 56);
+	a[6] = (uint8_t)((value >> 48) & 0xff);
+	a[5] = (uint8_t)((value >> 40) & 0xff);
+	a[4] = (uint8_t)((value >> 32) & 0xff);
+	a[3] = (uint8_t)((value >> 24) & 0xff);
+	a[2] = (uint8_t)((value >> 16) & 0xff);
+	a[1] = (uint8_t)((value >> 8) & 0xff);
+	a[0] = (uint8_t)((value >> 0) & 0xff);
+}
+
+inline uint8_t _rex_prefix(uint8_t w, uint8_t r, uint8_t x, uint8_t b) {
+	assert(w <= 1);
+	assert(r <= 1);
+	assert(x <= 1);
+	assert(b <= 1);
+	return 0b01000000 | (w << 3) | (r << 2) | (x << 1) | (b << 0);
+}
+
+inline uint8_t _rex_prefix_src_dst(uint8_t is_64_bit_reg, uint8_t src_reg, uint8_t dst_reg) {
+	return _rex_prefix(is_64_bit_reg, src_reg >> 3, 0, dst_reg >> 3);
+}
+
+inline uint8_t _mod_rm(X64Register reg, uint8_t rm) {
+	assert(reg < 8);
+	assert(rm < 8);
+	return 0b11000000 | (reg << 3) | (rm);
+}
+
+inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
+	uint8_t* bytes = _code_buffer_append(buffer, 2);
+	bytes[0] = 0b01000000 | (1 << 3) | (reg >> 3);
+	bytes[1] = 0xb8 + (reg & 0b111);
+	_code_buffer_push_64(buffer, value);
+}
+
+inline void _emit_return(CodeBuffer* buffer) {
+	*_code_buffer_append(buffer, 1) = 0xc3;
+}
+
+inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst, uint8_t reg_bit_count) {
+	switch (reg_bit_count) {
+	case 8:
+	case 16:
+	case 32:
+		unreachable();
+	case 64: {
+		uint8_t rex_prefix = _rex_prefix_src_dst(1, src, dst);
+		uint8_t rm = _mod_rm(src, dst);
+
+		uint8_t* bytes = _code_buffer_append(buffer, 3);
+		bytes[0] = rex_prefix;
+		bytes[1] = 0x89;
+		bytes[2] = rm;
+		break;
+	}
+	default:
+		 unreachable();
+	}
+}
+
+//
+// Code Generation
+//
+
+void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
+	assert(instr_index.value < gen->instr_buffer.count);
+
+	const Instr* instr = &gen->instr_buffer.instr[instr_index.value];
+	const InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
+
+	switch (instr->kind) {
+	case INSTR_NO_OP:
+		break;
+
+	case INSTR_CONST_8:
+	case INSTR_CONST_16:
+	case INSTR_CONST_32:
+		unreachable();
+
+	case INSTR_CONST_64:
+		assert(instr_storage.kind == INSTR_STORAGE_REG);
+		_emit_load_const_64(buffer, instr_storage.reg, instr->const_64.u);
+		break;
+
+	case INSTR_BIN_OP_8:
+	case INSTR_BIN_OP_16:
+	case INSTR_BIN_OP_32:
+	case INSTR_BIN_OP_64:
+		break;
+
+	case INSTR_BRANCH:
+	case INSTR_JUMP:
+		break;
+
+	case INSTR_RETURN_VALUE:
+		_x64_generate_code(gen, instr->ret.value, buffer);
+		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->ret.value.value];
+		assert(return_value_loc.kind == INSTR_STORAGE_REG);
+
+		_emit_mov_regs(buffer, return_value_loc.reg, REG_A, 64);
+
+		_emit_return(buffer);
+		break;
+
+	case INSTR_REGION:
+		_x64_generate_code(gen, instr->region.last_instr, buffer);
+		break;
+	}
+}
+
+void x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
+	CodeBuffer buffer;
+	_code_buffer_init(&buffer, gen->allocator);
+
+	_x64_generate_code(gen, root_region, &buffer);
+
+	void* executable_memory = allocate_executable(buffer.size);
+	memcpy(executable_memory, buffer.buffer, buffer.size);
+
+	typedef uint64_t (*ExecutableFunction)();
+	ExecutableFunction function = (ExecutableFunction)executable_memory;
+
+	uint64_t result = function();
+
+	free_executable(executable_memory, buffer.size);
+
+	printf("%llu", result);
+}

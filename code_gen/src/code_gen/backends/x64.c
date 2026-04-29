@@ -512,8 +512,34 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_BIN_OP_8:
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
-	case INSTR_BIN_OP_64:
+		unreachable();
+	case INSTR_BIN_OP_64: {
+		_x64_generate_code(gen, instr->bin_op.left, buffer);
+		_x64_generate_code(gen, instr->bin_op.right, buffer);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
+		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(left_loc.kind == INSTR_STORAGE_REG);
+		assert(right_loc.kind == INSTR_STORAGE_REG);
+
+		_emit_mov_regs(buffer, left_loc.reg, dst_loc.reg, 64);
+
+		uint8_t rex_prefix = _rex_prefix_src_dst(1, dst_loc.reg, right_loc.reg);
+		uint8_t mod_rm = _mod_rm(dst_loc.reg, right_loc.reg);
+
+		uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
+		instr_bytes[0] = rex_prefix;
+		instr_bytes[2] = mod_rm;
+
+		switch (instr->bin_op.kind) {
+		case INSTR_BIN_ADD:
+			instr_bytes[1] = 0x03;
+			break;
+		}
 		break;
+	}
 
 	case INSTR_BRANCH:
 	case INSTR_JUMP:

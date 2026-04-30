@@ -733,7 +733,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	}
 }
 
-void x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
+MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
 	CodeBuffer buffer;
 	_code_buffer_init(&buffer, gen->allocator);
 
@@ -742,12 +742,8 @@ void x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
 	void* executable_memory = allocate_executable(buffer.size);
 	memcpy(executable_memory, buffer.buffer, buffer.size);
 
-	typedef uint64_t (*ExecutableFunction)();
-	ExecutableFunction function = (ExecutableFunction)executable_memory;
-
-	uint64_t result = function();
-
-	free_executable(executable_memory, buffer.size);
-
-	printf("%llu", result);
+	MachineCodeBuffer machine_code;
+	machine_code.code = executable_memory;
+	machine_code.size_in_bytes = buffer.size;
+	return machine_code;
 }

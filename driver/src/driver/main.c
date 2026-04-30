@@ -6,6 +6,7 @@
 #include "parser/preprocessor.h"
 #include "parser/parser.h"
 #include "compiler/compiler.h"
+#include "code_gen/backends/x64.h"
 
 static bool enum_installed_win_sdks(String sdk_install_path,
 		Arena* allocator,
@@ -22,10 +23,10 @@ int main(int argc, char *argv[]) {
 	profile_scope_start("main");
 
 	Arena arena = {};
-	arena.capacity = align_to_page_size(512 * 4096);
+	arena.capacity = align_to_page_size(512 * 8 * 4096);
 
 	Arena diagnostics_arena = {};
-	diagnostics_arena.capacity = align_to_page_size(512 * 4096);
+	diagnostics_arena.capacity = align_to_page_size(512 * 8 * 4096);
 
 	Arena temp_arena = {};
 	temp_arena.capacity = align_to_page_size(512 * 4096);
@@ -119,14 +120,44 @@ int main(int argc, char *argv[]) {
 		if (diagnostics.first == NULL) {
 			for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 				if (node->kind == AST_NODE_FUNCTION) {
+					if (node->function_def->body == NULL) {
+						continue;
+					}
+
 					FunctionCompiler c = {};
 					c.function = node->function_def;
 					c.allocator = &arena;
 					c.instr_allocator = &arena;
 					c.temp_allocator = &temp_arena;
 
-					function_compiler_compile(&c);
-					instr_print_all(c.instr_buffer);
+					CompiledFunction func = function_compiler_compile(&c);
+
+					uint16_t allowed_registers = UINT16_MAX;
+					allowed_registers &= ~(1 << REG_SP);
+					allowed_registers &= ~(1 << REG_BP);
+
+					uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_8, REG_9 };
+					for (size_t i = 0; i < array_size(cdecl_arg_regs); i += 1) {
+						allowed_registers &= ~(1 << cdecl_arg_regs[i]);
+					}
+
+					X64CodeGenerator gen = {};
+					gen.instr_buffer = func.instr_buffer;
+					gen.usage_ranges = func.usage_ranges;
+					gen.allocator = &arena;
+					gen.temp_allocator = &temp_arena;
+
+					x64_alloc_registers(&gen, allowed_registers);
+					MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
+
+					typedef uint64_t(*ExecutableFunction)();
+					ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;
+
+					uint64_t result = executable_function();
+
+					free_executable(machine_code.code, machine_code.size_in_bytes);
+
+					printf("%llu\n", result);
 				}
 			}
 		}

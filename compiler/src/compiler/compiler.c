@@ -1,7 +1,5 @@
 #include "compiler.h"
 
-#include "code_gen/backends/x64.h"
-
 static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -148,11 +146,9 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 	return initial_region;
 }
 
-void function_compiler_compile(FunctionCompiler* compiler) {
+CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	const ParsedScope* body = compiler->function->body;
-	if (!body) {
-		return;
-	}
+	assert(body);
 
 	compiler->var_count = compiler->function->var_count;
 	compiler->vars = arena_alloc_array(compiler->allocator, VariableState, compiler->var_count);
@@ -181,21 +177,9 @@ void function_compiler_compile(FunctionCompiler* compiler) {
 				(uint32_t)usage_ranges[i].last_usage.value);
 	}
 
-	uint16_t allowed_registers = UINT16_MAX;
-	allowed_registers &= ~(1 << REG_SP);
-	allowed_registers &= ~(1 << REG_BP);
-
-	uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_8, REG_9 };
-	for (size_t i = 0; i < array_size(cdecl_arg_regs); i += 1) {
-		allowed_registers &= ~(1 << cdecl_arg_regs[i]);
-	}
-
-	X64CodeGenerator gen;
-	gen.instr_buffer = compiler->instr_buffer;
-	gen.usage_ranges = usage_ranges;
-	gen.allocator = compiler->allocator;
-	gen.temp_allocator = compiler->temp_allocator;
-
-	x64_alloc_registers(&gen, allowed_registers);
-	x64_generate_code(&gen, region);
+	CompiledFunction compiled_function;
+	compiled_function.instr_buffer = compiler->instr_buffer;
+	compiled_function.usage_ranges = usage_ranges;
+	compiled_function.start_region = region;
+	return compiled_function;
 }

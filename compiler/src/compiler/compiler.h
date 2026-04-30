@@ -21,6 +21,12 @@ typedef struct {
 	VariableState* vars;
 } FunctionCompiler;
 
-void function_compiler_compile(FunctionCompiler* compiler);
+typedef struct {
+	InstrBuffer instr_buffer;
+	InstrIndex start_region;
+	InstrUsageRange* usage_ranges;
+} CompiledFunction;
+
+CompiledFunction function_compiler_compile(FunctionCompiler* compiler);
 
 #endif

@@ -53,7 +53,7 @@ void build_add_src_file(BuildContext* context, String file_path) {
 
 	BuildUnitId unit_id = _alloc_unit(context);
 	BuildUnit* unit = _get_unit(context, unit_id);
-	unit->name = path_get_file_name(file_path);
+	unit->name = path_trim_file_extension(path_get_file_name(file_path));
 	unit->path = file_path;
 	unit->output_type = OUTPUT_OBJ;
 
@@ -62,8 +62,30 @@ void build_add_src_file(BuildContext* context, String file_path) {
 	project->dependency_count += 1;
 }
 
-void build_add_dependency(BuildContext* context, BuildUnitId dependency) {
+void build_add_include(BuildContext* context, String include_dir_path) {
+	assert(context->current_project.value != INVALID_BUILD_UNIT_ID);
+	if (!path_is_directory(context->unit_allocator, include_dir_path)) {
+		panic("Given file path is not a directory");
+	}
 
+	BuildUnit* project = _get_unit(context, context->current_project);
+
+	if (project->include_dirs.count == 0) {
+		project->include_dirs.values = arena_alloc_array(context->allocator, String, 1);
+		project->include_dirs.count = 1;
+		project->include_dirs.values[0] = include_dir_path;
+	} else {
+		*arena_alloc(context->allocator, String) = include_dir_path;
+		project->include_dirs.count += 1;
+	}
+}
+
+void build_add_dependency(BuildContext* context, BuildUnitId dependency) {
+	assert(context->current_project.value != INVALID_BUILD_UNIT_ID);
+
+	BuildUnit* project = _get_unit(context, context->current_project);
+	*arena_alloc(context->dependency_allocator, BuildUnitId) = dependency;
+	project->dependency_count += 1;
 }
 
 BuildUnitId build_begin_project(BuildContext* context, String name, BuildUnitOutputType output_type) {
@@ -113,20 +135,97 @@ void build_output_executable(BuildContext* context, String output_dir_path) {
 	str_builder_append(&path_builder, STR_LIT(".exe"));
 }
 
-static String _generate_source_file_build_cmd(const BuildUnit* unit, Arena* allocator) {
+static void _format_output_file_path(StringBuilder* builder, const BuildUnit* unit) {
+	switch (unit->output_type) {
+	case OUTPUT_OBJ:
+		str_builder_append(builder, STR_LIT("bin/obj/"));
+		break;
+	case OUTPUT_EXE:
+	case OUTPUT_LIB:
+		str_builder_append(builder, STR_LIT("bin/"));
+		break;
+	}
+
+	str_builder_append(builder, unit->name);
+
+	switch (unit->output_type) {
+	case OUTPUT_OBJ:
+		str_builder_append(builder, STR_LIT(".o"));
+		break;
+	case OUTPUT_EXE:
+		str_builder_append(builder, STR_LIT(".exe"));
+		break;
+	case OUTPUT_LIB:
+		str_builder_append(builder, STR_LIT(".lib"));
+		break;
+	}
+}
+
+static String _generate_source_file_build_cmd(const BuildUnit* unit, StringArray include_dirs, Arena* allocator) {
 	StringBuilder builder = { .arena = allocator };
 
 	str_builder_append(&builder, STR_LIT("clang.exe -c "));
 	str_builder_append(&builder, unit->path);
 	str_builder_append(&builder, STR_LIT(" -m64 -g -Wall -o "));
-	str_builder_append(&builder, STR_LIT("bin\\obj\\"));
-	str_builder_append(&builder, path_trim_file_extension(unit->path));
-	str_builder_append(&builder, STR_LIT(".o"));
+
+	_format_output_file_path(&builder, unit);
+
+	for (size_t i = 0; i < include_dirs.count; i += 1) {
+		str_builder_append(&builder, STR_LIT(" \"-I"));
+		str_builder_append(&builder, include_dirs.values[i]);
+		str_builder_append_char(&builder, '\"');
+	}
+
+	return builder.string;
+}
+
+static String _generate_static_lib_link_cmd(BuildContext* context,
+		const BuildUnit* unit,
+		Arena* allocator) {
+	assert(unit->output_type == OUTPUT_LIB);
+
+	StringBuilder builder = { .arena = allocator };
+	str_builder_append(&builder, STR_LIT("llvm-lib.exe "));
+
+	str_builder_append(&builder, STR_LIT("/OUT:"));
+	_format_output_file_path(&builder, unit);
+
+	for (size_t i = 0; i < unit->dependency_count; i += 1) {
+		str_builder_append_char(&builder, ' ');
+		_format_output_file_path(&builder, _get_unit(context, unit->dependencies[i]));
+	}
+
+	return builder.string;
+}
+
+static String _generate_exe_link_cmd(BuildContext* context, const BuildUnit* unit, Arena* allocator) {
+	assert(unit->output_type == OUTPUT_EXE);
+
+	StringBuilder builder = { .arena = allocator };
+	str_builder_append(&builder, STR_LIT("clang.exe "));
+
+	str_builder_append(&builder, STR_LIT("-m64 -g -o "));
+	_format_output_file_path(&builder, unit);
+
+	for (size_t i = 0; i < unit->dependency_count; i += 1) {
+		str_builder_append_char(&builder, ' ');
+
+		BuildUnit* dependency = _get_unit(context, unit->dependencies[i]);
+		if (dependency->output_type == OUTPUT_LIB) {
+			str_builder_append(&builder, STR_LIT("-l"));
+		}
+
+		_format_output_file_path(&builder, dependency);
+	}
+
+	str_builder_append(&builder, STR_LIT(" -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib"));
+
 	return builder.string;
 }
 
 void build_run(BuildContext* context) {
 	String compiler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe");
+	String library_bundler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\llvm-lib.exe");
 
 	for (size_t i = 0; i < context->unit_count; i += 1) {
 		const BuildUnit* unit = &context->units[i];
@@ -138,7 +237,14 @@ void build_run(BuildContext* context) {
 				const BuildUnit* u = _get_unit(context, unit->dependencies[i]);
 				printf("\t%.*s\n", STR_FMT(u->name));
 
-				String cmd = _generate_source_file_build_cmd(u, context->allocator);
+				if (u->output_type != OUTPUT_OBJ) {
+					continue;
+				}
+
+				String cmd = _generate_source_file_build_cmd(u,
+						unit->include_dirs,
+						context->allocator);
+
 				printf("\t%.*s\n", STR_FMT(cmd));
 
 				int32_t exit_code = 0;
@@ -148,6 +254,32 @@ void build_run(BuildContext* context) {
 							&exit_code,
 							context->allocator) == PROCESS_RUN_OK) {
 					printf("compiled\n");
+				}
+			}
+
+			if (unit->output_type == OUTPUT_LIB) {
+				String link_cmd = _generate_static_lib_link_cmd(context, unit, context->allocator);
+				printf("link: %.*s\n", STR_FMT(link_cmd));
+
+				int32_t exit_code = 0;
+				if (process_run(library_bundler_exe,
+							STR_LIT("."),
+							link_cmd,
+							&exit_code,
+							context->allocator) == PROCESS_RUN_OK) {
+					printf("linked\n");
+				}
+			} else if (OUTPUT_EXE) {
+				String link_cmd = _generate_exe_link_cmd(context, unit, context->allocator);
+				printf("link: %.*s\n", STR_FMT(link_cmd));
+
+				int32_t exit_code = 0;
+				if (process_run(compiler_exe,
+							STR_LIT("."),
+							link_cmd,
+							&exit_code,
+							context->allocator) == PROCESS_RUN_OK) {
+					printf("linked\n");
 				}
 			}
 		}

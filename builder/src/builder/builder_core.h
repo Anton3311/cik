@@ -27,6 +27,8 @@ struct BuildUnit {
 
 	BuildUnitId* dependencies;
 	size_t dependency_count;
+
+	StringArray include_dirs;
 };
 
 struct BuildContext {

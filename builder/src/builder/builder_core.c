@@ -8,30 +8,46 @@ inline BuildUnit* _get_unit(BuildContext* context, BuildUnitId id) {
 inline BuildUnitId _alloc_unit(BuildContext* context) {
 	BuildUnitId unit_id = (BuildUnitId) { (uint16_t)context->unit_count };
 	context->unit_count += 1;
-	arena_alloc_zeroed(context->allocator, BuildUnit);
+	arena_alloc_zeroed(context->unit_allocator, BuildUnit);
 
 	BuildUnit* unit = _get_unit(context, unit_id);
 	unit->dependencies = arena_alloc_array(context->dependency_allocator, BuildUnitId, 0);
 	return unit_id;
 }
 
-void build_init(BuildContext* context, Arena* allocator, Arena* dependency_allocator) {
+void build_init(BuildContext* context, Arena* unit_allocator, Arena* dependency_allocator, Arena* allocator) {
 	context->allocator = allocator;
+	context->unit_allocator = unit_allocator;
 	context->dependency_allocator = dependency_allocator;
 
-	context->units = arena_alloc_array(context->allocator, BuildUnit, 0);
+	context->units = arena_alloc_array(context->unit_allocator, BuildUnit, 0);
 	context->unit_count = 0;
 
 	context->current_project.value = INVALID_BUILD_UNIT_ID;
 }
 
 void build_add_src_dir(BuildContext* context, String dir_path) {
-	
+	assert(context->current_project.value != INVALID_BUILD_UNIT_ID);
+	if (!path_exists(context->unit_allocator, dir_path)) {
+		panic("Given file path doesn't exist");
+	}
+
+	StringArray file_paths = fs_enumerate_files_in_directory(dir_path,
+			context->allocator,
+			context->unit_allocator);
+
+	for (size_t i = 0; i < file_paths.count; i += 1) {
+		String file_path = file_paths.values[i];
+		String extension = path_get_file_extension(file_path);
+		if (str_equal(extension, STR_LIT(".c"))) {
+			build_add_src_file(context, path_append(dir_path, file_path, context->allocator));
+		}
+	}
 }
 
 void build_add_src_file(BuildContext* context, String file_path) {
 	assert(context->current_project.value != INVALID_BUILD_UNIT_ID);
-	if (!path_exists(context->allocator, file_path)) {
+	if (!path_exists(context->unit_allocator, file_path)) {
 		panic("Given file path doesn't exist");
 	}
 
@@ -77,7 +93,7 @@ void build_output_library(BuildContext* context, String output_dir_path) {
 
 	unit->output_type = OUTPUT_LIB;
 
-	StringBuilder path_builder = { .arena = context->allocator };
+	StringBuilder path_builder = { .arena = context->unit_allocator};
 	str_builder_append(&path_builder, output_dir_path);
 	str_builder_append(&path_builder, unit->name);
 	str_builder_append(&path_builder, STR_LIT(".lib"));
@@ -91,7 +107,7 @@ void build_output_executable(BuildContext* context, String output_dir_path) {
 
 	unit->output_type = OUTPUT_EXE;
 
-	StringBuilder path_builder = { .arena = context->allocator };
+	StringBuilder path_builder = { .arena = context->unit_allocator};
 	str_builder_append(&path_builder, output_dir_path);
 	str_builder_append(&path_builder, unit->name);
 	str_builder_append(&path_builder, STR_LIT(".exe"));

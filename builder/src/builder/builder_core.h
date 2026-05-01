@@ -30,6 +30,7 @@ struct BuildUnit {
 };
 
 struct BuildContext {
+	Arena* unit_allocator;
 	Arena* allocator;
 	Arena* dependency_allocator;
 
@@ -39,7 +40,7 @@ struct BuildContext {
 	size_t unit_count;
 };
 
-void build_init(BuildContext* context, Arena* allocator, Arena* dependency_allocator);
+void build_init(BuildContext* context, Arena* unit_allocator, Arena* dependency_allocator, Arena* allocator);
 
 void build_add_src_dir(BuildContext* context, String dir_path);
 void build_add_src_file(BuildContext* context, String file_path);

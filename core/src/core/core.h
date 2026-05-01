@@ -525,6 +525,19 @@ inline String path_get_file_name(String path) {
 	return sub_str(path, file_name_start, path.length - file_name_start);
 }
 
+inline String path_get_file_extension(String path) {
+	String file_name = path_get_file_name(path);
+
+	size_t dot_position = file_name.length;
+	for (size_t i = 0; i < file_name.length; i += 1) {
+		if (file_name.v[i] == '.') {
+			dot_position = i;
+		}
+	}
+
+	return sub_str(file_name, dot_position, file_name.length - dot_position);
+}
+
 String path_get_parent(String path);
 String path_append(String parent, String path, Arena* allocator);
 

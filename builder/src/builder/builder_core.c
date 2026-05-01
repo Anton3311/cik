@@ -282,6 +282,14 @@ static bool _verify_dependecies_status(BuildContext* context, BuildUnitId unit_i
 	return true;
 }
 
+static void _print_result(bool success, String operation_name, String message) {
+	if (success) {
+		printf("  \x1b[1;32mDONE\x1b[0m %.*s %.*s\n", STR_FMT(operation_name), STR_FMT(message));
+	} else {
+		printf("  \x1b[1;31mFAIL\x1b[0m %.*s %.*s\n", STR_FMT(operation_name), STR_FMT(message));
+	}
+}
+
 void build_run(BuildContext* context) {
 	String compiler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe");
 	String library_bundler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\llvm-lib.exe");
@@ -324,7 +332,7 @@ void build_run(BuildContext* context) {
 		BuildUnitId unit_id = build_queue.units[i];
 		BuildUnit* unit = _get_unit(context, unit_id);
 		if (!_verify_dependecies_status(context, unit_id, status)) {
-			printf("%.*s -- skipped due to failed dependencies\n", STR_FMT(unit->name));
+			_print_result(false, unit->name, STR_LIT("skipped due to failed dependencies"));
 			status[unit_id.value] = UNIT_STATIS_FAILED;
 			continue;
 		}
@@ -334,34 +342,36 @@ void build_run(BuildContext* context) {
 			String link_cmd = _generate_exe_link_cmd(context, unit, context->allocator);
 
 			int32_t exit_code = 0;
-			if (process_run(compiler_exe,
+			bool success = process_run(compiler_exe,
 						STR_LIT("."),
 						link_cmd,
 						&exit_code,
-						context->allocator) == PROCESS_RUN_OK) {
-				printf("%.*s -- linked\n", STR_FMT(unit->name));
+						context->allocator) == PROCESS_RUN_OK;
+			if (success && exit_code == 0) {
 				status[unit_id.value] = UNIT_STATIS_DONE;
 			} else {
-				printf("%.*s -- link failed\n", STR_FMT(unit->name));
 				status[unit_id.value] = UNIT_STATIS_FAILED;
 			}
+
+			_print_result(status[unit_id.value] == UNIT_STATIS_DONE, STR_LIT("link"), unit->name);
 			break;
 		}
 		case OUTPUT_LIB: {
 			String link_cmd = _generate_static_lib_link_cmd(context, unit, context->allocator);
 
 			int32_t exit_code = 0;
-			if (process_run(library_bundler_exe,
+			bool success = process_run(library_bundler_exe,
 						STR_LIT("."),
 						link_cmd,
 						&exit_code,
-						context->allocator) == PROCESS_RUN_OK) {
-				printf("%.*s -- linked\n", STR_FMT(unit->name));
+						context->allocator) == PROCESS_RUN_OK;
+			if (success && exit_code == 0) {
 				status[unit_id.value] = UNIT_STATIS_DONE;
 			} else {
-				printf("%.*s -- link failed\n", STR_FMT(unit->name));
 				status[unit_id.value] = UNIT_STATIS_FAILED;
 			}
+
+			_print_result(status[unit_id.value] == UNIT_STATIS_DONE, STR_LIT("link"), unit->name);
 			break;
 		}
 		case OUTPUT_OBJ: {
@@ -370,17 +380,18 @@ void build_run(BuildContext* context) {
 					context->allocator);
 
 			int32_t exit_code = 0;
-			if (process_run(compiler_exe,
+			bool success = process_run(compiler_exe,
 						STR_LIT("."),
 						cmd,
 						&exit_code,
-						context->allocator) == PROCESS_RUN_OK) {
-				printf("%.*s -- compiled\n", STR_FMT(unit->name));
+						context->allocator) == PROCESS_RUN_OK;
+			if (success && exit_code == 0) {
 				status[unit_id.value] = UNIT_STATIS_DONE;
 			} else {
-				printf("%.*s -- compile failed\n", STR_FMT(unit->name));
 				status[unit_id.value] = UNIT_STATIS_FAILED;
 			}
+
+			_print_result(status[unit_id.value] == UNIT_STATIS_DONE, STR_LIT("compile"), unit->path);
 			break;
 		}
 		case OUTPUT_NONE:

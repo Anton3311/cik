@@ -1,48 +1,5 @@
 #include "builder_core.h"
 
-#include "Windows.h"
-
-bool _run_process(const char* executable,
-		const char* working_dir,
-		char* args,
-		int32_t* exit_code) {
-
-	PROCESS_INFORMATION process_info = {};
-	STARTUPINFOA startup_info = {};
-
-	ZeroMemory(&process_info, sizeof(process_info));
-	ZeroMemory(&startup_info, sizeof(startup_info));
-
-	startup_info.cb = sizeof(startup_info);
-
-	BOOL success = CreateProcessA(executable,
-			args,
-			NULL,
-			NULL,
-			TRUE,
-			0,
-			NULL,
-			working_dir,
-			&startup_info,
-			&process_info);
-
-	if (!success) {
-		return false;
-	}
-
-	WaitForSingleObject(process_info.hProcess, INFINITE);
-
-	if (exit_code) {
-		DWORD code = 0;
-		GetExitCodeProcess(process_info.hProcess, &code);
-		*exit_code = (int32_t)code;
-	}
-
-	CloseHandle(process_info.hProcess);
-	CloseHandle(process_info.hThread);
-	return true;
-}
-
 inline BuildUnit* _get_unit(BuildContext* context, BuildUnitId id) {
 	assert((size_t)id.value < context->unit_count);
 	return &context->units[id.value];
@@ -156,7 +113,7 @@ void build_output_executable(BuildContext* context, String output_dir_path) {
 	str_builder_append(&path_builder, STR_LIT(".exe"));
 }
 
-static char* _generate_source_file_build_cmd(const BuildUnit* unit, Arena* allocator) {
+static String _generate_source_file_build_cmd(const BuildUnit* unit, Arena* allocator) {
 	StringBuilder builder = { .arena = allocator };
 
 	str_builder_append(&builder, STR_LIT("clang.exe -c "));
@@ -165,10 +122,12 @@ static char* _generate_source_file_build_cmd(const BuildUnit* unit, Arena* alloc
 	str_builder_append(&builder, STR_LIT("bin\\obj\\"));
 	str_builder_append(&builder, path_trim_file_extension(unit->path));
 	str_builder_append(&builder, STR_LIT(".o"));
-	return str_builder_to_cstr(&builder);
+	return builder.string;
 }
 
 void build_run(BuildContext* context) {
+	String compiler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe");
+
 	for (size_t i = 0; i < context->unit_count; i += 1) {
 		const BuildUnit* unit = &context->units[i];
 
@@ -179,11 +138,17 @@ void build_run(BuildContext* context) {
 				const BuildUnit* u = _get_unit(context, unit->dependencies[i]);
 				printf("\t%.*s\n", STR_FMT(u->name));
 
-				char* cmd = _generate_source_file_build_cmd(u, context->allocator);
-				printf("\t%s\n", cmd);
+				String cmd = _generate_source_file_build_cmd(u, context->allocator);
+				printf("\t%.*s\n", STR_FMT(cmd));
 
 				int32_t exit_code = 0;
-				_run_process("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe", ".", cmd, &exit_code);
+				if (process_run(compiler_exe,
+							STR_LIT("."),
+							cmd,
+							&exit_code,
+							context->allocator) == PROCESS_RUN_OK) {
+					printf("compiled\n");
+				}
 			}
 		}
 	}

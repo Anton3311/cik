@@ -223,9 +223,174 @@ static String _generate_exe_link_cmd(BuildContext* context, const BuildUnit* uni
 	return builder.string;
 }
 
+typedef enum {
+	UNIT_STATIS_NONE,
+	UNIT_STATIS_DONE,
+	UNIT_STATIS_FAILED,
+} UnitStatus;
+
+typedef struct {
+	BuildUnitId* units;
+	size_t count;
+	size_t capacity;
+} BuildQueue;
+
+static void _build_queue_init(BuildQueue* queue, Arena* allocator, size_t capacity) {
+	queue->units = arena_alloc_array(allocator, BuildUnitId, capacity);
+	queue->count = 0;
+	queue->capacity = capacity;
+}
+
+static void _build_queue_append(BuildQueue* queue, BuildUnitId unit_id) {
+	assert(queue->count < queue->capacity);
+	queue->units[queue->count] = unit_id;
+	queue->count += 1;
+}
+
+static void _append_unit_dependecies(BuildContext* context, BuildQueue* queue, BuildUnitId unit_id, BitArray* visited_units) {
+	assert(!bit_array_get(visited_units, unit_id.value));
+
+	bit_array_set(visited_units, unit_id.value, true);
+
+	BuildUnit* unit = _get_unit(context, unit_id);
+	for (size_t i = 0; i < unit->dependency_count; i += 1) {
+		BuildUnitId dependency_id = unit->dependencies[i];
+		if (bit_array_get(visited_units, dependency_id.value)) {
+			continue;
+		}
+
+		// HACK: Need a better way of passing include dirs from
+		//       the project down to each source file
+		BuildUnit* dependency = _get_unit(context, dependency_id);
+		dependency->include_dirs = unit->include_dirs;
+
+		_append_unit_dependecies(context, queue, dependency_id, visited_units);
+	}
+
+	_build_queue_append(queue, unit_id);
+}
+
+static bool _verify_dependecies_status(BuildContext* context, BuildUnitId unit_id, const UnitStatus* unit_status) {
+	BuildUnit* unit = _get_unit(context, unit_id);
+	for (size_t i = 0; i < unit->dependency_count; i += 1) {
+		BuildUnitId dependency = unit->dependencies[i];
+		if (unit_status[dependency.value] != UNIT_STATIS_DONE) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void build_run(BuildContext* context) {
 	String compiler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe");
 	String library_bundler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\llvm-lib.exe");
+
+	BuildUnitId* root_units = arena_alloc_array(context->allocator, BuildUnitId, 0);
+	size_t root_unit_count = 0;
+
+	// Collect root units
+	for (size_t i = 0; i < context->unit_count; i += 1) {
+		const BuildUnit* unit = &context->units[i];
+		if (unit->output_type == OUTPUT_EXE) {
+			BuildUnitId* id = arena_alloc(context->allocator, BuildUnitId);
+			id->value = (uint16_t)i;
+			root_unit_count += 1;
+		}
+	}
+
+	// Create build queue
+	BuildQueue build_queue;
+	_build_queue_init(&build_queue, context->allocator, context->unit_count);
+	BitArray visited_units = bit_array_alloc(context->allocator, context->unit_count);
+	bit_array_clear(&visited_units);
+
+	for (size_t i = 0; i < root_unit_count; i += 1) {
+		_append_unit_dependecies(context, &build_queue, root_units[i], &visited_units);
+	}
+
+#if 0
+	for (size_t i = 0; i < build_queue.count; i += 1) {
+		BuildUnit* unit = _get_unit(context, build_queue.units[i]);
+		printf("%.*s -- %.*s\n", STR_FMT(unit->name), STR_FMT(unit->path));
+	}
+#endif
+
+	// Build units
+	UnitStatus* status = arena_alloc_zeroed_array(context->allocator, UnitStatus, context->unit_count);
+	for (size_t i = 0; i < build_queue.count; i += 1) {
+		ArenaRegion temp = arena_begin_temp(context->allocator);
+
+		BuildUnitId unit_id = build_queue.units[i];
+		BuildUnit* unit = _get_unit(context, unit_id);
+		if (!_verify_dependecies_status(context, unit_id, status)) {
+			printf("%.*s -- skipped due to failed dependencies\n", STR_FMT(unit->name));
+			status[unit_id.value] = UNIT_STATIS_FAILED;
+			continue;
+		}
+
+		switch (unit->output_type) {
+		case OUTPUT_EXE: {
+			String link_cmd = _generate_exe_link_cmd(context, unit, context->allocator);
+
+			int32_t exit_code = 0;
+			if (process_run(compiler_exe,
+						STR_LIT("."),
+						link_cmd,
+						&exit_code,
+						context->allocator) == PROCESS_RUN_OK) {
+				printf("%.*s -- linked\n", STR_FMT(unit->name));
+				status[unit_id.value] = UNIT_STATIS_DONE;
+			} else {
+				printf("%.*s -- link failed\n", STR_FMT(unit->name));
+				status[unit_id.value] = UNIT_STATIS_FAILED;
+			}
+			break;
+		}
+		case OUTPUT_LIB: {
+			String link_cmd = _generate_static_lib_link_cmd(context, unit, context->allocator);
+
+			int32_t exit_code = 0;
+			if (process_run(library_bundler_exe,
+						STR_LIT("."),
+						link_cmd,
+						&exit_code,
+						context->allocator) == PROCESS_RUN_OK) {
+				printf("%.*s -- linked\n", STR_FMT(unit->name));
+				status[unit_id.value] = UNIT_STATIS_DONE;
+			} else {
+				printf("%.*s -- link failed\n", STR_FMT(unit->name));
+				status[unit_id.value] = UNIT_STATIS_FAILED;
+			}
+			break;
+		}
+		case OUTPUT_OBJ: {
+			String cmd = _generate_source_file_build_cmd(unit,
+					unit->include_dirs,
+					context->allocator);
+
+			int32_t exit_code = 0;
+			if (process_run(compiler_exe,
+						STR_LIT("."),
+						cmd,
+						&exit_code,
+						context->allocator) == PROCESS_RUN_OK) {
+				printf("%.*s -- compiled\n", STR_FMT(unit->name));
+				status[unit_id.value] = UNIT_STATIS_DONE;
+			} else {
+				printf("%.*s -- compile failed\n", STR_FMT(unit->name));
+				status[unit_id.value] = UNIT_STATIS_FAILED;
+			}
+			break;
+		}
+		case OUTPUT_NONE:
+			break;
+		}
+
+		arena_end_temp(temp);
+	}
+
+	return;
 
 	for (size_t i = 0; i < context->unit_count; i += 1) {
 		const BuildUnit* unit = &context->units[i];
@@ -254,32 +419,6 @@ void build_run(BuildContext* context) {
 							&exit_code,
 							context->allocator) == PROCESS_RUN_OK) {
 					printf("compiled\n");
-				}
-			}
-
-			if (unit->output_type == OUTPUT_LIB) {
-				String link_cmd = _generate_static_lib_link_cmd(context, unit, context->allocator);
-				printf("link: %.*s\n", STR_FMT(link_cmd));
-
-				int32_t exit_code = 0;
-				if (process_run(library_bundler_exe,
-							STR_LIT("."),
-							link_cmd,
-							&exit_code,
-							context->allocator) == PROCESS_RUN_OK) {
-					printf("linked\n");
-				}
-			} else if (OUTPUT_EXE) {
-				String link_cmd = _generate_exe_link_cmd(context, unit, context->allocator);
-				printf("link: %.*s\n", STR_FMT(link_cmd));
-
-				int32_t exit_code = 0;
-				if (process_run(compiler_exe,
-							STR_LIT("."),
-							link_cmd,
-							&exit_code,
-							context->allocator) == PROCESS_RUN_OK) {
-					printf("linked\n");
 				}
 			}
 		}

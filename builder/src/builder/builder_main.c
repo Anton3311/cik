@@ -21,7 +21,9 @@ int main(int argc, char *argv[]) {
 	build_end_project(&context);
 
 	BuildUnitId driver = build_begin_project(&context, STR_LIT("c"), OUTPUT_EXE);
-	build_addsrc_dir(&context, STR_LIT("driver/src/driver"));
+	build_add_src_dir(&context, STR_LIT("driver/src/driver"));
+	build_add_include(&context, STR_LIT("core/src"));
+	build_add_include(&context, STR_LIT("parser/src"));
 	build_add_dependency(&context, project_core);
 	build_add_dependency(&context, project_parser);
 	build_end_project(&context);

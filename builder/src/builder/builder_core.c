@@ -1,5 +1,10 @@
 #include "builder_core.h"
 
+static String COMPILER_EXE =
+	STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe");
+static String LIBRARY_BUNDLER_EXE =
+	STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\llvm-lib.exe");
+
 inline BuildUnit* _get_unit(BuildContext* context, BuildUnitId id) {
 	assert((size_t)id.value < context->unit_count);
 	return &context->units[id.value];
@@ -282,18 +287,7 @@ static bool _verify_dependecies_status(BuildContext* context, BuildUnitId unit_i
 	return true;
 }
 
-static void _print_result(bool success, String operation_name, String message) {
-	if (success) {
-		printf("  \x1b[1;32mDONE\x1b[0m %.*s %.*s\n", STR_FMT(operation_name), STR_FMT(message));
-	} else {
-		printf("  \x1b[1;31mFAIL\x1b[0m %.*s %.*s\n", STR_FMT(operation_name), STR_FMT(message));
-	}
-}
-
-void build_run(BuildContext* context) {
-	String compiler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe");
-	String library_bundler_exe = STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\llvm-lib.exe");
-
+static BuildQueue _build_build_queue(BuildContext* context) {
 	BuildUnitId* root_units = arena_alloc_array(context->allocator, BuildUnitId, 0);
 	size_t root_unit_count = 0;
 
@@ -317,12 +311,19 @@ void build_run(BuildContext* context) {
 		_append_unit_dependecies(context, &build_queue, root_units[i], &visited_units);
 	}
 
-#if 0
-	for (size_t i = 0; i < build_queue.count; i += 1) {
-		BuildUnit* unit = _get_unit(context, build_queue.units[i]);
-		printf("%.*s -- %.*s\n", STR_FMT(unit->name), STR_FMT(unit->path));
+	return build_queue;
+}
+
+static void _print_result(bool success, String operation_name, String message) {
+	if (success) {
+		printf("  \x1b[1;32mDONE\x1b[0m %.*s %.*s\n", STR_FMT(operation_name), STR_FMT(message));
+	} else {
+		printf("  \x1b[1;31mFAIL\x1b[0m %.*s %.*s\n", STR_FMT(operation_name), STR_FMT(message));
 	}
-#endif
+}
+
+static void _run_build_process(BuildContext* context) {
+	BuildQueue build_queue = _build_build_queue(context);
 
 	// Build units
 	UnitStatus* status = arena_alloc_zeroed_array(context->allocator, UnitStatus, context->unit_count);
@@ -342,7 +343,7 @@ void build_run(BuildContext* context) {
 			String link_cmd = _generate_exe_link_cmd(context, unit, context->allocator);
 
 			int32_t exit_code = 0;
-			bool success = process_run(compiler_exe,
+			bool success = process_run(COMPILER_EXE,
 						STR_LIT("."),
 						link_cmd,
 						&exit_code,
@@ -360,7 +361,7 @@ void build_run(BuildContext* context) {
 			String link_cmd = _generate_static_lib_link_cmd(context, unit, context->allocator);
 
 			int32_t exit_code = 0;
-			bool success = process_run(library_bundler_exe,
+			bool success = process_run(LIBRARY_BUNDLER_EXE,
 						STR_LIT("."),
 						link_cmd,
 						&exit_code,
@@ -380,7 +381,7 @@ void build_run(BuildContext* context) {
 					context->allocator);
 
 			int32_t exit_code = 0;
-			bool success = process_run(compiler_exe,
+			bool success = process_run(COMPILER_EXE,
 						STR_LIT("."),
 						cmd,
 						&exit_code,
@@ -400,38 +401,39 @@ void build_run(BuildContext* context) {
 
 		arena_end_temp(temp);
 	}
+}
 
-	return;
+typedef enum {
+	CMD_BUILD,
+	CMD_INVALID,
+} Command;
 
-	for (size_t i = 0; i < context->unit_count; i += 1) {
-		const BuildUnit* unit = &context->units[i];
-
-		if (unit->output_type == OUTPUT_EXE || unit->output_type == OUTPUT_LIB) {
-			printf("build %.*s\n", STR_FMT(unit->name));
-
-			for (size_t i = 0; i < unit->dependency_count; i += 1) {
-				const BuildUnit* u = _get_unit(context, unit->dependencies[i]);
-				printf("\t%.*s\n", STR_FMT(u->name));
-
-				if (u->output_type != OUTPUT_OBJ) {
-					continue;
-				}
-
-				String cmd = _generate_source_file_build_cmd(u,
-						unit->include_dirs,
-						context->allocator);
-
-				printf("\t%.*s\n", STR_FMT(cmd));
-
-				int32_t exit_code = 0;
-				if (process_run(compiler_exe,
-							STR_LIT("."),
-							cmd,
-							&exit_code,
-							context->allocator) == PROCESS_RUN_OK) {
-					printf("compiled\n");
-				}
-			}
+void build_run(BuildContext* context, const char** argv, size_t argc) {
+	bool has_error = false;
+	Command command = CMD_INVALID;
+	if (argc == 1) {
+		return;
+	} else if (argc > 1) {
+		if (strcmp(argv[1], "build") == 0) {
+			command = CMD_BUILD;
+		} else {
+			fprintf(stderr, "Unknown command: '%s'", argv[1]);
+			has_error = true;
 		}
+
+		for (size_t i = 2; i < argc; i += 1) {
+			fprintf(stderr, "Unknown argument: '%s'", argv[i]);
+			has_error = true;
+		}
+
+		if (has_error) {
+			return;
+		}
+	}
+
+	switch (command) {
+	case CMD_BUILD:
+		_run_build_process(context);
+		break;
 	}
 }

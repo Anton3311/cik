@@ -562,6 +562,34 @@ bool path_exists(Arena* temp_allocator, String path) {
 	return exists;
 }
 
+inline static DWORD _get_file_attributes(String path, Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	const char* path_cstr = str_to_cstr(path, temp_allocator);
+	DWORD attributes = GetFileAttributesA(path_cstr);
+
+	arena_end_temp(temp);
+	return attributes;
+}
+
+bool path_is_file(Arena* temp_allocator, String path) {
+	DWORD attributes = _get_file_attributes(path, temp_allocator);
+	if (attributes == INVALID_FILE_ATTRIBUTES) {
+		return false;
+	}
+
+	return !has_flag(attributes, FILE_ATTRIBUTE_DIRECTORY);
+}
+
+bool path_is_directory(Arena* temp_allocator, String path) {
+	DWORD attributes = _get_file_attributes(path, temp_allocator);
+	if (attributes == INVALID_FILE_ATTRIBUTES) {
+		return false;
+	}
+
+	return has_flag(attributes, FILE_ATTRIBUTE_DIRECTORY);
+}
+
 WideString _path_canonicalize_to_wide_string(String path, Arena* allocator) {
 	WideString wide_path_string = str_to_wstr(path, allocator, true);
 
@@ -631,3 +659,64 @@ String path_append(String parent, String path, Arena* allocator) {
 	return builder.string;
 }
 
+
+//
+// Process
+//
+
+bool process_run(String executable_path,
+		String working_directory,
+		String arguments,
+		int32_t* out_exit_code,
+		Arena* temp_allocator) {
+	if (!path_is_file(temp_allocator, executable_path)) {
+		return PROCESS_RUN_INVALID_EXE_PATH;
+	}
+
+	if (!path_is_directory(temp_allocator, working_directory)) {
+		return PROCESS_RUN_INVALID_WORKING_DIR_PATH;
+	}
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	const char* executable_path_cstr = str_to_cstr(executable_path, temp_allocator);
+	const char* working_directory_cstr = str_to_cstr(working_directory, temp_allocator);
+	char* arguments_cstr = str_to_cstr(arguments, temp_allocator);
+
+	PROCESS_INFORMATION process_info = {};
+	STARTUPINFOA startup_info = {};
+
+	ZeroMemory(&process_info, sizeof(process_info));
+	ZeroMemory(&startup_info, sizeof(startup_info));
+
+	startup_info.cb = sizeof(startup_info);
+
+	BOOL success = CreateProcessA(executable_path_cstr,
+			arguments_cstr,
+			NULL,
+			NULL,
+			TRUE,
+			0,
+			NULL,
+			working_directory_cstr,
+			&startup_info,
+			&process_info);
+
+	arena_end_temp(temp);
+
+	if (!success) {
+		return PROCESS_RUN_ERROR;
+	}
+
+	WaitForSingleObject(process_info.hProcess, INFINITE);
+
+	if (out_exit_code) {
+		DWORD code = 0;
+		GetExitCodeProcess(process_info.hProcess, &code);
+		*out_exit_code = (int32_t)code;
+	}
+
+	CloseHandle(process_info.hProcess);
+	CloseHandle(process_info.hThread);
+	return true;
+}

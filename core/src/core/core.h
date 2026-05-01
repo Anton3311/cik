@@ -243,7 +243,7 @@ inline String str_duplicate_from_cstr(const char* str, Arena* allocator) {
 	return (String) { .v = string, .length = length };
 }
 
-inline const char* str_to_cstr(String string, Arena* allocator) {
+inline char* str_to_cstr(String string, Arena* allocator) {
 	char* cstring = arena_alloc_array(allocator, char, string.length + 1);
 	memcpy(cstring, string.v, string.length);
 	cstring[string.length] = 0;
@@ -502,6 +502,10 @@ bool win_sdk_get_install_path(Arena* allocator, String* out_path);
 String get_current_directory(Arena* allocator);
 String path_to_absolute(Arena* allocator, String path);
 bool path_exists(Arena* temp_allocator, String path);
+
+bool path_is_file(Arena* temp_allocator, String path);
+bool path_is_directory(Arena* temp_allocator, String path);
+
 String path_canonicalize(String path, Arena* allocator, Arena* temp_allocator);
 size_t path_get_file_name_start(String path);
 
@@ -553,5 +557,22 @@ inline String path_trim_file_extension(String path) {
 
 String path_get_parent(String path);
 String path_append(String parent, String path, Arena* allocator);
+
+//
+// Process
+//
+
+typedef enum {
+	PROCESS_RUN_OK,
+	PROCESS_RUN_INVALID_EXE_PATH,
+	PROCESS_RUN_INVALID_WORKING_DIR_PATH,
+	PROCESS_RUN_ERROR,
+} ProcessRunResult;
+
+bool process_run(String executable_path,
+		String working_directory,
+		String arguments,
+		int32_t* out_exit_code,
+		Arena* temp_allocator);
 
 #endif

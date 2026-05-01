@@ -1,5 +1,8 @@
-struct Hello;
+#if defined hello
+hello
+#elif !10
+world
+#endif
 
-struct Hello {
-
-};
+#define fmt(...) __VA_ARGS__
+fmt(10, 11, 12);

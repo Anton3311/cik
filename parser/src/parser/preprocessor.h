@@ -5,6 +5,7 @@
 #include "parser/source_info.h"
 #include "parser/diagnostics.h"
 
+typedef struct Preprocessor Preprocessor;
 typedef struct MacroDefinition MacroDefinition;
 typedef struct PreprocessorBranchRegion PreprocessorBranchRegion;
 
@@ -109,9 +110,15 @@ typedef struct {
 bool include_history_contains(IncludeHistory* history, const SourceFile* source_file);
 bool include_history_try_insert(IncludeHistory* history, const SourceFile* source_file);
 
+typedef struct {
+	Token path_token;
+} IncludeEvent;
+
+typedef void(*IncludeCallback)(Preprocessor* state, void* user_data, const IncludeEvent* event);
+
 static size_t MIN_BRANCH_REGION_STACK_DEPTH = 1;
 
-typedef struct {
+struct Preprocessor {
 	Arena* allocator;
 	Arena* temp_allocator;
 	Arena* generated_tokens_allocator;
@@ -138,7 +145,10 @@ typedef struct {
 	PreprocessorBranchRegion* branch_stack;
 	size_t branch_stack_depth;
 	size_t branch_stack_capacity;
-} Preprocessor;
+
+	IncludeCallback include_callback;
+	void* include_callback_user_data;
+};
 
 typedef enum {
 	MACRO_STYLE_DEFAULT,

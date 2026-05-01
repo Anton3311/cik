@@ -1335,12 +1335,18 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		Token string_token = {};
 
 		char opening_quote = state->tokenizer->source_code.v[state->tokenizer->read_position];
+
+		IncludeEvent include_event = {};
 		if (opening_quote == '<') {
 			StringTokenizerResult result = _tokenizer_try_create_string_token(state->tokenizer, '<', '>', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
+
+			include_event.path_token = string_token;
 		} else if (opening_quote == '"') {
 			StringTokenizerResult result = _tokenizer_try_create_string_token(state->tokenizer, '"', '"', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
+
+			include_event.path_token = string_token;
 		} else {
 			Token next_token = tokenizer_next_token(state->tokenizer);
 			diagnostics_report_error(state->diagnostics,
@@ -1396,6 +1402,10 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 				debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
 			}
+		}
+
+		if (state->include_callback) {
+			state->include_callback(state, state->include_callback_user_data, &include_event);
 		}
 
 		break;

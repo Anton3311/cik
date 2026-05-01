@@ -51,17 +51,10 @@ int main(int argc, char *argv[]) {
 
 		SourceStorage source_storage = {};
 
-		String sdk_path = path_append(install_path, sdks.values[0], &arena);
-		String um_include_path = path_append(sdk_path, STR_LIT("um"), &arena);
-		String ucrt_include_path = path_append(sdk_path, STR_LIT("ucrt"), &arena);
-		String shared_include_path = path_append(sdk_path, STR_LIT("shared"), &arena);
+		bool include_win_sdk = true;
 
 		StringArray include_dirs = {};
 		include_dirs.values = arena_alloc_array(&arena, String, 0);
-
-		str_array_append(&include_dirs, &arena, um_include_path);
-		str_array_append(&include_dirs, &arena, ucrt_include_path);
-		str_array_append(&include_dirs, &arena, shared_include_path);
 
 		for (size_t i = 2; i < (size_t)argc; i += 1) {
 			String arg = str_from_cstr(argv[i]);
@@ -69,10 +62,23 @@ int main(int argc, char *argv[]) {
 				String include_path = sub_str(arg, 2, arg.length - 2);
 				assert(include_path.length > 0);
 				str_array_append(&include_dirs, &arena, include_path);
+			} else if (str_equal(arg, STR_LIT("--no-win-sdk"))) {
+				include_win_sdk = false;
 			} else {
 				fprintf(stderr, "Unknown argument '%s'", argv[i]);
 				return EXIT_FAILURE;
 			}
+		}
+
+		if (include_win_sdk) {
+			String sdk_path = path_append(install_path, sdks.values[0], &arena);
+			String um_include_path = path_append(sdk_path, STR_LIT("um"), &arena);
+			String ucrt_include_path = path_append(sdk_path, STR_LIT("ucrt"), &arena);
+			String shared_include_path = path_append(sdk_path, STR_LIT("shared"), &arena);
+
+			str_array_append(&include_dirs, &arena, um_include_path);
+			str_array_append(&include_dirs, &arena, ucrt_include_path);
+			str_array_append(&include_dirs, &arena, shared_include_path);
 		}
 
 		source_storage_init(&source_storage,
@@ -96,6 +102,19 @@ int main(int argc, char *argv[]) {
 				&arena,
 				&temp_arena,
 				&generated_tokens_arena);
+
+		{
+			MacroDefinition code_generation_pass = {
+				.name = (SourceString) {
+					.string = STR_LIT("CODE_GENERATION_PASS"),
+					.source_file = source_file,
+				},
+				.builtin_kind = BUILTIN_MACRO_STDC,
+				.token_count = 1,
+			};
+
+			macro_table_append(&preprocessor.macro_table, &code_generation_pass);
+		}
 
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 512 * 4096 };

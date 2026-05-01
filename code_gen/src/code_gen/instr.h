@@ -1,7 +1,17 @@
 #ifndef INSTR_H
 #define INSTR_H
 
-#include "core/core.h"
+#ifdef CODE_GENERATION_PASS
+	#include "stdint.h"
+
+	typedef void Arena;
+	typedef struct {
+		const char* string;
+		size_t length;
+	} String;
+#else
+	#include "core/core.h"
+#endif
 
 typedef struct Instr Instr;
 typedef struct InstrBuffer InstrBuffer;

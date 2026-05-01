@@ -670,8 +670,17 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_emit_return(buffer);
 		break;
 	
+	case INSTR_IO_STATE:
+		if (instr->io_state.producer.value != UINT16_MAX) {
+			_x64_generate_code(gen, instr->io_state.producer, buffer);
+		}
+
+		break;
+	
 	case INSTR_CALL_INTERNAL: {
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
+
+		_x64_generate_code(gen, instr->call_internal.io_state, buffer);
 
 		const uint32_t SHADOW_SPACE_SIZE = 32;
 
@@ -728,6 +737,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	}
 
 	case INSTR_REGION:
+		_x64_generate_code(gen, instr->region.io_state, buffer);
 		_x64_generate_code(gen, instr->region.last_instr, buffer);
 		break;
 	}

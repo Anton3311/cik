@@ -16,6 +16,9 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		call_instr->kind = INSTR_CALL_INTERNAL;
 		call_instr->call_internal.arg = _compile_expr(compiler, first_arg);
 		call_instr->call_internal.function_index = 0;
+		call_instr->call_internal.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		return call_instr_index;
 	}
 	case EXPR_BINARY: {
@@ -162,7 +165,11 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
+	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
 	InstrIndex region = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
+	Instr* region_instr = instr_buffer_at(instr_buffer, region);
+	region_instr->region.io_state = compiler->io_state;
 
 	InstrUsageRange* usage_ranges = instr_compute_usage_ranges(compiler->instr_buffer,
 			region,

@@ -26,6 +26,7 @@ typedef enum {
 
 	INSTR_RETURN_VALUE,
 
+	INSTR_IO_STATE,
 	INSTR_REGION,
 
 	INSTR_CALL_INTERNAL,
@@ -107,12 +108,18 @@ struct Instr {
 		} ret;
 
 		struct {
+			InstrIndex producer;
+		} io_state;
+
+		struct {
 			InstrIndex arg;
+			InstrIndex io_state;
 			uint8_t function_index;
 		} call_internal;
 
 		struct {
 			InstrIndex last_instr;
+			InstrIndex io_state;
 		} region;
 	};
 };
@@ -212,6 +219,14 @@ inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, 
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_RETURN_VALUE;
 	instr->ret.value = value;
+	return i;
+}
+
+inline InstrIndex instr_new_io_state(InstrBuffer* buffer, Arena* allocator, InstrIndex producer) {
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_IO_STATE;
+	instr->io_state.producer = producer;
 	return i;
 }
 

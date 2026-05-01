@@ -17,6 +17,8 @@ typedef struct {
 	Arena* temp_allocator;
 	InstrBuffer instr_buffer;
 
+	InstrIndex io_state;
+
 	size_t var_count;
 	VariableState* vars;
 } FunctionCompiler;

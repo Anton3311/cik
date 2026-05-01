@@ -20,7 +20,8 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 
 	[INSTR_CALL_INTERNAL] = INSTR_FEATURE_CONTROL | INSTR_FEATURE_REG_STORAGE,
 
-	[INSTR_REGION] = 0,
+	[INSTR_IO_STATE] = INSTR_FEATURE_CONTROL,
+	[INSTR_REGION] = INSTR_FEATURE_CONTROL,
 };
 
 static String instr_kind_to_string[] = {
@@ -37,6 +38,7 @@ static String instr_kind_to_string[] = {
 	[INSTR_JUMP] = STR_LIT("jump"),
 	[INSTR_RETURN_VALUE] = STR_LIT("return_value"),
 	[INSTR_CALL_INTERNAL] = STR_LIT("call_internal"),
+	[INSTR_IO_STATE] = STR_LIT("io_state"),
 	[INSTR_REGION] = STR_LIT("region"),
 };
 
@@ -98,10 +100,15 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
 
 	case INSTR_REGION:
 		instr_stack_push(out_dependencies, instr->region.last_instr);
+		instr_stack_push(out_dependencies, instr->region.io_state);
+		break;
+	case INSTR_IO_STATE:
+		instr_stack_push(out_dependencies, instr->io_state.producer);
 		break;
 	
 	case INSTR_CALL_INTERNAL:
 		instr_stack_push(out_dependencies, instr->call_internal.arg);
+		instr_stack_push(out_dependencies, instr->call_internal.io_state);
 		break;
 
 	case INSTR_COUNT:
@@ -153,7 +160,8 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		size_t dep_count = stack.count - first_dep_index;
 
 		for (size_t i = first_dep_index; i < first_dep_index + dep_count; i += 1) {
-			InstrIndex dep_index = stack.instr[i];
+			// Visit dependencies in reverse order of them being pushed onto the stack
+			InstrIndex dep_index = stack.instr[stack.count - 1 - i];
 			if (dep_index.value >= buffer.count) {
 				continue;
 			}
@@ -221,13 +229,19 @@ void instr_print(const Instr* instr) {
 	case INSTR_RETURN_VALUE:
 		printf("%u", (uint32_t)instr->ret.value.value);
 		break;
+	case INSTR_IO_STATE:
+		printf("producer: %u", (uint32_t)instr->io_state.producer.value);
+		break;
 	case INSTR_REGION:
-		printf("%u", (uint32_t)instr->region.last_instr.value);
+		printf("last: %u io_state: %u",
+				(uint32_t)instr->region.last_instr.value,
+				(uint32_t)instr->region.io_state.value);
 		break;
 	case INSTR_CALL_INTERNAL:
-		printf("arg: %u func: %u",
+		printf("arg: %u func: %u io_state: %u",
 				(uint32_t)instr->call_internal.arg.value,
-				(uint32_t)instr->call_internal.function_index);
+				(uint32_t)instr->call_internal.function_index,
+				(uint32_t)instr->call_internal.io_state.value);
 		break;
 	case INSTR_BIN_OP_8:
 	case INSTR_BIN_OP_16:

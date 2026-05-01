@@ -176,6 +176,8 @@ void arena_release(Arena* arena);
 #define arena_alloc(arena, type) (type*)arena_alloc_aligned(arena, sizeof(type), alignof(type))
 #define arena_alloc_zeroed(arena, type) (type*)arena_alloc_zeroed_aligned(arena, sizeof(type), alignof(type))
 #define arena_alloc_array(arena, type, count) (type*)arena_alloc_aligned(arena, sizeof(type) * count, alignof(type))
+#define arena_alloc_zeroed_array(arena, type, count) \
+	(type*)arena_alloc_zeroed_aligned(arena, sizeof(type) * count, alignof(type))
 
 //
 // Temporary Arena allocations
@@ -573,6 +575,14 @@ ProcessRunResult process_run(String executable_path,
 		String working_directory,
 		String arguments,
 		int32_t* out_exit_code,
+		Arena* temp_allocator);
+
+ProcessRunResult process_capture_stdout(String executable_path,
+		String working_directory,
+		String arguments,
+		int32_t* out_exit_code,
+		String* out_stdout,
+		Arena* allocator,
 		Arena* temp_allocator);
 
 #endif

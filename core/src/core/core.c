@@ -720,3 +720,125 @@ ProcessRunResult process_run(String executable_path,
 	CloseHandle(process_info.hThread);
 	return PROCESS_RUN_OK;
 }
+
+typedef struct {
+	HANDLE read;
+	HANDLE write;
+} StdoutPipe;
+
+static bool _stdout_pipe_create(StdoutPipe* pipe) {
+	HANDLE stdout_read = NULL;
+	HANDLE stdout_write = NULL;
+
+	SECURITY_ATTRIBUTES security_attributes = {};
+	security_attributes.nLength = sizeof(security_attributes);
+	security_attributes.bInheritHandle = TRUE;
+	security_attributes.lpSecurityDescriptor = NULL;
+	if (!CreatePipe(&stdout_read, &stdout_write, &security_attributes, 0)) {
+		return false;
+	}
+
+	*pipe = (StdoutPipe) {
+		.read = stdout_read,
+		.write = stdout_write,
+	};
+
+	return true;
+}
+
+static void _stdout_pipe_release(StdoutPipe* pipe) {
+	CloseHandle(pipe->read);
+	CloseHandle(pipe->write);
+	*pipe = (StdoutPipe) {};
+}
+
+ProcessRunResult process_capture_stdout(String executable_path,
+		String working_directory,
+		String arguments,
+		int32_t* out_exit_code,
+		String* out_stdout,
+		Arena* allocator,
+		Arena* temp_allocator) {
+	if (!path_is_file(temp_allocator, executable_path)) {
+		return PROCESS_RUN_INVALID_EXE_PATH;
+	}
+
+	if (!path_is_directory(temp_allocator, working_directory)) {
+		return PROCESS_RUN_INVALID_WORKING_DIR_PATH;
+	}
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	const char* executable_path_cstr = str_to_cstr(executable_path, temp_allocator);
+	const char* working_directory_cstr = str_to_cstr(working_directory, temp_allocator);
+	char* arguments_cstr = str_to_cstr(arguments, temp_allocator);
+
+	StdoutPipe pipe = {};
+	if (!_stdout_pipe_create(&pipe)) {
+		return PROCESS_RUN_ERROR;
+	}
+
+	PROCESS_INFORMATION process_info = {};
+	STARTUPINFOA startup_info = {};
+
+	ZeroMemory(&process_info, sizeof(process_info));
+	ZeroMemory(&startup_info, sizeof(startup_info));
+
+	startup_info.cb = sizeof(startup_info);
+	startup_info.hStdError = pipe.write;
+	startup_info.hStdOutput = pipe.write;
+	startup_info.dwFlags |= STARTF_USESTDHANDLES;
+
+	BOOL success = CreateProcessA(executable_path_cstr,
+			arguments_cstr,
+			NULL,
+			NULL,
+			TRUE,
+			0,
+			NULL,
+			working_directory_cstr,
+			&startup_info,
+			&process_info);
+
+	arena_end_temp(temp);
+
+	if (!success) {
+		_stdout_pipe_release(&pipe);
+		return PROCESS_RUN_ERROR;
+	}
+
+	WaitForSingleObject(process_info.hProcess, INFINITE);
+
+	if (out_exit_code) {
+		DWORD code = 0;
+		GetExitCodeProcess(process_info.hProcess, &code);
+		*out_exit_code = (int32_t)code;
+	}
+
+	CloseHandle(process_info.hProcess);
+	CloseHandle(process_info.hThread);
+	CloseHandle(pipe.write);
+
+	String stdout_string = { .v = arena_alloc_array(allocator, char, 0), .length = 0 };
+	size_t string_allocation_base = allocator->allocated;
+	size_t buffer_size = 4096;
+
+	while (true) {
+		DWORD read_count = 0;
+
+		char* buffer = arena_alloc_array(allocator, char, buffer_size);
+
+		bool success = ReadFile(pipe.read, buffer, buffer_size, &read_count, NULL);
+		if (!success || read_count == 0) {
+			break;
+		}
+
+		stdout_string.length += (size_t)read_count;
+	}
+
+	allocator->allocated = string_allocation_base + stdout_string.length;
+	*out_stdout = stdout_string;
+
+	CloseHandle(pipe.read);
+	return PROCESS_RUN_OK;
+}

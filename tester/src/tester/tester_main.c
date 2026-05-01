@@ -1,8 +1,10 @@
 #include <stdio.h>
 
 #include "core/core.h"
+
 #include "tester/tester_core.h"
 #include "tester/tests.h"
+#include "tester/tests_x64.h"
 
 #include "parser/preprocessor.h"
 
@@ -70,11 +72,17 @@ static TestCase parser_tests[] = {
 	test(test_allow_variable_shadowing_in_else_branch_if_statements),
 };
 
+static TestCase s_x64_tests[] = {
+	test(test_return_uint64_zero),
+	test(test_add_uint64_consts),
+};
+
 static TestSuite s_test_suites[] = {
 	test_suite(source_info_tests),
 	test_suite(tokenizer_tests),
 	test_suite(preprocessor_tests),
 	test_suite(parser_tests),
+	test_suite(s_x64_tests),
 };
 
 bool arg_parse_uint64(const char* string, uint64_t* out) {

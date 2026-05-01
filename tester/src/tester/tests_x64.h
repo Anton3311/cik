@@ -1,0 +1,9 @@
+#ifndef TESTS_X64_H
+#define TESTS_X64_H
+
+#include "tester/tester_core.h"
+
+void test_return_uint64_zero(TestContext* context);
+void test_add_uint64_consts(TestContext* context);
+
+#endif

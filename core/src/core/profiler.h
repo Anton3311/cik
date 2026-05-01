@@ -14,6 +14,8 @@ typedef struct {
 } ProfileScopeTimer;
 
 typedef struct {
+	ProfileScopeTimer dummy_timer;
+
 	ProfileScopeTimer* scopes;
 	size_t count;
 	size_t capacity;
@@ -26,6 +28,10 @@ void profile_finish();
 
 inline ProfileScopeTimer* profiler_append(uint64_t start_time, const char* name, const char* file, uint32_t line) {
 	ProfileState* state = profile_get_state();
+	if (state->scopes == NULL) {
+		return &state->dummy_timer;
+	}
+
 	assert(state->count < state->capacity);
 
 	ProfileScopeTimer* timer = &state->scopes[state->count];

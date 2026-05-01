@@ -569,7 +569,7 @@ typedef enum {
 	PROCESS_RUN_ERROR,
 } ProcessRunResult;
 
-bool process_run(String executable_path,
+ProcessRunResult process_run(String executable_path,
 		String working_directory,
 		String arguments,
 		int32_t* out_exit_code,

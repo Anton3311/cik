@@ -664,7 +664,7 @@ String path_append(String parent, String path, Arena* allocator) {
 // Process
 //
 
-bool process_run(String executable_path,
+ProcessRunResult process_run(String executable_path,
 		String working_directory,
 		String arguments,
 		int32_t* out_exit_code,
@@ -718,5 +718,5 @@ bool process_run(String executable_path,
 
 	CloseHandle(process_info.hProcess);
 	CloseHandle(process_info.hThread);
-	return true;
+	return PROCESS_RUN_OK;
 }

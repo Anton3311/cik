@@ -1072,34 +1072,18 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		//       we only care about the type def, and since the alias namespace
 		//       contains only type defs, any other ident kind is expected
 
-		// TODO: clean this up
-
 		switch (entry->kind) {
-		case IDENT_FUNCTION:
-		case IDENT_VARIABLE:
-			unreachable();
 		case IDENT_TYPE_DEF:
 			preprocessor_next_token(parser->preprocessor);
 
 			*out_type = entry->type_def->aliased_type;
 			out_type->alias_definition = entry->type_def;
 			return PARSE_TYPE_PARSED;
+		case IDENT_FUNCTION:
+		case IDENT_VARIABLE:
 		case IDENT_STRUCT:
-			unreachable();
-			preprocessor_next_token(parser->preprocessor);
-
-			out_type->kind = PARSED_TYPE_STRUCT;
-			out_type->struct_def = entry->struct_def;
-			return PARSE_TYPE_PARSED;
 		case IDENT_ENUM:
-			unreachable();
-			preprocessor_next_token(parser->preprocessor);
-
-			out_type->kind = PARSED_TYPE_ENUM;
-			out_type->enum_def = entry->enum_def;
-			return PARSE_TYPE_PARSED;
 		case IDENT_ENUM_CONSTANT:
-			unreachable();
 		case IDENT_KIND_MAX:
 			unreachable();
 		}

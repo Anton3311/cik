@@ -20,6 +20,8 @@ static String s_bin_op_kind_to_string[] = {
 	[BIN_OP_BITWISE_AND] = STR_LIT("&"),
 	[BIN_OP_BITWISE_OR] = STR_LIT("|"),
 	[BIN_OP_BITWISE_XOR] = STR_LIT("^"),
+	[BIN_OP_BITWISE_SHIFT_LEFT] = STR_LIT("<<"),
+	[BIN_OP_BITWISE_SHIFT_RIGHT] = STR_LIT(">>"),
 
 	[BIN_OP_ASSIGNMENT] = STR_LIT("="),
 
@@ -32,6 +34,8 @@ static String s_bin_op_kind_to_string[] = {
 	[BIN_OP_ASSIGNMENT_BY_BITWISE_AND] = STR_LIT("&="),
 	[BIN_OP_ASSIGNMENT_BY_BITWISE_OR] = STR_LIT("|="),
 	[BIN_OP_ASSIGNMENT_BY_BITWISE_XOR] = STR_LIT("^="),
+	[BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT] = STR_LIT("<<="),
+	[BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT] = STR_LIT(">>="),
 };
 
 String bin_op_kind_to_string(BinOpKind op) {
@@ -92,6 +96,10 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	case BIN_OP_LOGICAL_GREATER_OR_EQUAL:
 		return 6;
 
+	case BIN_OP_BITWISE_SHIFT_LEFT:
+	case BIN_OP_BITWISE_SHIFT_RIGHT:
+		return 5;
+
 	case BIN_OP_BITWISE_AND:
 		return 8;
 	case BIN_OP_BITWISE_OR:
@@ -109,6 +117,8 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	case BIN_OP_ASSIGNMENT_BY_BITWISE_AND:
 	case BIN_OP_ASSIGNMENT_BY_BITWISE_OR:
 	case BIN_OP_ASSIGNMENT_BY_BITWISE_XOR:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT:
 		return 14;
 	}
 

@@ -374,6 +374,12 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 
 		printer_begin_struct(printer, "variant");
 		printer_string_field(printer, "name", variant->name.string);
+
+		if (variant->value) {
+			printer_field(printer, "value");
+			print_expr(printer, variant->value);
+		}
+
 		printer_end_struct(printer);
 
 		variant = variant->next;

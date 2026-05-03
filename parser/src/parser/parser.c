@@ -440,6 +440,19 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 
 static ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token);
 
+typedef enum {
+	EXPR_PARSE_OK,
+	EXPR_PARSE_NOT_PARSED,
+	EXPR_PARSE_ERROR,
+} ExprParseResult;
+
+static ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr);
+static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr);
+
+//
+// Parser Implementation
+//
+
 void _parser_skip_until_semicolon(Parser* parser) {
 	while (true) {
 		Token token = preprocessor_next_token(parser->preprocessor);
@@ -699,6 +712,25 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 		}
 
 		variant->name = source_string_from_token(name_token);
+
+		// Parse an optional value
+		Token equal_token = preprocessor_view_next(parser->preprocessor);
+		if (equal_token.kind == TOKEN_EQUAL) {
+			preprocessor_next_token(parser->preprocessor);
+
+			variant->value = arena_alloc(parser->ast_allocator, ParsedExpr);
+			switch (_parser_try_parse_expr(parser, variant->value)) {
+			case EXPR_PARSE_OK:
+				break;
+			case EXPR_PARSE_ERROR:
+			case EXPR_PARSE_NOT_PARSED:
+				diagnostics_report_error(parser->diagnostics,
+						equal_token.source_range,
+						STR_LIT("Expected a enum variant value"),
+						NULL);
+				break;
+			}
+		}
 
 		if (first_variant == NULL) {
 			first_variant = variant;
@@ -1307,15 +1339,6 @@ bool _token_kind_to_unary_pre_op(TokenKind kind, UnaryOpKind* out_op) {
 	unreachable();
 	return false;
 }
-
-typedef enum {
-	EXPR_PARSE_OK,
-	EXPR_PARSE_NOT_PARSED,
-	EXPR_PARSE_ERROR,
-} ExprParseResult;
-
-static ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr);
-static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr);
 
 static void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* out_literal) {
 	StringBuilder builder = { .arena = parser->ast_allocator };

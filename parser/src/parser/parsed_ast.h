@@ -290,6 +290,7 @@ struct ParsedStruct {
 
 struct ParsedEnumVariant {
 	SourceString name;
+	ParsedExpr* value;
 
 	ParsedEnumVariant* next;
 };

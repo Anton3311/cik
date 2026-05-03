@@ -229,9 +229,9 @@ static String _generate_exe_link_cmd(BuildContext* context, const BuildUnit* uni
 }
 
 typedef enum {
-	UNIT_STATIS_NONE,
-	UNIT_STATIS_DONE,
-	UNIT_STATIS_FAILED,
+	UNIT_STATUS_NONE,
+	UNIT_STATUS_DONE,
+	UNIT_STATUS_FAILED,
 } UnitStatus;
 
 typedef struct {
@@ -279,7 +279,7 @@ static bool _verify_dependecies_status(BuildContext* context, BuildUnitId unit_i
 	BuildUnit* unit = _get_unit(context, unit_id);
 	for (size_t i = 0; i < unit->dependency_count; i += 1) {
 		BuildUnitId dependency = unit->dependencies[i];
-		if (unit_status[dependency.value] != UNIT_STATIS_DONE) {
+		if (unit_status[dependency.value] != UNIT_STATUS_DONE) {
 			return false;
 		}
 	}
@@ -334,7 +334,7 @@ static void _run_build_process(BuildContext* context) {
 		BuildUnit* unit = _get_unit(context, unit_id);
 		if (!_verify_dependecies_status(context, unit_id, status)) {
 			_print_result(false, unit->name, STR_LIT("skipped due to failed dependencies"));
-			status[unit_id.value] = UNIT_STATIS_FAILED;
+			status[unit_id.value] = UNIT_STATUS_FAILED;
 			continue;
 		}
 
@@ -349,12 +349,12 @@ static void _run_build_process(BuildContext* context) {
 						&exit_code,
 						context->allocator) == PROCESS_RUN_OK;
 			if (success && exit_code == 0) {
-				status[unit_id.value] = UNIT_STATIS_DONE;
+				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
-				status[unit_id.value] = UNIT_STATIS_FAILED;
+				status[unit_id.value] = UNIT_STATUS_FAILED;
 			}
 
-			_print_result(status[unit_id.value] == UNIT_STATIS_DONE, STR_LIT("link"), unit->name);
+			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("link"), unit->name);
 			break;
 		}
 		case OUTPUT_LIB: {
@@ -367,12 +367,12 @@ static void _run_build_process(BuildContext* context) {
 						&exit_code,
 						context->allocator) == PROCESS_RUN_OK;
 			if (success && exit_code == 0) {
-				status[unit_id.value] = UNIT_STATIS_DONE;
+				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
-				status[unit_id.value] = UNIT_STATIS_FAILED;
+				status[unit_id.value] = UNIT_STATUS_FAILED;
 			}
 
-			_print_result(status[unit_id.value] == UNIT_STATIS_DONE, STR_LIT("link"), unit->name);
+			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("link"), unit->name);
 			break;
 		}
 		case OUTPUT_OBJ: {
@@ -387,12 +387,12 @@ static void _run_build_process(BuildContext* context) {
 						&exit_code,
 						context->allocator) == PROCESS_RUN_OK;
 			if (success && exit_code == 0) {
-				status[unit_id.value] = UNIT_STATIS_DONE;
+				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
-				status[unit_id.value] = UNIT_STATIS_FAILED;
+				status[unit_id.value] = UNIT_STATUS_FAILED;
 			}
 
-			_print_result(status[unit_id.value] == UNIT_STATIS_DONE, STR_LIT("compile"), unit->path);
+			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("compile"), unit->path);
 			break;
 		}
 		case OUTPUT_NONE:

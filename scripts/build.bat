@@ -9,8 +9,10 @@ clang ^
 	parser\src\parser\parsed_ast.c ^
 	parser\src\parser\parser.c ^
 	parser\src\parser\parse_tools.c ^
+	compiler\src\compiler\compiler.c ^
+	code_gen\src\code_gen\instr.c ^
 	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib ^
-	-m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\
+	-m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\ -Icompiler\src -Icode_gen\src
 
 clang ^
 	core\src\core\core.c ^
@@ -24,15 +26,17 @@ clang ^
 	parser\src\parser\parser.c ^
 	parser\src\parser\parse_tools.c ^
 	parser\src\parser\parsed_ast.c ^
+	compiler\src\compiler\compiler.c ^
+	code_gen\src\code_gen\instr.c ^
 	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib ^
-	-m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src
+	-m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src -Icompiler\src -Icode_gen\src
 
 clang ^
 	core\src\core\core.c ^
 	core\src\core\profiler.c ^
 	tester\src\tester\test_runner.c ^
 	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib ^
-	-m64 -Wall -o bin\test_runner.exe -Icore\src\ -Itester\src\
+	-m64 -Wall -o bin\test_runner.exe -Icore\src\ -Itester\src\ -Icompiler\src -Icode_gen\src
 
 clang ^
 	core\src\core\core.c ^

@@ -1,0 +1,58 @@
+#include "instr.h"
+
+static String instr_kind_to_string[] = {
+	[INSTR_NO_OP] = STR_LIT("no_op"),
+	[INSTR_CONST_8] = STR_LIT("const_8"),
+	[INSTR_CONST_16] = STR_LIT("const_16"),
+	[INSTR_CONST_32] = STR_LIT("const_32"),
+	[INSTR_CONST_64] = STR_LIT("const_64"),
+	[INSTR_REGION] = STR_LIT("region"),
+};
+
+String instr_name(InstrKind instr_kind) {
+	return instr_kind_to_string[instr_kind];
+}
+
+void instr_print(const Instr* instr) {
+	String name = instr_name(instr->kind);
+
+	size_t name_width = 12;
+
+	printf("\033[32;1m%.*s\033[0m \033[%uC", STR_FMT(name), (uint32_t)(name_width - name.length));
+
+	switch (instr->kind) {
+	case INSTR_NO_OP:
+		break;
+
+	case INSTR_CONST_8:
+		printf("%u %d", (uint32_t)instr->const_8.u8, (int32_t)instr->const_8.i8);
+		break;
+	case INSTR_CONST_16:
+		printf("%u %d", (uint32_t)instr->const_16.u16, (int32_t)instr->const_16.i16);
+		break;
+	case INSTR_CONST_32:
+		printf("%u %d %f",
+				instr->const_32.u32,
+				instr->const_32.i32,
+				instr->const_32.f32);
+		break;
+	case INSTR_CONST_64:
+		printf("%llu %lld %f",
+				instr->const_64.i64,
+				instr->const_64.u64,
+				instr->const_64.f64);
+		break;
+	case INSTR_REGION:
+		printf("%u", (uint32_t)instr->region.last_instr.value);
+		break;
+	}
+
+	printf("\n");
+}
+
+void instr_print_all(InstrBuffer instr_buffer) {
+	for (size_t i = 0; i < instr_buffer.count; i += 1) {
+		printf("%zu\033[12G", i);
+		instr_print(&instr_buffer.instr[i]);
+	}
+}

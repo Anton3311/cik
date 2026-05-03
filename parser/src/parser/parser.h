@@ -20,21 +20,27 @@ bool type_equal(const ParsedType* a, const ParsedType* b);
 // IdentifierStorage
 //
 
+#define IDENT_CATEGORY_BIT_OFFSET 4
+
 typedef enum {
-	IDENT_CATEGORY_TYPE        = 1 << 4,
-	IDENT_CATEGORY_VAR_OR_FUNC = 2 << 4,
+	IDENT_CATEGORY_TYPE        = 1 << IDENT_CATEGORY_BIT_OFFSET,
+	IDENT_CATEGORY_VAR_OR_FUNC = 2 << IDENT_CATEGORY_BIT_OFFSET,
+	IDENT_CATEGORY_CONSTANT    = 4 << IDENT_CATEGORY_BIT_OFFSET,
 } IdentifierCategory;
 
 typedef enum {
-	IDENT_STRUCT =   IDENT_CATEGORY_TYPE        | 0,
-	IDENT_ENUM =     IDENT_CATEGORY_TYPE        | 1,
-	IDENT_TYPE_DEF = IDENT_CATEGORY_TYPE        | 2,
-	IDENT_VARIABLE = IDENT_CATEGORY_VAR_OR_FUNC | 3,
-	IDENT_FUNCTION = IDENT_CATEGORY_VAR_OR_FUNC | 4,
+	IDENT_STRUCT        = IDENT_CATEGORY_TYPE        | 0,
+	IDENT_ENUM          = IDENT_CATEGORY_TYPE        | 1,
+	IDENT_TYPE_DEF      = IDENT_CATEGORY_TYPE        | 2,
+	IDENT_VARIABLE      = IDENT_CATEGORY_VAR_OR_FUNC | 3,
+	IDENT_FUNCTION      = IDENT_CATEGORY_VAR_OR_FUNC | 4,
+	IDENT_ENUM_CONSTANT = IDENT_CATEGORY_CONSTANT    | 5,
+
+	IDENT_KIND_MAX,
 } IdentifierEntryKind;
 
-#define IDENT_ENTRY_KIND_COUNT 5
-#define IDENT_ENTRY_INDEX_MASK 0b1111
+#define IDENT_ENTRY_INDEX_MASK ((1 << IDENT_CATEGORY_BIT_OFFSET) - 1)
+#define IDENT_ENTRY_KIND_COUNT (((IDENT_KIND_MAX - 1) & IDENT_ENTRY_INDEX_MASK) + 1)
 
 inline uint8_t ident_entry_kind_index(IdentifierEntryKind kind) {
 	return (uint8_t)kind & IDENT_ENTRY_INDEX_MASK;
@@ -63,6 +69,11 @@ struct IdentifierEntry {
 		ParsedTypeDef* type_def;
 		ParsedFunction* function_def;
 		ParsedVariable* variable;
+
+		struct {
+			ParsedEnum* enum_def;
+			size_t variant_index;
+		} enum_constant;
 	};
 };
 

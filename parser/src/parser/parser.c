@@ -772,6 +772,41 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 	return true;
 }
 
+void _parser_register_enum_variants(Parser* parser, ParsedEnum* enum_def) {
+	for (size_t i = 0; i < enum_def->variant_count; i += 1) {
+		ParsedEnumVariant variant = enum_def->variants[i];
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				IDENT_FIND_DEFAULT,
+				variant.name.string);
+
+		if (entry) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Name \'"));
+			str_builder_append(&builder, entry->name.string);
+			str_builder_append(&builder, STR_LIT("' is already defined"));
+
+			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+					source_string_to_range(variant.name),
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(parser->diagnostics,
+					source_string_to_range(entry->name),
+					STR_LIT("Previously defined here"),
+					error);
+		} else {
+			entry = ident_storage_insert(parser->ident_storage,
+					IDENT_NAMESPACE_DEFAULT,
+					IDENT_ENUM_CONSTANT,
+					variant.name);
+
+			entry->enum_constant.enum_def = enum_def;
+			entry->enum_constant.variant_index = i;
+		}
+	}
+}
+
 bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 	assert(out_enum_def != NULL);
 
@@ -876,6 +911,8 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 		enum_def->variant_count = variant_count;
 		enum_def->variants = variants;
 		enum_def->is_forward_declared = false;
+
+		_parser_register_enum_variants(parser, enum_def);
 	}
 
 	*out_enum_def = enum_def;
@@ -1055,6 +1092,10 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 			out_type->kind = PARSED_TYPE_ENUM;
 			out_type->enum_def = entry->enum_def;
 			return PARSE_TYPE_PARSED;
+		case IDENT_ENUM_CONSTANT:
+			panic("tood");
+		case IDENT_KIND_MAX:
+			unreachable();
 		}
 
 		unreachable();
@@ -1433,6 +1474,10 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		case IDENT_TYPE_DEF:
 		case IDENT_STRUCT:
 		case IDENT_ENUM:
+			unreachable();
+		case IDENT_ENUM_CONSTANT:
+			panic("tood");
+		case IDENT_KIND_MAX:
 			unreachable();
 		}
 

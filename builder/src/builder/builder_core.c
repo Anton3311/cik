@@ -149,6 +149,8 @@ static void _format_output_file_path(StringBuilder* builder, const BuildUnit* un
 	case OUTPUT_LIB:
 		str_builder_append(builder, STR_LIT("bin/"));
 		break;
+	case OUTPUT_NONE:
+		unreachable();
 	}
 
 	str_builder_append(builder, unit->name);
@@ -163,6 +165,8 @@ static void _format_output_file_path(StringBuilder* builder, const BuildUnit* un
 	case OUTPUT_LIB:
 		str_builder_append(builder, STR_LIT(".lib"));
 		break;
+	case OUTPUT_NONE:
+		unreachable();
 	}
 }
 
@@ -408,7 +412,7 @@ typedef enum {
 	CMD_INVALID,
 } Command;
 
-void build_run(BuildContext* context, const char** argv, size_t argc) {
+void build_run(BuildContext* context, char* argv[], size_t argc) {
 	bool has_error = false;
 	Command command = CMD_INVALID;
 	if (argc == 1) {
@@ -435,5 +439,7 @@ void build_run(BuildContext* context, const char** argv, size_t argc) {
 	case CMD_BUILD:
 		_run_build_process(context);
 		break;
+	case CMD_INVALID:
+		unreachable();
 	}
 }

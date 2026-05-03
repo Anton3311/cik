@@ -55,6 +55,6 @@ void build_end_project(BuildContext* context);
 void build_output_library(BuildContext* context, String output_dir_path);
 void build_output_executable(BuildContext* context, String output_dir_path);
 
-void build_run(BuildContext* context, const char** argv, size_t argc);
+void build_run(BuildContext* context, char* argv[], size_t argc);
 
 #endif

@@ -21,6 +21,7 @@ int main(int argc, char *argv[]) {
 	build_end_project(&context);
 
 	BuildUnitId driver = build_begin_project(&context, STR_LIT("c"), OUTPUT_EXE);
+	(void)driver;
 	build_add_src_dir(&context, STR_LIT("driver/src/driver"));
 	build_add_include(&context, STR_LIT("core/src"));
 	build_add_include(&context, STR_LIT("parser/src"));
@@ -29,6 +30,7 @@ int main(int argc, char *argv[]) {
 	build_end_project(&context);
 
 	BuildUnitId tester = build_begin_project(&context, STR_LIT("tester"), OUTPUT_EXE);
+	(void)tester;
 	build_add_src_file(&context, STR_LIT("tester/src/tester/tester_main.c"));
 	build_add_src_file(&context, STR_LIT("tester/src/tester/tests.c"));
 	build_add_dependency(&context, project_core);
@@ -39,6 +41,7 @@ int main(int argc, char *argv[]) {
 	build_end_project(&context);
 
 	BuildUnitId test_runner = build_begin_project(&context, STR_LIT("test_runner"), OUTPUT_EXE);
+	(void)test_runner;
 	build_add_src_file(&context, STR_LIT("tester/src/tester/test_runner.c"));
 	build_add_dependency(&context, project_core);
 	build_add_include(&context, STR_LIT("core/src/"));

@@ -248,6 +248,7 @@ typedef enum {
 	EXPR_VARIABLE_REFERENCE,
 	EXPR_INTEGER_LITERAL,
 	EXPR_STRING_LITERAL,
+	EXPR_ENUM_CONSTANT,
 } ExprKind;
 
 struct ParsedExpr {
@@ -261,6 +262,11 @@ struct ParsedExpr {
 		ParsedUnaryExpr unary;
 		ParsedIntegerLiteral int_literal;
 		ParsedStringLiteral string_literal;
+		
+		struct {
+			const ParsedEnum* enum_def;
+			size_t variant_index;
+		} enum_constant;
 	};
 };
 

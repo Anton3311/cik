@@ -1060,13 +1060,19 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		if (entry == NULL) {
 			return PARSE_TYPE_NOT_PARSED;
 
-			// TODO: Generate error? In same cases it is needed
+			// TODO: Generate error? In some cases it is needed
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
 					STR_LIT("Use of undeclared identifier"),
 					NULL);
 			return PARSE_TYPE_ERROR;
 		}
+
+		// NOTE: Here we since we only do search in the alias namespace,
+		//       we only care about the type def, and since the alias namespace
+		//       contains only type defs, any other ident kind is expected
+
+		// TODO: clean this up
 
 		switch (entry->kind) {
 		case IDENT_FUNCTION:
@@ -1093,7 +1099,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 			out_type->enum_def = entry->enum_def;
 			return PARSE_TYPE_PARSED;
 		case IDENT_ENUM_CONSTANT:
-			panic("tood");
+			unreachable();
 		case IDENT_KIND_MAX:
 			unreachable();
 		}
@@ -1476,7 +1482,10 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		case IDENT_ENUM:
 			unreachable();
 		case IDENT_ENUM_CONSTANT:
-			panic("tood");
+			out_expr->kind = EXPR_ENUM_CONSTANT;
+			out_expr->enum_constant.enum_def = entry->enum_constant.enum_def;
+			out_expr->enum_constant.variant_index = entry->enum_constant.variant_index;
+			return EXPR_PARSE_OK;
 		case IDENT_KIND_MAX:
 			unreachable();
 		}

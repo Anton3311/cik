@@ -322,6 +322,13 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 
 		printer_end_struct(printer);
 		break;
+	case EXPR_ENUM_CONSTANT:
+		const ParsedEnum* enum_def = expr->enum_constant.enum_def;
+		printer_begin_struct(printer, "enum_constant");
+		printer_string_field(printer, "enum_name", enum_def->name.string);
+		printer_string_field(printer, "variant_name", enum_def->variants[expr->enum_constant.variant_index].name.string);
+		printer_end_struct(printer);
+		break;
 	}
 	}
 }

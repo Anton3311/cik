@@ -51,6 +51,8 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_ASSIGNMENT_BY_BITWISE_AND] = STR_LIT("&="),
 	[TOKEN_ASSIGNMENT_BY_BITWISE_OR] = STR_LIT("|="),
 	[TOKEN_ASSIGNMENT_BY_BITWISE_XOR] = STR_LIT("^="),
+	[TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT] = STR_LIT("<<="),
+	[TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT] = STR_LIT(">>="),
 
 	// Comparison
 	[TOKEN_LESS] = STR_LIT("<"),
@@ -68,6 +70,8 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	// Bitwise
 	[TOKEN_BITWISE_XOR] = STR_LIT("^"),
 	[TOKEN_BITWISE_NOT] = STR_LIT("~"),
+	[TOKEN_BITWISE_SHIFT_LEFT] = STR_LIT("<<"),
+	[TOKEN_BITWISE_SHIFT_RIGHT] = STR_LIT(">>"),
 
 	// Keywords
 	[TOKEN_KEYWORD_TYPEDEF] = STR_LIT("typedef"),
@@ -598,9 +602,85 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_RIGHT_BRACE);
 
 	case '>':
-		return _tokenizer_try_create_double_char_token(tokenizer, '>', '=', TOKEN_GREATER, TOKEN_GREATER_OR_EQUAL);
+		if (tokenizer->read_position + 1 < tokenizer->source_code.length) {
+			size_t token_length = 1;
+			TokenKind kind = TOKEN_COUNT;
+			switch (tokenizer->source_code.v[tokenizer->read_position + 1]) {
+			case '>':
+				if (tokenizer->read_position + 2 < tokenizer->source_code.length
+						&& tokenizer->source_code.v[tokenizer->read_position + 2] == '=') {
+					kind = TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT;
+					token_length = 3;
+				} else {
+					kind = TOKEN_BITWISE_SHIFT_RIGHT;
+					token_length = 2;
+				}
+				break;
+			case '=':
+				kind = TOKEN_GREATER_OR_EQUAL;
+				token_length = 2;
+				break;
+			default:
+				break;
+			}
+
+			if (kind != TOKEN_COUNT) {
+				Token token = (Token) {
+					.source_range = (SourceRange) {
+						.source_file = tokenizer->source_file,
+						.start = tokenizer->read_position,
+						.end = tokenizer->read_position + token_length,
+					},
+					.string = sub_str(tokenizer->source_code, tokenizer->read_position, token_length),
+					.kind = kind,
+				};
+
+				tokenizer->read_position += token_length;
+				return token;
+			}
+		}
+
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_GREATER);
 	case '<':
-		return _tokenizer_try_create_double_char_token(tokenizer, '<', '=', TOKEN_LESS, TOKEN_LESS_OR_EQUAL);
+		if (tokenizer->read_position + 1 < tokenizer->source_code.length) {
+			size_t token_length = 1;
+			TokenKind kind = TOKEN_COUNT;
+			switch (tokenizer->source_code.v[tokenizer->read_position + 1]) {
+			case '<':
+				if (tokenizer->read_position + 2 < tokenizer->source_code.length
+						&& tokenizer->source_code.v[tokenizer->read_position + 2] == '=') {
+					kind = TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT;
+					token_length = 3;
+				} else {
+					kind = TOKEN_BITWISE_SHIFT_LEFT;
+					token_length = 2;
+				}
+				break;
+			case '=':
+				kind = TOKEN_LESS_OR_EQUAL;
+				token_length = 2;
+				break;
+			default:
+				break;
+			}
+
+			if (kind != TOKEN_COUNT) {
+				Token token = (Token) {
+					.source_range = (SourceRange) {
+						.source_file = tokenizer->source_file,
+						.start = tokenizer->read_position,
+						.end = tokenizer->read_position + token_length,
+					},
+					.string = sub_str(tokenizer->source_code, tokenizer->read_position, token_length),
+					.kind = kind,
+				};
+
+				tokenizer->read_position += token_length;
+				return token;
+			}
+		}
+
+		return _tokenizer_create_single_char_token(tokenizer, TOKEN_LESS);
 	case '"': {
 		Token string_token = {};
 		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '"', '"', &string_token);

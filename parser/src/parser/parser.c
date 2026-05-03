@@ -675,18 +675,20 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 	return true;
 }
 
-bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, ParsedEnumVariant** out_variant_list) {
+bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, ParsedEnumVariant** out_variants) {
 	assert(out_variant_count != NULL);
-	assert(out_variant_list != NULL);
+	assert(out_variants != NULL);
 
-	Token left_brace = preprocessor_next_token(parser->preprocessor);
-	assert(left_brace.kind == TOKEN_LEFT_BRACE);
+	{
+		Token left_brace = preprocessor_next_token(parser->preprocessor);
+		assert(left_brace.kind == TOKEN_LEFT_BRACE);
+	}
 
-	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
 
-	ParsedEnumVariant* first_variant = NULL;
-	ParsedEnumVariant* last_variant = NULL;
+	bool result = true;
 	size_t variant_count = 0;
+	ParsedEnumVariant* variants = arena_alloc_array(parser->temp_allocator, ParsedEnumVariant, 0);
 
 	while (true) {
 		{
@@ -697,9 +699,6 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 			}
 		}
 
-		ParsedEnumVariant* variant = arena_alloc(parser->ast_allocator, ParsedEnumVariant);
-		memset(variant, 0, sizeof(*variant));
-
 		Token name_token = preprocessor_next_token(parser->preprocessor);
 		if (name_token.kind != TOKEN_IDENT) {
 			TokenKind expected_tokens[] = { TOKEN_IDENT };
@@ -707,20 +706,23 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 					name_token,
 					expected_tokens,
 					array_size(expected_tokens));
-			arena_end_temp(temp);
-			return false;
+			result = false;
+			break;
 		}
 
+		ParsedEnumVariant* variant = arena_alloc_zeroed(parser->temp_allocator, ParsedEnumVariant);
 		variant->name = source_string_from_token(name_token);
+		variant_count += 1;
 
 		// Parse an optional value
 		Token equal_token = preprocessor_view_next(parser->preprocessor);
 		if (equal_token.kind == TOKEN_EQUAL) {
 			preprocessor_next_token(parser->preprocessor);
 
-			variant->value = arena_alloc(parser->ast_allocator, ParsedExpr);
-			switch (_parser_try_parse_expr(parser, variant->value)) {
+			ParsedExpr* value = arena_alloc(parser->ast_allocator, ParsedExpr);
+			switch (_parser_try_parse_expr(parser, value)) {
 			case EXPR_PARSE_OK:
+				variant->value = value;
 				break;
 			case EXPR_PARSE_ERROR:
 			case EXPR_PARSE_NOT_PARSED:
@@ -731,16 +733,6 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 				break;
 			}
 		}
-
-		if (first_variant == NULL) {
-			first_variant = variant;
-			last_variant = variant;
-		} else {
-			last_variant->next = variant;
-			last_variant = variant;
-		}
-
-		variant_count += 1;
 
 		Token comma_or_right_brace = preprocessor_view_next(parser->preprocessor);
 		if (comma_or_right_brace.kind == TOKEN_RIGHT_BRACE) {
@@ -755,13 +747,28 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 					name_token,
 					expected_tokens,
 					array_size(expected_tokens));
+
 			arena_end_temp(temp);
-			return false;
+			result = false;
+			break;
 		}
 	}
 
-	*out_variant_count = variant_count;
-	*out_variant_list = first_variant;
+	if (!result) {
+		arena_end_temp(temp);
+		return false;
+	}
+
+	if (variant_count > 0) {
+		*out_variant_count = variant_count;
+		*out_variants = arena_alloc_array(parser->ast_allocator, ParsedEnumVariant, variant_count);
+		array_copy(*out_variants, variants, variant_count);
+	} else {
+		*out_variant_count = 0;
+		*out_variants = NULL;
+	}
+
+	arena_end_temp(temp);
 	return true;
 }
 
@@ -772,7 +779,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 	assert(keyword_token.kind == TOKEN_KEYWORD_ENUM);
 
 	SourceString enum_name = {};
-	ParsedEnumVariant* variant_list = {};
+	ParsedEnumVariant* variants = NULL;
 	size_t variant_count = 0;
 	bool is_forward_declared = true;
 
@@ -786,12 +793,12 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 
 	if (token.kind == TOKEN_LEFT_BRACE) {
 		is_forward_declared = false;
-		if (!_parser_parse_enum_variants(parser, &variant_count, &variant_list)) {
+		if (!_parser_parse_enum_variants(parser, &variant_count, &variants)) {
 			return false;
 		}
 	}
 
-	if (variant_list != NULL) {
+	if (variants != NULL) {
 		assert(variant_count > 0);
 	}
 
@@ -864,10 +871,10 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
 
 	if (is_forward_declared) {
 		assert(variant_count == 0);
-		assert(variant_list == NULL);
+		assert(variants == NULL);
 	} else {
 		enum_def->variant_count = variant_count;
-		enum_def->variant_list = variant_list;
+		enum_def->variants = variants;
 		enum_def->is_forward_declared = false;
 	}
 

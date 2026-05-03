@@ -291,8 +291,6 @@ struct ParsedStruct {
 struct ParsedEnumVariant {
 	SourceString name;
 	ParsedExpr* value;
-
-	ParsedEnumVariant* next;
 };
 
 struct ParsedEnum {
@@ -300,7 +298,7 @@ struct ParsedEnum {
 
 	bool is_forward_declared;
 
-	ParsedEnumVariant* variant_list;
+	ParsedEnumVariant* variants;
 	size_t variant_count;
 };
 

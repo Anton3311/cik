@@ -367,10 +367,9 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 	printer_field(printer, "variants");
 	printer_begin_array(printer);
 
-	size_t variant_index = 0;
-	ParsedEnumVariant* variant = enum_def->variant_list;
-	while (variant != NULL) {
-		printer_array_element(printer, variant_index);
+	for (size_t i = 0; i < enum_def->variant_count; i += 1) {
+		const ParsedEnumVariant* variant = &enum_def->variants[i];
+		printer_array_element(printer, i);
 
 		printer_begin_struct(printer, "variant");
 		printer_string_field(printer, "name", variant->name.string);
@@ -381,9 +380,6 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 		}
 
 		printer_end_struct(printer);
-
-		variant = variant->next;
-		variant_index += 1;
 	}
 	printer_end_array(printer);
 

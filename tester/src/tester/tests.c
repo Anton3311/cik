@@ -931,8 +931,8 @@ void test_parse_enum_def(TestContext* context) {
 	assert(str_equal(enum_def->name.string, STR_LIT("Type")));
 	assert(enum_def->variant_count == 2);
 
-	ParsedEnumVariant* first_variant = enum_def->variant_list;
-	ParsedEnumVariant* second_variant = first_variant->next;
+	ParsedEnumVariant* first_variant = &enum_def->variants[0];
+	ParsedEnumVariant* second_variant = &enum_def->variants[1];
 
 	assert(str_equal(first_variant->name.string, STR_LIT("TYPE_INT")));
 	assert(str_equal(second_variant->name.string, STR_LIT("TYPE_FLOAT")));

@@ -25,6 +25,7 @@ void print_assertion_stack_trace();
 #define has_any_flag(flag_set, flag) (((flag_set) & (flag)) != 0)
 
 #define array_size(array) ((sizeof(array)) / sizeof(*(array)))
+#define array_copy(dst, src, count) memcpy((dst), (src), sizeof(*(dst)) * (count))
 
 #define assert_msg(expression, fmt, ...) if (!(expression)) { \
 	print_assertion_stack_trace(); \
@@ -176,7 +177,7 @@ void arena_release(Arena* arena);
 #define arena_alloc(arena, type) (type*)arena_alloc_aligned(arena, sizeof(type), alignof(type))
 #define arena_alloc_zeroed(arena, type) (type*)arena_alloc_zeroed_aligned(arena, sizeof(type), alignof(type))
 #define arena_alloc_array(arena, type, count) (type*)arena_alloc_aligned(arena, sizeof(type) * count, alignof(type))
-#define arena_alloc_zeroed_array(arena, type, count) \
+#define arena_alloc_array_zeroed(arena, type, count) \
 	(type*)arena_alloc_zeroed_aligned(arena, sizeof(type) * count, alignof(type))
 
 //

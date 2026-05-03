@@ -330,7 +330,7 @@ static void _run_build_process(BuildContext* context) {
 	BuildQueue build_queue = _build_build_queue(context);
 
 	// Build units
-	UnitStatus* status = arena_alloc_zeroed_array(context->allocator, UnitStatus, context->unit_count);
+	UnitStatus* status = arena_alloc_array_zeroed(context->allocator, UnitStatus, context->unit_count);
 	for (size_t i = 0; i < build_queue.count; i += 1) {
 		ArenaRegion temp = arena_begin_temp(context->allocator);
 

@@ -632,6 +632,39 @@ size_t path_get_file_name_start(String path) {
 	return 0;
 }
 
+uint64_t path_get_last_write_time(String path, Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	const char* path_cstr = str_to_cstr(path, temp_allocator);
+
+	HANDLE file_handle = CreateFile(path_cstr,
+			GENERIC_READ,
+			0,
+			NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL);
+
+	if (file_handle == INVALID_HANDLE_VALUE) {
+		arena_end_temp(temp);
+		return 0;
+	}
+
+	FILETIME write_time;
+	if (!GetFileTime(file_handle, NULL, NULL, &write_time)) {
+		CloseHandle(file_handle);
+		arena_end_temp(temp);
+		return 0;
+	}
+
+	uint64_t last_write_time = ((uint64_t)write_time.dwHighDateTime << 32)
+		| ((uint64_t)write_time.dwLowDateTime);
+
+	CloseHandle(file_handle);
+	arena_end_temp(temp);
+	return last_write_time;
+}
+
 String path_get_parent(String path) {
 	size_t file_name_start = path_get_file_name_start(path);
 	size_t parent_path_end = file_name_start;

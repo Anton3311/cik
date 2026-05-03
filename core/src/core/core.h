@@ -511,6 +511,9 @@ bool path_is_directory(Arena* temp_allocator, String path);
 String path_canonicalize(String path, Arena* allocator, Arena* temp_allocator);
 size_t path_get_file_name_start(String path);
 
+// Returns 0 in case of error
+uint64_t path_get_last_write_time(String path, Arena* temp_allocator);
+
 inline String path_trim_trailing_slash(String path) {
 	size_t trimmed_path_length = path.length;
 	for (size_t i = path.length; i > 0; i -= 1) {

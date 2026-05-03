@@ -729,6 +729,30 @@ void test_va_args_macro(TestContext* context) {
 	}
 }
 
+void test_processor_next_returns_eof_when_include_stack_is_empty(TestContext* context) {
+	String source_code = STR_LIT("hello");
+
+	LineInfo line_info = {};
+	Diagnostics diagnostics = {};
+	Preprocessor preprocessor = {};
+
+	init_preprocessor_test(context, source_code, &preprocessor, &diagnostics, &line_info);
+
+	Token first_token = preprocessor_next_token(&preprocessor);
+	assert(first_token.kind == TOKEN_IDENT);
+	Token second_token = preprocessor_next_token(&preprocessor);
+	assert(second_token.kind == TOKEN_EOF);
+
+	assert_msg(preprocessor.include_stack.depth == 0,
+			"Preprocessor has reached the eof and should have popped the "
+			"file off of the include_stack");
+
+	Token third_token = preprocessor_next_token(&preprocessor);
+	assert_msg(third_token.kind == TOKEN_EOF,
+			"Preprocessor has reached the eof and has no more files in the include stack, "
+			"thus must keep on return the eof");
+}
+
 //
 // Parser
 //

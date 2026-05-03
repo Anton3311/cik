@@ -153,6 +153,7 @@ void preprocessor_init(Preprocessor* state,
 	state->generated_tokens_allocator = generated_tokens_allocator;
 	state->source_storage = source_storage;
 	state->diagnostics = diagnostics;
+	state->initial_file = source_file;
 
 	state->macro_table = (MacroTable) {
 		.capacity = 2048,
@@ -250,8 +251,11 @@ void _preprocessor_pop_file(Preprocessor* state) {
 
 	stack->depth -= 1;
 
-	Tokenizer* tokenizer = &stack->includes[stack->depth - 1];
-	state->tokenizer = tokenizer;
+	if (stack->depth > 0) {
+		state->tokenizer = &stack->includes[stack->depth - 1];
+	} else {
+		state->tokenizer = NULL;
+	}
 }
 
 //
@@ -2357,10 +2361,26 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 	return macro_call;
 }
 
+inline Token _preprocessor_return_eof(Preprocessor* state) {
+	const SourceFile* source_file = state->initial_file;
+	return (Token) {
+		.source_range = (SourceRange) {
+			.source_file = source_file,
+			.start = source_file->source_code.length,
+			.end = source_file->source_code.length,
+		},
+		.string = (String) {},
+		.kind = TOKEN_EOF,
+	};
+}
+
 Token preprocessor_view_next(Preprocessor* state) {
 	if (state->has_pending_next_token) {
 		return state->pending_next_token;
 	}
+
+	assert(state->include_stack.depth > 0);
+	assert(state->tokenizer);
 
 	Token next_token = preprocessor_next_token(state);
 	state->pending_next_token = next_token;
@@ -2374,10 +2394,16 @@ Token preprocessor_next_token(Preprocessor* state) {
 
 		Token token = state->pending_next_token;
 		state->pending_next_token = (Token) {};
+		assert(token.source_range.source_file);
 		return token;
 	}
 
 	while (true) {
+		if (state->include_stack.depth == 0) {
+			assert(state->tokenizer == NULL);
+			return _preprocessor_return_eof(state);
+		}
+
 		if (!_is_current_region_enabled(state)) {
 			Token token = tokenizer_view_next(state->tokenizer);
 			switch (token.kind) {
@@ -2409,6 +2435,8 @@ Token preprocessor_next_token(Preprocessor* state) {
 
 			if (result) {
 				assert(next_token.kind != TOKEN_COUNT);
+			} else {
+				assert(next_token.kind == TOKEN_COUNT);
 			}
 		}
 		

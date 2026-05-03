@@ -148,6 +148,8 @@ struct Preprocessor {
 
 	IncludeCallback include_callback;
 	void* include_callback_user_data;
+
+	const SourceFile* initial_file;
 };
 
 typedef enum {

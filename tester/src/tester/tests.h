@@ -36,6 +36,7 @@ void test_error_directive(TestContext* context);
 void test_multi_line_define(TestContext* context);
 void test_token_insertion_operator(TestContext* context);
 void test_va_args_macro(TestContext* context);
+void test_processor_next_returns_eof_when_include_stack_is_empty(TestContext* context);
 
 
 

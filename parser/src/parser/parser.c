@@ -1427,8 +1427,6 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				return EXPR_PARSE_ERROR;
 			}
 
-			assert(literal_value <= INT32_MAX);
-
 			out_expr->kind = EXPR_INTEGER_LITERAL;
 			out_expr->int_literal = (ParsedIntegerLiteral) {
 				.source_range = token.source_range,

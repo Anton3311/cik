@@ -11,4 +11,9 @@ typedef signed short int16_t;
 typedef signed int int32_t;
 typedef signed long long int64_t;
 
+#define UINT8_MAX  0xff
+#define UINT16_MAX 0xffff
+#define UINT32_MAX 0xffffffff
+#define UINT64_MAX 0xffffffffffffffff
+
 #endif

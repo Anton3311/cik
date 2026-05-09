@@ -1084,6 +1084,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		case IDENT_STRUCT:
 		case IDENT_ENUM:
 		case IDENT_ENUM_CONSTANT:
+		case IDENT_FUNCTION_PARAM:
 		case IDENT_KIND_MAX:
 			unreachable();
 		}
@@ -1470,6 +1471,11 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			out_expr->enum_constant.enum_def = entry->enum_constant.enum_def;
 			out_expr->enum_constant.variant_index = entry->enum_constant.variant_index;
 			return EXPR_PARSE_OK;
+		case IDENT_FUNCTION_PARAM:
+			out_expr->kind = EXPR_FUNCTION_PARAM;
+			out_expr->function_param.function_def = entry->function_param.function_def;
+			out_expr->function_param.param_index = entry->function_param.param_index;
+			return EXPR_PARSE_OK;
 		case IDENT_KIND_MAX:
 			unreachable();
 		}
@@ -1772,6 +1778,43 @@ bool _check_for_var_redefinition(Parser* parser, SourceString var_name) {
 	return true;
 }
 
+static void _parser_register_function_param_identifiers(Parser* parser, ParsedFunction* function_def) {
+	assert(!function_def->is_forward_declared);
+
+	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
+		const ParsedFunctionParam* param = &function_def->parameters[i];
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_DEFAULT,
+				IDENT_FIND_DEFAULT,
+				param->name.string);
+
+		if (entry) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Name \'"));
+			str_builder_append(&builder, entry->name.string);
+			str_builder_append(&builder, STR_LIT("' is already defined"));
+
+			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
+					source_string_to_range(param->name),
+					builder.string,
+					NULL);
+
+			diagnostics_report_error(parser->diagnostics,
+					source_string_to_range(entry->name),
+					STR_LIT("Previously defined here"),
+					error);
+		} else {
+			entry = ident_storage_insert(parser->ident_storage,
+					IDENT_NAMESPACE_DEFAULT,
+					IDENT_FUNCTION_PARAM,
+					param->name);
+
+			entry->function_param.function_def = function_def;
+			entry->function_param.param_index = i;
+		}
+	}
+}
+
 static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 		SourceString name,
 		ParsedType* return_type,
@@ -1916,9 +1959,13 @@ static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 	// Parse the body
 	if (has_body) {
 		assert(function_def->is_forward_declared);
+		function_def->is_forward_declared = false;
 
 		ParsedScope* body = arena_alloc(parser->ast_allocator, ParsedScope);
 		memset(body, 0, sizeof(*body));
+
+		ident_storage_begin_scope(parser->ident_storage);
+		_parser_register_function_param_identifiers(parser, function_def);
 
 		uint32_t last_var_id_state = parser->next_var_id;
 
@@ -1927,12 +1974,13 @@ static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 		uint32_t var_count = parser->next_var_id - last_var_id_state;
 		parser->next_var_id = last_var_id_state;
 
+		ident_storage_end_scope(parser->ident_storage);
+
 		if (!result) {
 			return NULL;
 		}
 
 		function_def->body = body;
-		function_def->is_forward_declared = false;
 		function_def->var_count = var_count;
 	}
 

@@ -29,12 +29,13 @@ typedef enum {
 } IdentifierCategory;
 
 typedef enum {
-	IDENT_STRUCT        = IDENT_CATEGORY_TYPE        | 0,
-	IDENT_ENUM          = IDENT_CATEGORY_TYPE        | 1,
-	IDENT_TYPE_DEF      = IDENT_CATEGORY_TYPE        | 2,
-	IDENT_VARIABLE      = IDENT_CATEGORY_VAR_OR_FUNC | 3,
-	IDENT_FUNCTION      = IDENT_CATEGORY_VAR_OR_FUNC | 4,
-	IDENT_ENUM_CONSTANT = IDENT_CATEGORY_CONSTANT    | 5,
+	IDENT_STRUCT         = IDENT_CATEGORY_TYPE        | 0,
+	IDENT_ENUM           = IDENT_CATEGORY_TYPE        | 1,
+	IDENT_TYPE_DEF       = IDENT_CATEGORY_TYPE        | 2,
+	IDENT_VARIABLE       = IDENT_CATEGORY_VAR_OR_FUNC | 3,
+	IDENT_FUNCTION       = IDENT_CATEGORY_VAR_OR_FUNC | 4,
+	IDENT_FUNCTION_PARAM = IDENT_CATEGORY_VAR_OR_FUNC | 5,
+	IDENT_ENUM_CONSTANT  = IDENT_CATEGORY_CONSTANT    | 6,
 
 	IDENT_KIND_MAX,
 } IdentifierEntryKind;
@@ -74,6 +75,11 @@ struct IdentifierEntry {
 			ParsedEnum* enum_def;
 			size_t variant_index;
 		} enum_constant;
+
+		struct {
+			ParsedFunction* function_def;
+			size_t param_index;
+		} function_param;
 	};
 };
 

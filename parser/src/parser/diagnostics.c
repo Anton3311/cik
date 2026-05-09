@@ -91,6 +91,8 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 	entry->start_line = line_info_pos_to_source_location(line_info, source_range.start).line;
 	entry->end_line = line_info_pos_to_source_location(line_info, source_range.end).line;
 	entry->source_file = source_range.source_file;
+	entry->first_child = NULL;
+	entry->last_child = NULL;
 
 	entry->highlighted_ranges = arena_alloc(diagnostics->allocator, SourceRange);
 	entry->highlighted_ranges[0] = source_range;

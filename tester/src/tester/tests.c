@@ -1557,9 +1557,7 @@ void test_register_unnamed_function_param(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 }
 
-static void _run_anonymous_type_declaration_sub_test(TestContext* context, size_t sub_test_index, String source_code) {
-	printf("Running sub test %zu\n", sub_test_index + 1);
-
+static void _run_anonymous_type_declaration_sub_test(TestContext* context, String source_code) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
 	ParsedAST ast;
@@ -1579,20 +1577,18 @@ static void _run_anonymous_type_declaration_sub_test(TestContext* context, size_
 		assert(diagnostics_entry->last_child == NULL);
 		assert(diagnostics_entry->highlighted_range_count == 1);
 		
+		size_t range_start = diagnostics_entry->highlighted_ranges[0].start;
+		size_t range_length = diagnostics_entry->highlighted_ranges[0].end - range_start;
 		String highlighted_range = sub_str(diagnostics_entry->source_file->source_code,
-				diagnostics_entry->highlighted_ranges[0].start,
-				diagnostics_entry->highlighted_ranges[0].end);
+				range_start,
+				range_length);
 
 		assert(str_equal(highlighted_range, STR_LIT("Anonymous")));
+		diagnostics_entry = diagnostics_entry->next;
 	}
 }
 
-void test_type_declaration_is_anonymous(TestContext* context) {
-	String sub_tests[] = {
-		STR_LIT("struct Hello { struct Anonymous {} inner; };"),
-	};
-
-	for (size_t i = 0; i < array_size(sub_tests); i += 1) {
-		_run_anonymous_type_declaration_sub_test(context, i, sub_tests[i]);
-	}
+void test_inner_struct_decl_is_anonymous(TestContext* context) {
+	_run_anonymous_type_declaration_sub_test(context,
+			STR_LIT("struct Hello { struct Anonymous {} inner; }; Anonymous"));
 }

@@ -591,7 +591,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 	if (struct_name.string.length == 0) {
 		struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
 		struct_def_initialized = false;
-	} else {
+	} else if (!is_anonymous) {
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_TAGGED,
 				IDENT_FIND_DEFAULT,
@@ -642,6 +642,9 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 			struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
 			entry->struct_def = struct_def;
 		}
+	} else {
+		struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
+		struct_def_initialized = false;
 	}
 
 	assert(struct_def);

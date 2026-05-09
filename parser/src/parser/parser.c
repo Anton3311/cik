@@ -1783,6 +1783,10 @@ static void _parser_register_function_param_identifiers(Parser* parser, ParsedFu
 
 	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
 		const ParsedFunctionParam* param = &function_def->parameters[i];
+		if (param->name.string.length == 0) {
+			continue;
+		}
+
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				IDENT_FIND_DEFAULT,

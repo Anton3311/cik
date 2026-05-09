@@ -1509,3 +1509,47 @@ void test_parse_recursive_function(TestContext* context) {
 	assert(callable->kind == EXPR_FUNCTION_REFERENCE);
 	assert(callable->function_ref == func);
 }
+
+void test_parse_function_param_in_expr(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context,
+			&diagnostics,
+			&source_storage,
+			STR_LIT("void main(int argc) { argc; }"),
+			&ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_FUNCTION);
+
+	assert(node->function_def->body);
+	const ParsedFunction* func = node->function_def;
+	
+	assert(func->body->nodes.count == 1);
+	const ParsedNode* expr = func->body->nodes.first;
+	assert(expr->kind == AST_NODE_EXPR);
+	assert(expr->expr.kind == EXPR_FUNCTION_PARAM);
+
+	assert(expr->expr.function_param.function_def == func);
+	assert(expr->expr.function_param.param_index == 0);
+}
+
+void test_register_unnamed_function_param(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context,
+			&diagnostics,
+			&source_storage,
+			STR_LIT("void main(int) {}"),
+			&ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+}

@@ -1824,7 +1824,18 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 		}
 
 		is_function = true;
-	} else if (token.kind == TOKEN_EQUAL) {
+	} else if (token.kind == TOKEN_LEFT_BRACKET) {
+		// NOTE: This is a bit overcomplicated.
+		//       Just extract function handling into a separate function,
+		//       and simplify the logic
+		if (!_parser_parse_post_declaration_modifiers(parser, type, type, true)) {
+			return NULL;
+		}
+
+		token = preprocessor_view_next(parser->preprocessor);
+	}
+
+	if (token.kind == TOKEN_EQUAL) {
 		preprocessor_next_token(parser->preprocessor);
 
 		assert(decl_spec == NULL);

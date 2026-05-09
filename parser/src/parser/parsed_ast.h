@@ -354,8 +354,6 @@ String function_calling_convetion_to_string(FunctionCallingConvention conv);
 struct ParsedFunctionParam {
 	ParsedType type;
 	SourceString name;
-
-	ParsedFunctionParam* next;
 };
 
 struct ParsedFunction {
@@ -367,7 +365,7 @@ struct ParsedFunction {
 	bool has_va_args;
 	FunctionCallingConvention calling_convention;
 	size_t parameter_count;
-	ParsedFunctionParam* parameter_list;
+	ParsedFunctionParam* parameters;
 	ParsedScope* body;
 	ParsedDeclSpec* decl_spec;
 	StorageSpecifier storage_specifier;

@@ -573,10 +573,10 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	printer_field(printer, "parameters");
 	printer_begin_array(printer);
 
-	ParsedFunctionParam* param = function_def->parameter_list;
-	size_t param_index = 0;
-	while (param != NULL) {
-		printer_array_element(printer, param_index);
+	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
+		const ParsedFunctionParam* param = &function_def->parameters[i];
+
+		printer_array_element(printer, i);
 		printer_begin_struct(printer, "param");
 
 		if (param->name.string.length > 0) {
@@ -586,9 +586,6 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 		printer_field(printer, "type");
 		print_type(printer, &param->type);
 		printer_end_struct(printer);
-
-		param = param->next;
-		param_index += 1;
 	}
 
 	printer_end_array(printer);

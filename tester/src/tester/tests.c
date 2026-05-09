@@ -958,8 +958,8 @@ void test_parse_function_def(TestContext* context) {
 	assert(return_type->kind == PARSED_TYPE_VOID);
 
 	assert(function_def->parameter_count == 2);
-	ParsedFunctionParam* first_param = function_def->parameter_list;
-	ParsedFunctionParam* second_param = first_param->next;
+	const ParsedFunctionParam* first_param = &function_def->parameters[0];
+	const ParsedFunctionParam* second_param = &function_def->parameters[1];
 
 	assert(str_equal(first_param->name.string, STR_LIT("a")));
 	assert(first_param->type.kind == PARSED_TYPE_INT);

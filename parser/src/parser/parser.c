@@ -1211,18 +1211,18 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	return node;
 }
 
-static bool _parser_parse_function_param_list(Parser* parser,
-		ParsedFunctionParam** out_param_list,
+static bool _parser_parse_function_params(Parser* parser,
+		ParsedFunctionParam** out_params,
 		size_t* out_param_count,
 		bool* out_has_va_args) {
 
 	Token left_paren = preprocessor_next_token(parser->preprocessor);
 	assert(left_paren.kind == TOKEN_LEFT_PAREN);
 
-	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+	ArenaRegion ast_temp = arena_begin_temp(parser->ast_allocator);
+	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
 
-	ParsedFunctionParam* first_param = NULL;
-	ParsedFunctionParam* last_param = NULL;
+	ParsedFunctionParam* params = arena_alloc_array(parser->temp_allocator, ParsedFunctionParam, 0);
 	size_t param_count = 0;
 	bool has_va_args = false;
 
@@ -1243,6 +1243,9 @@ static bool _parser_parse_function_param_list(Parser* parser,
 							right_paren,
 							expected_tokens,
 							array_size(expected_tokens));
+
+					arena_end_temp(ast_temp);
+					arena_end_temp(temp);
 					return false;
 				}
 
@@ -1250,16 +1253,18 @@ static bool _parser_parse_function_param_list(Parser* parser,
 			}
 		}
 
-		ParsedFunctionParam* param = arena_alloc(parser->ast_allocator, ParsedFunctionParam);
-		param->next = NULL;
+		ParsedFunctionParam* param = arena_alloc(parser->temp_allocator, ParsedFunctionParam);
+		param_count += 1;
 
 		if (!_parser_parse_type(parser, &param->type)) {
 			arena_end_temp(temp);
+			arena_end_temp(ast_temp);
 			return false;
 		}
 
 		if (!_parser_parse_pre_declaration_modifiers(parser, &param->type, &param->type, true)) {
 			arena_end_temp(temp);
+			arena_end_temp(ast_temp);
 			return false;
 		}
 
@@ -1273,18 +1278,9 @@ static bool _parser_parse_function_param_list(Parser* parser,
 
 		if (!_parser_parse_post_declaration_modifiers(parser, &param->type, &param->type, true)) {
 			arena_end_temp(temp);
+			arena_end_temp(ast_temp);
 			return false;
 		}
-
-		if (first_param == NULL) {
-			first_param = param;
-			last_param = param;
-		} else {
-			last_param->next = param;
-			last_param = param;
-		}
-
-		param_count += 1;
 
 		if (token.kind == TOKEN_COMMA) {
 			preprocessor_next_token(parser->preprocessor);
@@ -1295,13 +1291,19 @@ static bool _parser_parse_function_param_list(Parser* parser,
 		}
 	}
 
-	if (first_param != NULL) {
-		assert(param_count > 0);
+	if (param_count == 0) {
+		*out_params = NULL;
+	} else {
+		*out_params = arena_alloc_array(parser->ast_allocator, ParsedFunctionParam, param_count);
+		array_copy(*out_params, params, param_count);
 	}
 
-	*out_param_list = first_param;
 	*out_param_count = param_count;
+
+	// NOTE: This might still be true is there are no parameters
 	*out_has_va_args = has_va_args;
+
+	arena_end_temp(temp);
 	return true;
 }
 
@@ -1813,13 +1815,13 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 	SourceString name = source_string_from_token(name_token);
 
 	bool is_function = false;
-	ParsedFunctionParam* param_list = NULL;
+	ParsedFunctionParam* params = NULL;
 	size_t param_count = 0;
 	bool has_va_args = false;
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_LEFT_PAREN) {
-		if (!_parser_parse_function_param_list(parser, &param_list, &param_count, &has_va_args)) {
+		if (!_parser_parse_function_params(parser, &params, &param_count, &has_va_args)) {
 			return NULL;
 		}
 
@@ -2001,8 +2003,8 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 						error);
 				return NULL;
 			} else {
-				ParsedFunctionParam* prev_def_param = function_def->parameter_list;
-				ParsedFunctionParam* new_def_param = param_list;
+				ParsedFunctionParam* prev_def_param = function_def->parameters;
+				ParsedFunctionParam* new_def_param = params;
 
 				for (size_t i = 0; i < param_count; i += 1) {
 					bool param_types_are_equal = type_equal(&prev_def_param->type, &new_def_param->type);
@@ -2020,8 +2022,8 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 						return NULL;
 					}
 					
-					prev_def_param = prev_def_param->next;
-					new_def_param = new_def_param->next;
+					prev_def_param = prev_def_param + 1;
+					new_def_param = new_def_param + 1;
 				}
 			}
 		} else {
@@ -2035,7 +2037,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			
 			function_def->name = name;
 			function_def->return_type = *type;
-			function_def->parameter_list = param_list;
+			function_def->parameters = params;
 			function_def->parameter_count = param_count;
 			function_def->is_forward_declared = is_forward_declared;
 			function_def->decl_spec = decl_spec;

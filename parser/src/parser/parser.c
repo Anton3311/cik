@@ -488,18 +488,18 @@ bool _parser_expect_semicolon(Parser* parser, String error_message) {
 	return true;
 }
 
-bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, ParsedStructMember** out_members) {
-	assert(out_member_count != NULL);
-	assert(out_members != NULL);
+static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count, ParsedStructField** out_fields) {
+	assert(out_field_count != NULL);
+	assert(out_fields != NULL);
 
 	Token left_brace = preprocessor_next_token(parser->preprocessor);
 	assert(left_brace.kind == TOKEN_LEFT_BRACE);
 
-	ArenaRegion temp = arena_begin_temp(parser->ast_allocator);
+	ArenaRegion ast_temp = arena_begin_temp(parser->ast_allocator);
+	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
 
-	ParsedStructMember* first_member = NULL;
-	ParsedStructMember* last_member = NULL;
-	size_t member_count = 0;
+	ParsedStructField* fields = arena_alloc_array(parser->temp_allocator, ParsedStructField, 0);
+	size_t field_count = 0;
 
 	while (true) {
 		{
@@ -510,22 +510,24 @@ bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, Pars
 			}
 		}
 
-		ParsedStructMember* member = arena_alloc(parser->ast_allocator, ParsedStructMember);
-		memset(member, 0, sizeof(*member));
+		ParsedStructField* field = arena_alloc_zeroed(parser->temp_allocator, ParsedStructField);
+		field_count += 1;
 
-		if (!_parser_parse_type(parser, &member->type)) {
+		if (!_parser_parse_type(parser, &field->type)) {
+			arena_end_temp(ast_temp);
 			arena_end_temp(temp);
 			return false;
 		}
 
-		if (!_parser_parse_pre_declaration_modifiers(parser, &member->type, &member->type, true)) {
+		if (!_parser_parse_pre_declaration_modifiers(parser, &field->type, &field->type, true)) {
+			arena_end_temp(ast_temp);
 			arena_end_temp(temp);
 			return false;
 		}
 
 		Token name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
 		if (name_or_semilcolon.kind == TOKEN_IDENT) {
-			member->name = source_string_from_token(name_or_semilcolon);
+			field->name = source_string_from_token(name_or_semilcolon);
 			preprocessor_next_token(parser->preprocessor); // consume name
 
 			name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
@@ -540,23 +542,21 @@ bool _parser_parse_struct_members(Parser* parser, size_t* out_member_count, Pars
 					name_or_semilcolon,
 					expected_tokens,
 					array_size(expected_tokens));
+			arena_end_temp(ast_temp);
 			arena_end_temp(temp);
 			return false;
 		}
-
-		if (first_member == NULL) {
-			first_member = member;
-			last_member = member;
-		} else {
-			last_member->next = member;
-			last_member = member;
-		}
-
-		member_count += 1;
 	}
 
-	*out_member_count = member_count;
-	*out_members = first_member;
+	*out_field_count = field_count;
+	if (field_count == 0) {
+		*out_fields = NULL;
+	} else {
+		*out_fields = arena_alloc_array(parser->ast_allocator, ParsedStructField, field_count);
+		array_copy(*out_fields, fields, field_count);
+	}
+
+	arena_end_temp(temp);
 	return true;
 }
 
@@ -567,8 +567,8 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 	assert(keyword_token.kind == TOKEN_KEYWORD_STRUCT);
 
 	SourceString struct_name = {};
-	ParsedStructMember* member_list = NULL;
-	size_t member_count = 0;
+	ParsedStructField* fields = NULL;
+	size_t field_count = 0;
 	bool is_forward_declared = true;
 
 	Token token = preprocessor_view_next(parser->preprocessor);
@@ -583,13 +583,9 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 
 	if (token.kind == TOKEN_LEFT_BRACE) {
 		is_forward_declared = false;
-		if (!_parser_parse_struct_members(parser, &member_count, &member_list)) {
+		if (!_parser_parse_struct_fields(parser, &field_count, &fields)) {
 			return false;
 		}
-	}
-
-	if (member_list != NULL) {
-		assert(member_count > 0);
 	}
 
 	bool struct_def_initialized = false;
@@ -663,11 +659,11 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 	}
 
 	if (is_forward_declared) {
-		assert(member_count == 0);
-		assert(member_list == NULL);
+		assert(field_count == 0);
+		assert(fields == NULL);
 	} else {
-		struct_def->member_count = member_count;
-		struct_def->member_list = member_list;
+		struct_def->field_count = field_count;
+		struct_def->fields = fields;
 		struct_def->is_forward_declared = false;
 	}
 

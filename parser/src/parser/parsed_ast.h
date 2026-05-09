@@ -9,7 +9,7 @@ typedef struct ParsedNode ParsedNode;
 typedef struct ParsedBlock ParsedBlock;
 typedef struct ParsedType ParsedType;
 typedef struct ParsedStruct ParsedStruct;
-typedef struct ParsedStructMember ParsedStructMember;
+typedef struct ParsedStructField ParsedStructField;
 typedef struct ParsedEnum ParsedEnum;
 typedef struct ParsedEnumVariant ParsedEnumVariant;
 typedef struct ParsedTypeDef ParsedTypeDef;
@@ -280,11 +280,9 @@ struct ParsedExpr {
 // Struct
 //
 
-struct ParsedStructMember {
+struct ParsedStructField {
 	SourceString name;
 	ParsedType type;
-
-	ParsedStructMember* next;
 };
 
 struct ParsedStruct {
@@ -292,8 +290,8 @@ struct ParsedStruct {
 
 	bool is_forward_declared;
 
-	ParsedStructMember* member_list;
-	size_t member_count;
+	ParsedStructField* fields;
+	size_t field_count;
 };
 
 //

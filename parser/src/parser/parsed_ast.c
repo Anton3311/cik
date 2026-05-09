@@ -353,18 +353,14 @@ void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 		printer_field(printer, "members");
 		printer_begin_array(printer);
 
-		size_t member_index = 0;
-		ParsedStructMember* member = struct_def->member_list;
-		while (member) {
-			printer_array_element(printer, member_index);
-			printer_begin_struct(printer, "member");
-			printer_string_field(printer, "name", member->name.string);
+		for (size_t i = 0; i < struct_def->field_count; i += 1) {
+			const ParsedStructField* field = &struct_def->fields[i];
+			printer_array_element(printer, i);
+			printer_begin_struct(printer, "field");
+			printer_string_field(printer, "name", field->name.string);
 			printer_field(printer, "type");
-			print_type(printer, &member->type);
+			print_type(printer, &field->type);
 			printer_end_struct(printer);
-
-			member = member->next;
-			member_index += 1;
 		}
 
 		printer_end_array(printer);

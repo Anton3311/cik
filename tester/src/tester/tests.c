@@ -841,12 +841,12 @@ void test_parse_type_def_of_struct_def(TestContext* context) {
 
 	ParsedStruct* struct_def = type_def->aliased_type.struct_def;
 	assert(str_equal(struct_def->name.string, STR_LIT("Hello")));
-	assert(struct_def->member_count == 0);
+	assert(struct_def->field_count == 0);
 
 	assert(str_equal(type_def->new_name.string, STR_LIT("World")));
 }
 
-void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
+void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
 	ParsedAST ast;
@@ -868,27 +868,27 @@ void test_parse_type_def_of_struct_def_with_members(TestContext* context) {
 
 	ParsedStruct* hello_struct_def = type_def->aliased_type.struct_def;
 	assert(str_equal(hello_struct_def->name.string, STR_LIT("Hello")));
-	assert(hello_struct_def->member_count == 3);
+	assert(hello_struct_def->field_count == 3);
 
-	ParsedStructMember* int_value_member = hello_struct_def->member_list;
-	ParsedStructMember* float_value_member = int_value_member->next;
-	ParsedStructMember* inner_member = float_value_member->next;
+	ParsedStructField* int_value_field = &hello_struct_def->fields[0];
+	ParsedStructField* float_value_field = &hello_struct_def->fields[1];
+	ParsedStructField* inner_field = &hello_struct_def->fields[2];
 	
-	assert(int_value_member->type.kind == PARSED_TYPE_INT);
-	assert(str_equal(int_value_member->name.string, STR_LIT("int_value")));
+	assert(int_value_field->type.kind == PARSED_TYPE_INT);
+	assert(str_equal(int_value_field->name.string, STR_LIT("int_value")));
 
-	assert(float_value_member->type.kind == PARSED_TYPE_FLOAT);
-	assert(str_equal(float_value_member->name.string, STR_LIT("float_value")));
+	assert(float_value_field->type.kind == PARSED_TYPE_FLOAT);
+	assert(str_equal(float_value_field->name.string, STR_LIT("float_value")));
 
 	// Check InnerStruct
-	assert(inner_member->type.kind == PARSED_TYPE_STRUCT);
+	assert(inner_field->type.kind == PARSED_TYPE_STRUCT);
 
-	ParsedStruct* inner_struct_def = inner_member->type.struct_def;
+	ParsedStruct* inner_struct_def = inner_field->type.struct_def;
 	assert(str_equal(inner_struct_def->name.string, STR_LIT("InnerStruct")));
 
-	ParsedStructMember* inner_value_member = inner_struct_def->member_list;
-	assert(inner_value_member->type.kind == PARSED_TYPE_INT);
-	assert(str_equal(inner_value_member->name.string, STR_LIT("inner_value")));
+	ParsedStructField* inner_value_field = inner_struct_def->fields;
+	assert(inner_value_field->type.kind == PARSED_TYPE_INT);
+	assert(str_equal(inner_value_field->name.string, STR_LIT("inner_value")));
 }
 
 void test_aliased_type_resolution(TestContext* context) {
@@ -1171,16 +1171,19 @@ void test_parse_primitive_integer_types(TestContext* context) {
 	assert(first_def->kind == AST_NODE_STRUCT);
 
 	ParsedStruct* struct_def = first_def->struct_def;
-	assert(struct_def->member_count == field_index);
+	assert(struct_def->field_count == field_index);
 
-	ParsedStructMember* field = struct_def->member_list;
-	for (size_t flag_index = 0; flag_index < array_size(type_flags); flag_index += 1) {
-		for (size_t type_index = 0; type_index < array_size(type_kinds); type_index += 1) {
-			ParsedTypeKind type_kind = type_kinds[type_index] | type_flags[flag_index];
+	{
+		size_t field_index = 0;
+		for (size_t flag_index = 0; flag_index < array_size(type_flags); flag_index += 1) {
+			for (size_t type_index = 0; type_index < array_size(type_kinds); type_index += 1) {
+				const ParsedStructField* field = &struct_def->fields[field_index];
+				ParsedTypeKind type_kind = type_kinds[type_index] | type_flags[flag_index];
 
-			assert(field->type.kind == type_kind);
+				assert(field->type.kind == type_kind);
 
-			field = field->next;
+				field_index += 1;
+			}
 		}
 	}
 }

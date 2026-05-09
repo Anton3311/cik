@@ -43,7 +43,7 @@ void test_processor_next_returns_eof_when_include_stack_is_empty(TestContext* co
 
 void test_parse_type_def_of_primitive_type(TestContext* context);
 void test_parse_type_def_of_struct_def(TestContext* context);
-void test_parse_type_def_of_struct_def_with_members(TestContext* context);
+void test_parse_type_def_of_struct_def_with_fields(TestContext* context);
 void test_aliased_type_resolution(TestContext* context);
 
 void test_parse_enum_def(TestContext* context);

@@ -74,6 +74,7 @@ static TestCase parser_tests[] = {
 	test(test_parse_function_param_in_expr),
 	test(test_register_unnamed_function_param),
 	test(test_inner_struct_decl_is_anonymous),
+	test(test_inner_enum_decl_is_anonymous),
 };
 
 static TestCase s_x64_tests[] = {

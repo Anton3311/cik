@@ -1559,36 +1559,56 @@ void test_register_unnamed_function_param(TestContext* context) {
 
 static void _run_anonymous_type_declaration_sub_test(TestContext* context, String source_code) {
 	SourceStorage source_storage;
-	Diagnostics diagnostics;
-	ParsedAST ast;
-	run_parser_test(context,
-			&diagnostics,
+
+	source_storage_init(&source_storage, (StringArray) {}, context->arena);
+	SourceFile* source_file = source_storage_append(&source_storage, STR_LIT(DEFAULT_SOURCE_PATH), source_code);
+
+	Diagnostics diagnostics = (Diagnostics) {
+		.allocator = context->temp_arena,
+	};
+
+	Arena generated_tokens_arena = arena_alloc_sub_arena(context->arena, 2 * 4096);
+
+	Preprocessor preprocessor = {};
+	preprocessor_init(&preprocessor,
 			&source_storage,
-			source_code,
-			&ast);
+			source_file,
+			&diagnostics,
+			context->arena,
+			context->temp_arena,
+			&generated_tokens_arena);
 
-	diagnostics_print(&diagnostics);
-	assert_msg(diagnostics.first != NULL, "The sub test should have failed with at least 1 error");
+	IdentifierStorage ident_storage;
 
-	const DiagnosticsEntry* diagnostics_entry = diagnostics.first;
-	while (diagnostics_entry != NULL) {
-		assert(str_equal(diagnostics_entry->message, STR_LIT("Use of undeclared identifier")));
-		assert(diagnostics_entry->first_child == NULL);
-		assert(diagnostics_entry->last_child == NULL);
-		assert(diagnostics_entry->highlighted_range_count == 1);
-		
-		size_t range_start = diagnostics_entry->highlighted_ranges[0].start;
-		size_t range_length = diagnostics_entry->highlighted_ranges[0].end - range_start;
-		String highlighted_range = sub_str(diagnostics_entry->source_file->source_code,
-				range_start,
-				range_length);
+	// NOTE: This arena is used by the `IdentifierStorage` inside the parser,
+	//       so it's lifetime is no longer than the one of the parser.
+	Arena ident_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
+	Arena ast_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
 
-		assert(str_equal(highlighted_range, STR_LIT("Anonymous")));
-		diagnostics_entry = diagnostics_entry->next;
-	}
+	ident_storage_init(&ident_storage, arena_allocator_new(&ident_arena), &ident_arena);
+
+	Parser parser = {};
+	parser_init(&parser, &ast_arena, context->temp_arena, &ident_storage, &preprocessor, &diagnostics);
+
+	ParsedAST ast;
+	parser_parse(&parser, &ast);
+
+	// WARN: Work's under the assuption that the root scope of `ident_storage`
+	//       isn't cleared after finishing the parshing.
+	IdentifierEntry* entry = ident_storage_find(&ident_storage,
+			IDENT_NAMESPACE_TAGGED,
+			IDENT_FIND_IN_ALL_PARENT_SCOPES,
+			STR_LIT("Anonymous"));
+
+	assert(entry == NULL);
 }
 
 void test_inner_struct_decl_is_anonymous(TestContext* context) {
 	_run_anonymous_type_declaration_sub_test(context,
-			STR_LIT("struct Hello { struct Anonymous {} inner; }; Anonymous"));
+			STR_LIT("struct Hello { struct Anonymous {} inner; };"));
+}
+
+void test_inner_enum_decl_is_anonymous(TestContext* context) {
+	_run_anonymous_type_declaration_sub_test(context,
+			STR_LIT("struct Outer { enum Anonymous {} inner; };"));
 }

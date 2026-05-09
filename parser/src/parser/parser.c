@@ -830,7 +830,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def, bool is_a
 	}
 
 	ParsedEnum* enum_def = NULL;
-	if (enum_name.string.length > 0) {
+	if (enum_name.string.length > 0 && !is_anonymous) {
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_TAGGED,
 				IDENT_FIND_DEFAULT,

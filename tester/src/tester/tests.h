@@ -80,5 +80,6 @@ void test_parse_function_param_in_expr(TestContext* context);
 void test_register_unnamed_function_param(TestContext* context);
 
 void test_inner_struct_decl_is_anonymous(TestContext* context);
+void test_inner_enum_decl_is_anonymous(TestContext* context);
 
 #endif

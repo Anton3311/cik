@@ -1479,3 +1479,33 @@ void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* con
 	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var2->value->int_literal.value == 10);
 }
+
+void test_parse_recursive_function(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context,
+			&diagnostics,
+			&source_storage,
+			STR_LIT("void main() { main(); }"),
+			&ast);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	ParsedNode* node = ast.root_nodes.first;
+	assert(node->kind == AST_NODE_FUNCTION);
+
+	assert(node->function_def->body);
+	const ParsedFunction* func = node->function_def;
+	
+	assert(func->body->nodes.count == 1);
+	const ParsedNode* call = func->body->nodes.first;
+	assert(call->kind == AST_NODE_EXPR);
+	assert(call->expr.kind == EXPR_CALL);
+
+	const ParsedExpr* callable = call->expr.call.callable;
+	assert(callable->kind == EXPR_FUNCTION_REFERENCE);
+	assert(callable->function_ref == func);
+}

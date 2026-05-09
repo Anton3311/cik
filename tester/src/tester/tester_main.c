@@ -70,6 +70,7 @@ static TestCase parser_tests[] = {
 	test(test_allow_variable_shadowing_in_nested_blocks),
 	test(test_allow_variable_shadowing_in_if_statements),
 	test(test_allow_variable_shadowing_in_else_branch_if_statements),
+	test(test_parse_recursive_function),
 };
 
 static TestCase s_x64_tests[] = {

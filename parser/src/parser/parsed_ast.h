@@ -249,6 +249,7 @@ typedef enum {
 	EXPR_INTEGER_LITERAL,
 	EXPR_STRING_LITERAL,
 	EXPR_ENUM_CONSTANT,
+	EXPR_FUNCTION_PARAM,
 } ExprKind;
 
 struct ParsedExpr {
@@ -267,6 +268,11 @@ struct ParsedExpr {
 			const ParsedEnum* enum_def;
 			size_t variant_index;
 		} enum_constant;
+
+		struct {
+			const ParsedFunction* function_def;
+			size_t param_index;
+		} function_param;
 	};
 };
 

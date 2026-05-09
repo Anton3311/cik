@@ -75,4 +75,6 @@ void test_allow_variable_shadowing_in_nested_blocks(TestContext* context);
 void test_allow_variable_shadowing_in_if_statements(TestContext* context);
 void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* context);
 
+void test_parse_recursive_function(TestContext* context);
+
 #endif

@@ -2373,6 +2373,11 @@ Token preprocessor_view_next(Preprocessor* state) {
 		return state->pending_next_token;
 	}
 
+	if (state->include_stack.depth == 0) {
+		assert(state->tokenizer == NULL);
+		return _preprocessor_return_eof(state);
+	}
+
 	assert(state->include_stack.depth > 0);
 	assert(state->tokenizer);
 

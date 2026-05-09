@@ -73,6 +73,7 @@ static TestCase parser_tests[] = {
 	test(test_parse_recursive_function),
 	test(test_parse_function_param_in_expr),
 	test(test_register_unnamed_function_param),
+	test(test_type_declaration_is_anonymous),
 };
 
 static TestCase s_x64_tests[] = {

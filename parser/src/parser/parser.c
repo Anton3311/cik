@@ -426,7 +426,7 @@ void ident_storage_end_scope(IdentifierStorage* storage) {
 // Parser
 //
 
-bool _parser_parse_type(Parser* parser, ParsedType* out_type);
+bool _parser_parse_type(Parser* parser, ParsedType* out_type, bool is_anonymous);
 bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope);
 bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 		ParsedType* base_type,
@@ -513,7 +513,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 		ParsedStructField* field = arena_alloc_zeroed(parser->temp_allocator, ParsedStructField);
 		field_count += 1;
 
-		if (!_parser_parse_type(parser, &field->type)) {
+		if (!_parser_parse_type(parser, &field->type, true)) {
 			arena_end_temp(ast_temp);
 			arena_end_temp(temp);
 			return false;
@@ -560,7 +560,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 	return true;
 }
 
-bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
+bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, bool is_anonymous) {
 	assert(out_struct_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -579,8 +579,6 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 		token = preprocessor_view_next(parser->preprocessor);
 	}
 
-	// TODO: handle the case when there is no TOKEN_IDENT after the keyword
-
 	if (token.kind == TOKEN_LEFT_BRACE) {
 		is_forward_declared = false;
 		if (!_parser_parse_struct_fields(parser, &field_count, &fields)) {
@@ -591,9 +589,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 	bool struct_def_initialized = false;
 	ParsedStruct* struct_def = NULL;
 	if (struct_name.string.length == 0) {
-		struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
-		memset(struct_def, 0, sizeof(*struct_def));
-
+		struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
 		struct_def_initialized = false;
 	} else {
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
@@ -643,10 +639,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def) {
 			}
 		} else {
 			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, IDENT_STRUCT, struct_name);
-
-			struct_def = arena_alloc(parser->ast_allocator, ParsedStruct);
-			memset(struct_def, 0, sizeof(*struct_def));
-
+			struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
 			entry->struct_def = struct_def;
 		}
 	}
@@ -803,7 +796,7 @@ void _parser_register_enum_variants(Parser* parser, ParsedEnum* enum_def) {
 	}
 }
 
-bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def) {
+bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def, bool is_anonymous) {
 	assert(out_enum_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -1031,7 +1024,7 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out
 	return PARSE_TYPE_NOT_PARSED;
 }
 
-ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out_type) {
+ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
@@ -1088,7 +1081,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		unreachable();
 	} else if (token.kind == TOKEN_KEYWORD_STRUCT) {
 		ParsedStruct* struct_def = {};
-		if (!_parser_parse_struct_def(parser, &struct_def)) {
+		if (!_parser_parse_struct_def(parser, &struct_def, is_anonymous)) {
 			return PARSE_TYPE_ERROR;
 		}
 
@@ -1097,7 +1090,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		return PARSE_TYPE_PARSED;
 	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
 		ParsedEnum* enum_def = {};
-		if (!_parser_parse_enum_def(parser, &enum_def)) {
+		if (!_parser_parse_enum_def(parser, &enum_def, is_anonymous)) {
 			return PARSE_TYPE_ERROR;
 		}
 
@@ -1125,13 +1118,13 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 	return PARSE_TYPE_ERROR;
 }
 
-bool _parser_parse_type(Parser* parser, ParsedType* out_type) {
+bool _parser_parse_type(Parser* parser, ParsedType* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
 	// First parse qualifiers
 	out_type->qualifiers = _parser_parse_type_qualifiers(parser);
 
-	switch (_parser_try_parse_type_specifier(parser, out_type)) {
+	switch (_parser_try_parse_type_specifier(parser, out_type, is_anonymous)) {
 	case PARSE_TYPE_ERROR:
 	case PARSE_TYPE_NOT_PARSED:
 		return false;
@@ -1149,7 +1142,7 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 	assert(keyword_token.kind == TOKEN_KEYWORD_TYPEDEF);
 
 	ParsedType aliased_type = {};
-	if (!_parser_parse_type(parser, &aliased_type)) {
+	if (!_parser_parse_type(parser, &aliased_type, false)) {
 		return NULL;
 	}
 
@@ -1253,7 +1246,7 @@ static bool _parser_parse_function_params(Parser* parser,
 		ParsedFunctionParam* param = arena_alloc(parser->temp_allocator, ParsedFunctionParam);
 		param_count += 1;
 
-		if (!_parser_parse_type(parser, &param->type)) {
+		if (!_parser_parse_type(parser, &param->type, true)) {
 			arena_end_temp(temp);
 			arena_end_temp(ast_temp);
 			return false;
@@ -2150,7 +2143,7 @@ ParsedNode* _parser_parse_variable_or_function_def(Parser* parser,
 
 	Token maybe_type_specifier_token = preprocessor_view_next(parser->preprocessor);
 
-	switch (_parser_try_parse_type_specifier(parser, &type)) {
+	switch (_parser_try_parse_type_specifier(parser, &type, true)) {
 	case PARSE_TYPE_PARSED:
 		has_type = true;
 		break;
@@ -2388,7 +2381,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	}
 	case TOKEN_KEYWORD_STRUCT: {
 		ParsedStruct* struct_def = NULL;
-		if (!_parser_parse_struct_def(parser, &struct_def)) {
+		if (!_parser_parse_struct_def(parser, &struct_def, false)) {
 			return NULL;
 		}
 
@@ -2406,7 +2399,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	case TOKEN_KEYWORD_ENUM: {
 		ParsedEnum* enum_def = NULL;
 
-		if (!_parser_parse_enum_def(parser, &enum_def)) {
+		if (!_parser_parse_enum_def(parser, &enum_def, false)) {
 			return NULL;
 		}
 

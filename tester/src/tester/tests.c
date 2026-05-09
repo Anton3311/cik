@@ -1556,3 +1556,43 @@ void test_register_unnamed_function_param(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 }
+
+static void _run_anonymous_type_declaration_sub_test(TestContext* context, size_t sub_test_index, String source_code) {
+	printf("Running sub test %zu\n", sub_test_index + 1);
+
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context,
+			&diagnostics,
+			&source_storage,
+			source_code,
+			&ast);
+
+	diagnostics_print(&diagnostics);
+	assert_msg(diagnostics.first != NULL, "The sub test should have failed with at least 1 error");
+
+	const DiagnosticsEntry* diagnostics_entry = diagnostics.first;
+	while (diagnostics_entry != NULL) {
+		assert(str_equal(diagnostics_entry->message, STR_LIT("Use of undeclared identifier")));
+		assert(diagnostics_entry->first_child == NULL);
+		assert(diagnostics_entry->last_child == NULL);
+		assert(diagnostics_entry->highlighted_range_count == 1);
+		
+		String highlighted_range = sub_str(diagnostics_entry->source_file->source_code,
+				diagnostics_entry->highlighted_ranges[0].start,
+				diagnostics_entry->highlighted_ranges[0].end);
+
+		assert(str_equal(highlighted_range, STR_LIT("Anonymous")));
+	}
+}
+
+void test_type_declaration_is_anonymous(TestContext* context) {
+	String sub_tests[] = {
+		STR_LIT("struct Hello { struct Anonymous {} inner; };"),
+	};
+
+	for (size_t i = 0; i < array_size(sub_tests); i += 1) {
+		_run_anonymous_type_declaration_sub_test(context, i, sub_tests[i]);
+	}
+}

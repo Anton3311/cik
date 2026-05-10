@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 typedef uint8_t bool;
 typedef uint8_t bool8;
@@ -258,6 +259,9 @@ inline void str_array_append(StringArray* array, Arena* allocator, String value)
 #define STR_FMT(string) (int)(string).length, (string).v
 #define STR_LIT(string) (String) { .v = string, .length = sizeof(string) - 1 }
 
+#define stringify_to_cstr(token) #token
+#define stringify(token) STR_LIT(#token)
+
 inline String str_from_cstr(const char* cstr) {
 	return (String) { .v = cstr, .length = strlen(cstr) };
 }
@@ -278,6 +282,15 @@ inline char* str_to_cstr(String string, Arena* allocator) {
 
 WideString str_to_wstr(String string, Arena* allocator, bool include_null_terminator);
 String str_from_wstr(WideString string, Arena* allocator);
+
+inline String str_to_lower(String string, Arena* allocator) {
+	char* lower = arena_alloc_array(allocator, char, string.length);
+	for (size_t i = 0; i < string.length; i += 1) {
+		lower[i] = tolower(string.v[i]);
+	}
+
+	return (String) { .v = lower, .length = string.length };
+}
 
 inline String sub_str(String str, size_t start, size_t length) {
 	assert(start + length <= str.length);
@@ -413,6 +426,7 @@ typedef enum {
 } FsEntryType;
 
 String read_entire_file_to_str(const char* file_path, Arena* arena);
+bool write_str_to_file(const char* file_path, String string);
 
 StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_path_allocator, Arena* temp_arena);
 StringArray fs_enumerate_entries_in_directory(String directory_path,

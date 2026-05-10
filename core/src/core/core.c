@@ -376,7 +376,7 @@ String read_entire_file_to_str(const char* file_path, Arena* arena) {
 	errno_t error = fopen_s(&f, file_path, "rb");
 
 	if (!f || error == EINVAL) {
-		// Failed to read
+		// Failed to open
 		return (String) {};
 	}
 
@@ -391,6 +391,21 @@ String read_entire_file_to_str(const char* file_path, Arena* arena) {
 	fclose(f);
 
 	return (String) { .v = string, .length = size };
+}
+
+bool write_str_to_file(const char* file_path, String string) {
+	FILE* f = NULL;
+	errno_t error = fopen_s(&f, file_path, "w");
+
+	if (!f || error == EINVAL) {
+		// Failed to open
+		return false;
+	}
+
+	fwrite(string.v, 1, string.length, f);
+	fclose(f);
+
+	return true;
 }
 
 StringArray fs_enumerate_files_in_directory(String directory_path, Arena* file_path_allocator, Arena* temp_arena) {

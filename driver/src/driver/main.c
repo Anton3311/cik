@@ -46,9 +46,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (argc >= 2) {
-		String source_code = read_entire_file_to_str(argv[1], &temp_arena);
-		assert(source_code.v != NULL);
-
 		SourceStorage source_storage = {};
 
 		bool include_win_sdk = true;
@@ -102,19 +99,6 @@ int main(int argc, char *argv[]) {
 				&arena,
 				&temp_arena,
 				&generated_tokens_arena);
-
-		{
-			MacroDefinition code_generation_pass = {
-				.name = (SourceString) {
-					.string = STR_LIT("CODE_GENERATION_PASS"),
-					.source_file = source_file,
-				},
-				.builtin_kind = BUILTIN_MACRO_STDC,
-				.token_count = 1,
-			};
-
-			macro_table_append(&preprocessor.macro_table, &code_generation_pass);
-		}
 
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 512 * 4096 };

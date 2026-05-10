@@ -48,6 +48,15 @@ int main(int argc, char *argv[]) {
 	build_add_dependency(&context, code_gen);
 	build_end_project(&context);
 
+	BuildUnitId generator = build_begin_project(&context, STR_LIT("gen"), OUTPUT_EXE);
+	(void)generator;
+	build_add_src_dir(&context, STR_LIT("gen/src/gen"));
+	build_add_include(&context, STR_LIT("core/src"));
+	build_add_include(&context, STR_LIT("parser/src"));
+	build_add_dependency(&context, core);
+	build_add_dependency(&context, parser);
+	build_end_project(&context);
+
 	BuildUnitId tester = build_begin_project(&context, STR_LIT("tester"), OUTPUT_EXE);
 	(void)tester;
 	build_add_src_file(&context, STR_LIT("tester/src/tester/tester_main.c"));

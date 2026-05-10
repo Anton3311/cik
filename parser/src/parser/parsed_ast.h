@@ -10,6 +10,8 @@ typedef struct ParsedBlock ParsedBlock;
 typedef struct ParsedType ParsedType;
 typedef struct ParsedStruct ParsedStruct;
 typedef struct ParsedStructField ParsedStructField;
+typedef struct ParsedStructFieldNamespace ParsedStructFieldNamespace;
+typedef struct ParsedStructFieldNamespaceEntry ParsedStructFieldNamespaceEntry;
 typedef struct ParsedEnum ParsedEnum;
 typedef struct ParsedEnumVariant ParsedEnumVariant;
 typedef struct ParsedTypeDef ParsedTypeDef;
@@ -280,6 +282,47 @@ struct ParsedExpr {
 // Struct
 //
 
+// `StructFieldNamespace` is a hash map that is used to map the field name
+// to an actual field of this or an inner anonymous struct.
+//
+// Example:
+//
+// struct Nested {
+//     struct Inner1 {
+//         int a;
+//         
+//         struct Inner2 {
+//             int inner_most_value;
+//         };
+//     };
+//
+//     String text;
+// };
+//
+// For the above struct the next expressions are valid:
+// 1. nested.text;
+// 2. nested.a;
+// 3. nested.inner_most_value;
+//
+// Thus the hash map would contains other next mappings:
+// 1. text             -> Nested.text
+// 2. a                -> Nested.Inner1.a
+// 3. inner_most_value -> Nested.Inner1.Inner2.inner_most_value
+struct ParsedStructFieldNamespaceEntry {
+	const ParsedStruct* struct_def;
+	size_t field_index;
+};
+
+struct ParsedStructFieldNamespace {
+	String* keys;
+	ParsedStructFieldNamespaceEntry* entries;
+	size_t size;
+	size_t capacity;
+};
+
+// Performs a lookup in the hashmap and returns the index of the found entry, or SIZE_MAX if not found
+size_t struct_field_namespace_index_of(ParsedStructFieldNamespace* struct_namespace, String name);
+
 struct ParsedStructField {
 	SourceString name;
 	ParsedType type;
@@ -292,6 +335,8 @@ struct ParsedStruct {
 
 	ParsedStructField* fields;
 	size_t field_count;
+
+	ParsedStructFieldNamespace* field_namespace;
 };
 
 //

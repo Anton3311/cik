@@ -560,6 +560,92 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 	return true;
 }
 
+typedef struct {
+	const ParsedStruct* struct_def;
+	size_t field_index;
+} NamedFieldLocation;
+
+typedef struct {
+	NamedFieldLocation* locations;
+	size_t count;
+	Arena* allocator;
+} NamedFieldLocationArray;
+
+static void _parser_gather_named_field_locations_of_anonymous_type_defs(const ParsedStruct* struct_def,
+		NamedFieldLocationArray* out_field_locations) {
+
+	for (size_t i = 0; i < struct_def->field_count; i += 1) {
+		const ParsedStructField* field = &struct_def->fields[i];
+		if (field->name.string.length == 0) {
+			if (field->type.kind == PARSED_TYPE_STRUCT) {
+				const ParsedStruct* inner_def = field->type.struct_def;
+				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
+			}
+		} else {
+			arena_alloc(out_field_locations->allocator, NamedFieldLocation);
+			out_field_locations->locations[out_field_locations->count] = (NamedFieldLocation) {
+				.struct_def = struct_def,
+				.field_index = i,
+			};
+			out_field_locations->count += 1;
+		}
+	}
+}
+
+static void _parser_initialize_struct_fields_namespace(ParsedStruct* struct_def,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	NamedFieldLocationArray named_field_locations = {};
+	named_field_locations.locations = arena_alloc_array(temp_allocator, NamedFieldLocation, 0);
+	named_field_locations.count = 0;
+	named_field_locations.allocator = temp_allocator;
+
+	_parser_gather_named_field_locations_of_anonymous_type_defs(
+			struct_def,
+			&named_field_locations);
+
+	ParsedStructFieldNamespace* field_namespace = arena_alloc_zeroed(allocator, ParsedStructFieldNamespace);
+	field_namespace->size = 0;
+	field_namespace->capacity = named_field_locations.count * 2;
+	field_namespace->keys = arena_alloc_array_zeroed(allocator,
+			String,
+			field_namespace->capacity);
+
+	field_namespace->entries = arena_alloc_array_zeroed(allocator,
+			ParsedStructFieldNamespaceEntry,
+			field_namespace->capacity);
+
+	for (size_t i = 0; i < named_field_locations.count; i += 1) {
+		NamedFieldLocation loc = named_field_locations.locations[i];
+		const ParsedStructField* field = &loc.struct_def->fields[loc.field_index];
+		size_t index = hash_string(field->name.string) % field_namespace->capacity;
+
+		while (true) {
+			String key = field_namespace->keys[index];
+			if (key.v == NULL) {
+				field_namespace->keys[index] = field->name.string;
+				field_namespace->entries[index] = (ParsedStructFieldNamespaceEntry) {
+					.struct_def = loc.struct_def,
+					.field_index = loc.field_index,
+				};
+
+				field_namespace->size += 1;
+				break;
+			} else if (str_equal(key, field->name.string)) {
+				panic("Duplicate struct fields. TODO: Handle");
+			}
+
+			index = (index + 1) % field_namespace->capacity;
+		}
+	}
+
+	struct_def->field_namespace = field_namespace;
+	
+	arena_end_temp(temp);
+}
+
 bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, bool is_anonymous) {
 	assert(out_struct_def != NULL);
 
@@ -661,6 +747,10 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 		struct_def->field_count = field_count;
 		struct_def->fields = fields;
 		struct_def->is_forward_declared = false;
+
+		if (!is_anonymous) {
+			_parser_initialize_struct_fields_namespace(struct_def, parser->ast_allocator, parser->temp_allocator);
+		}
 	}
 
 	*out_struct_def = struct_def;

@@ -350,6 +350,17 @@ struct ParsedStruct {
 	ParsedStructFieldNamespace* field_namespace;
 };
 
+inline const ParsedStructField* struct_find_field(const ParsedStruct* struct_def, String field_name) {
+	assert(struct_def->field_namespace);
+	size_t entry_index = struct_field_namespace_index_of(struct_def->field_namespace, field_name);
+	if (entry_index == SIZE_MAX) {
+		return NULL;
+	}
+
+	const ParsedStructFieldNamespaceEntry entry = struct_def->field_namespace->entries[entry_index];
+	return &entry.struct_def->fields[entry.field_index];
+}
+
 //
 // Enum
 //

@@ -219,11 +219,8 @@ bool _generate_instr(GenContext* context) {
 		str_builder_append(&builder, instr_kind_enum->variants[i].name.string);
 		str_builder_append(&builder, STR_LIT(":\n"));
 
-		size_t field_entry_index = struct_field_namespace_index_of(instr_struct->field_namespace, instr_struct_name);
-		if (field_entry_index != SIZE_MAX) {
-			const ParsedStructFieldNamespaceEntry* entry = &instr_struct->field_namespace->entries[field_entry_index];
-			ParsedStructField* field = &entry->struct_def->fields[entry->field_index];
-
+		const ParsedStructField* field = struct_find_field(instr_struct, instr_struct_name);
+		if (field) {
 			switch (field->type.kind) {
 			case PARSED_TYPE_STRUCT:
 			case PARSED_TYPE_UNION: {

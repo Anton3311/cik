@@ -1802,3 +1802,34 @@ void test_fields_not_mapped_for_struct_defined_inline_with_the_named_field(TestC
 		assert(index == SIZE_MAX);
 	}
 }
+
+void test_parse_union_def(TestContext* context) {
+	String source_code = STR_LIT("union Union { int i; float f; };");
+
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	IdentifierStorage* ident_storage;
+	run_parser_test_2(context,
+			&diagnostics,
+			&source_storage,
+			source_code,
+			&ast,
+			&ident_storage);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	IdentifierEntry* entry = ident_storage_find(ident_storage,
+			IDENT_NAMESPACE_TAGGED,
+			IDENT_FIND_IN_ALL_PARENT_SCOPES,
+			STR_LIT("Union"));
+
+	assert(entry != NULL);
+
+	assert(entry->kind == IDENT_UNION);
+
+	const ParsedStruct* union_def = entry->union_def;
+	assert(union_def->layout_kind == STRUCT_LAYOUT_KIND_UNION);
+}

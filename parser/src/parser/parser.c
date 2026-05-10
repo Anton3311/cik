@@ -19,6 +19,8 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 	switch (a->kind) {
 	case PARSED_TYPE_STRUCT:
 		return a->struct_def == b->struct_def;
+	case PARSED_TYPE_UNION:
+		return a->union_def == b->union_def;
 	case PARSED_TYPE_ENUM:
 		return a->enum_def == b->enum_def;
 	case PARSED_TYPE_VOID:
@@ -655,7 +657,15 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 	assert(out_struct_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
-	assert(keyword_token.kind == TOKEN_KEYWORD_STRUCT);
+	assert(keyword_token.kind == TOKEN_KEYWORD_STRUCT || keyword_token.kind == TOKEN_KEYWORD_UNION);
+
+	bool is_struct = keyword_token.kind == TOKEN_KEYWORD_STRUCT;
+	StructLayoutKind layout_kind = is_struct
+		? STRUCT_LAYOUT_KIND_STRUCT
+		: STRUCT_LAYOUT_KIND_UNION;
+	IdentifierEntryKind ident_kind = is_struct
+		? IDENT_STRUCT
+		: IDENT_UNION;
 
 	SourceString struct_name = {};
 	ParsedStructField* fields = NULL;
@@ -688,7 +698,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 				IDENT_FIND_DEFAULT,
 				struct_name.string);
 		if (entry) {
-			if (!has_flag(entry->kind, IDENT_STRUCT)) {
+			if (!has_flag(entry->kind, ident_kind)) {
 				StringBuilder builder = { .arena = parser->diagnostics->allocator };
 				str_builder_append_char(&builder, '\'');
 				str_builder_append(&builder, entry->name.string);
@@ -706,7 +716,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 				return false;
 			}
 			
-			struct_def = entry->struct_def;
+			struct_def = is_struct ? entry->struct_def : entry->union_def;
 			assert(struct_def);
 
 			struct_def_initialized = true;
@@ -729,9 +739,14 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 				return false;
 			}
 		} else {
-			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, IDENT_STRUCT, struct_name);
+			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, ident_kind, struct_name);
 			struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
-			entry->struct_def = struct_def;
+
+			if (is_struct) {
+				entry->struct_def = struct_def;
+			} else {
+				entry->union_def = struct_def;
+			}
 		}
 	} else {
 		struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
@@ -742,6 +757,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 
 	if (!struct_def_initialized) {
 		struct_def->name = struct_name;
+		struct_def->layout_kind = layout_kind;
 		struct_def->is_forward_declared = is_forward_declared;
 	}
 
@@ -1169,6 +1185,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		case IDENT_FUNCTION:
 		case IDENT_VARIABLE:
 		case IDENT_STRUCT:
+		case IDENT_UNION:
 		case IDENT_ENUM:
 		case IDENT_ENUM_CONSTANT:
 		case IDENT_FUNCTION_PARAM:
@@ -1177,14 +1194,21 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 		}
 
 		unreachable();
-	} else if (token.kind == TOKEN_KEYWORD_STRUCT) {
+	} else if (token.kind == TOKEN_KEYWORD_STRUCT || token.kind == TOKEN_KEYWORD_UNION) {
 		ParsedStruct* struct_def = {};
 		if (!_parser_parse_struct_def(parser, &struct_def, is_anonymous)) {
 			return PARSE_TYPE_ERROR;
 		}
 
-		out_type->kind = PARSED_TYPE_STRUCT;
-		out_type->struct_def = struct_def;
+
+		if (struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT) {
+			out_type->kind = PARSED_TYPE_STRUCT;
+			out_type->struct_def = struct_def;
+		} else {
+			out_type->kind = PARSED_TYPE_UNION;
+			out_type->union_def = struct_def;
+		}
+
 		return PARSE_TYPE_PARSED;
 	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
 		ParsedEnum* enum_def = {};
@@ -1202,6 +1226,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 			TOKEN_IDENT,
 			TOKEN_KEYWORD_CONST,
 			TOKEN_KEYWORD_STRUCT,
+			TOKEN_KEYWORD_UNION,
 			TOKEN_KEYWORD_ENUM,
 		};
 
@@ -1551,6 +1576,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			return EXPR_PARSE_OK;
 		case IDENT_TYPE_DEF:
 		case IDENT_STRUCT:
+		case IDENT_UNION:
 		case IDENT_ENUM:
 			unreachable();
 		case IDENT_ENUM_CONSTANT:
@@ -2483,15 +2509,34 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
+		assert(struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT);
+
 		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after the struct"))) {
 			return NULL;
 		}
 
 		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
-		memset(node, 0, sizeof(*node));
 
 		node->kind = AST_NODE_STRUCT;
 		node->struct_def = struct_def;
+		return node;
+	}
+	case TOKEN_KEYWORD_UNION: {
+		ParsedStruct* union_def = NULL;
+		if (!_parser_parse_struct_def(parser, &union_def, false)) {
+			return NULL;
+		}
+
+		assert(union_def->layout_kind == STRUCT_LAYOUT_KIND_UNION);
+
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after the struct"))) {
+			return NULL;
+		}
+
+		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+
+		node->kind = AST_NODE_STRUCT;
+		node->union_def = union_def;
 		return node;
 	}
 	case TOKEN_KEYWORD_ENUM: {

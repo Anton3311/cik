@@ -363,7 +363,10 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 	assert(struct_def != NULL);
 
-	printer_begin_struct(printer, "struct");
+	printer_begin_struct(printer, struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT
+			? "struct"
+			: "union");
+
 	printer_string_field(printer, "name", struct_def->name.string);
 	printer_bool_field(printer, "is_forward_declared", struct_def->is_forward_declared);
 	
@@ -424,6 +427,9 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_STRUCT:
 		print_struct_def(printer, type->struct_def);
+		break;
+	case PARSED_TYPE_UNION:
+		print_struct_def(printer, type->union_def);
 		break;
 	case PARSED_TYPE_ENUM:
 		print_enum_def(printer, type->enum_def);
@@ -660,6 +666,9 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 		break;
 	case AST_NODE_STRUCT:
 		print_struct_def(printer, node->struct_def);
+		break;
+	case AST_NODE_UNION:
+		print_struct_def(printer, node->union_def);
 		break;
 	case AST_NODE_ENUM:
 		print_enum_def(printer, node->enum_def);

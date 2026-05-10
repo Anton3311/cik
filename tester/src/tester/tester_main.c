@@ -78,6 +78,7 @@ static TestCase parser_tests[] = {
 	test(test_map_current_struct_fields),
 	test(test_map_current_and_inner_anonymous_struct_fields),
 	test(test_fields_not_mapped_for_struct_defined_inline_with_the_named_field),
+	test(test_parse_union_def),
 };
 
 static TestCase s_x64_tests[] = {

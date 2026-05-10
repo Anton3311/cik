@@ -37,6 +37,7 @@ typedef struct ParsedIfStmt ParsedIfStmt;
 typedef enum {
 	AST_NODE_TYPE_DEF,
 	AST_NODE_STRUCT,
+	AST_NODE_UNION,
 	AST_NODE_ENUM,
 	AST_NODE_FUNCTION,
 	AST_NODE_EXPR,
@@ -123,10 +124,11 @@ typedef enum {
 	PARSED_TYPE_DOUBLE             = 12,
 
 	PARSED_TYPE_STRUCT             = 13,
-	PARSED_TYPE_ENUM               = 14,
+	PARSED_TYPE_UNION              = 14,
+	PARSED_TYPE_ENUM               = 15,
 
-	PARSED_TYPE_POINTER            = 15,
-	PARSED_TYPE_ARRAY              = 16,
+	PARSED_TYPE_POINTER            = 16,
+	PARSED_TYPE_ARRAY              = 17,
 } ParsedTypeKind;
 
 struct ParsedType {
@@ -142,6 +144,7 @@ struct ParsedType {
 		} named;
 		
 		ParsedStruct* struct_def;
+		ParsedStruct* union_def;
 		ParsedEnum* enum_def;
 		ParsedType* pointer_base_type;
 
@@ -328,8 +331,14 @@ struct ParsedStructField {
 	ParsedType type;
 };
 
+typedef enum {
+	STRUCT_LAYOUT_KIND_STRUCT,
+	STRUCT_LAYOUT_KIND_UNION,
+} StructLayoutKind;
+
 struct ParsedStruct {
 	SourceString name;
+	StructLayoutKind layout_kind;
 
 	bool is_forward_declared;
 
@@ -463,6 +472,7 @@ struct ParsedNode {
 
 	union {
 		ParsedStruct* struct_def;
+		ParsedStruct* union_def;
 		ParsedEnum* enum_def;
 		ParsedTypeDef* type_def;
 		ParsedFunction* function_def;

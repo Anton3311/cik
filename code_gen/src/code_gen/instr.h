@@ -9,6 +9,9 @@
 		const char* string;
 		size_t length;
 	} String;
+
+	#define assert(...)
+	#define assert_msg(...)
 #else
 	#include "core/core.h"
 #endif
@@ -68,7 +71,9 @@ typedef struct {
 	size_t count;
 } InstrIndexArray;
 
+#ifndef CODE_GENERATION_PASS
 static const InstrIndex INVALID_INSTR_INDEX = (InstrIndex) { .value = UINT16_MAX };
+#endif // CODE_GENERATION_PASS
 
 struct Instr {
 	InstrKind kind;
@@ -133,6 +138,8 @@ struct Instr {
 		} region;
 	};
 };
+
+#ifndef CODE_GENERATION_PASS
 
 struct InstrBuffer {
 	Instr* instr;
@@ -268,5 +275,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 String instr_name(InstrKind instr_kind);
 void instr_print(const Instr* instr);
 void instr_print_all(InstrBuffer instr_buffer);
+
+#endif // CODE_GENERATION_PASS
 
 #endif

@@ -155,6 +155,8 @@ struct ParsedType {
 	};
 };
 
+bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def);
+
 //
 // Expr
 //

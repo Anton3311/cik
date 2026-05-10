@@ -1,5 +1,15 @@
 #include "parsed_ast.h"
 
+bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def) {
+	assert(struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT);
+
+	if (type->kind != PARSED_TYPE_STRUCT) {
+		return false;
+	}
+
+	return type->struct_def == struct_def;
+}
+
 static String s_bin_op_kind_to_string[] = {
 	[BIN_OP_ADD] = STR_LIT("+"),
 	[BIN_OP_SUB] = STR_LIT("-"),

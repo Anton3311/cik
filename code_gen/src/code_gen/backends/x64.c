@@ -661,8 +661,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		break;
 
 	case INSTR_RETURN_VALUE:
-		_x64_generate_code(gen, instr->ret.value, buffer);
-		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->ret.value.value];
+		_x64_generate_code(gen, instr->return_value.value, buffer);
+		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->return_value.value.value];
 		assert(return_value_loc.kind == INSTR_STORAGE_REG);
 
 		_emit_mov_regs(buffer, return_value_loc.reg, REG_A, 64);

@@ -330,6 +330,14 @@ inline bool str_equal(String str, String other) {
 	return true;
 }
 
+inline bool str_starts_with(String str, String prefix) {
+	if (prefix.length > str.length) {
+		return false;
+	}
+
+	return memcmp(str.v, prefix.v, prefix.length) == 0;
+}
+
 typedef enum {
 	LINE_ENDING_NONE,
 	LINE_ENDING_LF,

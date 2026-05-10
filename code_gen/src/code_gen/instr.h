@@ -120,7 +120,7 @@ struct Instr {
 		
 		struct {
 			InstrIndex value;
-		} ret;
+		} return_value;
 
 		struct {
 			InstrIndex producer;
@@ -235,7 +235,7 @@ inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, 
 	InstrIndex i = instr_buffer_append(buffer, allocator);
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_RETURN_VALUE;
-	instr->ret.value = value;
+	instr->return_value.value = value;
 	return i;
 }
 

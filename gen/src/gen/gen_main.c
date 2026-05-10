@@ -142,13 +142,15 @@ bool _generate_instr(GenContext* context) {
 		return false;
 	}
 
-	IdentifierEntry* instr_struct_entry = ident_storage_find(&ident_storage,
+	const ParsedStruct* instr_struct = ident_storage_find(&ident_storage,
 			IDENT_NAMESPACE_TAGGED,
 			IDENT_FIND_DEFAULT,
-			STR_LIT("Instr"));
-
-	assert(instr_struct_entry);
-
+			STR_LIT("Instr"))->struct_def;
+	IdentifierEntry* e = ident_storage_find(&ident_storage,
+			IDENT_NAMESPACE_ALIAS,
+			IDENT_FIND_DEFAULT,
+			STR_LIT("InstrIndex"));
+	const ParsedStruct* instr_index_struct = e->type_def->aliased_type.struct_def;
 	const ParsedEnum* instr_kind_enum = ident_storage_find(&ident_storage,
 			IDENT_NAMESPACE_ALIAS,
 			IDENT_FIND_DEFAULT,
@@ -184,6 +186,74 @@ bool _generate_instr(GenContext* context) {
 	str_builder_append(&builder, STR_LIT(
 				"String instr_bin_op_name(InstrBinOp op_kind) {\n"
 				"	return s_instr_bin_op_kind_to_string[op_kind];\n"
+				"}\n"));
+
+	// `instr_enumerate_dependencies` is reponsible for pushing every dependency
+	// of the current instruction onto the stack,
+	// All the fields of type `InstrIndex` store a dependency, so the generator
+	// needs to go over all of them, and for each generate a piece of code that
+	// pushes dependency stored in that field onto the stack
+	str_builder_append(&builder, STR_LIT(
+				"void instr_enumerate_dependencies(const InstrBuffer buffer,\n"
+				"                                  InstrIndex instr_index,\n"
+				"                                  InstrStack* out_dependencies) {\n"
+				"    const Instr* instr = &buffer.instr[instr_index.value];\n"
+				"    switch (instr->kind) {\n"));
+
+	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
+		size_t prefix_length = 6;
+		String variant_name = instr_kind_enum->variants[i].name.string;
+		String instr_struct_name;
+
+		if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
+			instr_struct_name = STR_LIT("bin_op");
+		} else {
+			instr_struct_name = str_to_lower(
+					sub_str(variant_name,
+						prefix_length,
+						variant_name.length - prefix_length),
+					context->temp_allocator);
+		}
+
+		str_builder_append(&builder, STR_LIT("    case "));
+		str_builder_append(&builder, instr_kind_enum->variants[i].name.string);
+		str_builder_append(&builder, STR_LIT(":\n"));
+
+		size_t field_entry_index = struct_field_namespace_index_of(instr_struct->field_namespace, instr_struct_name);
+		if (field_entry_index != SIZE_MAX) {
+			const ParsedStructFieldNamespaceEntry* entry = &instr_struct->field_namespace->entries[field_entry_index];
+			ParsedStructField* field = &entry->struct_def->fields[entry->field_index];
+
+			switch (field->type.kind) {
+			case PARSED_TYPE_STRUCT:
+			case PARSED_TYPE_UNION: {
+				const ParsedStruct* instr_struct = field->type.struct_def;
+				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
+					if (!type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
+						continue;
+					}
+
+					str_builder_append(&builder, STR_LIT("        instr_stack_push(out_dependencies, instr->"));
+					str_builder_append(&builder, instr_struct_name);
+					str_builder_append_char(&builder, '.');
+					str_builder_append(&builder, instr_struct->fields[j].name.string);
+					str_builder_append(&builder, STR_LIT(");\n"));
+				}
+				break;
+			}
+			default:
+				unreachable();
+			}
+		}
+
+		str_builder_append(&builder, STR_LIT("        break;\n"));
+	}
+
+	// End of `instr_enumerate_dependencies`
+	str_builder_append(&builder, STR_LIT(
+				"    case INSTR_COUNT:\n"
+				"        unreachable();\n"
+				"    }\n"
 				"}\n"));
 
 	if (!write_str_to_file("code_gen/src/code_gen/instr.gen.c", builder.string)) {

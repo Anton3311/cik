@@ -583,6 +583,9 @@ static void _parser_gather_named_field_locations_of_anonymous_type_defs(const Pa
 			if (field->type.kind == PARSED_TYPE_STRUCT) {
 				const ParsedStruct* inner_def = field->type.struct_def;
 				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
+			} else if (field->type.kind == PARSED_TYPE_UNION) {
+				const ParsedStruct* inner_def = field->type.union_def;
+				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
 			}
 		} else {
 			arena_alloc(out_field_locations->allocator, NamedFieldLocation);

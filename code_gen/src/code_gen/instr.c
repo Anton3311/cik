@@ -36,61 +36,6 @@ bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index) {
 	return has_flag(INSTR_FEATURES[last_instr_kind], INSTR_FEATURE_CONTROL);
 }
 
-void instr_enumerate_dependencies(const InstrBuffer buffer,
-		InstrIndex instr_index,
-		InstrStack* out_dependencies) {
-
-	const Instr* instr = &buffer.instr[instr_index.value];
-	switch (instr->kind) {
-	case INSTR_NO_OP:
-		break;
-
-	case INSTR_CONST_8:
-	case INSTR_CONST_16:
-	case INSTR_CONST_32:
-	case INSTR_CONST_64:
-		break;
-
-	case INSTR_BIN_OP_8:
-	case INSTR_BIN_OP_16:
-	case INSTR_BIN_OP_32:
-	case INSTR_BIN_OP_64:
-		instr_stack_push(out_dependencies, instr->bin_op.left);
-		instr_stack_push(out_dependencies, instr->bin_op.right);
-		break;
-
-	case INSTR_BRANCH:
-		instr_stack_push(out_dependencies, instr->branch.condition);
-		instr_stack_push(out_dependencies, instr->branch.true_region);
-		instr_stack_push(out_dependencies, instr->branch.false_region);
-		break;
-
-	case INSTR_JUMP:
-		instr_stack_push(out_dependencies, instr->jump.target_region);
-		break;
-
-	case INSTR_RETURN_VALUE:
-		instr_stack_push(out_dependencies, instr->ret.value);
-		break;
-
-	case INSTR_REGION:
-		instr_stack_push(out_dependencies, instr->region.last_instr);
-		instr_stack_push(out_dependencies, instr->region.io_state);
-		break;
-	case INSTR_IO_STATE:
-		instr_stack_push(out_dependencies, instr->io_state.producer);
-		break;
-	
-	case INSTR_CALL_INTERNAL:
-		instr_stack_push(out_dependencies, instr->call_internal.arg);
-		instr_stack_push(out_dependencies, instr->call_internal.io_state);
-		break;
-
-	case INSTR_COUNT:
-		unreachable();
-	}
-}
-
 InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
 		Arena* allocator,
@@ -198,7 +143,7 @@ void instr_print(const Instr* instr) {
 		printf("%u", (uint32_t)instr->jump.target_region.value);
 		break;
 	case INSTR_RETURN_VALUE:
-		printf("%u", (uint32_t)instr->ret.value.value);
+		printf("%u", (uint32_t)instr->return_value.value.value);
 		break;
 	case INSTR_IO_STATE:
 		printf("producer: %u", (uint32_t)instr->io_state.producer.value);

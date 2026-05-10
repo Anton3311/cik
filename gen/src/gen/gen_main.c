@@ -97,6 +97,32 @@ void _emit_include(StringBuilder* builder, String include_path) {
 	str_builder_append(builder, STR_LIT("\"\n"));
 }
 
+void _emit_enum_to_string_mapping(GenContext* context,
+		StringBuilder* builder,
+		String mapping_name,
+		const ParsedEnum* enum_def,
+		bool skip_last,
+		size_t prefix_length) {
+
+	str_builder_append(builder, STR_LIT("static String "));
+	str_builder_append(builder, mapping_name);
+	str_builder_append(builder, STR_LIT("[] = {\n"));
+
+	size_t variant_count = skip_last ? (enum_def->variant_count - 1) : enum_def->variant_count;
+	for (size_t i = 0; i < variant_count; i += 1) {
+		String variant_name = enum_def->variants[i].name.string;
+		String simple_name = sub_str(variant_name, prefix_length, variant_name.length - prefix_length);
+
+		str_builder_append(builder, STR_LIT("    ["));
+		str_builder_append(builder, variant_name);
+		str_builder_append(builder, STR_LIT("] = STR_LIT(\""));
+		str_builder_append(builder, str_to_lower(simple_name, context->temp_allocator));
+		str_builder_append(builder, STR_LIT("\"),\n"));
+	}
+
+	str_builder_append(builder, STR_LIT("};\n"));
+}
+
 //
 // Instr Generator
 //
@@ -127,6 +153,10 @@ bool _generate_instr(GenContext* context) {
 			IDENT_NAMESPACE_ALIAS,
 			IDENT_FIND_DEFAULT,
 			STR_LIT("InstrKind"))->type_def->aliased_type.enum_def;
+	const ParsedEnum* instr_bin_op_enum = ident_storage_find(&ident_storage,
+			IDENT_NAMESPACE_ALIAS,
+			IDENT_FIND_DEFAULT,
+			STR_LIT("InstrBinOp"))->type_def->aliased_type.enum_def;
 
 	assert(instr_kind_enum);
 
@@ -135,23 +165,26 @@ bool _generate_instr(GenContext* context) {
 
 	_emit_include(&builder, STR_LIT("instr.h"));
 
-	str_builder_append(&builder, STR_LIT("static String instr_kind_to_string[] = {\n"));
+	_emit_enum_to_string_mapping(context,
+			&builder,
+			STR_LIT("s_instr_kind_to_string"),
+			instr_kind_enum,
+			true, 6);
+	_emit_enum_to_string_mapping(context,
+			&builder,
+			STR_LIT("s_instr_bin_op_kind_to_string"),
+			instr_bin_op_enum,
+			false,
+			sizeof("INSTR_BIN_") - 1);
 
-	// NOTE: Don't include INSTR_COUNT, which is the last one
-	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
-		String variant_name = instr_kind_enum->variants[i].name.string;
-		const String prefix = STR_LIT("instr_");
-		String simple_name = sub_str(variant_name, prefix.length, variant_name.length - prefix.length);
-
-		str_builder_append(&builder, STR_LIT("    ["));
-		str_builder_append(&builder, variant_name);
-		str_builder_append(&builder, STR_LIT("] = STR_LIT(\""));
-		str_builder_append(&builder, str_to_lower(simple_name, context->temp_allocator));
-		str_builder_append(&builder, STR_LIT("\"),\n"));
-	}
-	str_builder_append(&builder, STR_LIT("};"));
-
-	printf("%.*s\n", STR_FMT(builder.string));
+	str_builder_append(&builder, STR_LIT(
+				"String instr_name(InstrKind instr_kind) {\n"
+				"	return s_instr_kind_to_string[instr_kind];\n"
+				"}\n"));
+	str_builder_append(&builder, STR_LIT(
+				"String instr_bin_op_name(InstrBinOp op_kind) {\n"
+				"	return s_instr_bin_op_kind_to_string[op_kind];\n"
+				"}\n"));
 
 	if (!write_str_to_file("code_gen/src/code_gen/instr.gen.c", builder.string)) {
 		return false;

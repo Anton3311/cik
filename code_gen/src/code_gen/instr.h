@@ -273,6 +273,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		Arena* temp_allocator);
 
 String instr_name(InstrKind instr_kind);
+String instr_bin_op_name(InstrBinOp op_kind);
 void instr_print(const Instr* instr);
 void instr_print_all(InstrBuffer instr_buffer);
 

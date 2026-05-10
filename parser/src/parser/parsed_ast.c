@@ -162,6 +162,24 @@ void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node) {
 	}
 }
 
+size_t struct_field_namespace_index_of(const ParsedStructFieldNamespace* struct_namespace, String name) {
+	size_t index = hash_string(name) % struct_namespace->capacity;
+	
+	while (true) {
+		String key = struct_namespace->keys[index];
+		if (key.v == NULL) {
+			return SIZE_MAX;
+		} else if (str_equal(key, name)) {
+			return index;
+		}
+
+		index = (index + 1) % struct_namespace->capacity;
+	}
+
+	unreachable();
+	return SIZE_MAX;
+}
+
 typedef struct {
 	size_t indent;
 } PrinterState;

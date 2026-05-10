@@ -488,6 +488,8 @@ bool _parser_expect_semicolon(Parser* parser, String error_message) {
 	return true;
 }
 
+// TODO: Don't reset `ast_allocator` because, during testing that same `ast_allocator`
+//       is used for diagnostics and reseting it corrupts diagnostics state
 static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count, ParsedStructField** out_fields) {
 	assert(out_field_count != NULL);
 	assert(out_fields != NULL);
@@ -542,7 +544,6 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 					name_or_semilcolon,
 					expected_tokens,
 					array_size(expected_tokens));
-			arena_end_temp(ast_temp);
 			arena_end_temp(temp);
 			return false;
 		}
@@ -596,6 +597,8 @@ static void _parser_initialize_struct_fields_namespace(ParsedStruct* struct_def,
 		Arena* allocator,
 		Arena* temp_allocator) {
 
+	profile_scope_start(__func__);
+
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 	NamedFieldLocationArray named_field_locations = {};
 	named_field_locations.locations = arena_alloc_array(temp_allocator, NamedFieldLocation, 0);
@@ -644,6 +647,8 @@ static void _parser_initialize_struct_fields_namespace(ParsedStruct* struct_def,
 	struct_def->field_namespace = field_namespace;
 	
 	arena_end_temp(temp);
+
+	profile_scope_end();
 }
 
 bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, bool is_anonymous) {

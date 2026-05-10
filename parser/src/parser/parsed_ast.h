@@ -321,7 +321,7 @@ struct ParsedStructFieldNamespace {
 };
 
 // Performs a lookup in the hashmap and returns the index of the found entry, or SIZE_MAX if not found
-size_t struct_field_namespace_index_of(ParsedStructFieldNamespace* struct_namespace, String name);
+size_t struct_field_namespace_index_of(const ParsedStructFieldNamespace* struct_namespace, String name);
 
 struct ParsedStructField {
 	SourceString name;

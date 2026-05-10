@@ -767,11 +767,12 @@ void test_processor_next_returns_eof_when_include_stack_is_empty(TestContext* co
 // Parser
 //
 
-void run_parser_test(TestContext* context,
+void run_parser_test_2(TestContext* context,
 		Diagnostics* out_diagnostics,
 		SourceStorage* out_source_storage,
 		String source_code,
-		ParsedAST* out_ast) {
+		ParsedAST* out_ast,
+		IdentifierStorage** out_ident_storage) {
 
 	source_storage_init(out_source_storage, (StringArray) {}, context->arena);
 	SourceFile* source_file = source_storage_append(out_source_storage, STR_LIT(DEFAULT_SOURCE_PATH), source_code);
@@ -791,19 +792,33 @@ void run_parser_test(TestContext* context,
 			context->temp_arena,
 			&generated_tokens_arena);
 
-	IdentifierStorage* ident_storage = arena_alloc(context->arena, IdentifierStorage);
+	*out_ident_storage = arena_alloc(context->arena, IdentifierStorage);
 
 	// NOTE: This arena is used by the `IdentifierStorage` inside the parser,
 	//       so it's lifetime is no longer than the one of the parser.
 	Arena ident_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
 	Arena ast_arena = arena_alloc_sub_arena(context->arena, 16 * 1024);
 
-	ident_storage_init(ident_storage, arena_allocator_new(&ident_arena), &ident_arena);
+	ident_storage_init(*out_ident_storage, arena_allocator_new(&ident_arena), &ident_arena);
 
 	Parser parser = {};
-	parser_init(&parser, &ast_arena, context->temp_arena, ident_storage, &preprocessor, out_diagnostics);
+	parser_init(&parser, &ast_arena, context->temp_arena, *out_ident_storage, &preprocessor, out_diagnostics);
 
 	parser_parse(&parser, out_ast);
+}
+
+void run_parser_test(TestContext* context,
+		Diagnostics* out_diagnostics,
+		SourceStorage* out_source_storage,
+		String source_code,
+		ParsedAST* out_ast) {
+	IdentifierStorage* ident_storage;
+	run_parser_test_2(context,
+			out_diagnostics,
+			out_source_storage,
+			source_code,
+			out_ast,
+			&ident_storage);
 }
 
 void test_parse_type_def_of_primitive_type(TestContext* context) {
@@ -1611,4 +1626,179 @@ void test_inner_struct_decl_is_anonymous(TestContext* context) {
 void test_inner_enum_decl_is_anonymous(TestContext* context) {
 	_run_anonymous_type_declaration_sub_test(context,
 			STR_LIT("struct Outer { enum Anonymous {} inner; };"));
+}
+
+void test_map_current_struct_fields(TestContext* context) {
+	String source_code = STR_LIT("struct Struct {\n"
+			"	int value0;\n"
+			"	int value1;\n"
+			"	float value2;\n"
+			"	float;\n"
+			"};");
+
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	IdentifierStorage* ident_storage;
+	run_parser_test_2(context,
+			&diagnostics,
+			&source_storage,
+			source_code,
+			&ast,
+			&ident_storage);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	IdentifierEntry* entry = ident_storage_find(ident_storage,
+			IDENT_NAMESPACE_TAGGED,
+			IDENT_FIND_IN_ALL_PARENT_SCOPES,
+			STR_LIT("Struct"));
+
+	assert(entry != NULL);
+
+	const ParsedStruct* struct_def = entry->struct_def;
+	assert(entry != NULL);
+
+	const ParsedStructFieldNamespace* fields = struct_def->field_namespace;
+	assert(fields != NULL);
+	assert(fields->size == 3);
+
+	String expected_fields[] = {
+		STR_LIT("value0"),
+		STR_LIT("value1"),
+		STR_LIT("value2"),
+	};
+
+	for (size_t i = 0; i < array_size(expected_fields); i += 1) {
+		size_t index = struct_field_namespace_index_of(fields, expected_fields[i]);
+		assert(index != SIZE_MAX);
+
+		assert(fields->entries[index].struct_def == struct_def);
+		assert(fields->entries[index].field_index == i);
+	}
+}
+
+void test_map_current_and_inner_anonymous_struct_fields(TestContext* context) {
+	String source_code = STR_LIT("struct Struct {\n"
+			"	int value0;\n"
+			"	struct Inner {\n"
+			"		int inner_value0;\n"
+			"		struct InnerMost {\n"
+			"			float inner_most_value0;\n"
+			"		};\n"
+			"	};\n"
+			"	int value1;\n"
+			"	float value2;\n"
+			"	float;\n"
+			"};");
+
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	IdentifierStorage* ident_storage;
+	run_parser_test_2(context,
+			&diagnostics,
+			&source_storage,
+			source_code,
+			&ast,
+			&ident_storage);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	IdentifierEntry* entry = ident_storage_find(ident_storage,
+			IDENT_NAMESPACE_TAGGED,
+			IDENT_FIND_IN_ALL_PARENT_SCOPES,
+			STR_LIT("Struct"));
+
+	assert(entry != NULL);
+
+	const ParsedStruct* struct_def = entry->struct_def;
+	assert(entry != NULL);
+
+	const ParsedStructFieldNamespace* fields = struct_def->field_namespace;
+	assert(fields != NULL);
+	assert(fields->size == 5);
+
+	String expected_fields[] = {
+		STR_LIT("value0"),
+		STR_LIT("inner_value0"),
+		STR_LIT("inner_most_value0"),
+		STR_LIT("value1"),
+		STR_LIT("value2"),
+	};
+
+	for (size_t i = 0; i < array_size(expected_fields); i += 1) {
+		size_t index = struct_field_namespace_index_of(fields, expected_fields[i]);
+		assert(index != SIZE_MAX);
+	}
+}
+
+void test_fields_not_mapped_for_struct_defined_inline_with_the_named_field(TestContext* context) {
+	String source_code = STR_LIT("struct Struct {\n"
+			"	int value0;\n"
+			"	struct Inner {\n"
+			"		int inner_value0;\n"
+			"		struct InnerMost {\n"
+			"			float inner_most_value0;\n"
+			"		} inner;\n"
+			"	};\n"
+			"	int value1;\n"
+			"	float value2;\n"
+			"	float;\n"
+			"};");
+
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	IdentifierStorage* ident_storage;
+	run_parser_test_2(context,
+			&diagnostics,
+			&source_storage,
+			source_code,
+			&ast,
+			&ident_storage);
+
+	diagnostics_print(&diagnostics);
+	assert(diagnostics.first == NULL);
+	assert(ast.root_nodes.count == 1);
+
+	IdentifierEntry* entry = ident_storage_find(ident_storage,
+			IDENT_NAMESPACE_TAGGED,
+			IDENT_FIND_IN_ALL_PARENT_SCOPES,
+			STR_LIT("Struct"));
+
+	assert(entry != NULL);
+
+	const ParsedStruct* struct_def = entry->struct_def;
+	assert(entry != NULL);
+
+	const ParsedStructFieldNamespace* fields = struct_def->field_namespace;
+	assert(fields != NULL);
+	assert(fields->size == 5);
+
+	String expected_fields[] = {
+		STR_LIT("value0"),
+		STR_LIT("inner_value0"),
+		STR_LIT("inner"),
+		STR_LIT("value1"),
+		STR_LIT("value2"),
+	};
+
+	for (size_t i = 0; i < array_size(expected_fields); i += 1) {
+		size_t index = struct_field_namespace_index_of(fields, expected_fields[i]);
+		assert(index != SIZE_MAX);
+	}
+
+	String unexpected_fields[] = {
+		STR_LIT("inner_most_value0"),
+	};
+
+	for (size_t i = 0; i < array_size(unexpected_fields); i += 1) {
+		size_t index = struct_field_namespace_index_of(fields, unexpected_fields[i]);
+		assert(index == SIZE_MAX);
+	}
 }

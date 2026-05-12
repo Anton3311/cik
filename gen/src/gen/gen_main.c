@@ -321,6 +321,9 @@ bool _generate_instr(GenContext* context) {
 
 				// First generate the format string
 				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
+					str_builder_append(&builder, instr_struct->fields[j].name.string);
+					str_builder_append(&builder, STR_LIT(": "));
+
 					switch (instr_struct->fields[j].type.kind) {
 					case PARSED_TYPE_CHAR:
 					case PARSED_TYPE_SIGNED_CHAR:

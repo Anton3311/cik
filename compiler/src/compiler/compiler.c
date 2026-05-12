@@ -1,5 +1,12 @@
 #include "compiler.h"
 
+static InstrIndex _get_arg_load_instr(const FunctionCompiler* compiler, uint8_t arg_index) {
+	const ParsedFunction* func = compiler->function;
+	assert(arg_index < func->parameter_count);
+	assert(arg_index < compiler->instr_buffer.count);
+	return (InstrIndex) { .value = (uint16_t)arg_index };
+}
+
 static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -61,6 +68,10 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	}
 	case EXPR_STRING_LITERAL:
 		break;
+	case EXPR_FUNCTION_PARAM: {
+		assert(expr->function_param.param_index < UINT8_MAX);
+		return _get_arg_load_instr(compiler, (uint8_t)expr->function_param.param_index);
+	}
 	}
 
 	unreachable();
@@ -164,6 +175,14 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
+
+	assert_msg(compiler->function->parameter_count <= 4, "For now only up to 4 params are supported");
+	for (size_t i = 0; i < compiler->function->parameter_count; i += 1) {
+		InstrIndex index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, index);
+		instr->kind = INSTR_LOAD_ARG;
+		instr->load_arg.index = (uint8_t)i;
+	}
 
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 

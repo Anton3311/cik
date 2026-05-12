@@ -16,6 +16,7 @@ static String s_instr_kind_to_string[] = {
     [INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
     [INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
     [INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
+    [INSTR_LOAD_ARG] = STR_LIT("load_arg"),
     [INSTR_BRANCH] = STR_LIT("branch"),
     [INSTR_JUMP] = STR_LIT("jump"),
     [INSTR_RETURN_VALUE] = STR_LIT("return_value"),
@@ -65,6 +66,8 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
     case INSTR_BIN_OP_64:
         instr_stack_push(out_dependencies, instr->bin_op.left);
         instr_stack_push(out_dependencies, instr->bin_op.right);
+        break;
+    case INSTR_LOAD_ARG:
         break;
     case INSTR_BRANCH:
         instr_stack_push(out_dependencies, instr->branch.condition);
@@ -125,6 +128,9 @@ void instr_print(const Instr* instr) {
         break;
     case INSTR_BIN_OP_64:
         printf("%.*s %u %u \n", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_LOAD_ARG:
+        printf("%u \n", (uint32_t)instr->load_arg.index);
         break;
     case INSTR_BRANCH:
         printf("%u %u %u \n", (uint32_t)instr->branch.condition.value, (uint32_t)instr->branch.true_region.value, (uint32_t)instr->branch.false_region.value);

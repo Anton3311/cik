@@ -34,6 +34,8 @@ typedef enum {
 	INSTR_BIN_OP_32,
 	INSTR_BIN_OP_64,
 
+	INSTR_LOAD_ARG,
+
 	INSTR_BRANCH,
 	INSTR_JUMP,
 
@@ -107,6 +109,10 @@ struct Instr {
 			InstrIndex left;
 			InstrIndex right;
 		} bin_op;
+
+		struct {
+			uint8_t index;
+		} load_arg;
 
 		struct {
 			InstrIndex condition;

@@ -92,3 +92,59 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         unreachable();
     }
 }
+void instr_print(const Instr* instr) {
+    String name = instr_name(instr->kind);
+
+    size_t name_width = 14;
+
+    printf("\033[32;1m%.*s\033[0m \033[%uC", STR_FMT(name), (uint32_t)(name_width - name.length));
+
+    switch (instr->kind) {
+    case INSTR_NO_OP:
+        break;
+    case INSTR_CONST_8:
+        printf("%u %d \n", (uint32_t)instr->const_8.u, (int32_t)instr->const_8.i);
+        break;
+    case INSTR_CONST_16:
+        printf("%u %d \n", (uint32_t)instr->const_16.u, (int32_t)instr->const_16.i);
+        break;
+    case INSTR_CONST_32:
+        printf("%u %d %f \n", (uint32_t)instr->const_32.u, (int32_t)instr->const_32.i, instr->const_32.f);
+        break;
+    case INSTR_CONST_64:
+        printf("%llu %lld %f \n", instr->const_64.u, instr->const_64.i, instr->const_64.f);
+        break;
+    case INSTR_BIN_OP_8:
+        printf("%.*s %u %u \n", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_BIN_OP_16:
+        printf("%.*s %u %u \n", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_BIN_OP_32:
+        printf("%.*s %u %u \n", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_BIN_OP_64:
+        printf("%.*s %u %u \n", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_BRANCH:
+        printf("%u %u %u \n", (uint32_t)instr->branch.condition.value, (uint32_t)instr->branch.true_region.value, (uint32_t)instr->branch.false_region.value);
+        break;
+    case INSTR_JUMP:
+        printf("%u \n", (uint32_t)instr->jump.target_region.value);
+        break;
+    case INSTR_RETURN_VALUE:
+        printf("%u \n", (uint32_t)instr->return_value.value.value);
+        break;
+    case INSTR_IO_STATE:
+        printf("%u \n", (uint32_t)instr->io_state.producer.value);
+        break;
+    case INSTR_REGION:
+        printf("%u %u \n", (uint32_t)instr->region.last_instr.value, (uint32_t)instr->region.io_state.value);
+        break;
+    case INSTR_CALL_INTERNAL:
+        printf("%u %u %u \n", (uint32_t)instr->call_internal.arg.value, (uint32_t)instr->call_internal.io_state.value, (uint32_t)instr->call_internal.function_index);
+        break;
+    case INSTR_COUNT:
+        unreachable();
+    }
+}

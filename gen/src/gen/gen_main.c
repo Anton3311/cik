@@ -159,19 +159,26 @@ bool _generate_instr(GenContext* context) {
 			IDENT_NAMESPACE_ALIAS,
 			IDENT_FIND_DEFAULT,
 			STR_LIT("InstrBinOp"))->type_def->aliased_type.enum_def;
+	const ParsedStruct* string_struct = ident_storage_find(&ident_storage,
+			IDENT_NAMESPACE_ALIAS,
+			IDENT_FIND_DEFAULT,
+			STR_LIT("String"))->type_def->aliased_type.struct_def;
 
 	assert(instr_kind_enum);
+	assert(string_struct);
 
 	StringBuilder builder = { .arena = context->allocator };
 	_emit_generated_notice(&builder, __func__);
 
 	_emit_include(&builder, STR_LIT("instr.h"));
 
+	size_t instr_name_prefix_length = 6;
+
 	_emit_enum_to_string_mapping(context,
 			&builder,
 			STR_LIT("s_instr_kind_to_string"),
 			instr_kind_enum,
-			true, 6);
+			true, instr_name_prefix_length);
 	_emit_enum_to_string_mapping(context,
 			&builder,
 			STR_LIT("s_instr_bin_op_kind_to_string"),
@@ -201,7 +208,6 @@ bool _generate_instr(GenContext* context) {
 				"    switch (instr->kind) {\n"));
 
 	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
-		size_t prefix_length = 6;
 		String variant_name = instr_kind_enum->variants[i].name.string;
 		String instr_struct_name;
 
@@ -210,8 +216,8 @@ bool _generate_instr(GenContext* context) {
 		} else {
 			instr_struct_name = str_to_lower(
 					sub_str(variant_name,
-						prefix_length,
-						variant_name.length - prefix_length),
+						instr_name_prefix_length,
+						variant_name.length - instr_name_prefix_length),
 					context->temp_allocator);
 		}
 
@@ -247,6 +253,214 @@ bool _generate_instr(GenContext* context) {
 	}
 
 	// End of `instr_enumerate_dependencies`
+	str_builder_append(&builder, STR_LIT(
+				"    case INSTR_COUNT:\n"
+				"        unreachable();\n"
+				"    }\n"
+				"}\n"));
+
+	//
+	// instr_print
+	//
+
+	size_t max_instr_name_length = 0;
+
+	{
+		// Ignore INSTR_COUNT, since it is not a valid instruction kind,
+		// and can't be printed.
+		size_t variant_count = instr_kind_enum->variant_count - 1;
+		for (size_t i = 0; i < variant_count; i += 1) {
+			String variant_name = instr_kind_enum->variants[i].name.string;
+			size_t name_length = variant_name.length - instr_name_prefix_length;
+			max_instr_name_length = max(max_instr_name_length, name_length);
+		}
+	}
+
+	str_builder_append(&builder, STR_LIT(
+				"void instr_print(const Instr* instr) {\n"
+				"    String name = instr_name(instr->kind);\n"
+				"\n"
+				"    size_t name_width = "));
+	str_builder_append_int(&builder, max_instr_name_length + 1);
+	str_builder_append(&builder, STR_LIT(
+				";\n"
+				"\n"
+				"    printf(\"\\033[32;1m%.*s\\033[0m \\033[%uC\", STR_FMT(name), (uint32_t)(name_width - name.length));\n"
+				"\n"
+				"    switch (instr->kind) {\n"));
+
+	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
+		String variant_name = instr_kind_enum->variants[i].name.string;
+		String instr_struct_name;
+
+		if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
+			instr_struct_name = STR_LIT("bin_op");
+		} else {
+			instr_struct_name = str_to_lower(
+					sub_str(variant_name,
+						instr_name_prefix_length,
+						variant_name.length - instr_name_prefix_length),
+					context->temp_allocator);
+		}
+
+		str_builder_append(&builder, STR_LIT("    case "));
+		str_builder_append(&builder, variant_name);
+		str_builder_append(&builder, STR_LIT(":\n"));
+
+		const ParsedStructField* field = struct_find_field(instr_struct, instr_struct_name);
+		if (field) {
+			switch (field->type.kind) {
+			case PARSED_TYPE_STRUCT:
+			case PARSED_TYPE_UNION: {
+				const ParsedStruct* instr_struct = field->type.struct_def;
+				str_builder_append(&builder, STR_LIT("        printf(\""));
+
+				// First generate the format string
+				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
+					switch (instr_struct->fields[j].type.kind) {
+					case PARSED_TYPE_CHAR:
+					case PARSED_TYPE_SIGNED_CHAR:
+					case PARSED_TYPE_SHORT:
+					case PARSED_TYPE_SIGNED_SHORT:
+					case PARSED_TYPE_INT:
+					case PARSED_TYPE_SIGNED_INT:
+					case PARSED_TYPE_INT8:
+					case PARSED_TYPE_INT16:
+					case PARSED_TYPE_INT32:
+						str_builder_append(&builder, STR_LIT("%d "));
+						break;
+					case PARSED_TYPE_LONG:
+					case PARSED_TYPE_LONG_LONG:
+					case PARSED_TYPE_INT64:
+					case PARSED_TYPE_SIGNED_LONG:
+					case PARSED_TYPE_SIGNED_LONG_LONG:
+					case PARSED_TYPE_SIGNED_INT64:
+						str_builder_append(&builder, STR_LIT("%lld "));
+						break;
+
+					case PARSED_TYPE_UNSIGNED_CHAR:
+					case PARSED_TYPE_UNSIGNED_SHORT:
+					case PARSED_TYPE_UNSIGNED_INT:
+					case PARSED_TYPE_UNSIGNED_INT8:
+					case PARSED_TYPE_UNSIGNED_INT16:
+					case PARSED_TYPE_UNSIGNED_INT32:
+						str_builder_append(&builder, STR_LIT("%u "));
+						break;
+
+					case PARSED_TYPE_UNSIGNED_LONG:
+					case PARSED_TYPE_UNSIGNED_LONG_LONG:
+					case PARSED_TYPE_UNSIGNED_INT64:
+						str_builder_append(&builder, STR_LIT("%llu "));
+						break;
+
+					case PARSED_TYPE_FLOAT:
+					case PARSED_TYPE_DOUBLE:
+						str_builder_append(&builder, STR_LIT("%f "));
+						break;
+					case PARSED_TYPE_ENUM:
+						if (type_is_enum(&instr_struct->fields[j].type, instr_bin_op_enum)) {
+							str_builder_append(&builder, STR_LIT("%.*s "));
+						}
+						break;
+					case PARSED_TYPE_STRUCT:
+						if (type_is_struct(&instr_struct->fields[j].type, string_struct)) {
+							str_builder_append(&builder, STR_LIT("%.*s "));
+						} else if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
+							str_builder_append(&builder, STR_LIT("%u "));
+						}
+						break;
+					default:
+						unreachable();
+					}
+				}
+
+				str_builder_append(&builder, STR_LIT("\\n\", "));
+
+				// Now output format arguments
+				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
+					String pre_arg = {};
+					String post_arg = {};
+
+					switch (instr_struct->fields[j].type.kind) {
+					case PARSED_TYPE_CHAR:
+					case PARSED_TYPE_SIGNED_CHAR:
+					case PARSED_TYPE_SHORT:
+					case PARSED_TYPE_SIGNED_SHORT:
+					case PARSED_TYPE_INT:
+					case PARSED_TYPE_SIGNED_INT:
+					case PARSED_TYPE_INT8:
+					case PARSED_TYPE_INT16:
+						pre_arg = STR_LIT("(int32_t)");
+						break;
+					case PARSED_TYPE_INT32:
+						break;
+					case PARSED_TYPE_LONG:
+					case PARSED_TYPE_LONG_LONG:
+					case PARSED_TYPE_INT64:
+					case PARSED_TYPE_SIGNED_LONG:
+					case PARSED_TYPE_SIGNED_LONG_LONG:
+					case PARSED_TYPE_SIGNED_INT64:
+						break;
+
+					case PARSED_TYPE_UNSIGNED_CHAR:
+					case PARSED_TYPE_UNSIGNED_SHORT:
+					case PARSED_TYPE_UNSIGNED_INT:
+					case PARSED_TYPE_UNSIGNED_INT8:
+					case PARSED_TYPE_UNSIGNED_INT16:
+						pre_arg = STR_LIT("(uint32_t)");
+						break;
+					case PARSED_TYPE_UNSIGNED_INT32:
+						break;
+					case PARSED_TYPE_UNSIGNED_LONG:
+					case PARSED_TYPE_UNSIGNED_LONG_LONG:
+					case PARSED_TYPE_UNSIGNED_INT64:
+						break;
+
+					case PARSED_TYPE_FLOAT:
+					case PARSED_TYPE_DOUBLE:
+						break;
+					case PARSED_TYPE_ENUM:
+						if (type_is_enum(&instr_struct->fields[j].type, instr_bin_op_enum)) {
+							pre_arg = STR_LIT("STR_FMT(instr_bin_op_name(");
+							post_arg = STR_LIT("))");
+						}
+						break;
+					case PARSED_TYPE_STRUCT:
+						if (type_is_struct(&instr_struct->fields[j].type, string_struct)) {
+							pre_arg = STR_LIT("STR_FMT(");
+							post_arg = STR_LIT(")");
+						} else if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
+							pre_arg = STR_LIT("(uint32_t)");
+							post_arg = STR_LIT(".value");
+						}
+						break;
+					default:
+						unreachable();
+					}
+
+					str_builder_append(&builder, pre_arg);
+					str_builder_append(&builder, STR_LIT("instr->"));
+					str_builder_append(&builder, field->name.string);
+					str_builder_append_char(&builder, '.');
+					str_builder_append(&builder, instr_struct->fields[j].name.string);
+					str_builder_append(&builder, post_arg);
+
+					if (j != instr_struct->field_count - 1) {
+						str_builder_append(&builder, STR_LIT(", "));
+					}
+				}
+
+				str_builder_append(&builder, STR_LIT(");\n"));
+				break;
+			}
+			default:
+				unreachable();
+			}
+		}
+
+		str_builder_append(&builder, STR_LIT("        break;\n"));
+	}
+
 	str_builder_append(&builder, STR_LIT(
 				"    case INSTR_COUNT:\n"
 				"        unreachable();\n"

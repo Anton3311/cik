@@ -10,6 +10,14 @@ bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def) {
 	return type->struct_def == struct_def;
 }
 
+bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def) {
+	if (type->kind != PARSED_TYPE_ENUM) {
+		return false;
+	}
+
+	return type->enum_def == enum_def;
+}
+
 static String s_bin_op_kind_to_string[] = {
 	[BIN_OP_ADD] = STR_LIT("+"),
 	[BIN_OP_SUB] = STR_LIT("-"),

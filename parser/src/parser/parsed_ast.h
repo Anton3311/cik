@@ -156,6 +156,7 @@ struct ParsedType {
 };
 
 bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def);
+bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def);
 
 //
 // Expr

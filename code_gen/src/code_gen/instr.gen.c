@@ -16,6 +16,10 @@ static String s_instr_kind_to_string[] = {
     [INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
     [INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
     [INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
+    [INSTR_PTR_LOAD_8] = STR_LIT("ptr_load_8"),
+    [INSTR_PTR_LOAD_16] = STR_LIT("ptr_load_16"),
+    [INSTR_PTR_LOAD_32] = STR_LIT("ptr_load_32"),
+    [INSTR_PTR_LOAD_64] = STR_LIT("ptr_load_64"),
     [INSTR_LOAD_ARG] = STR_LIT("load_arg"),
     [INSTR_BRANCH] = STR_LIT("branch"),
     [INSTR_JUMP] = STR_LIT("jump"),
@@ -66,6 +70,18 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
     case INSTR_BIN_OP_64:
         instr_stack_push(out_dependencies, instr->bin_op.left);
         instr_stack_push(out_dependencies, instr->bin_op.right);
+        break;
+    case INSTR_PTR_LOAD_8:
+        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        break;
+    case INSTR_PTR_LOAD_16:
+        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        break;
+    case INSTR_PTR_LOAD_32:
+        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        break;
+    case INSTR_PTR_LOAD_64:
+        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_LOAD_ARG:
         break;
@@ -128,6 +144,18 @@ void instr_print(const Instr* instr) {
         break;
     case INSTR_BIN_OP_64:
         printf("%.*s %u %u \n", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_PTR_LOAD_8:
+        printf("%u \n", (uint32_t)instr->ptr_load.ptr.value);
+        break;
+    case INSTR_PTR_LOAD_16:
+        printf("%u \n", (uint32_t)instr->ptr_load.ptr.value);
+        break;
+    case INSTR_PTR_LOAD_32:
+        printf("%u \n", (uint32_t)instr->ptr_load.ptr.value);
+        break;
+    case INSTR_PTR_LOAD_64:
+        printf("%u \n", (uint32_t)instr->ptr_load.ptr.value);
         break;
     case INSTR_LOAD_ARG:
         printf("%u \n", (uint32_t)instr->load_arg.index);

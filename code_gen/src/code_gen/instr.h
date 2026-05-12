@@ -34,6 +34,11 @@ typedef enum {
 	INSTR_BIN_OP_32,
 	INSTR_BIN_OP_64,
 
+	INSTR_PTR_LOAD_8,
+	INSTR_PTR_LOAD_16,
+	INSTR_PTR_LOAD_32,
+	INSTR_PTR_LOAD_64,
+
 	INSTR_LOAD_ARG,
 
 	INSTR_BRANCH,
@@ -109,6 +114,10 @@ struct Instr {
 			InstrIndex left;
 			InstrIndex right;
 		} bin_op;
+
+		struct {
+			InstrIndex ptr;
+		} ptr_load;
 
 		struct {
 			uint8_t index;

@@ -213,6 +213,8 @@ bool _generate_instr(GenContext* context) {
 
 		if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
 			instr_struct_name = STR_LIT("bin_op");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
+			instr_struct_name = STR_LIT("ptr_load");
 		} else {
 			instr_struct_name = str_to_lower(
 					sub_str(variant_name,
@@ -295,6 +297,8 @@ bool _generate_instr(GenContext* context) {
 
 		if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
 			instr_struct_name = STR_LIT("bin_op");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
+			instr_struct_name = STR_LIT("ptr_load");
 		} else {
 			instr_struct_name = str_to_lower(
 					sub_str(variant_name,

@@ -5,5 +5,7 @@
 
 void test_return_uint64_zero(TestContext* context);
 void test_add_uint64_consts(TestContext* context);
+void test_return_first_arg(TestContext* context);
+void test_return_sum_of_first_two_args(TestContext* context);
 
 #endif

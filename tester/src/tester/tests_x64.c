@@ -115,3 +115,36 @@ void test_add_uint64_consts(TestContext* context) {
 
 	assert(result == 25);
 }
+
+void test_return_first_arg(TestContext* context) {
+	String source_code = STR_LIT("unsigned long long main(unsigned long long first) { return first; }");
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t first);
+
+	uint64_t input = rand();
+
+	Function executable_function = (Function)machine_code.code;
+	uint64_t result = executable_function(input);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+
+	assert(result == input);
+}
+
+void test_return_sum_of_first_two_args(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64;\n"
+			"uint64 main(uint64 a, uint64 b) { return a + b; }");
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t a, uint64_t b);
+
+	uint64_t a = rand();
+	uint64_t b = rand();
+
+	Function executable_function = (Function)machine_code.code;
+	uint64_t result = executable_function(a, b);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+
+	assert(result == a + b);
+}

@@ -351,6 +351,23 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[cluster.values[j]];
 			const Instr* instr = &gen->instr_buffer.instr[overlapping_instr.value];
 
+			// NOTE: INSTR_LOAD_ARG are handled separtely here.
+			//       Since these instructions access arguments which
+			//       are stored in the `cdecl_arg_regs`, however allowed_registers
+			//       already disallows those registers, so making it go through the
+			//       common path will break
+
+			// NOTE: Well that's slowly turning into a mess, why is it here?
+			//       Probably need to introduce a proper concept of calling
+			//       conventions on the code gen level
+			X64Register cdecl_arg_regs[] = { REG_C, REG_D, REG_8, REG_9 };
+			if (instr->kind == INSTR_LOAD_ARG) {
+				assert(instr->load_arg.index < array_size(cdecl_arg_regs));
+				instr_storage[overlapping_instr.value].kind = INSTR_STORAGE_REG;
+				instr_storage[overlapping_instr.value].reg = cdecl_arg_regs[instr->load_arg.index];
+				continue;
+			}
+
 			X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr->kind];
 			uint16_t potential_instr_registers = storage_requirement.allowed_registers & allowed_cluster_registers;
 

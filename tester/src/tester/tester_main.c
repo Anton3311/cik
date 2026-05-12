@@ -84,6 +84,8 @@ static TestCase parser_tests[] = {
 static TestCase s_x64_tests[] = {
 	test(test_return_uint64_zero),
 	test(test_add_uint64_consts),
+	test(test_return_first_arg),
+	test(test_return_sum_of_first_two_args),
 };
 
 static TestSuite s_test_suites[] = {

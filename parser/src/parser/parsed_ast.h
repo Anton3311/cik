@@ -162,6 +162,10 @@ inline bool type_kind_is_int(ParsedTypeKind kind) {
 		|| kind == PARSED_TYPE_SIZE_T;
 }
 
+inline bool type_kind_is_pointer_like(ParsedTypeKind kind) {
+	return kind == PARSED_TYPE_POINTER || kind == PARSED_TYPE_ARRAY;
+}
+
 bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def);
 bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def);
 

@@ -215,6 +215,10 @@ bool _generate_instr(GenContext* context) {
 			instr_struct_name = STR_LIT("bin_op");
 		} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
 			instr_struct_name = STR_LIT("ptr_load");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {
+			instr_struct_name = STR_LIT("logical_shift");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {
+			instr_struct_name = STR_LIT("logical_shift");
 		} else {
 			instr_struct_name = str_to_lower(
 					sub_str(variant_name,
@@ -299,6 +303,10 @@ bool _generate_instr(GenContext* context) {
 			instr_struct_name = STR_LIT("bin_op");
 		} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
 			instr_struct_name = STR_LIT("ptr_load");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {
+			instr_struct_name = STR_LIT("logical_shift");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {
+			instr_struct_name = STR_LIT("logical_shift");
 		} else {
 			instr_struct_name = str_to_lower(
 					sub_str(variant_name,

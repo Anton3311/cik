@@ -16,6 +16,14 @@ static String s_instr_kind_to_string[] = {
     [INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
     [INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
     [INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
+    [INSTR_LOGICAL_SHIFT_LEFT_8] = STR_LIT("logical_shift_left_8"),
+    [INSTR_LOGICAL_SHIFT_LEFT_16] = STR_LIT("logical_shift_left_16"),
+    [INSTR_LOGICAL_SHIFT_LEFT_32] = STR_LIT("logical_shift_left_32"),
+    [INSTR_LOGICAL_SHIFT_LEFT_64] = STR_LIT("logical_shift_left_64"),
+    [INSTR_LOGICAL_SHIFT_RIGHT_8] = STR_LIT("logical_shift_right_8"),
+    [INSTR_LOGICAL_SHIFT_RIGHT_16] = STR_LIT("logical_shift_right_16"),
+    [INSTR_LOGICAL_SHIFT_RIGHT_32] = STR_LIT("logical_shift_right_32"),
+    [INSTR_LOGICAL_SHIFT_RIGHT_64] = STR_LIT("logical_shift_right_64"),
     [INSTR_PTR_LOAD_8] = STR_LIT("ptr_load_8"),
     [INSTR_PTR_LOAD_16] = STR_LIT("ptr_load_16"),
     [INSTR_PTR_LOAD_32] = STR_LIT("ptr_load_32"),
@@ -71,6 +79,30 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         instr_stack_push(out_dependencies, instr->bin_op.left);
         instr_stack_push(out_dependencies, instr->bin_op.right);
         break;
+    case INSTR_LOGICAL_SHIFT_LEFT_8:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_LOGICAL_SHIFT_LEFT_16:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_LOGICAL_SHIFT_LEFT_32:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_LOGICAL_SHIFT_LEFT_64:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_8:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_16:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_32:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_64:
+        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
     case INSTR_PTR_LOAD_8:
         instr_stack_push(out_dependencies, instr->ptr_load.ptr);
         break;
@@ -114,7 +146,7 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
 void instr_print(const Instr* instr) {
     String name = instr_name(instr->kind);
 
-    size_t name_width = 14;
+    size_t name_width = 23;
 
     printf("\033[32;1m%.*s\033[0m \033[%uC", STR_FMT(name), (uint32_t)(name_width - name.length));
 
@@ -144,6 +176,30 @@ void instr_print(const Instr* instr) {
         break;
     case INSTR_BIN_OP_64:
         printf("kind: %.*s left: %u right: %u \n", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_LOGICAL_SHIFT_LEFT_8:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_LOGICAL_SHIFT_LEFT_16:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_LOGICAL_SHIFT_LEFT_32:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_LOGICAL_SHIFT_LEFT_64:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_8:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_16:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_32:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_LOGICAL_SHIFT_RIGHT_64:
+        printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_PTR_LOAD_8:
         printf("ptr: %u \n", (uint32_t)instr->ptr_load.ptr.value);

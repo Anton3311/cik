@@ -34,6 +34,16 @@ typedef enum {
 	INSTR_BIN_OP_32,
 	INSTR_BIN_OP_64,
 
+	INSTR_LOGICAL_SHIFT_LEFT_8,
+	INSTR_LOGICAL_SHIFT_LEFT_16,
+	INSTR_LOGICAL_SHIFT_LEFT_32,
+	INSTR_LOGICAL_SHIFT_LEFT_64,
+
+	INSTR_LOGICAL_SHIFT_RIGHT_8,
+	INSTR_LOGICAL_SHIFT_RIGHT_16,
+	INSTR_LOGICAL_SHIFT_RIGHT_32,
+	INSTR_LOGICAL_SHIFT_RIGHT_64,
+
 	INSTR_PTR_LOAD_8,
 	INSTR_PTR_LOAD_16,
 	INSTR_PTR_LOAD_32,
@@ -114,6 +124,11 @@ struct Instr {
 			InstrIndex left;
 			InstrIndex right;
 		} bin_op;
+
+		struct {
+			InstrIndex operand;
+			uint8_t shift_count;
+		} logical_shift;
 
 		struct {
 			InstrIndex ptr;
@@ -260,6 +275,19 @@ inline InstrIndex instr_new_io_state(InstrBuffer* buffer, Arena* allocator, Inst
 	instr->kind = INSTR_IO_STATE;
 	instr->io_state.producer = producer;
 	return i;
+}
+
+inline InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex operand,
+		uint8_t shift_count) {
+
+	InstrIndex shift_index = instr_buffer_append(buffer, allocator);
+	Instr* shift_instr = instr_buffer_at(buffer, shift_index);
+	shift_instr->kind = INSTR_LOGICAL_SHIFT_LEFT_64;
+	shift_instr->logical_shift.operand = operand;
+	shift_instr->logical_shift.shift_count = shift_count;
+	return shift_index;
 }
 
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);

@@ -106,8 +106,21 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 			return value;
 		}
 
+		ParsedType* left_type = expr_get_type(expr->binary.left, compiler->temp_allocator);
+		ParsedType* right_type = expr_get_type(expr->binary.right, compiler->temp_allocator);
+
+		assert(left_type);
+		assert(right_type);
+
+		bool left_is_pointer_like = type_kind_is_pointer_like(left_type->kind);
+		bool right_is_pointer_like = type_kind_is_pointer_like(right_type->kind);
+
 		InstrIndex left = _compile_expr(compiler, expr->binary.left);
 		InstrIndex right = _compile_expr(compiler, expr->binary.right);
+
+		if (left_is_pointer_like && type_kind_is_int(right_type->kind)) {
+			right = instr_new_logical_shift_left_by(instr_buffer, instr_allocator, right, 3);
+		}
 
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);

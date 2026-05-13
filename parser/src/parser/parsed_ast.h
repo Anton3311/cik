@@ -166,6 +166,20 @@ inline bool type_kind_is_pointer_like(ParsedTypeKind kind) {
 	return kind == PARSED_TYPE_POINTER || kind == PARSED_TYPE_ARRAY;
 }
 
+inline ParsedType* type_extract_pointer_base_type(ParsedType* type) {
+	switch (type->kind) {
+	case PARSED_TYPE_POINTER:
+		return type->pointer_base_type;
+	case PARSED_TYPE_ARRAY:
+		return type->array.element_type;
+	default:
+		break;
+	}
+
+	unreachable();
+	return NULL;
+}
+
 bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def);
 bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def);
 

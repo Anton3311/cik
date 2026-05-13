@@ -9,5 +9,6 @@ void test_return_first_arg(TestContext* context);
 void test_return_sum_of_first_two_args(TestContext* context);
 void test_deref_function_arg(TestContext* context);
 void test_index_arary_with_pointer_arithmetics(TestContext* context);
+void test_index_arary_with_pointer_arithmetics_2(TestContext* context);
 
 #endif

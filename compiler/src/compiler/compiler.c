@@ -7,7 +7,7 @@ static InstrIndex _get_arg_load_instr(const FunctionCompiler* compiler, uint8_t 
 	return (InstrIndex) { .value = (uint16_t)arg_index };
 }
 
-static TypeLayout _type_get_size_in_bytes(const FunctionCompiler* compiler, const ParsedType* type) {
+static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const ParsedType* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_VOID:
 		return type_layout_new(0, 0);
@@ -118,8 +118,34 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		InstrIndex left = _compile_expr(compiler, expr->binary.left);
 		InstrIndex right = _compile_expr(compiler, expr->binary.right);
 
+		// NOTE: In case we are doing pointer arithmetics here,
+		//       and one of the operands is an interger, we need
+		//       to scale that integer by the byte size of base pointer type.
+		//
+		//       Since during pointer arithmetics those integer constants
+		//       encode an offset by a number of array elements and not bytes.
 		if (left_is_pointer_like && type_kind_is_int(right_type->kind)) {
-			right = instr_new_logical_shift_left_by(instr_buffer, instr_allocator, right, 3);
+			ParsedType* base_type = type_extract_pointer_base_type(left_type);
+			TypeLayout value_layout = _type_get_layout(compiler, base_type);
+
+			assert(is_power_of_2(value_layout.size));
+			size_t shift_count = count_trailing_zeros(value_layout.size);
+
+			right = instr_new_logical_shift_left_by(instr_buffer,
+					instr_allocator,
+					right,
+					(uint8_t)shift_count);
+		} else if (right_is_pointer_like && type_kind_is_int(left_type->kind)) {
+			ParsedType* base_type = type_extract_pointer_base_type(right_type);
+			TypeLayout value_layout = _type_get_layout(compiler, base_type);
+
+			assert(is_power_of_2(value_layout.size));
+			size_t shift_count = count_trailing_zeros(value_layout.size);
+
+			left = instr_new_logical_shift_left_by(instr_buffer,
+					instr_allocator,
+					left,
+					(uint8_t)shift_count);
 		}
 
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
@@ -171,7 +197,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 
 			instr->ptr_load.ptr = operand_instr;
 
-			TypeLayout layout = _type_get_size_in_bytes(compiler, base_type);
+			TypeLayout layout = _type_get_layout(compiler, base_type);
 			switch (layout.size) {
 			case 1:
 				instr->kind = INSTR_PTR_LOAD_8;

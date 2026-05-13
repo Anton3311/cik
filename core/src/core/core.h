@@ -68,6 +68,10 @@ inline size_t align(size_t value, size_t alignment) {
 	return (value + alignment - 1) / alignment * alignment;
 }
 
+inline bool is_power_of_2(size_t value) {
+	return (value & (value - 1)) == 0;
+}
+
 uint64_t hardware_timer_get_frequency();
 size_t align_to_page_size(size_t bytes);
 

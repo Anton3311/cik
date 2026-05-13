@@ -191,16 +191,35 @@ ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
 		// The callable expression can't be called
 		return NULL;
 	}
-	case EXPR_BINARY:
+	case EXPR_BINARY: {
+		ParsedType* left_type = expr_get_type(expr->binary.left, temp_allocator);
+		ParsedType* right_type = expr_get_type(expr->binary.right, temp_allocator);
+
+		if (left_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(right_type->kind)) {
+			return left_type;
+		} else if (right_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(left_type->kind)) {
+			return right_type;
+		} else if (left_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
+			return left_type->array.element_type;
+		} else if (right_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
+			return right_type->array.element_type;
+		} else {
+			return NULL;
+		}
+
 		break;
+	}
 	case EXPR_UNARY:
 		break;
 	case EXPR_FUNCTION_REFERENCE:
 		panic("todo: return a type that correspond to the function signature (function pointer type)");
 	case EXPR_VARIABLE_REFERENCE:
 		return &expr->variable_ref->type;
-	case EXPR_INTEGER_LITERAL:
-		break;
+	case EXPR_INTEGER_LITERAL: {
+		ParsedType* type = arena_alloc(temp_allocator, ParsedType);
+		type->kind = PARSED_TYPE_UNSIGNED_LONG_LONG;
+		return type;
+	}
 	case EXPR_STRING_LITERAL:
 		break;
 	case EXPR_ENUM_CONSTANT:

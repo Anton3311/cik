@@ -155,6 +155,13 @@ struct ParsedType {
 	};
 };
 
+inline bool type_kind_is_int(ParsedTypeKind kind) {
+	ParsedTypeKind kind_without_sign_flags = kind & ~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED);
+	return (kind_without_sign_flags >= PARSED_TYPE_CHAR
+		&& kind_without_sign_flags <= PARSED_TYPE_INT64)
+		|| kind == PARSED_TYPE_SIZE_T;
+}
+
 bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def);
 bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def);
 

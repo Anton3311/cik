@@ -165,3 +165,29 @@ void test_deref_function_arg(TestContext* context) {
 
 	assert(result == value);
 }
+
+void test_index_arary_with_pointer_arithmetics(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64;\n"
+			"uint64 main(uint64* ptr, uint64 index) { return *(ptr + index); }");
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t* ptr, uint64_t index);
+
+	uint64_t array[16];
+	for (size_t i = 0; i < array_size(array); i += 1) {
+		array[i] = rand();
+	}
+
+	Function executable_function = (Function)machine_code.code;
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+
+	uint64_t results[16];
+	for (size_t i = 0; i < array_size(array); i += 1) {
+		results[i] = executable_function(array, (uint64_t)i);
+	}
+
+	for (size_t i = 0; i < array_size(array); i += 1) {
+		assert(results[i] == array[i]);
+	}
+}

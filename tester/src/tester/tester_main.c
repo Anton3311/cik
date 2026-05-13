@@ -87,6 +87,7 @@ static TestCase s_x64_tests[] = {
 	test(test_return_first_arg),
 	test(test_return_sum_of_first_two_args),
 	test(test_deref_function_arg),
+	test(test_index_arary_with_pointer_arithmetics),
 };
 
 static TestSuite s_test_suites[] = {

@@ -148,3 +148,20 @@ void test_return_sum_of_first_two_args(TestContext* context) {
 
 	assert(result == a + b);
 }
+
+void test_deref_function_arg(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64;\n"
+			"uint64 main(uint64* ptr) { return *ptr; }");
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t* ptr);
+
+	uint64_t value = rand();
+
+	Function executable_function = (Function)machine_code.code;
+	uint64_t result = executable_function(&value);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+
+	assert(result == value);
+}

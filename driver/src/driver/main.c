@@ -132,6 +132,7 @@ int main(int argc, char *argv[]) {
 					c.allocator = &arena;
 					c.instr_allocator = &arena;
 					c.temp_allocator = &temp_arena;
+					c.pointer_type_layout = type_layout_new(8, 8);
 
 					CompiledFunction func = function_compiler_compile(&c);
 
@@ -139,7 +140,7 @@ int main(int argc, char *argv[]) {
 					allowed_registers &= ~(1 << REG_SP);
 					allowed_registers &= ~(1 << REG_BP);
 
-					uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_8, REG_9 };
+					uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_D, REG_8, REG_9 };
 					for (size_t i = 0; i < array_size(cdecl_arg_regs); i += 1) {
 						allowed_registers &= ~(1 << cdecl_arg_regs[i]);
 					}
@@ -153,10 +154,10 @@ int main(int argc, char *argv[]) {
 					x64_alloc_registers(&gen, allowed_registers);
 					MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 
-					typedef uint64_t(*ExecutableFunction)();
+					typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
 					ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;
 
-					uint64_t result = executable_function();
+					uint64_t result = executable_function(argc, argv);
 
 					free_executable(machine_code.code, machine_code.size_in_bytes);
 

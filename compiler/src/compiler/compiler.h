@@ -10,6 +10,15 @@ typedef struct {
 } VariableState;
 
 typedef struct {
+	size_t size;
+	size_t alignment;
+} TypeLayout;
+
+inline TypeLayout type_layout_new(size_t size, size_t alignment) {
+	return (TypeLayout) { .size = size, .alignment = alignment };
+}
+
+typedef struct {
 	const ParsedFunction* function;
 
 	Arena* allocator;
@@ -21,6 +30,8 @@ typedef struct {
 
 	size_t var_count;
 	VariableState* vars;
+
+	TypeLayout pointer_type_layout;
 } FunctionCompiler;
 
 typedef struct {

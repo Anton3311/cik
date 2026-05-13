@@ -180,6 +180,43 @@ void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node) {
 	}
 }
 
+ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
+	switch (expr->kind) {
+	case EXPR_CALL: {
+		ParsedExpr* callable = expr->call.callable;
+		if (callable->kind == EXPR_FUNCTION_REFERENCE) {
+			return &callable->function_ref->return_type;
+		}
+
+		// The callable expression can't be called
+		return NULL;
+	}
+	case EXPR_BINARY:
+		break;
+	case EXPR_UNARY:
+		break;
+	case EXPR_FUNCTION_REFERENCE:
+		panic("todo: return a type that correspond to the function signature (function pointer type)");
+	case EXPR_VARIABLE_REFERENCE:
+		return &expr->variable_ref->type;
+	case EXPR_INTEGER_LITERAL:
+		break;
+	case EXPR_STRING_LITERAL:
+		break;
+	case EXPR_ENUM_CONSTANT:
+		break;
+	case EXPR_FUNCTION_PARAM: {
+		// HACK: Make `ParsedType` use only const pointers to reference inner types, line a base type of the pointer.
+		ParsedFunction* func = (ParsedFunction*)expr->function_param.function_def;
+		assert(expr->function_param.param_index < func->parameter_count);
+		return &func->parameters[expr->function_param.param_index].type;
+	}
+	}
+
+	unreachable();
+	return NULL;
+}
+
 size_t struct_field_namespace_index_of(const ParsedStructFieldNamespace* struct_namespace, String name) {
 	size_t index = hash_string(name) % struct_namespace->capacity;
 	

@@ -284,6 +284,8 @@ struct ParsedExpr {
 	};
 };
 
+ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator);
+
 //
 // Struct
 //

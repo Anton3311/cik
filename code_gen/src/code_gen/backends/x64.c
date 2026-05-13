@@ -15,6 +15,11 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_BIN_OP_32]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_BIN_OP_64]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
+	[INSTR_PTR_LOAD_8]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_PTR_LOAD_16]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_PTR_LOAD_32]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_PTR_LOAD_64]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
 	[INSTR_BRANCH]       = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 	[INSTR_JUMP]         = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
@@ -484,10 +489,18 @@ inline uint8_t _rex_prefix_src_dst(uint8_t is_64_bit_reg, uint8_t src_reg, uint8
 	return _rex_prefix(is_64_bit_reg, src_reg >> 3, 0, dst_reg >> 3);
 }
 
-inline uint8_t _mod_rm(X64Register reg, uint8_t rm) {
+typedef enum {
+	MOD_RM_ADDRESS_RM         = 0b00000000,
+	MOD_RM_ADDRESS_RM_DISP_8  = 0b00000000,
+	MOD_RM_ADDRESS_RM_DISP_32 = 0b00000000,
+	MOD_RM_RM                 = 0b11000000,
+} ModRMMod;
+
+inline uint8_t _mod_rm(ModRMMod mod, X64Register reg, uint8_t rm) {
 	assert(reg < 8);
 	assert(rm < 8);
-	return 0b11000000 | (reg << 3) | (rm);
+	assert((mod & 0b00111111) == 0);
+	return ((uint8_t)mod) | (reg << 3) | (rm);
 }
 
 inline uint8_t _mod_rm_with_ext(uint8_t extension, uint8_t reg) {
@@ -519,7 +532,7 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 		unreachable();
 	case 64: {
 		uint8_t rex_prefix = _rex_prefix_src_dst(1, src, dst);
-		uint8_t rm = _mod_rm(src, dst);
+		uint8_t rm = _mod_rm(MOD_RM_RM, src, dst);
 
 		uint8_t* bytes = _code_buffer_append(buffer, 3);
 		bytes[0] = rex_prefix;
@@ -614,6 +627,11 @@ int _internal_assert(uint64_t predicate) {
 	return 0;
 }
 
+int _internal_print_string(const char* string) {
+	printf("%s\n", string);
+	return 0;
+}
+
 //
 // Code Generation
 //
@@ -658,11 +676,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		if (right_loc.reg == dst_loc.reg) {
 			_emit_mov_regs(buffer, right_loc.reg, dst_loc.reg, 64);
 			instr_bytes[0] = _rex_prefix_src_dst(1, dst_loc.reg, left_loc.reg);
-			instr_bytes[2] = _mod_rm(dst_loc.reg, left_loc.reg);
+			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg, left_loc.reg);
 		} else {
 			_emit_mov_regs(buffer, left_loc.reg, dst_loc.reg, 64);
 			instr_bytes[0] = _rex_prefix_src_dst(1, dst_loc.reg, right_loc.reg);
-			instr_bytes[2] = _mod_rm(dst_loc.reg, right_loc.reg);
+			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg, right_loc.reg);
 		}
 
 		switch (instr->bin_op.kind) {
@@ -670,6 +688,27 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			instr_bytes[1] = 0x03;
 			break;
 		}
+		break;
+	}
+
+	case INSTR_PTR_LOAD_8:
+	case INSTR_PTR_LOAD_16:
+	case INSTR_PTR_LOAD_32:
+	case INSTR_PTR_LOAD_64: {
+		_x64_generate_code(gen, instr->ptr_load.ptr, buffer);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation ptr_loc = gen->instr_storage[instr->ptr_load.ptr.value];
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(ptr_loc.kind == INSTR_STORAGE_REG);
+
+		uint8_t rex_prefix = _rex_prefix_src_dst(1, dst_loc.reg, ptr_loc.reg);
+		uint8_t rm = _mod_rm(MOD_RM_ADDRESS_RM, dst_loc.reg, ptr_loc.reg);
+
+		uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
+		instr_bytes[0] = rex_prefix;
+		instr_bytes[1] = 0x8b;
+		instr_bytes[2] = rm;
 		break;
 	}
 
@@ -722,7 +761,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		const InstrStorageLocation arg_storage_loc = gen->instr_storage[arg_instr_index.value];
 		_emit_mov_regs(buffer, arg_storage_loc.reg, REG_C, 64);
 
-		_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_assert);
+		if (instr->call_internal.function_index == 0) {
+			_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_assert);
+		} else if (instr->call_internal.function_index == 1) {
+			_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_print_string);
+		}
 
 		// push shadow space
 		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);

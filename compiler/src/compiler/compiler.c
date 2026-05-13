@@ -7,6 +7,67 @@ static InstrIndex _get_arg_load_instr(const FunctionCompiler* compiler, uint8_t 
 	return (InstrIndex) { .value = (uint16_t)arg_index };
 }
 
+static TypeLayout _type_get_size_in_bytes(const FunctionCompiler* compiler, const ParsedType* type) {
+	switch (type->kind) {
+	case PARSED_TYPE_VOID:
+		return type_layout_new(0, 0);
+
+	case PARSED_TYPE_CHAR:
+	case PARSED_TYPE_SIGNED_CHAR:
+	case PARSED_TYPE_UNSIGNED_CHAR:
+	case PARSED_TYPE_INT8:
+	case PARSED_TYPE_SIGNED_INT8:
+	case PARSED_TYPE_UNSIGNED_INT8:
+		return type_layout_new(1, 1);
+	case PARSED_TYPE_SHORT:
+	case PARSED_TYPE_SIGNED_SHORT:
+	case PARSED_TYPE_UNSIGNED_SHORT:
+	case PARSED_TYPE_INT16:
+	case PARSED_TYPE_SIGNED_INT16:
+	case PARSED_TYPE_UNSIGNED_INT16:
+		return type_layout_new(2, 2);
+	case PARSED_TYPE_INT:
+	case PARSED_TYPE_SIGNED_INT:
+	case PARSED_TYPE_UNSIGNED_INT:
+	case PARSED_TYPE_LONG:
+	case PARSED_TYPE_SIGNED_LONG:
+	case PARSED_TYPE_UNSIGNED_LONG:
+	case PARSED_TYPE_INT32:
+	case PARSED_TYPE_SIGNED_INT32:
+	case PARSED_TYPE_UNSIGNED_INT32:
+		return type_layout_new(4, 4);
+	case PARSED_TYPE_LONG_LONG:
+	case PARSED_TYPE_SIGNED_LONG_LONG:
+	case PARSED_TYPE_UNSIGNED_LONG_LONG:
+	case PARSED_TYPE_INT64:
+	case PARSED_TYPE_SIGNED_INT64:
+	case PARSED_TYPE_UNSIGNED_INT64:
+		return type_layout_new(8, 8);
+
+	case PARSED_TYPE_SIZE_T:
+	case PARSED_TYPE_POINTER:
+		return compiler->pointer_type_layout;
+
+	case PARSED_TYPE_FLOAT:
+		return type_layout_new(4, 4);
+	case PARSED_TYPE_DOUBLE:
+		return type_layout_new(8, 8);
+
+	case PARSED_TYPE_STRUCT:
+		break;
+	case PARSED_TYPE_UNION:
+		break;
+	case PARSED_TYPE_ENUM:
+		break;
+
+	case PARSED_TYPE_ARRAY:
+		break;
+	}
+
+	unreachable();
+	return (TypeLayout) {};
+}
+
 static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -22,8 +83,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
 		call_instr->kind = INSTR_CALL_INTERNAL;
 		call_instr->call_internal.arg = _compile_expr(compiler, first_arg);
-		call_instr->call_internal.function_index = 0;
 		call_instr->call_internal.io_state = compiler->io_state;
+
+		String func_name = callable->function_ref->name.string;
+		if (str_equal(func_name, STR_LIT("assert"))) {
+			call_instr->call_internal.function_index = 0;
+		} else if (str_equal(func_name, STR_LIT("print_string"))) {
+			call_instr->call_internal.function_index = 1;
+		}
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		return call_instr_index;
@@ -50,8 +117,6 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		instr->bin_op.right = right;
 		return instr_index;
 	}
-	case EXPR_UNARY:
-		break;
 	case EXPR_FUNCTION_REFERENCE:
 		break;
 	case EXPR_VARIABLE_REFERENCE: {
@@ -72,6 +137,49 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		assert(expr->function_param.param_index < UINT8_MAX);
 		return _get_arg_load_instr(compiler, (uint8_t)expr->function_param.param_index);
 	}
+	case EXPR_UNARY:
+		switch (expr->unary.op) {
+		case UNARY_OP_DEREFERENCE: {
+			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+
+			ParsedType* operand_type = expr_get_type(expr->unary.operand, compiler->temp_allocator);
+
+			const ParsedType* base_type = NULL;
+			if (operand_type->kind == PARSED_TYPE_POINTER) {
+				base_type = operand_type->pointer_base_type;
+			} else if (operand_type->kind == PARSED_TYPE_ARRAY) {
+				base_type = operand_type->array.element_type;
+			} else {
+				panic("todo: report error");
+			}
+
+			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+			instr->ptr_load.ptr = operand_instr;
+
+			TypeLayout layout = _type_get_size_in_bytes(compiler, base_type);
+			switch (layout.size) {
+			case 1:
+				instr->kind = INSTR_PTR_LOAD_8;
+				break;
+			case 2:
+				instr->kind = INSTR_PTR_LOAD_16;
+				break;
+			case 4:
+				instr->kind = INSTR_PTR_LOAD_32;
+				break;
+			case 8:
+				instr->kind = INSTR_PTR_LOAD_64;
+				break;
+			default:
+				panic("Only up to 8 byte sizes are supported for dereferencing");
+			}
+
+			return instr_index;
+		}
+		}
+		break;
 	}
 
 	unreachable();

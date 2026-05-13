@@ -200,9 +200,15 @@ ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
 		} else if (right_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(left_type->kind)) {
 			return right_type;
 		} else if (left_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
-			return left_type->array.element_type;
+			ParsedType* pointer_type = arena_alloc(temp_allocator, ParsedType);
+			pointer_type->kind = PARSED_TYPE_POINTER;
+			pointer_type->pointer_base_type = left_type->array.element_type;
+			return pointer_type;
 		} else if (right_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
-			return right_type->array.element_type;
+			ParsedType* pointer_type = arena_alloc(temp_allocator, ParsedType);
+			pointer_type->kind = PARSED_TYPE_POINTER;
+			pointer_type->pointer_base_type = right_type->array.element_type;
+			return pointer_type;
 		} else {
 			return NULL;
 		}

@@ -704,6 +704,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_PTR_LOAD_8:
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
+		unreachable();
 	case INSTR_PTR_LOAD_64: {
 		_x64_generate_code(gen, instr->ptr_load.ptr, buffer);
 

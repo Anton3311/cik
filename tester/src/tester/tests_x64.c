@@ -66,6 +66,7 @@ static MachineCodeBuffer _compile(TestContext* context, String source_code) {
 			c.allocator = context->arena;
 			c.instr_allocator = context->arena;
 			c.temp_allocator = context->temp_arena;
+			c.pointer_type_layout = type_layout_new(8, 8);
 
 			CompiledFunction func = function_compiler_compile(&c);
 

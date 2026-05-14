@@ -461,7 +461,7 @@ bool _generate_instr(GenContext* context) {
 					}
 				}
 
-				str_builder_append(&builder, STR_LIT("\\n\", "));
+				str_builder_append(&builder, STR_LIT("\", "));
 
 				// Now output format arguments
 				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
@@ -554,7 +554,10 @@ bool _generate_instr(GenContext* context) {
 	str_builder_append(&builder, STR_LIT(
 				"    case INSTR_COUNT:\n"
 				"        unreachable();\n"
-				"    }\n"
+				"    }\n"));
+
+	str_builder_append(&builder, STR_LIT(
+				"    printf(\"\\n\");\n"
 				"}\n"));
 
 	if (!write_str_to_file("code_gen/src/code_gen/instr.gen.c", builder.string)) {

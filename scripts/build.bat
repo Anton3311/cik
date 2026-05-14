@@ -11,6 +11,7 @@ clang ^
 	parser\src\parser\parse_tools.c ^
 	compiler\src\compiler\compiler.c ^
 	code_gen\src\code_gen\instr.c ^
+	code_gen\src\code_gen\instr.gen.c ^
 	code_gen\src\code_gen\backends\x64.c ^
 	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib ^
 	-m64 -Wall -o bin\c.exe -Icore\src\ -Iparser\src\ -Icompiler\src -Icode_gen\src
@@ -30,6 +31,7 @@ clang ^
 	parser\src\parser\parsed_ast.c ^
 	compiler\src\compiler\compiler.c ^
 	code_gen\src\code_gen\instr.c ^
+	code_gen\src\code_gen\instr.gen.c ^
 	code_gen\src\code_gen\backends\x64.c ^
 	-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib ^
 	-m64 -Wall -o bin\tester.exe -Icore\src\ -Itester\src\ -Iparser\src -Icompiler\src -Icode_gen\src

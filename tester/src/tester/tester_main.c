@@ -90,6 +90,8 @@ static TestCase s_x64_tests[] = {
 	test(test_index_arary_with_pointer_arithmetics),
 	test(test_index_arary_with_pointer_arithmetics_2),
 	test(test_compare_equal_two_uint64),
+	test(test_compare_equal_less_for_uint64),
+	test(test_compare_equal_greater_for_uint64),
 };
 
 static TestSuite s_test_suites[] = {

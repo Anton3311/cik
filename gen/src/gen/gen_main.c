@@ -147,6 +147,8 @@ static String _instr_kind_to_corresponding_instr_field(const ParsedEnum* enum_de
 		return STR_LIT("logical_shift");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_COMPARE_"))) {
 		return STR_LIT("compare");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_CAST_TO_"))) {
+		return STR_LIT("cast");
 	}
 
 	return str_to_lower(

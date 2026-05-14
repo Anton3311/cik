@@ -3,46 +3,51 @@
 #include "core/profiler.h"
 
 static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
-	[INSTR_NO_OP]        = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_NO_OP]                  = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
-	[INSTR_CONST_8]      = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_CONST_16]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_CONST_32]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_CONST_64]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	[INSTR_CONST_8]                = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_CONST_16]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_CONST_32]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_CONST_64]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_BIN_OP_8]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_BIN_OP_16]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_BIN_OP_32]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_BIN_OP_64]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	[INSTR_BIN_OP_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_BIN_OP_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_BIN_OP_32]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_BIN_OP_64]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_LOGICAL_SHIFT_LEFT_8] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_LOGICAL_SHIFT_LEFT_16] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_LOGICAL_SHIFT_LEFT_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_LOGICAL_SHIFT_LEFT_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	[INSTR_LOGICAL_SHIFT_LEFT_8]   = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_LOGICAL_SHIFT_LEFT_16]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_LOGICAL_SHIFT_LEFT_32]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_LOGICAL_SHIFT_LEFT_64]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_LOGICAL_SHIFT_RIGHT_8] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_LOGICAL_SHIFT_RIGHT_8]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_LOGICAL_SHIFT_RIGHT_16] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
 	[INSTR_LOGICAL_SHIFT_RIGHT_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_LOGICAL_SHIFT_RIGHT_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_COMPARE_8] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_16] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_8]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_16]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_32]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_64]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 
-	[INSTR_PTR_LOAD_8]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_PTR_LOAD_16]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_PTR_LOAD_32]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_PTR_LOAD_64]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	[INSTR_CAST_TO_8]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_CAST_TO_16]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_CAST_TO_32]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_CAST_TO_64]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_BRANCH]       = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
-	[INSTR_JUMP]         = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_PTR_LOAD_8]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_PTR_LOAD_16]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
+	[INSTR_PTR_LOAD_32]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
+	[INSTR_PTR_LOAD_64]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_RETURN_VALUE] = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_BRANCH]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_JUMP]                   = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
-	[INSTR_CALL_INTERNAL] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	[INSTR_RETURN_VALUE]           = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
-	[INSTR_REGION]       = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_CALL_INTERNAL]          = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
+	[INSTR_REGION]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 };
 
 static const char* REG_BASE_NAMES[] = {
@@ -763,7 +768,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_COMPARE_16:
 	case INSTR_COMPARE_32:
 		unreachable();
-	case INSTR_COMPARE_64:
+	case INSTR_COMPARE_64: {
 		_x64_generate_code(gen, instr->compare.left, buffer);
 		_x64_generate_code(gen, instr->compare.right, buffer);
 
@@ -806,6 +811,34 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		}
 
 		break;
+	}
+	
+	case INSTR_CAST_TO_8:
+	case INSTR_CAST_TO_16:
+	case INSTR_CAST_TO_32:
+		unreachable();
+	case INSTR_CAST_TO_64: {
+		_x64_generate_code(gen, instr->cast.value, buffer);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation src_loc = gen->instr_storage[instr->cast.value.value];
+
+		InstrBuffer* instr_buffer = &gen->instr_buffer;
+		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
+		assert(s_instr_storage_requiremenets[value->kind].reg_size == 8);
+
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(src_loc.kind == INSTR_STORAGE_REG);
+
+		_code_buffer_push_8(buffer, _rex_prefix(1, dst_loc.reg >> 3, 0, src_loc.reg >> 3));
+
+		// movzx
+		_code_buffer_push_8(buffer, 0x0f);
+		_code_buffer_push_8(buffer, 0xb6);
+
+		_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg, src_loc.reg));
+		break;
+	}
 
 	case INSTR_BRANCH:
 	case INSTR_JUMP:

@@ -49,6 +49,11 @@ typedef enum {
 	INSTR_COMPARE_32,
 	INSTR_COMPARE_64,
 
+	INSTR_CAST_TO_8,
+	INSTR_CAST_TO_16,
+	INSTR_CAST_TO_32,
+	INSTR_CAST_TO_64,
+
 	INSTR_PTR_LOAD_8,
 	INSTR_PTR_LOAD_16,
 	INSTR_PTR_LOAD_32,
@@ -147,6 +152,10 @@ struct Instr {
 			InstrIndex left;
 			InstrIndex right;
 		} compare;
+
+		struct {
+			InstrIndex value;
+		} cast;
 
 		struct {
 			InstrIndex ptr;
@@ -307,6 +316,12 @@ inline InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
 	shift_instr->logical_shift.shift_count = shift_count;
 	return shift_index;
 }
+
+// Creates a INSTR_CAST_<target_bit_count>
+InstrIndex instr_new_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t target_bit_count);
 
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);
 

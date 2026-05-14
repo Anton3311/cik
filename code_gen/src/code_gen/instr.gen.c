@@ -28,6 +28,10 @@ static String s_instr_kind_to_string[] = {
     [INSTR_COMPARE_16] = STR_LIT("compare_16"),
     [INSTR_COMPARE_32] = STR_LIT("compare_32"),
     [INSTR_COMPARE_64] = STR_LIT("compare_64"),
+    [INSTR_CAST_TO_8] = STR_LIT("cast_to_8"),
+    [INSTR_CAST_TO_16] = STR_LIT("cast_to_16"),
+    [INSTR_CAST_TO_32] = STR_LIT("cast_to_32"),
+    [INSTR_CAST_TO_64] = STR_LIT("cast_to_64"),
     [INSTR_PTR_LOAD_8] = STR_LIT("ptr_load_8"),
     [INSTR_PTR_LOAD_16] = STR_LIT("ptr_load_16"),
     [INSTR_PTR_LOAD_32] = STR_LIT("ptr_load_32"),
@@ -131,6 +135,18 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
     case INSTR_COMPARE_64:
         instr_stack_push(out_dependencies, instr->compare.left);
         instr_stack_push(out_dependencies, instr->compare.right);
+        break;
+    case INSTR_CAST_TO_8:
+        instr_stack_push(out_dependencies, instr->cast.value);
+        break;
+    case INSTR_CAST_TO_16:
+        instr_stack_push(out_dependencies, instr->cast.value);
+        break;
+    case INSTR_CAST_TO_32:
+        instr_stack_push(out_dependencies, instr->cast.value);
+        break;
+    case INSTR_CAST_TO_64:
+        instr_stack_push(out_dependencies, instr->cast.value);
         break;
     case INSTR_PTR_LOAD_8:
         instr_stack_push(out_dependencies, instr->ptr_load.ptr);
@@ -241,6 +257,18 @@ void instr_print(const Instr* instr) {
         break;
     case INSTR_COMPARE_64:
         printf("kind: %.*s left: %u right: %u \n", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        break;
+    case INSTR_CAST_TO_8:
+        printf("value: %u \n", (uint32_t)instr->cast.value.value);
+        break;
+    case INSTR_CAST_TO_16:
+        printf("value: %u \n", (uint32_t)instr->cast.value.value);
+        break;
+    case INSTR_CAST_TO_32:
+        printf("value: %u \n", (uint32_t)instr->cast.value.value);
+        break;
+    case INSTR_CAST_TO_64:
+        printf("value: %u \n", (uint32_t)instr->cast.value.value);
         break;
     case INSTR_PTR_LOAD_8:
         printf("ptr: %u \n", (uint32_t)instr->ptr_load.ptr.value);

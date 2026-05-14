@@ -13,5 +13,7 @@ void test_index_arary_with_pointer_arithmetics_2(TestContext* context);
 
 // Compare Tests
 void test_compare_equal_two_uint64(TestContext* context);
+void test_compare_equal_less_for_uint64(TestContext* context);
+void test_compare_equal_greater_for_uint64(TestContext* context);
 
 #endif

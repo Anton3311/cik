@@ -225,6 +225,10 @@ typedef enum {
 	BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT,
 } BinOpKind;
 
+inline bool bin_op_is_compare(BinOpKind kind) {
+	return kind >= BIN_OP_LOGICAL_EQUAL && kind <= BIN_OP_LOGICAL_GREATER_OR_EQUAL;
+}
+
 typedef enum {
 	UNARY_OP_NEGATE,
 	UNARY_OP_PLUS,

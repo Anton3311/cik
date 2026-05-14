@@ -185,6 +185,11 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 			instr->compare.right = right;
 			break;
 		}
+
+		if (bin_op_is_compare(expr->binary.op)) {
+			return instr_new_cast(instr_buffer, instr_allocator, instr_index, 64);
+		}
+
 		return instr_index;
 	}
 	case EXPR_FUNCTION_REFERENCE:

@@ -33,6 +33,11 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_COMPARE_32] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_COMPARE_64] = INSTR_FEATURE_REG_STORAGE,
 
+	[INSTR_CAST_TO_8] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_CAST_TO_16] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_CAST_TO_32] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_CAST_TO_64] = INSTR_FEATURE_REG_STORAGE,
+
 	[INSTR_LOAD_ARG] = INSTR_FEATURE_REG_STORAGE,
 
 	[INSTR_BRANCH] = INSTR_FEATURE_CONTROL,
@@ -45,6 +50,23 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_IO_STATE] = INSTR_FEATURE_CONTROL,
 	[INSTR_REGION] = INSTR_FEATURE_CONTROL,
 };
+
+InstrIndex instr_new_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t target_bit_count) {
+	assert(is_power_of_2(target_bit_count));
+	assert(target_bit_count >= 8);
+	assert(target_bit_count <= 64);
+
+	uint8_t sub_kind_index = count_trailing_zeros(target_bit_count >> 3);
+
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_CAST_TO_8 + sub_kind_index;
+	instr->cast.value = value;
+	return i;
+}
 
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index) {
 	const Instr* instr = instr_buffer_at(buffer, region_index);

@@ -194,7 +194,7 @@ bool _generate_instr(GenContext* context) {
 			STR_LIT("s_instr_compare_kind_to_string"),
 			compare_kind_enum,
 			false,
-			sizeof("INSTR_CMP_"));
+			sizeof("INSTR_CMP_") - 1);
 
 	str_builder_append(&builder, STR_LIT(
 				"String instr_name(InstrKind instr_kind) {\n"

@@ -47,10 +47,10 @@ static String s_instr_bin_op_kind_to_string[] = {
     [INSTR_BIN_DIV] = STR_LIT("div"),
 };
 static String s_instr_compare_kind_to_string[] = {
-    [INSTR_CMP_EQUAL] = STR_LIT("qual"),
-    [INSTR_CMP_NOT_EQUAL] = STR_LIT("ot_equal"),
-    [INSTR_CMP_LESS] = STR_LIT("ess"),
-    [INSTR_CMP_GREATER] = STR_LIT("reater"),
+    [INSTR_CMP_EQUAL] = STR_LIT("equal"),
+    [INSTR_CMP_NOT_EQUAL] = STR_LIT("not_equal"),
+    [INSTR_CMP_LESS] = STR_LIT("less"),
+    [INSTR_CMP_GREATER] = STR_LIT("greater"),
 };
 String instr_name(InstrKind instr_kind) {
 	return s_instr_kind_to_string[instr_kind];

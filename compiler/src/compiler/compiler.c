@@ -118,6 +118,8 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		InstrIndex left = _compile_expr(compiler, expr->binary.left);
 		InstrIndex right = _compile_expr(compiler, expr->binary.right);
 
+		// TODO: Don't scale int constants during compare operations.
+
 		// NOTE: In case we are doing pointer arithmetics here,
 		//       and one of the operands is an interger, we need
 		//       to scale that integer by the byte size of base pointer type.
@@ -150,10 +152,39 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-		instr->kind = INSTR_BIN_OP_64;
-		instr->bin_op.kind = INSTR_BIN_ADD;
-		instr->bin_op.left = left;
-		instr->bin_op.right = right;
+
+		switch (expr->binary.op) {
+		case BIN_OP_ADD:
+			instr->kind = INSTR_BIN_OP_64;
+			instr->bin_op.kind = INSTR_BIN_ADD;
+			instr->bin_op.left = left;
+			instr->bin_op.right = right;
+			break;
+		case BIN_OP_LOGICAL_EQUAL:
+			instr->kind = INSTR_COMPARE_64;
+			instr->compare.kind = INSTR_CMP_EQUAL;
+			instr->compare.left = left;
+			instr->compare.right = right;
+			break;
+		case BIN_OP_LOGICAL_NOT_EQUAL:
+			instr->kind = INSTR_COMPARE_64;
+			instr->compare.kind = INSTR_CMP_NOT_EQUAL;
+			instr->compare.left = left;
+			instr->compare.right = right;
+			break;
+		case BIN_OP_LOGICAL_LESS:
+			instr->kind = INSTR_COMPARE_64;
+			instr->compare.kind = INSTR_CMP_LESS;
+			instr->compare.left = left;
+			instr->compare.right = right;
+			break;
+		case BIN_OP_LOGICAL_GREATER:
+			instr->kind = INSTR_COMPARE_64;
+			instr->compare.kind = INSTR_CMP_GREATER;
+			instr->compare.left = left;
+			instr->compare.right = right;
+			break;
+		}
 		return instr_index;
 	}
 	case EXPR_FUNCTION_REFERENCE:

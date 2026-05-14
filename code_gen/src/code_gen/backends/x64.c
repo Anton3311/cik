@@ -25,6 +25,11 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_LOGICAL_SHIFT_RIGHT_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_LOGICAL_SHIFT_RIGHT_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
+	[INSTR_COMPARE_8] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_16] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+
 	[INSTR_PTR_LOAD_8]     = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_PTR_LOAD_16]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
 	[INSTR_PTR_LOAD_32]    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
@@ -487,6 +492,11 @@ inline void _code_buffer_push_32(CodeBuffer* buffer, uint32_t value) {
 	a[0] = (uint8_t)((value >> 0) & 0xff);
 }
 
+inline void _code_buffer_push_8(CodeBuffer* buffer, uint8_t value) {
+	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
+	*a = value;
+}
+
 inline uint8_t _rex_prefix(uint8_t w, uint8_t r, uint8_t x, uint8_t b) {
 	assert(w <= 1);
 	assert(r <= 1);
@@ -726,6 +736,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_LOGICAL_SHIFT_LEFT_8:
 	case INSTR_LOGICAL_SHIFT_LEFT_16:
 	case INSTR_LOGICAL_SHIFT_LEFT_32:
+		unreachable();
 	case INSTR_LOGICAL_SHIFT_LEFT_64: {
 		_x64_generate_code(gen, instr->logical_shift.operand, buffer);
 
@@ -747,6 +758,54 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		instr_bytes[3] = instr->logical_shift.shift_count;
 		break;
 	}
+
+	case INSTR_COMPARE_8:
+	case INSTR_COMPARE_16:
+	case INSTR_COMPARE_32:
+		unreachable();
+	case INSTR_COMPARE_64:
+		_x64_generate_code(gen, instr->compare.left, buffer);
+		_x64_generate_code(gen, instr->compare.right, buffer);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
+		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(left_loc.kind == INSTR_STORAGE_REG);
+		assert(right_loc.kind == INSTR_STORAGE_REG);
+
+		{
+			_code_buffer_push_8(buffer, _rex_prefix(1, left_loc.reg >> 3, 0, right_loc.reg >> 3));
+			_code_buffer_push_8(buffer, 0x3b);
+			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg, right_loc.reg));
+		}
+
+		{
+			if (dst_loc.reg >> 3) {
+				_code_buffer_push_8(buffer, _rex_prefix(1, dst_loc.reg >> 3, 0, 0));
+			}
+
+			uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
+			instr_bytes[0] = 0x0f;
+			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg);
+
+			switch (instr->compare.kind) {
+			case INSTR_CMP_EQUAL:
+				instr_bytes[1] = 0x94; // setz
+				break;
+			case INSTR_CMP_NOT_EQUAL:
+				instr_bytes[1] = 0x95; // setne
+				break;
+			case INSTR_CMP_LESS:
+				instr_bytes[1] = 0x9c; // setl
+				break;
+			case INSTR_CMP_GREATER:
+				instr_bytes[1] = 0x9f; // setg
+				break;
+			}
+		}
+
+		break;
 
 	case INSTR_BRANCH:
 	case INSTR_JUMP:

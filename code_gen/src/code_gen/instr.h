@@ -44,6 +44,11 @@ typedef enum {
 	INSTR_LOGICAL_SHIFT_RIGHT_32,
 	INSTR_LOGICAL_SHIFT_RIGHT_64,
 
+	INSTR_COMPARE_8,
+	INSTR_COMPARE_16,
+	INSTR_COMPARE_32,
+	INSTR_COMPARE_64,
+
 	INSTR_PTR_LOAD_8,
 	INSTR_PTR_LOAD_16,
 	INSTR_PTR_LOAD_32,
@@ -70,6 +75,13 @@ typedef enum {
 	INSTR_BIN_MUL,
 	INSTR_BIN_DIV,
 } InstrBinOp;
+
+typedef enum {
+	INSTR_CMP_EQUAL,
+	INSTR_CMP_NOT_EQUAL,
+	INSTR_CMP_LESS,
+	INSTR_CMP_GREATER,
+} InstrCompareKind;
 
 typedef enum {
 	INSTR_FEATURE_NONE                 = 0,
@@ -129,6 +141,12 @@ struct Instr {
 			InstrIndex operand;
 			uint8_t shift_count;
 		} logical_shift;
+
+		struct {
+			InstrCompareKind kind;
+			InstrIndex left;
+			InstrIndex right;
+		} compare;
 
 		struct {
 			InstrIndex ptr;
@@ -317,6 +335,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 
 String instr_name(InstrKind instr_kind);
 String instr_bin_op_name(InstrBinOp op_kind);
+String instr_compare_kind_name(InstrCompareKind kind);
 void instr_print(const Instr* instr);
 void instr_print_all(InstrBuffer instr_buffer);
 

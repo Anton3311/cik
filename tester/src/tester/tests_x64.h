@@ -11,4 +11,7 @@ void test_deref_function_arg(TestContext* context);
 void test_index_arary_with_pointer_arithmetics(TestContext* context);
 void test_index_arary_with_pointer_arithmetics_2(TestContext* context);
 
+// Compare Tests
+void test_compare_equal_two_uint64(TestContext* context);
+
 #endif

@@ -24,6 +24,10 @@ static String s_instr_kind_to_string[] = {
     [INSTR_LOGICAL_SHIFT_RIGHT_16] = STR_LIT("logical_shift_right_16"),
     [INSTR_LOGICAL_SHIFT_RIGHT_32] = STR_LIT("logical_shift_right_32"),
     [INSTR_LOGICAL_SHIFT_RIGHT_64] = STR_LIT("logical_shift_right_64"),
+    [INSTR_COMPARE_8] = STR_LIT("compare_8"),
+    [INSTR_COMPARE_16] = STR_LIT("compare_16"),
+    [INSTR_COMPARE_32] = STR_LIT("compare_32"),
+    [INSTR_COMPARE_64] = STR_LIT("compare_64"),
     [INSTR_PTR_LOAD_8] = STR_LIT("ptr_load_8"),
     [INSTR_PTR_LOAD_16] = STR_LIT("ptr_load_16"),
     [INSTR_PTR_LOAD_32] = STR_LIT("ptr_load_32"),
@@ -42,11 +46,20 @@ static String s_instr_bin_op_kind_to_string[] = {
     [INSTR_BIN_MUL] = STR_LIT("mul"),
     [INSTR_BIN_DIV] = STR_LIT("div"),
 };
+static String s_instr_compare_kind_to_string[] = {
+    [INSTR_CMP_EQUAL] = STR_LIT("qual"),
+    [INSTR_CMP_NOT_EQUAL] = STR_LIT("ot_equal"),
+    [INSTR_CMP_LESS] = STR_LIT("ess"),
+    [INSTR_CMP_GREATER] = STR_LIT("reater"),
+};
 String instr_name(InstrKind instr_kind) {
 	return s_instr_kind_to_string[instr_kind];
 }
 String instr_bin_op_name(InstrBinOp op_kind) {
 	return s_instr_bin_op_kind_to_string[op_kind];
+}
+String instr_compare_kind_name(InstrCompareKind kind) {
+	return s_instr_compare_kind_to_string[kind];
 }
 void instr_enumerate_dependencies(const InstrBuffer buffer,
                                   InstrIndex instr_index,
@@ -102,6 +115,22 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_64:
         instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        break;
+    case INSTR_COMPARE_8:
+        instr_stack_push(out_dependencies, instr->compare.left);
+        instr_stack_push(out_dependencies, instr->compare.right);
+        break;
+    case INSTR_COMPARE_16:
+        instr_stack_push(out_dependencies, instr->compare.left);
+        instr_stack_push(out_dependencies, instr->compare.right);
+        break;
+    case INSTR_COMPARE_32:
+        instr_stack_push(out_dependencies, instr->compare.left);
+        instr_stack_push(out_dependencies, instr->compare.right);
+        break;
+    case INSTR_COMPARE_64:
+        instr_stack_push(out_dependencies, instr->compare.left);
+        instr_stack_push(out_dependencies, instr->compare.right);
         break;
     case INSTR_PTR_LOAD_8:
         instr_stack_push(out_dependencies, instr->ptr_load.ptr);
@@ -200,6 +229,18 @@ void instr_print(const Instr* instr) {
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_64:
         printf("operand: %u shift_count: %u \n", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        break;
+    case INSTR_COMPARE_8:
+        printf("kind: %.*s left: %u right: %u \n", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        break;
+    case INSTR_COMPARE_16:
+        printf("kind: %.*s left: %u right: %u \n", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        break;
+    case INSTR_COMPARE_32:
+        printf("kind: %.*s left: %u right: %u \n", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        break;
+    case INSTR_COMPARE_64:
+        printf("kind: %.*s left: %u right: %u \n", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
         break;
     case INSTR_PTR_LOAD_8:
         printf("ptr: %u \n", (uint32_t)instr->ptr_load.ptr.value);

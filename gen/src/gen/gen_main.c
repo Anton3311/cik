@@ -159,6 +159,10 @@ bool _generate_instr(GenContext* context) {
 			IDENT_NAMESPACE_ALIAS,
 			IDENT_FIND_DEFAULT,
 			STR_LIT("InstrBinOp"))->type_def->aliased_type.enum_def;
+	const ParsedEnum* compare_kind_enum = ident_storage_find(&ident_storage,
+			IDENT_NAMESPACE_ALIAS,
+			IDENT_FIND_DEFAULT,
+			STR_LIT("InstrCompareKind"))->type_def->aliased_type.enum_def;
 	const ParsedStruct* string_struct = ident_storage_find(&ident_storage,
 			IDENT_NAMESPACE_ALIAS,
 			IDENT_FIND_DEFAULT,
@@ -185,6 +189,12 @@ bool _generate_instr(GenContext* context) {
 			instr_bin_op_enum,
 			false,
 			sizeof("INSTR_BIN_") - 1);
+	_emit_enum_to_string_mapping(context,
+			&builder,
+			STR_LIT("s_instr_compare_kind_to_string"),
+			compare_kind_enum,
+			false,
+			sizeof("INSTR_CMP_"));
 
 	str_builder_append(&builder, STR_LIT(
 				"String instr_name(InstrKind instr_kind) {\n"
@@ -193,6 +203,10 @@ bool _generate_instr(GenContext* context) {
 	str_builder_append(&builder, STR_LIT(
 				"String instr_bin_op_name(InstrBinOp op_kind) {\n"
 				"	return s_instr_bin_op_kind_to_string[op_kind];\n"
+				"}\n"));
+	str_builder_append(&builder, STR_LIT(
+				"String instr_compare_kind_name(InstrCompareKind kind) {\n"
+				"	return s_instr_compare_kind_to_string[kind];\n"
 				"}\n"));
 
 	// `instr_enumerate_dependencies` is reponsible for pushing every dependency
@@ -219,6 +233,8 @@ bool _generate_instr(GenContext* context) {
 			instr_struct_name = STR_LIT("logical_shift");
 		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {
 			instr_struct_name = STR_LIT("logical_shift");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_COMPARE_"))) {
+			instr_struct_name = STR_LIT("compare");
 		} else {
 			instr_struct_name = str_to_lower(
 					sub_str(variant_name,
@@ -307,6 +323,8 @@ bool _generate_instr(GenContext* context) {
 			instr_struct_name = STR_LIT("logical_shift");
 		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {
 			instr_struct_name = STR_LIT("logical_shift");
+		} else if (str_starts_with(variant_name, STR_LIT("INSTR_COMPARE_"))) {
+			instr_struct_name = STR_LIT("compare");
 		} else {
 			instr_struct_name = str_to_lower(
 					sub_str(variant_name,
@@ -375,6 +393,8 @@ bool _generate_instr(GenContext* context) {
 					case PARSED_TYPE_ENUM:
 						if (type_is_enum(&instr_struct->fields[j].type, instr_bin_op_enum)) {
 							str_builder_append(&builder, STR_LIT("%.*s "));
+						} else if (type_is_enum(&instr_struct->fields[j].type, compare_kind_enum)) {
+							str_builder_append(&builder, STR_LIT("%.*s "));
 						}
 						break;
 					case PARSED_TYPE_STRUCT:
@@ -437,6 +457,9 @@ bool _generate_instr(GenContext* context) {
 					case PARSED_TYPE_ENUM:
 						if (type_is_enum(&instr_struct->fields[j].type, instr_bin_op_enum)) {
 							pre_arg = STR_LIT("STR_FMT(instr_bin_op_name(");
+							post_arg = STR_LIT("))");
+						} else if (type_is_enum(&instr_struct->fields[j].type, compare_kind_enum)) {
+							pre_arg = STR_LIT("STR_FMT(instr_compare_kind_name(");
 							post_arg = STR_LIT("))");
 						}
 						break;

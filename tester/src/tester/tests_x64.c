@@ -218,3 +218,33 @@ void test_index_arary_with_pointer_arithmetics_2(TestContext* context) {
 		assert(results[i] == array[i]);
 	}
 }
+
+void test_compare_equal_two_uint64(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64;\n"
+			"uint64 main(uint64 a, uint64 b) { return a == b; }");
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t a, uint64_t b);
+
+	const size_t SAMPLE_COUNT = 16;
+
+	uint64_t array_a[SAMPLE_COUNT];
+	uint64_t array_b[SAMPLE_COUNT];
+	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
+		array_a[i] = rand();
+		array_b[i] = rand();
+	}
+
+	Function executable_function = (Function)machine_code.code;
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+
+	uint64_t results[SAMPLE_COUNT];
+	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
+		results[i] = executable_function(array_a[i], array_b[i]);
+	}
+
+	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
+		assert(results[i] == (array_a[i] == array_b[i]));
+	}
+}

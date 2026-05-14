@@ -89,6 +89,7 @@ static TestCase s_x64_tests[] = {
 	test(test_deref_function_arg),
 	test(test_index_arary_with_pointer_arithmetics),
 	test(test_index_arary_with_pointer_arithmetics_2),
+	test(test_compare_equal_two_uint64),
 };
 
 static TestSuite s_test_suites[] = {

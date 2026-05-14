@@ -669,7 +669,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 	switch (instr->kind) {
 	case INSTR_NO_OP:
-		break;
+		return;
 
 	case INSTR_CONST_8:
 	case INSTR_CONST_16:
@@ -679,7 +679,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_CONST_64:
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
 		_emit_load_const_64(buffer, instr_storage.reg, instr->const_64.u);
-		break;
+		return;
 
 	case INSTR_BIN_OP_8:
 	case INSTR_BIN_OP_16:
@@ -713,7 +713,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			instr_bytes[1] = 0x03;
 			break;
 		}
-		break;
+
+		return;
 	}
 
 	case INSTR_PTR_LOAD_8:
@@ -735,8 +736,17 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		instr_bytes[0] = rex_prefix;
 		instr_bytes[1] = 0x8b;
 		instr_bytes[2] = rm;
-		break;
+		return;
 	}
+
+	case INSTR_LOAD_ARG:
+		// There is nothing to do. These instruction type is more of a hint
+		// to where to look for the value, it doesn't get turned into any machine code.
+		//
+		// The register allocator allocates registers corresponding to the function
+		// argument, and during the compilation of other instructions, the allocated
+		// register is used as an input.
+		return;
 
 	case INSTR_LOGICAL_SHIFT_LEFT_8:
 	case INSTR_LOGICAL_SHIFT_LEFT_16:
@@ -761,7 +771,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		instr_bytes[1] = 0xc1;
 		instr_bytes[2] = rm;
 		instr_bytes[3] = instr->logical_shift.shift_count;
-		break;
+		return;
 	}
 
 	case INSTR_COMPARE_8:
@@ -810,7 +820,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			}
 		}
 
-		break;
+		return;
 	}
 	
 	case INSTR_CAST_TO_8:
@@ -837,7 +847,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_code_buffer_push_8(buffer, 0xb6);
 
 		_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg, src_loc.reg));
-		break;
+		return;
 	}
 
 	case INSTR_BRANCH:
@@ -852,14 +862,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_emit_mov_regs(buffer, return_value_loc.reg, REG_A, 64);
 
 		_emit_return(buffer);
-		break;
+		return;
 	
 	case INSTR_IO_STATE:
 		if (instr->io_state.producer.value != UINT16_MAX) {
 			_x64_generate_code(gen, instr->io_state.producer, buffer);
 		}
 
-		break;
+		return;
 	
 	case INSTR_CALL_INTERNAL: {
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
@@ -921,14 +931,16 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			}
 		}
 
-		break;
+		return;
 	}
 
 	case INSTR_REGION:
 		_x64_generate_code(gen, instr->region.io_state, buffer);
 		_x64_generate_code(gen, instr->region.last_instr, buffer);
-		break;
+		return;
 	}
+
+	unreachable();
 }
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {

@@ -127,6 +127,100 @@ void _emit_enum_to_string_mapping(GenContext* context,
 // Instr Generator
 //
 
+// Maps enum variant to the correspodning field in the `Instr` struct.
+// There are specifal cases, because such instruction kinds like `INSTR_BIN_OP_*`
+// are defined for different bit counts, are however implemented by the same union
+// variant in the `Instr` struct.
+static String _instr_kind_to_corresponding_instr_field(const ParsedEnum* enum_def,
+		size_t variant_index,
+		Arena* temp_allocator) {
+
+	size_t instr_name_prefix_length = sizeof("INSTR_") - 1; // -1 for the null terminator
+	String variant_name = enum_def->variants[variant_index].name.string;
+	if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
+		return STR_LIT("bin_op");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
+		return STR_LIT("ptr_load");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {
+		return STR_LIT("logical_shift");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {
+		return STR_LIT("logical_shift");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_COMPARE_"))) {
+		return STR_LIT("compare");
+	}
+
+	return str_to_lower(
+			sub_str(variant_name,
+				instr_name_prefix_length,
+				variant_name.length - instr_name_prefix_length),
+			temp_allocator);
+}
+
+static void* _find_type(IdentifierStorage* ident_storage, IdentifierEntryKind kind, String name) {
+	assert(kind == IDENT_STRUCT || kind == IDENT_ENUM || kind == IDENT_UNION);
+	assert(name.length > 0);
+
+	ParsedTypeKind type_kind = 0;
+	switch (kind) {
+	case IDENT_STRUCT:
+		type_kind = PARSED_TYPE_STRUCT;
+		break;
+	case IDENT_ENUM:
+		type_kind = PARSED_TYPE_ENUM;
+		break;
+	case IDENT_UNION:
+		type_kind = PARSED_TYPE_UNION;
+		break;
+	default:
+		unreachable();
+	}
+
+	const IdentifierEntry* alias_entry = ident_storage_find(ident_storage,
+			IDENT_NAMESPACE_ALIAS,
+			IDENT_FIND_DEFAULT,
+			name);
+
+	if (alias_entry) {
+		ParsedType* aliased_type = &alias_entry->type_def->aliased_type;
+		assert_msg(aliased_type->kind == type_kind,
+				"Given type name ('%.*s') is of a different type, that it was expected",
+				STR_FMT(name));
+
+		switch (kind) {
+		case IDENT_STRUCT:
+			return aliased_type->struct_def;
+		case IDENT_ENUM:
+			return aliased_type->enum_def;
+		case IDENT_UNION:
+			return aliased_type->union_def;
+		default:
+			unreachable();
+		}
+	}
+
+	IdentifierEntry* entry = ident_storage_find(ident_storage,
+			IDENT_NAMESPACE_TAGGED,
+			IDENT_FIND_DEFAULT,
+			name);
+
+	assert_msg(entry != NULL, "Type named %.*s is not found", STR_FMT(name));
+	assert_msg(entry->kind == kind, "Type is defined with a different tag");
+	
+	switch (kind) {
+	case IDENT_STRUCT:
+		return entry->struct_def;
+	case IDENT_ENUM:
+		return entry->enum_def;
+	case IDENT_UNION:
+		return entry->union_def;
+	default:
+		unreachable();
+	}
+
+	unreachable();
+	return NULL;
+}
+
 bool _generate_instr(GenContext* context) {
 	String include_dirs[] = {
 		STR_LIT("stdx"),
@@ -142,31 +236,24 @@ bool _generate_instr(GenContext* context) {
 		return false;
 	}
 
-	const ParsedStruct* instr_struct = ident_storage_find(&ident_storage,
-			IDENT_NAMESPACE_TAGGED,
-			IDENT_FIND_DEFAULT,
-			STR_LIT("Instr"))->struct_def;
-	IdentifierEntry* e = ident_storage_find(&ident_storage,
-			IDENT_NAMESPACE_ALIAS,
-			IDENT_FIND_DEFAULT,
+	const ParsedStruct* instr_struct = (const ParsedStruct*)_find_type(&ident_storage,
+			IDENT_STRUCT,
+			STR_LIT("Instr"));
+	const ParsedStruct* instr_index_struct = (const ParsedStruct*)_find_type(&ident_storage,
+			IDENT_STRUCT,
 			STR_LIT("InstrIndex"));
-	const ParsedStruct* instr_index_struct = e->type_def->aliased_type.struct_def;
-	const ParsedEnum* instr_kind_enum = ident_storage_find(&ident_storage,
-			IDENT_NAMESPACE_ALIAS,
-			IDENT_FIND_DEFAULT,
-			STR_LIT("InstrKind"))->type_def->aliased_type.enum_def;
-	const ParsedEnum* instr_bin_op_enum = ident_storage_find(&ident_storage,
-			IDENT_NAMESPACE_ALIAS,
-			IDENT_FIND_DEFAULT,
-			STR_LIT("InstrBinOp"))->type_def->aliased_type.enum_def;
-	const ParsedEnum* compare_kind_enum = ident_storage_find(&ident_storage,
-			IDENT_NAMESPACE_ALIAS,
-			IDENT_FIND_DEFAULT,
-			STR_LIT("InstrCompareKind"))->type_def->aliased_type.enum_def;
-	const ParsedStruct* string_struct = ident_storage_find(&ident_storage,
-			IDENT_NAMESPACE_ALIAS,
-			IDENT_FIND_DEFAULT,
-			STR_LIT("String"))->type_def->aliased_type.struct_def;
+	const ParsedEnum* instr_kind_enum = (const ParsedEnum*)_find_type(&ident_storage,
+			IDENT_ENUM,
+			STR_LIT("InstrKind"));
+	const ParsedEnum* instr_bin_op_enum = (const ParsedEnum*)_find_type(&ident_storage,
+			IDENT_ENUM,
+			STR_LIT("InstrBinOp"));
+	const ParsedEnum* compare_kind_enum = (const ParsedEnum*)_find_type(&ident_storage,
+			IDENT_ENUM,
+			STR_LIT("InstrCompareKind"));
+	const ParsedStruct* string_struct = (const ParsedStruct*)_find_type(&ident_storage,
+			IDENT_STRUCT,
+			STR_LIT("String"));
 
 	assert(instr_kind_enum);
 	assert(string_struct);
@@ -176,7 +263,7 @@ bool _generate_instr(GenContext* context) {
 
 	_emit_include(&builder, STR_LIT("instr.h"));
 
-	size_t instr_name_prefix_length = 6;
+	size_t instr_name_prefix_length = sizeof("INSTR_") - 1; // -1 for the null terminator
 
 	_emit_enum_to_string_mapping(context,
 			&builder,
@@ -222,26 +309,7 @@ bool _generate_instr(GenContext* context) {
 				"    switch (instr->kind) {\n"));
 
 	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
-		String variant_name = instr_kind_enum->variants[i].name.string;
-		String instr_struct_name;
-
-		if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
-			instr_struct_name = STR_LIT("bin_op");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
-			instr_struct_name = STR_LIT("ptr_load");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {
-			instr_struct_name = STR_LIT("logical_shift");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {
-			instr_struct_name = STR_LIT("logical_shift");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_COMPARE_"))) {
-			instr_struct_name = STR_LIT("compare");
-		} else {
-			instr_struct_name = str_to_lower(
-					sub_str(variant_name,
-						instr_name_prefix_length,
-						variant_name.length - instr_name_prefix_length),
-					context->temp_allocator);
-		}
+		String instr_struct_name = _instr_kind_to_corresponding_instr_field(instr_kind_enum, i, context->temp_allocator);
 
 		str_builder_append(&builder, STR_LIT("    case "));
 		str_builder_append(&builder, instr_kind_enum->variants[i].name.string);
@@ -313,25 +381,7 @@ bool _generate_instr(GenContext* context) {
 
 	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
 		String variant_name = instr_kind_enum->variants[i].name.string;
-		String instr_struct_name;
-
-		if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
-			instr_struct_name = STR_LIT("bin_op");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
-			instr_struct_name = STR_LIT("ptr_load");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {
-			instr_struct_name = STR_LIT("logical_shift");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {
-			instr_struct_name = STR_LIT("logical_shift");
-		} else if (str_starts_with(variant_name, STR_LIT("INSTR_COMPARE_"))) {
-			instr_struct_name = STR_LIT("compare");
-		} else {
-			instr_struct_name = str_to_lower(
-					sub_str(variant_name,
-						instr_name_prefix_length,
-						variant_name.length - instr_name_prefix_length),
-					context->temp_allocator);
-		}
+		String instr_struct_name = _instr_kind_to_corresponding_instr_field(instr_kind_enum, i, context->temp_allocator);
 
 		str_builder_append(&builder, STR_LIT("    case "));
 		str_builder_append(&builder, variant_name);

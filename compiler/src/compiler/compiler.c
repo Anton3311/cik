@@ -378,8 +378,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			compiler->instr_allocator,
 			compiler->temp_allocator);
 
-	instr_print_all(compiler->instr_buffer);
-
 	for (size_t i = 0; i < compiler->instr_buffer.count; i += 1) {
 		printf("\t%zu: %u\t%u\n", i,
 				(uint32_t)usage_ranges[i].first_usage.value,

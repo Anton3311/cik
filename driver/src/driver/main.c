@@ -136,6 +136,9 @@ int main(int argc, char *argv[]) {
 
 					CompiledFunction func = function_compiler_compile(&c);
 
+					instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
+					instr_print_all(func.instr_buffer);
+
 					uint16_t allowed_registers = UINT16_MAX;
 					allowed_registers &= ~(1 << REG_SP);
 					allowed_registers &= ~(1 << REG_BP);

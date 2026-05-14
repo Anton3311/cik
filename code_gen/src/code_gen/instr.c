@@ -150,7 +150,16 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 
 void instr_print_all(InstrBuffer instr_buffer) {
 	for (size_t i = 0; i < instr_buffer.count; i += 1) {
-		printf("%zu\033[12G", i);
+		printf("%zu", i);
+		printf("\033[12G");
 		instr_print(&instr_buffer.instr[i]);
+	}
+}
+
+void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrUsageRange* usage_ranges) {
+	for (size_t i = 0; i < instr_buffer.count; i += 1) {
+		if (usage_ranges[i].value == UINT32_MAX) {
+			instr_buffer.instr[i].kind = INSTR_NO_OP;
+		}
 	}
 }

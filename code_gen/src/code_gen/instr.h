@@ -354,6 +354,10 @@ String instr_compare_kind_name(InstrCompareKind kind);
 void instr_print(const Instr* instr);
 void instr_print_all(InstrBuffer instr_buffer);
 
+// Turns unused instruciton into INSTR_NO_OP.
+// Doesn't removed these instructions from the array.
+void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrUsageRange* usage_ranges);
+
 #endif // CODE_GENERATION_PASS
 
 #endif

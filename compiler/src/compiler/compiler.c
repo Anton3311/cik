@@ -305,7 +305,7 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			// NOTE: How are branches compiled:
 			//       
 			//       Branches split the flow of the program into two possible paths,
-			//       and at the end those two paths need to merged back into one.
+			//       and at the end those two paths need to be merged back into one.
 			//       
 			//       For each alternative path we create a region, the branch instruction
 			//       jumps to one of them, based on the condition.

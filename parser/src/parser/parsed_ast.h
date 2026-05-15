@@ -503,7 +503,7 @@ struct ParsedIfStmt {
 	ParsedExpr condition;
 	ParsedNode* true_node;
 
-	// This one can be optional
+	// This one is optional
 	ParsedNode* false_node;
 };
 

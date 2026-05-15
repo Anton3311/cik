@@ -282,6 +282,17 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 
 			break;
 		case AST_NODE_IF: {
+			// NOTE: How are branches compiled:
+			//       
+			//       Branches split the flow of the program into two possible paths,
+			//       and at the end those two paths need to merged back into one.
+			//       
+			//       For each alternative path we create a region, the branch instruction
+			//       jumps to one of them, based on the condition.
+			//       
+			//       To merge these two paths we end both alternative paths with an
+			//       unconditional jump to a third region. This third region is where
+			//       the program flow continues further after the branch.
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 			instr->kind = INSTR_BRANCH;
@@ -290,16 +301,22 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			InstrIndex post_branch_region_index = instr_new_region(instr_buffer, instr_allocator);
 			InstrIndex post_branch_jump_index = instr_new_jump(instr_buffer, instr_allocator, post_branch_region_index);
 
-			InstrIndex true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
+			InstrIndex true_region_index = INVALID_INSTR_INDEX;
 			InstrIndex false_region_index = INVALID_INSTR_INDEX;
 
 			{
+				true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
 				Instr* true_region = instr_buffer_at(instr_buffer, true_region_index);
 				true_region->region.last_instr = post_branch_jump_index;
 			}
 
 			{
-				false_region_index = instr_new_region(instr_buffer, instr_allocator);
+				if (node->if_stmt.false_node) {
+					false_region_index = _compile_block_to_region(compiler, node->if_stmt.false_node);
+				} else {
+					false_region_index = instr_new_region(instr_buffer, instr_allocator);
+				}
+
 				Instr* false_region = instr_buffer_at(instr_buffer, false_region_index);
 				false_region->region.last_instr = post_branch_jump_index;
 			}

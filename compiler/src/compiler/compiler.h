@@ -5,11 +5,6 @@
 #include "code_gen/instr.h"
 
 typedef struct {
-	const ParsedVariable* var_def;
-	InstrIndex value;
-} VariableState;
-
-typedef struct {
 	size_t size;
 	size_t alignment;
 } TypeLayout;
@@ -33,7 +28,8 @@ typedef struct {
 	InstrIndex io_state;
 
 	size_t var_count;
-	VariableState* vars;
+	const ParsedVariable** vars;
+	InstrIndex* var_values;
 	InstrIndex* arg_states;
 
 	TypeLayout pointer_type_layout;

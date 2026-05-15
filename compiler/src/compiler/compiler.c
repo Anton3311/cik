@@ -110,13 +110,11 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 			if (target->kind == EXPR_VARIABLE_REFERENCE) {
 				InstrIndex value = _compile_expr(compiler, expr->binary.right);
 				const ParsedVariable* variable = target->variable_ref;
-
-				compiler->vars[variable->id].value = value;
+				compiler->var_values[variable->id] = value;
 				return value;
 			} else if (target->kind == EXPR_FUNCTION_PARAM) {
 				InstrIndex value = _compile_expr(compiler, expr->binary.right);
 				size_t arg_index = target->function_param.param_index;
-
 				compiler->arg_states[arg_index] = value;
 				return value;
 			} else {
@@ -214,7 +212,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	case EXPR_FUNCTION_REFERENCE:
 		break;
 	case EXPR_VARIABLE_REFERENCE: {
-		InstrIndex var_value = compiler->vars[expr->variable_ref->id].value;
+		InstrIndex var_value = compiler->var_values[expr->variable_ref->id];
 		assert(var_value.value != INVALID_INSTR_INDEX.value);
 		return var_value;
 	}
@@ -295,9 +293,9 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 		case AST_NODE_VARIABLE:
 			assert(node->variable.id < compiler->var_count);
 
-			compiler->vars[node->variable.id].var_def = &node->variable;
+			compiler->vars[node->variable.id] = &node->variable;
 			if (node->variable.value) {
-				compiler->vars[node->variable.id].value = _compile_expr(compiler, node->variable.value);
+				compiler->var_values[node->variable.id] = _compile_expr(compiler, node->variable.value);
 			}
 
 			break;
@@ -366,11 +364,12 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			region_instr_index = post_block_region;
 			break;
 		}
-		case AST_NODE_RETURN:
+		case AST_NODE_RETURN: {
 			assert(node->return_stmt.value != NULL);
 			InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
 			region_instr->region.last_instr = instr_new_return_value(instr_buffer, instr_allocator, value);
 			break;
+		}
 		case AST_NODE_EXPR:
 			_compile_expr(compiler, &node->expr);
 			break;
@@ -386,10 +385,11 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	// Allocate var states buffer
 	compiler->var_count = compiler->function->var_count;
-	compiler->vars = arena_alloc_array(compiler->allocator, VariableState, compiler->var_count);
+	compiler->vars = arena_alloc_array(compiler->allocator, const ParsedVariable*, compiler->var_count);
+	compiler->var_values = arena_alloc_array(compiler->allocator, InstrIndex, compiler->var_count);
 
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
-		compiler->vars[i].value = INVALID_INSTR_INDEX;
+		compiler->var_values[i] = INVALID_INSTR_INDEX;
 	}
 
 	// Allocate`arg_states` buffer

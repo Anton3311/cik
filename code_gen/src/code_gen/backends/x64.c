@@ -557,7 +557,7 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 		unreachable();
 	case 64: {
 		uint8_t rex_prefix = _rex_prefix_src_dst(1, src, dst);
-		uint8_t rm = _mod_rm(MOD_RM_RM, src, dst);
+		uint8_t rm = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
 
 		uint8_t* bytes = _code_buffer_append(buffer, 3);
 		bytes[0] = rex_prefix;
@@ -730,7 +730,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 
 		uint8_t rex_prefix = _rex_prefix_src_dst(1, dst_loc.reg, ptr_loc.reg);
-		uint8_t rm = _mod_rm(MOD_RM_ADDRESS_RM, dst_loc.reg, ptr_loc.reg);
+		uint8_t rm = _mod_rm(MOD_RM_ADDRESS_RM, dst_loc.reg & 0b111, ptr_loc.reg & 0b111);
 
 		uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
 		instr_bytes[0] = rex_prefix;

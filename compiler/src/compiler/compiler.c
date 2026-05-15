@@ -105,13 +105,24 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	}
 	case EXPR_BINARY: {
 		if (expr->binary.op == BIN_OP_ASSIGNMENT) {
-			assert(expr->binary.left->kind == EXPR_VARIABLE_REFERENCE);
+			ParsedExpr* target = expr->binary.left;
 
-			InstrIndex value = _compile_expr(compiler, expr->binary.right);
-			const ParsedVariable* variable = expr->binary.left->variable_ref;
+			if (target->kind == EXPR_VARIABLE_REFERENCE) {
+				InstrIndex value = _compile_expr(compiler, expr->binary.right);
+				const ParsedVariable* variable = target->variable_ref;
 
-			compiler->vars[variable->id].value = value;
-			return value;
+				compiler->vars[variable->id].value = value;
+				return value;
+			} else if (target->kind == EXPR_FUNCTION_PARAM) {
+				InstrIndex value = _compile_expr(compiler, expr->binary.right);
+				size_t arg_index = target->function_param.param_index;
+
+				compiler->arg_states[arg_index] = value;
+				return value;
+			} else {
+				panic("Assignment to this expression kind is not supported");
+			}
+
 		}
 
 		ParsedType* left_type = expr_get_type(expr->binary.left, compiler->temp_allocator);
@@ -217,8 +228,9 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	case EXPR_STRING_LITERAL:
 		break;
 	case EXPR_FUNCTION_PARAM: {
-		assert(expr->function_param.param_index < UINT8_MAX);
-		return _get_arg_load_instr(compiler, (uint8_t)expr->function_param.param_index);
+		size_t arg_index = expr->function_param.param_index;
+		assert(arg_index < compiler->function->parameter_count);
+		return compiler->arg_states[arg_index];
 	}
 	case EXPR_UNARY:
 		switch (expr->unary.op) {
@@ -372,27 +384,36 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	const ParsedScope* body = compiler->function->body;
 	assert(body);
 
+	// Allocate var states buffer
 	compiler->var_count = compiler->function->var_count;
 	compiler->vars = arena_alloc_array(compiler->allocator, VariableState, compiler->var_count);
-
-	instr_buffer_init(&compiler->instr_buffer, compiler->instr_allocator);
 
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		compiler->vars[i].value = INVALID_INSTR_INDEX;
 	}
 
+	// Allocate`arg_states` buffer
+	assert_msg(compiler->function->parameter_count <= 4, "For now only up to 4 params are supported");
+	compiler->arg_states = arena_alloc_array(compiler->allocator,
+			InstrIndex,
+			compiler->function->parameter_count);
+
+	// Init `InstrBuffer`
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
 	instr_buffer->inputs_buffer = arena_alloc_array(compiler->input_instr_array_allocator, InstrIndex, 0);
 	instr_buffer->inputs_buffer_size = 0;
+	instr_buffer_init(instr_buffer, instr_allocator);
 
-	assert_msg(compiler->function->parameter_count <= 4, "For now only up to 4 params are supported");
+	// Setup initial `INSTR_LOAD_ARG`
 	for (size_t i = 0; i < compiler->function->parameter_count; i += 1) {
 		InstrIndex index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, index);
 		instr->kind = INSTR_LOAD_ARG;
 		instr->load_arg.index = (uint8_t)i;
+
+		compiler->arg_states[i] = index;
 	}
 
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);

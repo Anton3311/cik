@@ -92,6 +92,7 @@ static TestCase s_x64_tests[] = {
 	test(test_compare_equal_two_uint64),
 	test(test_compare_equal_less_for_uint64),
 	test(test_compare_equal_greater_for_uint64),
+	test(test_mutate_argument),
 };
 
 static TestSuite s_test_suites[] = {

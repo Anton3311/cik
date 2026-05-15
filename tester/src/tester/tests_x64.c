@@ -73,6 +73,9 @@ static MachineCodeBuffer _compile(TestContext* context, String source_code) {
 
 			CompiledFunction func = function_compiler_compile(&c);
 
+			instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
+			instr_print_all(func.instr_buffer, context->temp_arena);
+
 			uint16_t allowed_registers = UINT16_MAX;
 			allowed_registers &= ~(1 << REG_SP);
 			allowed_registers &= ~(1 << REG_BP);
@@ -310,4 +313,20 @@ void test_compare_equal_greater_for_uint64(TestContext* context) {
 	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
 		assert(results[i] == (array_a[i] > array_b[i]));
 	}
+}
+
+void test_mutate_argument(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64;\n"
+			"uint64 main(uint64 a) { a = 100; return a; }");
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t a);
+
+	Function executable_function = (Function)machine_code.code;
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+
+	uint64_t result = executable_function(101);
+
+	assert(result == 100);
 }

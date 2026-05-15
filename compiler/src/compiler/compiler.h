@@ -34,6 +34,7 @@ typedef struct {
 
 	size_t var_count;
 	VariableState* vars;
+	InstrIndex* arg_states;
 
 	TypeLayout pointer_type_layout;
 } FunctionCompiler;

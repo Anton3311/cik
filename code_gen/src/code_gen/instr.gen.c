@@ -181,14 +181,14 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         instr_stack_push(out_dependencies, instr->region.io_state);
         break;
     case INSTR_CALL_INTERNAL:
-        instr_stack_push(out_dependencies, instr->call_internal.arg);
+        instr_push_input_dependeices(&buffer, instr->call_internal.args, out_dependencies);
         instr_stack_push(out_dependencies, instr->call_internal.io_state);
         break;
     case INSTR_COUNT:
         unreachable();
     }
 }
-void instr_print(const Instr* instr) {
+void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena* temp_allocator) {
     String name = instr_name(instr->kind);
 
     size_t name_width = 23;
@@ -301,7 +301,7 @@ void instr_print(const Instr* instr) {
         printf("last_instr: %u io_state: %u ", (uint32_t)instr->region.last_instr.value, (uint32_t)instr->region.io_state.value);
         break;
     case INSTR_CALL_INTERNAL:
-        printf("arg: %u io_state: %u function_index: %u ", (uint32_t)instr->call_internal.arg.value, (uint32_t)instr->call_internal.io_state.value, (uint32_t)instr->call_internal.function_index);
+        printf("args: %.*s io_state: %u function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_internal.args, temp_allocator)), (uint32_t)instr->call_internal.io_state.value, (uint32_t)instr->call_internal.function_index);
         break;
     case INSTR_COUNT:
         unreachable();

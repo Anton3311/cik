@@ -22,6 +22,10 @@ typedef struct {
 	const ParsedFunction* function;
 
 	Arena* allocator;
+
+	// Some instructions have a variable number of inputs.
+	// This allocator is exclusively used for allocating these arrays of `InstrIndex`
+	Arena* input_instr_array_allocator;
 	Arena* instr_allocator;
 	Arena* temp_allocator;
 	InstrBuffer instr_buffer;

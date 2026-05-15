@@ -888,16 +888,24 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			REG_11,
 		};
 
-		_x64_generate_code(gen, instr->call_internal.arg, buffer);
+		assert(instr->call_internal.args.count <= 1);
+
+		InstrInputs args = instr->call_internal.args;
+		if (args.count == 1) {
+			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + 0];
+			_x64_generate_code(gen, arg_instr, buffer);
+		}
 
 		// Push saved registers
 		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
 			_emit_push_reg(buffer, saved_registers[i], 64);
 		}
 
-		InstrIndex arg_instr_index = instr->call_internal.arg;
-		const InstrStorageLocation arg_storage_loc = gen->instr_storage[arg_instr_index.value];
-		_emit_mov_regs(buffer, arg_storage_loc.reg, REG_C, 64);
+		if (args.count == 1) {
+			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + 0];
+			const InstrStorageLocation arg_storage_loc = gen->instr_storage[arg_instr.value];
+			_emit_mov_regs(buffer, arg_storage_loc.reg, REG_C, 64);
+		}
 
 		if (instr->call_internal.function_index == 0) {
 			_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_assert);

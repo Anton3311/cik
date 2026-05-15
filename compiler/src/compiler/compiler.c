@@ -76,13 +76,21 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		const ParsedExpr* callable = expr->call.callable;
 		assert(callable->kind == EXPR_FUNCTION_REFERENCE);
 
-		assert(expr->call.args.count == 1);
-		const ParsedExpr* first_arg = expr->call.args.exprs[0];
+		assert(expr->call.args.count <= UINT16_MAX);
+
+		InstrInputs arg_inputs = instr_allocate_inputs_array(instr_buffer,
+				expr->call.args.count,
+				compiler->input_instr_array_allocator);
+
+		for (uint16_t i = 0; i < arg_inputs.count; i += 1) {
+			const ParsedExpr* arg= expr->call.args.exprs[i];
+			instr_buffer->inputs_buffer[arg_inputs.start + i] = _compile_expr(compiler, arg);
+		}
 
 		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
 		call_instr->kind = INSTR_CALL_INTERNAL;
-		call_instr->call_internal.arg = _compile_expr(compiler, first_arg);
+		call_instr->call_internal.args = arg_inputs;
 		call_instr->call_internal.io_state = compiler->io_state;
 
 		String func_name = callable->function_ref->name.string;
@@ -375,6 +383,9 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
+
+	instr_buffer->inputs_buffer = arena_alloc_array(compiler->input_instr_array_allocator, InstrIndex, 0);
+	instr_buffer->inputs_buffer_size = 0;
 
 	assert_msg(compiler->function->parameter_count <= 4, "For now only up to 4 params are supported");
 	for (size_t i = 0; i < compiler->function->parameter_count; i += 1) {

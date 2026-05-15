@@ -256,6 +256,9 @@ bool _generate_instr(GenContext* context) {
 	const ParsedStruct* string_struct = (const ParsedStruct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("String"));
+	const ParsedStruct* instr_inputs_struct = (const ParsedStruct*)_find_type(&ident_storage,
+			IDENT_STRUCT,
+			STR_LIT("InstrInputs"));
 
 	assert(instr_kind_enum);
 	assert(string_struct);
@@ -324,15 +327,20 @@ bool _generate_instr(GenContext* context) {
 			case PARSED_TYPE_UNION: {
 				const ParsedStruct* instr_struct = field->type.struct_def;
 				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
-					if (!type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
-						continue;
+					if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
+						str_builder_append(&builder, STR_LIT("        instr_stack_push(out_dependencies, instr->"));
+						str_builder_append(&builder, instr_struct_name);
+						str_builder_append_char(&builder, '.');
+						str_builder_append(&builder, instr_struct->fields[j].name.string);
+						str_builder_append(&builder, STR_LIT(");\n"));
+					} else if (type_is_struct(&instr_struct->fields[j].type, instr_inputs_struct)) {
+						str_builder_append(&builder, STR_LIT("        instr_push_input_dependeices(&buffer, instr->"));
+						str_builder_append(&builder, instr_struct_name);
+						str_builder_append_char(&builder, '.');
+						str_builder_append(&builder, instr_struct->fields[j].name.string);
+						str_builder_append(&builder, STR_LIT(", out_dependencies);\n"));
 					}
 
-					str_builder_append(&builder, STR_LIT("        instr_stack_push(out_dependencies, instr->"));
-					str_builder_append(&builder, instr_struct_name);
-					str_builder_append_char(&builder, '.');
-					str_builder_append(&builder, instr_struct->fields[j].name.string);
-					str_builder_append(&builder, STR_LIT(");\n"));
 				}
 				break;
 			}
@@ -369,7 +377,7 @@ bool _generate_instr(GenContext* context) {
 	}
 
 	str_builder_append(&builder, STR_LIT(
-				"void instr_print(const Instr* instr) {\n"
+				"void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena* temp_allocator) {\n"
 				"    String name = instr_name(instr->kind);\n"
 				"\n"
 				"    size_t name_width = "));
@@ -454,6 +462,8 @@ bool _generate_instr(GenContext* context) {
 							str_builder_append(&builder, STR_LIT("%.*s "));
 						} else if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
 							str_builder_append(&builder, STR_LIT("%u "));
+						} else if (type_is_struct(&instr_struct->fields[j].type, instr_inputs_struct)) {
+							str_builder_append(&builder, STR_LIT("%.*s "));
 						}
 						break;
 					default:
@@ -522,6 +532,9 @@ bool _generate_instr(GenContext* context) {
 						} else if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
 							pre_arg = STR_LIT("(uint32_t)");
 							post_arg = STR_LIT(".value");
+						} else if (type_is_struct(&instr_struct->fields[j].type, instr_inputs_struct)) {
+							pre_arg = STR_LIT("STR_FMT(instr_format_input_instrs(input_instr_buffer, ");
+							post_arg = STR_LIT(", temp_allocator))");
 						}
 						break;
 					default:

@@ -105,6 +105,13 @@ typedef struct {
 	size_t count;
 } InstrIndexArray;
 
+// All the input instructions are in a single continues array of `InstrIndex`,
+// and this struct is used as a compact view into that array.
+typedef struct {
+	uint16_t start;
+	uint16_t count;
+} InstrInputs;
+
 #ifndef CODE_GENERATION_PASS
 static const InstrIndex INVALID_INSTR_INDEX = (InstrIndex) { .value = UINT16_MAX };
 #endif // CODE_GENERATION_PASS
@@ -184,7 +191,7 @@ struct Instr {
 		} io_state;
 
 		struct {
-			InstrIndex arg;
+			InstrInputs args;
 			InstrIndex io_state;
 			uint8_t function_index;
 		} call_internal;
@@ -200,8 +207,30 @@ struct Instr {
 
 struct InstrBuffer {
 	Instr* instr;
+	InstrIndex* inputs_buffer;
+
 	uint16_t count;
+	uint16_t inputs_buffer_size;
 };
+
+inline InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer,
+		uint16_t count,
+		Arena* inputs_buffer_allocator) {
+
+	const void* inputs_buffer_end = buffer->inputs_buffer + buffer->inputs_buffer_size;
+	const void* arena_allocation_end = inputs_buffer_allocator->base + inputs_buffer_allocator->allocated;
+	assert_msg(inputs_buffer_end == arena_allocation_end,
+			"The arena was ment to be exclusively used for allocating arrays of input instructions");
+
+	arena_alloc_array(inputs_buffer_allocator, uint16_t, count);
+
+	InstrInputs inputs = {};
+	inputs.start = buffer->inputs_buffer_size;
+	inputs.count = count;
+
+	buffer->inputs_buffer_size += count;
+	return inputs;
+}
 
 struct InstrStack {
 	InstrIndex* instr;
@@ -325,6 +354,7 @@ InstrIndex instr_new_cast(InstrBuffer* buffer,
 
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);
 
+void instr_push_input_dependeices(const InstrBuffer* buffer, InstrInputs inputs, InstrStack* out_dependencies);
 void instr_enumerate_dependencies(const InstrBuffer buffer, InstrIndex instr_index, InstrStack* out_dependencies);
 
 typedef struct {
@@ -351,8 +381,13 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 String instr_name(InstrKind instr_kind);
 String instr_bin_op_name(InstrBinOp op_kind);
 String instr_compare_kind_name(InstrCompareKind kind);
-void instr_print(const Instr* instr);
-void instr_print_all(InstrBuffer instr_buffer);
+
+String instr_format_input_instrs(const InstrIndex* input_instr_buffer,
+		InstrInputs inputs,
+		Arena* temp_allocator);
+
+void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena* temp_allocator);
+void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator);
 
 // Turns unused instruciton into INSTR_NO_OP.
 // Doesn't removed these instructions from the array.

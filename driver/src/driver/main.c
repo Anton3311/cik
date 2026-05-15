@@ -127,17 +127,20 @@ int main(int argc, char *argv[]) {
 						continue;
 					}
 
+					Arena input_instr_array_allocator = arena_alloc_sub_arena(&arena, 4096);
+
 					FunctionCompiler c = {};
 					c.function = node->function_def;
 					c.allocator = &arena;
 					c.instr_allocator = &arena;
+					c.input_instr_array_allocator = &input_instr_array_allocator;
 					c.temp_allocator = &temp_arena;
 					c.pointer_type_layout = type_layout_new(8, 8);
 
 					CompiledFunction func = function_compiler_compile(&c);
 
 					instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
-					instr_print_all(func.instr_buffer);
+					instr_print_all(func.instr_buffer, &temp_arena);
 
 					uint16_t allowed_registers = UINT16_MAX;
 					allowed_registers &= ~(1 << REG_SP);

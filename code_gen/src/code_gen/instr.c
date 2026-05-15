@@ -80,6 +80,15 @@ bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index) {
 	return has_flag(INSTR_FEATURES[last_instr_kind], INSTR_FEATURE_CONTROL);
 }
 
+void instr_push_input_dependeices(const InstrBuffer* buffer,
+		InstrInputs inputs,
+		InstrStack* out_dependencies) {
+
+	for (uint16_t i = 0; i < inputs.count; i += 1) {
+		instr_stack_push(out_dependencies, buffer->inputs_buffer[inputs.start + i]);
+	}
+}
+
 InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
 		Arena* allocator,
@@ -148,11 +157,34 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 	return usage_ranges;
 }
 
-void instr_print_all(InstrBuffer instr_buffer) {
+String instr_format_input_instrs(const InstrIndex* input_instr_buffer,
+		InstrInputs inputs,
+		Arena* temp_allocator) {
+	StringBuilder builder = { .arena = temp_allocator };
+
+	str_builder_append_char(&builder, '[');
+	for (uint16_t i = 0; i < inputs.count; i += 1) {
+		InstrIndex input = input_instr_buffer[inputs.start + i];
+		str_builder_append_int(&builder, input.value);
+
+		if (i != inputs.count - 1) {
+			str_builder_append(&builder, STR_LIT(", "));
+		}
+	}
+	str_builder_append_char(&builder, ']');
+
+	return builder.string;
+}
+
+void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator) {
 	for (size_t i = 0; i < instr_buffer.count; i += 1) {
+		ArenaRegion temp = arena_begin_temp(temp_allocator);
+
 		printf("%zu", i);
 		printf("\033[12G");
-		instr_print(&instr_buffer.instr[i]);
+		instr_print(&instr_buffer.instr[i], instr_buffer.inputs_buffer, temp_allocator);
+
+		arena_end_temp(temp);
 	}
 }
 

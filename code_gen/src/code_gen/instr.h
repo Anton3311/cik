@@ -69,6 +69,9 @@ typedef enum {
 	INSTR_IO_STATE,
 	INSTR_REGION,
 
+	INSTR_PHI,
+	INSTR_SELECT,
+
 	INSTR_CALL_INTERNAL,
 
 	INSTR_COUNT,
@@ -105,7 +108,7 @@ typedef struct {
 	size_t count;
 } InstrIndexArray;
 
-// All the input instructions are in a single continues array of `InstrIndex`,
+// All the input instructions are in a single continuous array of `InstrIndex`,
 // and this struct is used as a compact view into that array.
 typedef struct {
 	uint16_t start;
@@ -200,6 +203,15 @@ struct Instr {
 			InstrIndex last_instr;
 			InstrIndex io_state;
 		} region;
+
+		struct {
+			InstrInputs variants;
+		} phi;
+
+		struct {
+			InstrIndex value;
+			InstrIndex region;
+		} select;
 	};
 };
 

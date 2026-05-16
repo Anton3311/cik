@@ -636,6 +636,8 @@ void print_type_def(PrinterState* printer, const ParsedTypeDef* type_def) {
 
 void print_scope(PrinterState* printer, const ParsedScope* scope) {
 	printer_begin_array(printer);
+	printer_field(printer, "id");
+	printf("%llu\n", scope->id);
 
 	ParsedNode* node = scope->nodes.first;
 	size_t node_index = 0;

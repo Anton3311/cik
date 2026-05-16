@@ -2615,6 +2615,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 
 bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 	ident_storage_begin_scope(parser->ident_storage);
+	out_scope->id = parser->ident_storage->current_scope->id;
 
 	Token token = preprocessor_next_token(parser->preprocessor);
 	assert(token.kind == TOKEN_LEFT_BRACE);
@@ -2640,6 +2641,7 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 		ParsedNode* node = _parser_parse_single_node(parser, token);
 		if (node) {
 			parsed_node_list_append(&out_scope->nodes, node);
+			node->parent_scope = out_scope;
 		}
 	}
 
@@ -2678,6 +2680,9 @@ void parser_parse(Parser* parser, ParsedAST* ast) {
 		ParsedNode* node = _parser_parse_single_node(parser, token);
 		if (node) {
 			parsed_node_list_append(&ast->root_nodes, node);
+
+			// NOTE: We don't a root scope, it is a just a list of nodes,
+			//       thus we can't assign a parent scope for each node
 		}
 	}
 }

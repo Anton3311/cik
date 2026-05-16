@@ -279,6 +279,41 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	return (InstrIndex) {};
 }
 
+static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
+		InstrIndex variant_a,
+		InstrIndex region_a,
+		InstrIndex variant_b,
+		InstrIndex region_b) {
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	InstrIndex select_a_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* select_a = instr_buffer_at(instr_buffer, select_a_index);
+	select_a->kind = INSTR_SELECT;
+	select_a->select.value = variant_a;
+	select_a->select.region = region_a;
+
+	InstrIndex select_b_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* select_b = instr_buffer_at(instr_buffer, select_b_index);
+	select_b->kind = INSTR_SELECT;
+	select_b->select.value = variant_b;
+	select_b->select.region = region_b;
+
+	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
+			2, compiler->input_instr_array_allocator);
+
+	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
+	select_inputs[0] = select_a_index;
+	select_inputs[1] = select_b_index;
+
+	InstrIndex phi_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* phi = instr_buffer_at(instr_buffer, phi_index);
+	phi->kind = INSTR_PHI;
+	phi->phi.variants = select_inputs_buffer;
+
+	return phi_index;
+}
+
 static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNode* first_node) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -294,6 +329,8 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			assert(node->variable.id < compiler->var_count);
 
 			compiler->vars[node->variable.id] = &node->variable;
+			compiler->var_parent_scopes[node->variable.id] = node->parent_scope;
+
 			if (node->variable.value) {
 				compiler->var_values[node->variable.id] = _compile_expr(compiler, node->variable.value);
 			}
@@ -323,20 +360,92 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			InstrIndex false_region_index = INVALID_INSTR_INDEX;
 
 			{
-				true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
-				Instr* true_region = instr_buffer_at(instr_buffer, true_region_index);
-				true_region->region.last_instr = post_branch_jump_index;
-			}
+				// NOTE: Here is the fun part: placing phi nodes
+				//       We have an array where each variable stores it's currently
+				//       assigned instruction (value).
+				//       
+				//       To decide where to place the phi nodes, we need to track
+				//       which variables get assigned a new value during the compilation
+				//       of each of the branch's alternative paths.
+				//       
+				//       This is done by creating copies of the original array of variable
+				//       values for each branch path, then compiling the paths with the
+				//       replaced arrays for variable values. In that way we gather newly
+				//       assigned value and later are able to make a placement decision.
 
-			{
-				if (node->if_stmt.false_node) {
-					false_region_index = _compile_block_to_region(compiler, node->if_stmt.false_node);
-				} else {
-					false_region_index = instr_new_region(instr_buffer, instr_allocator);
+				ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
+
+				InstrIndex* original_var_values = compiler->var_values;
+
+				// Create copies of variable value arrays
+				InstrIndex* var_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
+						InstrIndex,
+						compiler->var_count);
+				InstrIndex* var_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
+						InstrIndex,
+						compiler->var_count);
+
+				array_copy(var_values_for_true_path, compiler->var_values, compiler->var_count);
+				array_copy(var_values_for_false_path, compiler->var_values, compiler->var_count);
+
+				{
+					compiler->var_values = var_values_for_true_path;
+
+					true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
+					Instr* true_region = instr_buffer_at(instr_buffer, true_region_index);
+					true_region->region.last_instr = post_branch_jump_index;
 				}
 
-				Instr* false_region = instr_buffer_at(instr_buffer, false_region_index);
-				false_region->region.last_instr = post_branch_jump_index;
+				{
+					compiler->var_values = var_values_for_false_path;
+
+					if (node->if_stmt.false_node) {
+						false_region_index = _compile_block_to_region(compiler, node->if_stmt.false_node);
+					} else {
+						false_region_index = instr_new_region(instr_buffer, instr_allocator);
+					}
+
+					Instr* false_region = instr_buffer_at(instr_buffer, false_region_index);
+					false_region->region.last_instr = post_branch_jump_index;
+				}
+
+				const ParsedScope* if_parent_scope = node->parent_scope;
+				for (size_t i = 0; i < compiler->var_count; i += 1) {
+					if (compiler->vars[i] == NULL) {
+						continue;
+					}
+
+					const ParsedScope* var_parent_scope = compiler->var_parent_scopes[i];
+					if (var_parent_scope->id > if_parent_scope->id) {
+						// The variable is defined deeper down the scopes hierarachy,
+						// so it must have been defined in one of the if statement
+						// branches. Which means phi placement doesn't apply here.
+						continue;
+					}
+
+					bool assigned_in_true_path =
+						var_values_for_true_path[i].value != original_var_values[i].value;
+					bool assigned_in_false_path =
+						var_values_for_false_path[i].value != original_var_values[i].value;
+
+					if (!assigned_in_true_path && !assigned_in_false_path) {
+						// No need to place a phi node, since no new values were assigned
+						continue;
+					}
+
+					InstrIndex phi = _create_phi_of_2_variants(compiler,
+							var_values_for_true_path[i],
+							true_region_index,
+							var_values_for_false_path[i],
+							false_region_index);
+
+					original_var_values[i] = phi;
+				}
+
+				arena_end_temp(temp);
+
+				// Reset back to the original array of values
+				compiler->var_values = original_var_values;
 			}
 
 			instr->branch.true_region = true_region_index;
@@ -385,8 +494,9 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	// Allocate var states buffer
 	compiler->var_count = compiler->function->var_count;
-	compiler->vars = arena_alloc_array(compiler->allocator, const ParsedVariable*, compiler->var_count);
+	compiler->vars = arena_alloc_array_zeroed(compiler->allocator, const ParsedVariable*, compiler->var_count);
 	compiler->var_values = arena_alloc_array(compiler->allocator, InstrIndex, compiler->var_count);
+	compiler->var_parent_scopes = arena_alloc_array_zeroed(compiler->allocator, const ParsedScope*, compiler->var_count);
 
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		compiler->var_values[i] = INVALID_INSTR_INDEX;

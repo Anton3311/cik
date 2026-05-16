@@ -60,6 +60,7 @@ typedef struct {
 } ParsedNodeList;
 
 struct ParsedScope {
+	uint64_t id;
 	ParsedNodeList nodes;
 };
 
@@ -514,6 +515,8 @@ struct ParsedIfStmt {
 struct ParsedNode {
 	AstNodeKind kind;
 	ParsedNode* next;
+
+	ParsedScope* parent_scope;
 
 	union {
 		ParsedStruct* struct_def;

@@ -42,6 +42,8 @@ static String s_instr_kind_to_string[] = {
     [INSTR_RETURN_VALUE] = STR_LIT("return_value"),
     [INSTR_IO_STATE] = STR_LIT("io_state"),
     [INSTR_REGION] = STR_LIT("region"),
+    [INSTR_PHI] = STR_LIT("phi"),
+    [INSTR_SELECT] = STR_LIT("select"),
     [INSTR_CALL_INTERNAL] = STR_LIT("call_internal"),
 };
 static String s_instr_bin_op_kind_to_string[] = {
@@ -180,6 +182,13 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         instr_stack_push(out_dependencies, instr->region.last_instr);
         instr_stack_push(out_dependencies, instr->region.io_state);
         break;
+    case INSTR_PHI:
+        instr_push_input_dependeices(&buffer, instr->phi.variants, out_dependencies);
+        break;
+    case INSTR_SELECT:
+        instr_stack_push(out_dependencies, instr->select.value);
+        instr_stack_push(out_dependencies, instr->select.region);
+        break;
     case INSTR_CALL_INTERNAL:
         instr_push_input_dependeices(&buffer, instr->call_internal.args, out_dependencies);
         instr_stack_push(out_dependencies, instr->call_internal.io_state);
@@ -299,6 +308,12 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_REGION:
         printf("last_instr: %u io_state: %u ", (uint32_t)instr->region.last_instr.value, (uint32_t)instr->region.io_state.value);
+        break;
+    case INSTR_PHI:
+        printf("variants: %.*s ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->phi.variants, temp_allocator)));
+        break;
+    case INSTR_SELECT:
+        printf("value: %u region: %u ", (uint32_t)instr->select.value.value, (uint32_t)instr->select.region.value);
         break;
     case INSTR_CALL_INTERNAL:
         printf("args: %.*s io_state: %u function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_internal.args, temp_allocator)), (uint32_t)instr->call_internal.io_state.value, (uint32_t)instr->call_internal.function_index);

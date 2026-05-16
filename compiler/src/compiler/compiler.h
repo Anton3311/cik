@@ -29,6 +29,7 @@ typedef struct {
 
 	size_t var_count;
 	const ParsedVariable** vars;
+	const ParsedScope** var_parent_scopes;
 	InstrIndex* var_values;
 	InstrIndex* arg_states;
 

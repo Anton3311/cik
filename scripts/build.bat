@@ -22,6 +22,7 @@ clang ^
 	tester\src\tester\tester_main.c ^
 	tester\src\tester\tests.c ^
 	tester\src\tester\tests_x64.c ^
+	tester\src\tester\tests_compiler.c ^
 	parser\src\parser\tokenizer.c ^
 	parser\src\parser\preprocessor.c ^
 	parser\src\parser\source_info.c ^

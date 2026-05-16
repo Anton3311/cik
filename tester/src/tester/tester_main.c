@@ -5,6 +5,7 @@
 #include "tester/tester_core.h"
 #include "tester/tests.h"
 #include "tester/tests_x64.h"
+#include "tester/tests_compiler.h"
 
 #include "parser/preprocessor.h"
 
@@ -81,7 +82,11 @@ static TestCase parser_tests[] = {
 	test(test_parse_union_def),
 };
 
-static TestCase s_x64_tests[] = {
+static TestCase compiler_tests[] = {
+	test(test_reassigning_to_an_old_value_does_not_place_phi),
+};
+
+static TestCase x64_tests[] = {
 	test(test_return_uint64_zero),
 	test(test_add_uint64_consts),
 	test(test_return_first_arg),
@@ -100,7 +105,8 @@ static TestSuite s_test_suites[] = {
 	test_suite(tokenizer_tests),
 	test_suite(preprocessor_tests),
 	test_suite(parser_tests),
-	test_suite(s_x64_tests),
+	test_suite(compiler_tests),
+	test_suite(x64_tests),
 };
 
 bool arg_parse_uint64(const char* string, uint64_t* out) {

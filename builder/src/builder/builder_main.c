@@ -62,6 +62,7 @@ int main(int argc, char *argv[]) {
 	build_add_src_file(&context, STR_LIT("tester/src/tester/tester_main.c"));
 	build_add_src_file(&context, STR_LIT("tester/src/tester/tests.c"));
 	build_add_src_file(&context, STR_LIT("tester/src/tester/tests_x64.c"));
+	build_add_src_file(&context, STR_LIT("tester/src/tester/tests_compiler.c"));
 	build_add_include(&context, STR_LIT("core/src/"));
 	build_add_include(&context, STR_LIT("tester/src/"));
 	build_add_include(&context, STR_LIT("parser/src/"));

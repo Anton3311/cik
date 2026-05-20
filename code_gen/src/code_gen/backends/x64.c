@@ -164,7 +164,7 @@ static InstrIndexArray _x64_gather_instr_with_storage_requirement(const InstrBuf
 }
 
 // Returned array stores a list of edges for each instruction in `instr_with_storage_requirement`
-static UInt16Array* _x64_build_overlapping_instr_graph(const InstrBuffer instr_buffer,
+static UInt16Array* _x64_build_interference_graph(const InstrBuffer instr_buffer,
 		const InstrIndexArray instr_with_storage_requirement,
 		const InstrUsageRange* usage_ranges,
 		Arena* allocator) {
@@ -307,14 +307,15 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			gen->usage_ranges,
 			gen->allocator);
 
-	UInt16Array* graph = _x64_build_overlapping_instr_graph(gen->instr_buffer, 
+	UInt16Array* graph = _x64_build_interference_graph(gen->instr_buffer, 
 			instr_with_storage_requirement,
 			gen->usage_ranges,
 			gen->allocator);
 
+	printf("Interference Graph Edges for each Instr:\n");
 	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
 		UInt16Array overlap = graph[i];
-		printf("%u:\n\t", (uint32_t)instr_with_storage_requirement.instr[i].value);
+		printf("%u: ", (uint32_t)instr_with_storage_requirement.instr[i].value);
 
 		for (size_t j = 0; j < overlap.count; j += 1) {
 			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[overlap.values[j]];
@@ -329,6 +330,7 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			gen->allocator,
 			gen->temp_allocator);
 
+	printf("Interference Graph Clusters:\n");
 	for (size_t i = 0; i < clusters.count; i += 1) {
 		printf("%zu: ", i);
 
@@ -341,6 +343,7 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 		printf("\n");
 	}
 
+	printf("Available registers for each Instr:\n");
 	for (size_t i = 0; i < clusters.count; i += 1) {
 		printf("%zu:\n", i);
 
@@ -358,7 +361,7 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 					potential_instr_registers,
 					storage_requirement.reg_size);
 
-			printf("\t%.*s\n", STR_FMT(allowed_registers_string));
+			printf("\t%u - %.*s\n", (uint16_t)overlapping_instr.value, STR_FMT(allowed_registers_string));
 
 			arena_end_temp(temp);
 		}
@@ -408,6 +411,7 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 		}
 	}
 
+	printf("Assigned storage locations:\n");
 	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
 		ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
@@ -423,7 +427,7 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			storage_string = builder.string;
 		}
 
-		printf("\t%zu: %.*s\n", i, STR_FMT(storage_string));
+		printf("%zu: %.*s\n", i, STR_FMT(storage_string));
 
 		arena_end_temp(temp);
 	}

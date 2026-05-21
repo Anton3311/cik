@@ -20,6 +20,7 @@ typedef struct Instr Instr;
 typedef struct InstrBuffer InstrBuffer;
 typedef struct InstrUsageRange InstrUsageRange;
 typedef struct InstrStack InstrStack;
+typedef struct InstrQueue InstrQueue;
 
 typedef enum {
 	INSTR_NO_OP,
@@ -200,6 +201,7 @@ struct Instr {
 		} call_internal;
 
 		struct {
+			uint16_t id;
 			InstrIndex last_instr;
 			InstrIndex io_state;
 		} region;
@@ -223,6 +225,7 @@ struct InstrBuffer {
 
 	uint16_t count;
 	uint16_t inputs_buffer_size;
+	uint16_t region_count;
 };
 
 inline InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer,
@@ -266,6 +269,39 @@ inline InstrIndex instr_stack_pop(InstrStack* stack) {
 	assert(stack->count > 0);
 	stack->count -= 1;
 	return stack->instr[stack->count];
+}
+
+struct InstrQueue {
+	InstrIndex* buffer;
+	size_t head;
+	size_t count;
+	size_t capacity;
+};
+
+inline void instr_queue_alloc(InstrQueue* queue, Arena* allocator, size_t capacity) {
+	assert(capacity >= 1);
+
+	queue->buffer = arena_alloc_array(allocator, InstrIndex, capacity);
+	queue->head = 0;
+	queue->count = 0;
+	queue->capacity = capacity;
+}
+
+inline void instr_queue_push_back(InstrQueue* queue, InstrIndex instr) {
+	assert_msg(queue->count != queue->capacity, "Queue is full");
+
+	size_t insert_index = (queue->head + queue->count) % queue->capacity;
+	queue->buffer[insert_index] = instr;
+	queue->count += 1;
+}
+
+inline InstrIndex instr_queue_pop_front(InstrQueue* queue) {
+	assert(queue->count > 0);
+
+	InstrIndex instr = queue->buffer[queue->head];
+	queue->head = (queue->head + 1) % queue->capacity;
+	queue->count -= 1;
+	return instr;
 }
 
 struct InstrUsageRange {
@@ -318,6 +354,8 @@ inline InstrIndex instr_new_region(InstrBuffer* buffer, Arena* allocator) {
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_REGION;
 	instr->region.last_instr.value = UINT16_MAX;
+	instr->region.id = buffer->region_count;
+	buffer->region_count += 1;
 	return i;
 }
 
@@ -364,6 +402,7 @@ InstrIndex instr_new_cast(InstrBuffer* buffer,
 		InstrIndex value,
 		uint8_t target_bit_count);
 
+uint16_t instr_region_id(const InstrBuffer* buffer, InstrIndex region_index);
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);
 
 void instr_push_input_dependeices(const InstrBuffer* buffer, InstrInputs inputs, InstrStack* out_dependencies);
@@ -389,6 +428,11 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
 		Arena* allocator,
 		Arena* temp_allocator);
+
+InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
+		Arena* allocator,
+		Arena* temp_allocator,
+		InstrIndex start_region);
 
 String instr_name(InstrKind instr_kind);
 String instr_bin_op_name(InstrBinOp op_kind);

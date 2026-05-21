@@ -451,8 +451,6 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			instr->branch.true_region = true_region_index;
 			instr->branch.false_region = false_region_index;
 
-			assert(node->if_stmt.false_node == NULL);
-
 			region_instr->region.last_instr = instr_index;
 
 			region_instr_index = post_branch_region_index;

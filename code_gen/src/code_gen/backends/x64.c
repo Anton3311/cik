@@ -48,6 +48,9 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_CALL_INTERNAL]          = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
 	[INSTR_REGION]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+
+	[INSTR_PHI]                    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	[INSTR_SELECT]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 };
 
 static const char* REG_BASE_NAMES[] = {
@@ -293,6 +296,82 @@ static InstrOverlapClusters _x64_build_overlapping_instr_clusters(const InstrInd
 
 void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 	profile_scope_start(__func__);
+
+	// What cranelift's register allocator does:
+	// 1. For each region compute live input and output instructions.
+	//     a. Phi nodes variants must appear as outputs of the corresponding regions
+	// 2. Once we have the in/out bitset for each region, compute more precise live ranges
+	//
+	// What this allocator can do for now (regarding the phi nodes):
+	// 1. Extend phi nodes live ranges to include the end of the live range of it's variants
+	// 2. Allocate registers for phi nodes
+	// 3. At the end of variant's live range place a move,
+	//    which copies the value from the variant's location into phi's location.
+
+	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(gen->allocator,
+			uint16_t,
+			gen->instr_buffer.region_count);
+
+	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		const Instr* instr = &gen->instr_buffer.instr[i];
+		if (instr->kind == INSTR_PHI) {
+			InstrInputs variants = instr->phi.variants;
+			for (uint16_t j = 0; j < variants.count; j += 1) {
+				const Instr* variant = &gen->instr_buffer.instr[gen->instr_buffer.inputs_buffer[variants.start + j].value];
+				assert(variant->kind == INSTR_SELECT);
+
+				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
+				phi_variant_counts_per_region[region_id] += 1;
+			}
+		}
+	}
+
+	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(gen->allocator,
+			InstrIndexArray,
+			gen->instr_buffer.region_count);
+	InstrIndex** phi_node_of_variant = arena_alloc_array_zeroed(gen->allocator,
+			InstrIndex*,
+			gen->instr_buffer.region_count);
+
+	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
+		phi_variants_per_region[i].instr = arena_alloc_array(gen->allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+
+		phi_node_of_variant[i] = arena_alloc_array(gen->allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		const Instr* instr = &gen->instr_buffer.instr[i];
+		if (instr->kind == INSTR_PHI) {
+			InstrInputs variants = instr->phi.variants;
+			for (uint16_t j = 0; j < variants.count; j += 1) {
+				const Instr* variant = &gen->instr_buffer.instr[gen->instr_buffer.inputs_buffer[variants.start + j].value];
+				assert(variant->kind == INSTR_SELECT);
+
+				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
+				uint16_t variant_count_in_region = phi_variants_per_region[region_id].count;
+
+				assert(variant_count_in_region < phi_variant_counts_per_region[region_id]);
+				phi_variants_per_region[region_id].instr[variant_count_in_region] = variant->select.value;
+				phi_variants_per_region[region_id].count += 1;
+
+				phi_node_of_variant[region_id][variant_count_in_region] = (InstrIndex) { .value = i };
+			}
+		}
+	}
+
+	printf("phi_variants_per_region:\n");
+	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
+		printf("%u:\n", (uint32_t)i);
+		for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
+			printf("  phi: %u variant_value: %u\n",
+					(uint32_t)phi_node_of_variant[i][j].value,
+					(uint32_t)phi_variants_per_region[i].instr[j].value);
+		}
+	}
 
 	InstrIndexArray instr_with_storage_requirement = _x64_gather_instr_with_storage_requirement(
 			gen->instr_buffer,

@@ -47,6 +47,9 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 
 	[INSTR_CALL_INTERNAL] = INSTR_FEATURE_CONTROL | INSTR_FEATURE_REG_STORAGE,
 
+	[INSTR_PHI] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_SELECT] = INSTR_FEATURE_NONE,
+
 	[INSTR_IO_STATE] = INSTR_FEATURE_CONTROL,
 	[INSTR_REGION] = INSTR_FEATURE_CONTROL,
 };
@@ -66,6 +69,15 @@ InstrIndex instr_new_cast(InstrBuffer* buffer,
 	instr->kind = INSTR_CAST_TO_8 + sub_kind_index;
 	instr->cast.value = value;
 	return i;
+}
+
+uint16_t instr_region_id(const InstrBuffer* buffer, InstrIndex region_index) {
+	const Instr* instr = &buffer->instr[region_index.value];
+	assert(instr->kind == INSTR_REGION);
+
+	uint16_t id = instr->region.id;
+	assert(id < buffer->region_count);
+	return id;
 }
 
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index) {
@@ -154,6 +166,51 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 	arena_end_temp(temp);
 	return usage_ranges;
 }
+
+InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
+		Arena* allocator,
+		Arena* temp_allocator,
+		InstrIndex start_region) {
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	InstrQueue queue = {};
+	instr_queue_alloc(&queue, temp_allocator, instr_buffer.count);
+	instr_queue_push_back(&queue, start_region);
+
+	InstrIndexArray bfs_order;
+	bfs_order.instr = arena_alloc_array(allocator, InstrIndex, 0);
+	bfs_order.count = 0;
+
+	while (queue.count > 0) {
+		InstrIndex region_index = instr_queue_pop_front(&queue);
+		const Instr* region = &instr_buffer.instr[region_index.value];
+		assert(region->kind == INSTR_REGION);
+
+		arena_alloc(allocator, InstrIndex);
+		bfs_order.instr[bfs_order.count] = region_index;
+		bfs_order.count += 1;
+
+		const Instr* last_instr = &instr_buffer.instr[region->region.last_instr.value];
+		switch (last_instr->kind) {
+		case INSTR_BRANCH:
+			instr_queue_push_back(&queue, last_instr->branch.true_region);
+			instr_queue_push_back(&queue, last_instr->branch.false_region);
+			break;
+		case INSTR_JUMP:
+			instr_queue_push_back(&queue, last_instr->jump.target_region);
+			break;
+		case INSTR_RETURN_VALUE:
+			break;
+		default:
+			unreachable();
+		}
+	}
+
+	arena_end_temp(temp);
+	return bfs_order;
+}
+
 
 String instr_format_input_instrs(const InstrIndex* input_instr_buffer,
 		InstrInputs inputs,

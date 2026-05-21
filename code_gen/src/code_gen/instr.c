@@ -130,11 +130,9 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 
 		size_t first_dep_index = stack.count;
 		instr_enumerate_dependencies(buffer, instr_index, &stack);
-		size_t dep_count = stack.count - first_dep_index;
 
-		for (size_t i = first_dep_index; i < first_dep_index + dep_count; i += 1) {
-			// Visit dependencies in reverse order of them being pushed onto the stack
-			InstrIndex dep_index = stack.instr[stack.count - 1 - i];
+		for (size_t i = first_dep_index; i < stack.count; i += 1) {
+			InstrIndex dep_index = stack.instr[i];
 			if (dep_index.value >= buffer.count) {
 				continue;
 			}

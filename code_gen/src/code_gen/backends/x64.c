@@ -867,7 +867,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		{
 			_code_buffer_push_8(buffer, _rex_prefix(1, left_loc.reg >> 3, 0, right_loc.reg >> 3));
 			_code_buffer_push_8(buffer, 0x3b);
-			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg, right_loc.reg));
+			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
 		}
 
 		{
@@ -877,7 +877,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 			uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
 			instr_bytes[0] = 0x0f;
-			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg);
+			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg & 0b111);
 
 			switch (instr->compare.kind) {
 			case INSTR_CMP_EQUAL:
@@ -921,7 +921,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_code_buffer_push_8(buffer, 0x0f);
 		_code_buffer_push_8(buffer, 0xb6);
 
-		_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg, src_loc.reg));
+		_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg & 0b111, src_loc.reg & 0b111));
 		return;
 	}
 

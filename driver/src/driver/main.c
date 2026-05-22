@@ -17,6 +17,13 @@ static bool enum_installed_win_sdks(String sdk_install_path,
 	return true;
 }
 
+typedef enum {
+	C_FLAG_NONE                    = 0,
+	C_FLAG_KEEP_DEAD_INSTR         = 1 << 0,
+	C_FLAG_DO_NOT_INCLUDE_WIN_SDK  = 1 << 1,
+	C_FLAG_PRINT_IR_INSTR          = 1 << 2,
+} CompilerFlags;
+
 int main(int argc, char *argv[]) {
 	profile_init(1000 * 1000);
 
@@ -45,10 +52,10 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
+	CompilerFlags flags = C_FLAG_NONE;
+
 	if (argc >= 2) {
 		SourceStorage source_storage = {};
-
-		bool include_win_sdk = true;
 
 		StringArray include_dirs = {};
 		include_dirs.values = arena_alloc_array(&arena, String, 0);
@@ -60,14 +67,18 @@ int main(int argc, char *argv[]) {
 				assert(include_path.length > 0);
 				str_array_append(&include_dirs, &arena, include_path);
 			} else if (str_equal(arg, STR_LIT("--no-win-sdk"))) {
-				include_win_sdk = false;
+				flags |= C_FLAG_DO_NOT_INCLUDE_WIN_SDK;
+			} else if (str_equal(arg, STR_LIT("--keep-dead-instr"))) {
+				flags |= C_FLAG_KEEP_DEAD_INSTR;
+			} else if (str_equal(arg, STR_LIT("--show-ir"))) {
+				flags |= C_FLAG_PRINT_IR_INSTR;
 			} else {
 				fprintf(stderr, "Unknown argument '%s'", argv[i]);
 				return EXIT_FAILURE;
 			}
 		}
 
-		if (include_win_sdk) {
+		if (!has_flag(flags, C_FLAG_DO_NOT_INCLUDE_WIN_SDK)) {
 			String sdk_path = path_append(install_path, sdks.values[0], &arena);
 			String um_include_path = path_append(sdk_path, STR_LIT("um"), &arena);
 			String ucrt_include_path = path_append(sdk_path, STR_LIT("ucrt"), &arena);
@@ -139,8 +150,13 @@ int main(int argc, char *argv[]) {
 
 					CompiledFunction func = function_compiler_compile(&c);
 
-					instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
-					instr_print_all(func.instr_buffer, &temp_arena);
+					if (!has_flag(flags, C_FLAG_KEEP_DEAD_INSTR)) {
+						instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
+					}
+
+					if (has_flag(flags, C_FLAG_PRINT_IR_INSTR)) {
+						instr_print_all(func.instr_buffer, &temp_arena);
+					}
 
 					InstrIndexArray region_bfs_order = _x64_gather_regions_in_bfs_order(func.instr_buffer,
 							&arena,

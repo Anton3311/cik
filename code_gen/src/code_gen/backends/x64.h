@@ -56,12 +56,21 @@ typedef struct {
 } InstrStorageLocation;
 
 typedef struct {
+	uint8_t* buffer;
+	size_t size;
+	size_t capacity;
+	Arena* allocator;
+} CodeBuffer;
+
+typedef struct {
 	InstrBuffer instr_buffer;
 	InstrUsageRange* usage_ranges;
 	InstrStorageLocation* instr_storage;
 
 	Arena* allocator;
 	Arena* temp_allocator;
+
+	CodeBuffer* per_region_code_buffer;
 } X64CodeGenerator;
 
 typedef struct {

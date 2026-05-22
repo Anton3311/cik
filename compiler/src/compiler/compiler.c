@@ -314,7 +314,12 @@ static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 	return phi_index;
 }
 
-static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNode* first_node) {
+typedef struct {
+	InstrIndex initial_region;
+	InstrIndex final_region;
+} CompiledBlockRegions;
+
+static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, ParsedNode* first_node) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -358,8 +363,8 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 
 			InstrIndex post_branch_region_index = instr_new_region(instr_buffer, instr_allocator);
 
-			InstrIndex true_region_index = INVALID_INSTR_INDEX;
-			InstrIndex false_region_index = INVALID_INSTR_INDEX;
+			CompiledBlockRegions true_block;
+			CompiledBlockRegions false_block;
 
 			{
 				// NOTE: Here is the fun part: placing phi nodes
@@ -393,8 +398,9 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 				{
 					compiler->var_values = var_values_for_true_path;
 
-					true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
-					Instr* true_region = instr_buffer_at(instr_buffer, true_region_index);
+					true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
+
+					Instr* true_region = instr_buffer_at(instr_buffer, true_block.final_region);
 					true_region->region.last_instr = instr_new_jump(instr_buffer,
 							instr_allocator,
 							post_branch_region_index,
@@ -407,12 +413,14 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 					compiler->var_values = var_values_for_false_path;
 
 					if (node->if_stmt.false_node) {
-						false_region_index = _compile_block_to_region(compiler, node->if_stmt.false_node);
+						false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
 					} else {
-						false_region_index = instr_new_region(instr_buffer, instr_allocator);
+						InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);
+						false_block.initial_region = false_region_index;
+						false_block.final_region = false_region_index;
 					}
 
-					Instr* false_region = instr_buffer_at(instr_buffer, false_region_index);
+					Instr* false_region = instr_buffer_at(instr_buffer, false_block.final_region);
 					false_region->region.last_instr = instr_new_jump(instr_buffer,
 							instr_allocator,
 							post_branch_region_index,
@@ -447,9 +455,9 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 
 					InstrIndex phi = _create_phi_of_2_variants(compiler,
 							var_values_for_true_path[i],
-							true_region_index,
+							true_block.final_region,
 							var_values_for_false_path[i],
-							false_region_index);
+							false_block.final_region);
 
 					original_var_values[i] = phi;
 				}
@@ -460,8 +468,8 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 				compiler->var_values = original_var_values;
 			}
 
-			instr->branch.true_region = true_region_index;
-			instr->branch.false_region = false_region_index;
+			instr->branch.true_region = true_block.initial_region;
+			instr->branch.false_region = false_block.initial_region;
 
 			region_instr->region.last_instr = instr_index;
 
@@ -469,20 +477,29 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			break;
 		}
 		case AST_NODE_BLOCK: {
-			InstrIndex inner_region = _compile_block_to_region(compiler, node->block.nodes.first);
-			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer, instr_allocator, inner_region, compiler->io_state);
+			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer,
+					instr_allocator,
+					INVALID_INSTR_INDEX,
+					compiler->io_state);
+
 			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
+			CompiledBlockRegions inner_block = _compile_block_to_region(compiler, node->block.nodes.first);
+
+			Instr* jump_to_inner = instr_buffer_at(instr_buffer, jump_to_inner_region);
+			jump_to_inner->jump.target_region = inner_block.initial_region;
 
 			InstrIndex post_block_region = instr_new_region(instr_buffer, instr_allocator);
 			InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer,
 					instr_allocator,
 					post_block_region,
 					compiler->io_state);
+
 			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
 			region_instr->region.last_instr = jump_to_inner_region;
 
-			Instr* inner_region_instr = instr_buffer_at(instr_buffer, inner_region);
+			Instr* inner_region_instr = instr_buffer_at(instr_buffer, inner_block.final_region);
 			inner_region_instr->region.last_instr = jump_to_post_block_region;
 
 			region_instr_index = post_block_region;
@@ -501,7 +518,10 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 		}
 	}
 
-	return initial_region;
+	CompiledBlockRegions regions;
+	regions.initial_region = initial_region;
+	regions.final_region = region_instr_index;
+	return regions;
 }
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
@@ -544,7 +564,8 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
-	InstrIndex region = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
+	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
+	InstrIndex region = body_block.initial_region;
 	Instr* region_instr = instr_buffer_at(instr_buffer, region);
 
 	InstrUsageRange* usage_ranges = instr_compute_usage_ranges(compiler->instr_buffer,

@@ -174,6 +174,9 @@ InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
+	BitArray visited = bit_array_alloc(temp_allocator, instr_buffer.count);
+	bit_array_clear(&visited);
+
 	InstrQueue queue = {};
 	instr_queue_alloc(&queue, temp_allocator, instr_buffer.count);
 	instr_queue_push_back(&queue, start_region);
@@ -182,10 +185,13 @@ InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
 	bfs_order.instr = arena_alloc_array(allocator, InstrIndex, 0);
 	bfs_order.count = 0;
 
+	bit_array_set(&visited, start_region.value, true);
+
 	while (queue.count > 0) {
 		InstrIndex region_index = instr_queue_pop_front(&queue);
 		const Instr* region = &instr_buffer.instr[region_index.value];
 		assert(region->kind == INSTR_REGION);
+		assert(bit_array_get(&visited, region_index.value));
 
 		arena_alloc(allocator, InstrIndex);
 		bfs_order.instr[bfs_order.count] = region_index;
@@ -193,13 +199,29 @@ InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
 
 		const Instr* last_instr = &instr_buffer.instr[region->region.last_instr.value];
 		switch (last_instr->kind) {
-		case INSTR_BRANCH:
-			instr_queue_push_back(&queue, last_instr->branch.true_region);
-			instr_queue_push_back(&queue, last_instr->branch.false_region);
+		case INSTR_BRANCH: {
+			InstrIndex regions[] = {
+				last_instr->branch.true_region,
+				last_instr->branch.false_region,
+			};
+
+			for (size_t j = 0; j < array_size(regions); j += 1) {
+				if (!bit_array_get(&visited, regions[j].value)) {
+					bit_array_set(&visited, regions[j].value, true);
+					instr_queue_push_back(&queue, regions[j]);
+				}
+			}
+
 			break;
-		case INSTR_JUMP:
-			instr_queue_push_back(&queue, last_instr->jump.target_region);
+		}
+		case INSTR_JUMP: {
+			InstrIndex region = last_instr->jump.target_region;
+			if (!bit_array_get(&visited, region.value)) {
+				bit_array_set(&visited, region.value, true);
+				instr_queue_push_back(&queue, region);
+			}
 			break;
+		}
 		case INSTR_RETURN_VALUE:
 			break;
 		default:

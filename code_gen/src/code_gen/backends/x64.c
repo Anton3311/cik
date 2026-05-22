@@ -515,13 +515,6 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 static const size_t CODE_BUFFER_ALLOCATION_STEP = 64;
 static const size_t CODE_BUFFER_ALLOCATION_STEP_MASK = CODE_BUFFER_ALLOCATION_STEP - 1;
 
-typedef struct {
-	uint8_t* buffer;
-	size_t size;
-	size_t capacity;
-	Arena* allocator;
-} CodeBuffer;
-
 static void _code_buffer_init(CodeBuffer* buffer, Arena* allocator) {
 	buffer->allocator = allocator;
 	buffer->capacity = 0;
@@ -535,7 +528,7 @@ static void _code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity) {
 
 	assert_msg(buffer->buffer + buffer->capacity == buffer->allocator->base + buffer->allocator->allocated,
 			"Trying to grow CodeBuffer, however since the last grow there were allocations done, "
-			"with the arena associated to this code buffer");
+			"with the arena associated with this code buffer");
 
 	arena_alloc_array(buffer->allocator, uint8_t, allocation_size);
 
@@ -1026,25 +1019,158 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 
-	case INSTR_REGION:
-		_x64_generate_code(gen, instr->region.last_instr, buffer);
+	case INSTR_REGION: {
+		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
+		_code_buffer_init(code_buffer, gen->allocator);
+		_x64_generate_code(gen, instr->region.last_instr, code_buffer);
 		return;
+	}
 	}
 
 	unreachable();
 }
 
+static size_t _compute_control_instr_encoding_size(const Instr* instr) {
+	size_t jump_offset_size = sizeof(uint32_t);
+
+	switch (instr->kind) {
+	case INSTR_JUMP:
+		return jump_offset_size + 1;
+	case INSTR_BRANCH:
+		// A branch gets encoded as two jumps:
+		// 1. Jump to the true region if condition is true
+		// 2. Jump to the false region otherwise
+		return jump_offset_size + 2 + jump_offset_size + 1;
+	case INSTR_RETURN_VALUE:
+		return 1;
+	default:
+		unreachable();
+	}
+
+	return 0;
+}
+
+static void _encode_control_instr(const Instr* instr,
+		const InstrBuffer* instr_buffer,
+		size_t current_block_end_offset,
+		const size_t* code_block_offsets,
+		uint8_t* out_encoding) {
+	switch (instr->kind) {
+	case INSTR_JUMP: {
+		uint16_t target_region_id = instr_region_id(instr_buffer, instr->jump.target_region);
+		size_t target_offset = code_block_offsets[target_region_id];
+
+		uint32_t relative_offset = (uint32_t)target_offset - ((uint32_t)current_block_end_offset + 5);
+		assert(relative_offset <= UINT32_MAX);
+
+		out_encoding[0] = 0xe9;
+		memcpy(out_encoding + 1, &relative_offset, sizeof(relative_offset));
+		break;
+	}
+	case INSTR_BRANCH: {
+		// A branch gets encoded as two jumps:
+		// 1. Jump to the true region if condition is true
+		// 2. Jump to the false region otherwise
+
+		uint16_t true_region_id = instr_region_id(instr_buffer, instr->branch.true_region);
+		size_t true_offset = code_block_offsets[true_region_id];
+
+		uint32_t true_relative_offset = (uint32_t)true_offset - ((uint32_t)current_block_end_offset + 6);
+		assert(true_relative_offset <= UINT32_MAX);
+
+		uint16_t false_region_id = instr_region_id(instr_buffer, instr->branch.false_region);
+		size_t false_offset = code_block_offsets[false_region_id];
+
+		uint32_t false_relative_offset = (uint32_t)false_offset - ((uint32_t)current_block_end_offset + 6 + 5);
+		assert(false_relative_offset <= UINT32_MAX);
+
+		out_encoding[0] = 0x0f;
+		out_encoding[1] = 0x84;
+		memcpy(out_encoding + 2, &true_relative_offset, sizeof(true_relative_offset));
+
+		out_encoding[6] = 0xe9;
+		memcpy(out_encoding + 7, &false_relative_offset, sizeof(false_relative_offset));
+		break;
+	}
+	case INSTR_RETURN_VALUE:
+		out_encoding[0] = 0xc3;
+		break;
+	default:
+		unreachable();
+	}
+
+	return;
+}
+
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
-	CodeBuffer buffer;
-	_code_buffer_init(&buffer, gen->allocator);
+	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
-	_x64_generate_code(gen, root_region, &buffer);
+	InstrIndexArray regions_in_bfs_order = _x64_gather_regions_in_bfs_order(gen->instr_buffer,
+			gen->allocator,
+			gen->temp_allocator,
+			root_region);
 
-	void* executable_memory = allocate_executable(buffer.size);
-	memcpy(executable_memory, buffer.buffer, buffer.size);
+	uint16_t region_count = gen->instr_buffer.region_count;
+	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
+			CodeBuffer,
+			region_count);
+
+	_x64_generate_code(gen, root_region, NULL);
+
+	uint16_t* blocks_in_bfs_order = arena_alloc_array(gen->allocator, uint16_t, regions_in_bfs_order.count);
+	for (size_t i = 0; i < regions_in_bfs_order.count; i += 1) {
+		InstrBuffer* instr_buffer = &gen->instr_buffer;
+		const Instr* instr = instr_buffer_at(instr_buffer, regions_in_bfs_order.instr[i]);
+		blocks_in_bfs_order[i] = instr->region.id;
+	}
+
+	size_t final_code_size = 0;
+	size_t* code_block_offsets = arena_alloc_array(gen->temp_allocator, size_t, region_count);
+	for (uint16_t i = 0; i < regions_in_bfs_order.count; i += 1) {
+		InstrBuffer* instr_buffer = &gen->instr_buffer;
+
+		const Instr* region_instr = instr_buffer_at(instr_buffer, regions_in_bfs_order.instr[i]);
+		uint16_t region_id = instr_region_id(&gen->instr_buffer, regions_in_bfs_order.instr[i]);
+
+		const CodeBuffer* code_buffer = &gen->per_region_code_buffer[region_id];
+		code_block_offsets[region_id] = final_code_size;
+
+		final_code_size += code_buffer->size;
+		final_code_size += _compute_control_instr_encoding_size(
+				instr_buffer_at(instr_buffer, region_instr->region.last_instr));
+	}
+
+	void* executable_memory = allocate_executable(final_code_size);
+	for (uint16_t i = 0; i < regions_in_bfs_order.count; i += 1) {
+		InstrBuffer* instr_buffer = &gen->instr_buffer;
+
+		const Instr* region_instr = instr_buffer_at(instr_buffer, regions_in_bfs_order.instr[i]);
+		uint16_t region_id = instr_region_id(&gen->instr_buffer, regions_in_bfs_order.instr[i]);
+
+		size_t block_size = gen->per_region_code_buffer[region_id].size;
+		size_t block_offset = code_block_offsets[region_id];
+
+		memcpy(executable_memory + block_offset,
+				gen->per_region_code_buffer[region_id].buffer,
+				block_size);
+
+		uint8_t* control_instr_encoding_buffer = (uint8_t*)executable_memory + block_offset + block_size;
+		_encode_control_instr(
+				instr_buffer_at(instr_buffer, region_instr->region.last_instr),
+				instr_buffer,
+				block_offset + block_size,
+				code_block_offsets,
+				control_instr_encoding_buffer);
+	}
+
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
+	size_t entry_point_offset = code_block_offsets[instr_region_id(instr_buffer, root_region)];
+	assert(entry_point_offset == 0);
 
 	MachineCodeBuffer machine_code;
 	machine_code.code = executable_memory;
-	machine_code.size_in_bytes = buffer.size;
+	machine_code.size_in_bytes = final_code_size;
+
+	arena_end_temp(temp);
 	return machine_code;
 }

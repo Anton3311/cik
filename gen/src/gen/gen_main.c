@@ -461,7 +461,7 @@ bool _generate_instr(GenContext* context) {
 						if (type_is_struct(&instr_struct->fields[j].type, string_struct)) {
 							str_builder_append(&builder, STR_LIT("%.*s "));
 						} else if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
-							str_builder_append(&builder, STR_LIT("%u "));
+							str_builder_append(&builder, STR_LIT("\\033[33;1m%u\\033[0m "));
 						} else if (type_is_struct(&instr_struct->fields[j].type, instr_inputs_struct)) {
 							str_builder_append(&builder, STR_LIT("%.*s "));
 						}

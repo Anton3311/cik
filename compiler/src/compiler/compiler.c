@@ -352,9 +352,11 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 			instr->kind = INSTR_BRANCH;
 			instr->branch.condition = _compile_expr(compiler, &node->if_stmt.condition);
+			instr->branch.io_state = compiler->io_state;
+
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
 			InstrIndex post_branch_region_index = instr_new_region(instr_buffer, instr_allocator);
-			InstrIndex post_branch_jump_index = instr_new_jump(instr_buffer, instr_allocator, post_branch_region_index);
 
 			InstrIndex true_region_index = INVALID_INSTR_INDEX;
 			InstrIndex false_region_index = INVALID_INSTR_INDEX;
@@ -393,7 +395,12 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 
 					true_region_index = _compile_block_to_region(compiler, node->if_stmt.true_node);
 					Instr* true_region = instr_buffer_at(instr_buffer, true_region_index);
-					true_region->region.last_instr = post_branch_jump_index;
+					true_region->region.last_instr = instr_new_jump(instr_buffer,
+							instr_allocator,
+							post_branch_region_index,
+							compiler->io_state);
+
+					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 				}
 
 				{
@@ -406,7 +413,12 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 					}
 
 					Instr* false_region = instr_buffer_at(instr_buffer, false_region_index);
-					false_region->region.last_instr = post_branch_jump_index;
+					false_region->region.last_instr = instr_new_jump(instr_buffer,
+							instr_allocator,
+							post_branch_region_index,
+							compiler->io_state);
+
+					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 				}
 
 				const ParsedScope* if_parent_scope = node->parent_scope;
@@ -458,10 +470,15 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 		}
 		case AST_NODE_BLOCK: {
 			InstrIndex inner_region = _compile_block_to_region(compiler, node->block.nodes.first);
-			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer, instr_allocator, inner_region);
+			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer, instr_allocator, inner_region, compiler->io_state);
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
 			InstrIndex post_block_region = instr_new_region(instr_buffer, instr_allocator);
-			InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer, instr_allocator, post_block_region);
+			InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer,
+					instr_allocator,
+					post_block_region,
+					compiler->io_state);
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
 			region_instr->region.last_instr = jump_to_inner_region;
 
@@ -474,7 +491,8 @@ static InstrIndex _compile_block_to_region(FunctionCompiler* compiler, ParsedNod
 		case AST_NODE_RETURN: {
 			assert(node->return_stmt.value != NULL);
 			InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
-			region_instr->region.last_instr = instr_new_return_value(instr_buffer, instr_allocator, value);
+			region_instr->region.last_instr = instr_new_return_value(instr_buffer, instr_allocator, value, compiler->io_state);
+			compiler->io_state = INVALID_INSTR_INDEX;
 			break;
 		}
 		case AST_NODE_EXPR:
@@ -528,7 +546,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	InstrIndex region = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
 	Instr* region_instr = instr_buffer_at(instr_buffer, region);
-	region_instr->region.io_state = compiler->io_state;
 
 	InstrUsageRange* usage_ranges = instr_compute_usage_ranges(compiler->instr_buffer,
 			region,

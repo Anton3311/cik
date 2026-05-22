@@ -180,14 +180,17 @@ struct Instr {
 			InstrIndex condition;
 			InstrIndex true_region;
 			InstrIndex false_region;
+			InstrIndex io_state;
 		} branch;
 
 		struct {
 			InstrIndex target_region;
+			InstrIndex io_state;
 		} jump;
 		
 		struct {
 			InstrIndex value;
+			InstrIndex io_state;
 		} return_value;
 
 		struct {
@@ -203,7 +206,6 @@ struct Instr {
 		struct {
 			uint16_t id;
 			InstrIndex last_instr;
-			InstrIndex io_state;
 		} region;
 
 		struct {
@@ -359,19 +361,24 @@ inline InstrIndex instr_new_region(InstrBuffer* buffer, Arena* allocator) {
 	return i;
 }
 
-inline InstrIndex instr_new_jump(InstrBuffer* buffer, Arena* allocator, InstrIndex target) {
+inline InstrIndex instr_new_jump(InstrBuffer* buffer, Arena* allocator, InstrIndex target, InstrIndex io_state) {
 	InstrIndex i = instr_buffer_append(buffer, allocator);
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_JUMP;
 	instr->jump.target_region = target;
+	instr->jump.io_state = io_state;
 	return i;
 }
 
-inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, InstrIndex value) {
+inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, InstrIndex value, InstrIndex io_state) {
+	const Instr* io_state_instr = instr_buffer_at(buffer, io_state);
+	assert(io_state_instr->kind == INSTR_IO_STATE);
+
 	InstrIndex i = instr_buffer_append(buffer, allocator);
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_RETURN_VALUE;
 	instr->return_value.value = value;
+	instr->return_value.io_state = io_state;
 	return i;
 }
 

@@ -168,19 +168,21 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         instr_stack_push(out_dependencies, instr->branch.condition);
         instr_stack_push(out_dependencies, instr->branch.true_region);
         instr_stack_push(out_dependencies, instr->branch.false_region);
+        instr_stack_push(out_dependencies, instr->branch.io_state);
         break;
     case INSTR_JUMP:
         instr_stack_push(out_dependencies, instr->jump.target_region);
+        instr_stack_push(out_dependencies, instr->jump.io_state);
         break;
     case INSTR_RETURN_VALUE:
         instr_stack_push(out_dependencies, instr->return_value.value);
+        instr_stack_push(out_dependencies, instr->return_value.io_state);
         break;
     case INSTR_IO_STATE:
         instr_stack_push(out_dependencies, instr->io_state.producer);
         break;
     case INSTR_REGION:
         instr_stack_push(out_dependencies, instr->region.last_instr);
-        instr_stack_push(out_dependencies, instr->region.io_state);
         break;
     case INSTR_PHI:
         instr_push_input_dependeices(&buffer, instr->phi.variants, out_dependencies);
@@ -295,19 +297,19 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         printf("index: %u ", (uint32_t)instr->load_arg.index);
         break;
     case INSTR_BRANCH:
-        printf("condition: %u true_region: %u false_region: %u ", (uint32_t)instr->branch.condition.value, (uint32_t)instr->branch.true_region.value, (uint32_t)instr->branch.false_region.value);
+        printf("condition: %u true_region: %u false_region: %u io_state: %u ", (uint32_t)instr->branch.condition.value, (uint32_t)instr->branch.true_region.value, (uint32_t)instr->branch.false_region.value, (uint32_t)instr->branch.io_state.value);
         break;
     case INSTR_JUMP:
-        printf("target_region: %u ", (uint32_t)instr->jump.target_region.value);
+        printf("target_region: %u io_state: %u ", (uint32_t)instr->jump.target_region.value, (uint32_t)instr->jump.io_state.value);
         break;
     case INSTR_RETURN_VALUE:
-        printf("value: %u ", (uint32_t)instr->return_value.value.value);
+        printf("value: %u io_state: %u ", (uint32_t)instr->return_value.value.value, (uint32_t)instr->return_value.io_state.value);
         break;
     case INSTR_IO_STATE:
         printf("producer: %u ", (uint32_t)instr->io_state.producer.value);
         break;
     case INSTR_REGION:
-        printf("last_instr: %u io_state: %u ", (uint32_t)instr->region.last_instr.value, (uint32_t)instr->region.io_state.value);
+        printf("id: %u last_instr: %u ", (uint32_t)instr->region.id, (uint32_t)instr->region.last_instr.value);
         break;
     case INSTR_PHI:
         printf("variants: %.*s ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->phi.variants, temp_allocator)));

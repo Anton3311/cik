@@ -926,10 +926,18 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	}
 
 	case INSTR_BRANCH:
+		_x64_generate_code(gen, instr->branch.io_state, buffer);
+		_x64_generate_code(gen, instr->branch.condition, buffer);
+		_x64_generate_code(gen, instr->branch.true_region, NULL);
+		_x64_generate_code(gen, instr->branch.false_region, NULL);
+		return;
 	case INSTR_JUMP:
-		break;
+		_x64_generate_code(gen, instr->jump.io_state, buffer);
+		_x64_generate_code(gen, instr->jump.target_region, NULL);
+		return;
 
 	case INSTR_RETURN_VALUE:
+		_x64_generate_code(gen, instr->return_value.io_state, buffer);
 		_x64_generate_code(gen, instr->return_value.value, buffer);
 		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->return_value.value.value];
 		assert(return_value_loc.kind == INSTR_STORAGE_REG);
@@ -1018,7 +1026,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	}
 
 	case INSTR_REGION:
-		_x64_generate_code(gen, instr->region.io_state, buffer);
 		_x64_generate_code(gen, instr->region.last_instr, buffer);
 		return;
 	}

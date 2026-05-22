@@ -872,7 +872,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		{
 			if (dst_loc.reg >> 3) {
-				_code_buffer_push_8(buffer, _rex_prefix(1, dst_loc.reg >> 3, 0, 0));
+				// Why REX.B needs to be set instead of REX.R?
+				_code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
 			}
 
 			uint8_t* instr_bytes = _code_buffer_append(buffer, 3);

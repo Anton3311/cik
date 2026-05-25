@@ -764,16 +764,20 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(left_loc.kind == INSTR_STORAGE_REG);
 		assert(right_loc.kind == INSTR_STORAGE_REG);
 
-		uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
+		uint8_t* instr_bytes;
 
 		if (right_loc.reg == dst_loc.reg) {
 			_emit_mov_regs(buffer, right_loc.reg, dst_loc.reg, 64);
+
+			instr_bytes = _code_buffer_append(buffer, 3);
 			instr_bytes[0] = _rex_prefix_src_dst(1, dst_loc.reg, left_loc.reg);
-			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg, left_loc.reg);
+			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg & 0b111, left_loc.reg & 0b111);
 		} else {
 			_emit_mov_regs(buffer, left_loc.reg, dst_loc.reg, 64);
+
+			instr_bytes = _code_buffer_append(buffer, 3);
 			instr_bytes[0] = _rex_prefix_src_dst(1, dst_loc.reg, right_loc.reg);
-			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg, right_loc.reg);
+			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg & 0b111, right_loc.reg & 0b111);
 		}
 
 		switch (instr->bin_op.kind) {

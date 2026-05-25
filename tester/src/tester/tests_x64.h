@@ -21,6 +21,9 @@ void test_mutate_argument(TestContext* context);
 
 // Condition Tests
 void test_call_inside_inner_scope(TestContext* context);
-void test_conditional_call(TestContext* context);
+void test_conditional_call_1(TestContext* context);
+void test_conditional_call_2(TestContext* context);
+void test_conditional_call_between_two_calls_1(TestContext* context);
+void test_conditional_call_between_two_calls_2(TestContext* context);
 
 #endif

@@ -99,7 +99,10 @@ static TestCase x64_tests[] = {
 	test(test_compare_equal_greater_for_uint64),
 	test(test_mutate_argument),
 	test(test_call_inside_inner_scope),
-	test(test_conditional_call),
+	test(test_conditional_call_1),
+	test(test_conditional_call_2),
+	test(test_conditional_call_between_two_calls_1),
+	test(test_conditional_call_between_two_calls_2),
 };
 
 static TestSuite s_test_suites[] = {

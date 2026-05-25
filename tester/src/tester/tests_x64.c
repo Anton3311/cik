@@ -366,10 +366,15 @@ static void _internal_store_3(uint64_t* out) {
 	*out = 3;
 }
 
+static void _internal_store_4(uint64_t* out) {
+	*out = 4;
+}
+
 static void _resolve_symbols_for_call_inside_inner_scope(FunctionRefTable* table, void* data) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("store_1"), _internal_store_1);
 	func_ref_table_resolve_ref_to(table, STR_LIT("store_2"), _internal_store_2);
 	func_ref_table_resolve_ref_to(table, STR_LIT("store_3"), _internal_store_3);
+	func_ref_table_resolve_ref_to(table, STR_LIT("store_4"), _internal_store_4);
 }
 
 void test_call_inside_inner_scope(TestContext* context) {
@@ -406,7 +411,7 @@ void test_call_inside_inner_scope(TestContext* context) {
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
-void test_conditional_call(TestContext* context) {
+void test_conditional_call_1(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
 			"void store_1(uint64_t* out);\n"
@@ -432,6 +437,102 @@ void test_conditional_call(TestContext* context) {
 	uint64_t exit_code = executable_function(1, &result);
 	assert(exit_code == 0);
 	assert(result == 1);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_conditional_call_2(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"void store_1(uint64_t* out);\n"
+			"void store_2(uint64_t* out);\n"
+			"void store_3(uint64_t* out);\n"
+			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
+			"    if (cond == 1) {\n"
+			"        store_1(out);\n"
+			"    } else {\n"
+			"        store_2(out);"
+			"    }"
+			"    return 0;\n"
+			"}\n");
+	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
+			source_code,
+			_resolve_symbols_for_call_inside_inner_scope,
+			NULL);
+
+	typedef uint64_t(*Function)(uint64_t, uint64_t*);
+
+	Function executable_function = (Function)machine_code.code;
+
+	uint64_t result = 0;
+	uint64_t exit_code = executable_function(0, &result);
+	assert(exit_code == 0);
+	assert(result == 2);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+static MachineCodeBuffer _compile_conditional_call_between_two_calls(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"void store_1(uint64_t* out);\n"
+			"void store_2(uint64_t* out);\n"
+			"void store_3(uint64_t* out);\n"
+			"void store_4(uint64_t* out);\n"
+			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
+			"    store_1(out + 0);"
+			"    if (cond == 1) {\n"
+			"        store_2(out + 1);\n"
+			"    } else {\n"
+			"        store_3(out + 2);\n"
+			"    }\n"
+			"    store_4(out + 3);\n"
+			"    return 0;\n"
+			"}\n");
+	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
+			source_code,
+			_resolve_symbols_for_call_inside_inner_scope,
+			NULL);
+
+	return machine_code;
+}
+
+void test_conditional_call_between_two_calls_1(TestContext* context) {
+	panic("disabled");
+
+	MachineCodeBuffer machine_code = _compile_conditional_call_between_two_calls(context);
+
+	typedef uint64_t(*Function)(uint64_t, uint64_t*);
+	Function executable_function = (Function)machine_code.code;
+
+	uint64_t ints[4] = { 0 };
+	uint64_t result = executable_function(0, ints);
+	assert(result == 0);
+	
+	assert(ints[0] == 1);
+	assert(ints[1] == 0);
+	assert(ints[2] == 3);
+	assert(ints[3] == 4);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_conditional_call_between_two_calls_2(TestContext* context) {
+	panic("disabled");
+
+	MachineCodeBuffer machine_code = _compile_conditional_call_between_two_calls(context);
+
+	typedef uint64_t(*Function)(uint64_t, uint64_t*);
+	Function executable_function = (Function)machine_code.code;
+
+	uint64_t ints[4] = { 0 };
+	uint64_t result = executable_function(1, ints);
+	assert(result == 0);
+	
+	assert(ints[0] == 1);
+	assert(ints[1] == 2);
+	assert(ints[2] == 0);
+	assert(ints[3] == 4);
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }

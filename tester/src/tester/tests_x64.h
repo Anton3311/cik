@@ -16,4 +16,11 @@ void test_compare_equal_two_uint64(TestContext* context);
 void test_compare_equal_less_for_uint64(TestContext* context);
 void test_compare_equal_greater_for_uint64(TestContext* context);
 
+// Other Tests
+void test_mutate_argument(TestContext* context);
+
+// Condition Tests
+void test_call_inside_inner_scope(TestContext* context);
+void test_conditional_call(TestContext* context);
+
 #endif

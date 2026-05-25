@@ -3,6 +3,7 @@
 
 #include "parser/parsed_ast.h"
 #include "code_gen/instr.h"
+#include "code_gen/code_gen.h"
 
 typedef struct {
 	size_t size;
@@ -34,14 +35,19 @@ typedef struct {
 	InstrIndex* arg_states;
 
 	TypeLayout pointer_type_layout;
+
+	FunctionRefTable func_ref_table;
 } FunctionCompiler;
 
 typedef struct {
 	InstrBuffer instr_buffer;
 	InstrIndex start_region;
 	InstrUsageRange* usage_ranges;
+
+	FunctionRefTable func_ref_table;
 } CompiledFunction;
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);
+void compiler_resolve_default_func_refs(FunctionRefTable* table);
 
 #endif

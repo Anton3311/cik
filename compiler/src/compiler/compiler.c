@@ -94,11 +94,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		call_instr->call_internal.io_state = compiler->io_state;
 
 		String func_name = callable->function_ref->name.string;
-		if (str_equal(func_name, STR_LIT("assert"))) {
-			call_instr->call_internal.function_index = 0;
-		} else if (str_equal(func_name, STR_LIT("print_string"))) {
-			call_instr->call_internal.function_index = 1;
-		}
+		call_instr->call_internal.function_index = func_ref_table_get_or_insert(&compiler->func_ref_table, func_name);
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		return call_instr_index;
@@ -583,5 +579,21 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	compiled_function.instr_buffer = compiler->instr_buffer;
 	compiled_function.usage_ranges = usage_ranges;
 	compiled_function.start_region = region;
+	compiled_function.func_ref_table = compiler->func_ref_table;
 	return compiled_function;
+}
+
+static int _internal_assert(uint64_t predicate) {
+	assert(predicate);
+	return 0;
+}
+
+static int _internal_print_string(const char* string) {
+	printf("%s\n", string);
+	return 0;
+}
+
+void compiler_resolve_default_func_refs(FunctionRefTable* table) {
+	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
+	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
 }

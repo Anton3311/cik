@@ -200,7 +200,7 @@ struct Instr {
 		struct {
 			InstrInputs args;
 			InstrIndex io_state;
-			uint8_t function_index;
+			uint16_t function_index;
 		} call_internal;
 
 		struct {

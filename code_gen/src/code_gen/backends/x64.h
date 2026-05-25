@@ -2,6 +2,7 @@
 #define X64_H
 
 #include "code_gen/instr.h"
+#include "code_gen/code_gen.h"
 
 #define REG_INDEX_MASK_BIT_COUNT (4)
 #define REG_INDEX_MASK ((1 << REG_INDEX_MASK_BIT_COUNT) - 1)
@@ -71,6 +72,8 @@ typedef struct {
 	Arena* temp_allocator;
 
 	CodeBuffer* per_region_code_buffer;
+
+	const FunctionRefTable* ref_table;
 } X64CodeGenerator;
 
 typedef struct {

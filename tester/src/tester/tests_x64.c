@@ -8,8 +8,13 @@
 #define DEFAULT_SOURCE_FILE_PATH "test.c"
 
 typedef uint64_t(*ExecutableFunction)();
+typedef void(*ResolverFunction)(FunctionRefTable* table, void* data);
 
-static MachineCodeBuffer _compile(TestContext* context, String source_code) {
+static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
+		String source_code,
+		ResolverFunction resolver,
+		void* resolver_data) {
+
 	SourceStorage source_storage = {};
 
 	StringArray include_dirs = {};
@@ -62,6 +67,7 @@ static MachineCodeBuffer _compile(TestContext* context, String source_code) {
 			}
 
 			Arena input_instr_array_allocator = arena_alloc_sub_arena(context->arena, 4096);
+			Arena symbol_arena = arena_alloc_sub_arena(context->arena, 1024);
 
 			FunctionCompiler c = {};
 			c.function = node->function_def;
@@ -70,8 +76,14 @@ static MachineCodeBuffer _compile(TestContext* context, String source_code) {
 			c.temp_allocator = context->temp_arena;
 			c.input_instr_array_allocator = &input_instr_array_allocator;
 			c.pointer_type_layout = type_layout_new(8, 8);
+			c.func_ref_table.allocator = arena_allocator_new(&symbol_arena);
 
 			CompiledFunction func = function_compiler_compile(&c);
+			compiler_resolve_default_func_refs(&func.func_ref_table);
+
+			if (resolver) {
+				resolver(&func.func_ref_table, resolver_data);
+			}
 
 			instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
 			instr_print_all(func.instr_buffer, context->temp_arena);
@@ -90,6 +102,7 @@ static MachineCodeBuffer _compile(TestContext* context, String source_code) {
 			gen.usage_ranges = func.usage_ranges;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
+			gen.ref_table = &func.func_ref_table;
 
 			x64_alloc_registers(&gen, allowed_registers);
 			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
@@ -99,6 +112,10 @@ static MachineCodeBuffer _compile(TestContext* context, String source_code) {
 
 	panic("No function to compile");
 	return (MachineCodeBuffer) {};
+}
+
+static MachineCodeBuffer _compile(TestContext* context, String source_code) {
+	return _compile_with_custom_symbols(context, source_code, NULL, NULL);
 }
 
 void test_return_uint64_zero(TestContext* context) {

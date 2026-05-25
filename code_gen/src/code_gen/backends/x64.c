@@ -508,6 +508,28 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 	profile_scope_end();
 }
 
+static bool _x64_validate(X64CodeGenerator* gen) {
+	profile_scope_start(__func__);
+
+	bool result = true;
+
+	// Validate symbols
+	assert(gen->ref_table);
+
+	const FunctionRefTable* ref_table = gen->ref_table;
+	for (uint16_t i = 0; i < ref_table->size; i += 1) {
+		const FunctionRef* ref = &ref_table->refs[i];
+
+		if (ref->address == NULL) {
+			printf("unresolved function symbol %.*s\n", STR_FMT(ref->name));
+			result = false;
+		}
+	}
+
+	profile_scope_end();
+	return result;
+}
+
 //
 // CodeBuffer
 //
@@ -713,16 +735,6 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 	bytes[2] = _mod_rm_with_ext(0, REG_SP);
 
 	_code_buffer_push_32(buffer, offset);
-}
-
-int _internal_assert(uint64_t predicate) {
-	assert(predicate);
-	return 0;
-}
-
-int _internal_print_string(const char* string) {
-	printf("%s\n", string);
-	return 0;
 }
 
 //
@@ -988,11 +1000,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			_emit_mov_regs(buffer, arg_storage_loc.reg, REG_C, 64);
 		}
 
-		if (instr->call_internal.function_index == 0) {
-			_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_assert);
-		} else if (instr->call_internal.function_index == 1) {
-			_emit_load_const_64(buffer, REG_A, (uint64_t)_internal_print_string);
-		}
+		uint16_t function_id = instr->call_internal.function_index;
+		assert(function_id < gen->ref_table->size);
+		const FunctionRef* ref = &gen->ref_table->refs[function_id];
+
+		_emit_load_const_64(buffer, REG_A, (uint64_t)ref->address);
 
 		// push shadow space
 		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
@@ -1107,6 +1119,9 @@ static void _encode_control_instr(const Instr* instr,
 }
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
+	bool validation_result = _x64_validate(gen);
+	assert(validation_result);
+
 	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
 	InstrIndexArray regions_in_bfs_order = _x64_gather_regions_in_bfs_order(gen->instr_buffer,

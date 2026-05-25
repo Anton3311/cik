@@ -147,8 +147,10 @@ int main(int argc, char *argv[]) {
 					c.input_instr_array_allocator = &input_instr_array_allocator;
 					c.temp_allocator = &temp_arena;
 					c.pointer_type_layout = type_layout_new(8, 8);
+					c.func_ref_table.allocator = heap_allocator_new();
 
 					CompiledFunction func = function_compiler_compile(&c);
+					compiler_resolve_default_func_refs(&func.func_ref_table);
 
 					if (!has_flag(flags, C_FLAG_KEEP_DEAD_INSTR)) {
 						instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
@@ -189,9 +191,13 @@ int main(int argc, char *argv[]) {
 					gen.usage_ranges = func.usage_ranges;
 					gen.allocator = &arena;
 					gen.temp_allocator = &temp_arena;
+					gen.ref_table = &func.func_ref_table;
 
 					x64_alloc_registers(&gen, allowed_registers);
 					MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
+
+					// Free function symbol table
+					func_ref_table_release(&func.func_ref_table);
 
 					typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
 					ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;

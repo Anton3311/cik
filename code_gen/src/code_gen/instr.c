@@ -143,6 +143,16 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		size_t first_dep_index = stack.count;
 		instr_enumerate_dependencies(buffer, instr_index, &stack);
 
+		// NOTE: The loop after this check is used to extend the usage range of this instruction dependencies.
+		//       In this way data dependencies get defined for the later register allocation step.
+		//       However some instructions are only used to specify an order dependency,
+		//       one of them is `INSTR_IO_STATE`.
+		InstrKind this_instr_kind = buffer.instr[instr_index.value].kind;
+		if (this_instr_kind == INSTR_IO_STATE) {
+			// Don't define any data dependencies
+			continue;
+		}
+
 		for (size_t i = first_dep_index; i < stack.count; i += 1) {
 			InstrIndex dep_index = stack.instr[i];
 			if (dep_index.value >= buffer.count) {

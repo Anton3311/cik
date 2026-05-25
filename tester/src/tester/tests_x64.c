@@ -124,9 +124,9 @@ void test_return_uint64_zero(TestContext* context) {
 
 	ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;
 	uint64_t result = executable_function();
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	assert(result == 0);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_add_uint64_consts(TestContext* context) {
@@ -135,9 +135,9 @@ void test_add_uint64_consts(TestContext* context) {
 
 	ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;
 	uint64_t result = executable_function();
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	assert(result == 25);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_return_first_arg(TestContext* context) {
@@ -150,9 +150,9 @@ void test_return_first_arg(TestContext* context) {
 
 	Function executable_function = (Function)machine_code.code;
 	uint64_t result = executable_function(input);
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	assert(result == input);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_return_sum_of_first_two_args(TestContext* context) {
@@ -168,9 +168,9 @@ void test_return_sum_of_first_two_args(TestContext* context) {
 
 	Function executable_function = (Function)machine_code.code;
 	uint64_t result = executable_function(a, b);
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	assert(result == a + b);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_deref_function_arg(TestContext* context) {
@@ -185,9 +185,9 @@ void test_deref_function_arg(TestContext* context) {
 
 	Function executable_function = (Function)machine_code.code;
 	uint64_t result = executable_function(&value);
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	assert(result == value);
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_index_arary_with_pointer_arithmetics(TestContext* context) {
@@ -204,7 +204,6 @@ void test_index_arary_with_pointer_arithmetics(TestContext* context) {
 	}
 
 	Function executable_function = (Function)machine_code.code;
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	uint64_t results[16];
 	for (size_t i = 0; i < array_size(array); i += 1) {
@@ -214,6 +213,8 @@ void test_index_arary_with_pointer_arithmetics(TestContext* context) {
 	for (size_t i = 0; i < array_size(array); i += 1) {
 		assert(results[i] == array[i]);
 	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_index_arary_with_pointer_arithmetics_2(TestContext* context) {
@@ -230,7 +231,6 @@ void test_index_arary_with_pointer_arithmetics_2(TestContext* context) {
 	}
 
 	Function executable_function = (Function)machine_code.code;
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	uint64_t results[16];
 	for (size_t i = 0; i < array_size(array); i += 1) {
@@ -240,6 +240,8 @@ void test_index_arary_with_pointer_arithmetics_2(TestContext* context) {
 	for (size_t i = 0; i < array_size(array); i += 1) {
 		assert(results[i] == array[i]);
 	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_compare_equal_two_uint64(TestContext* context) {
@@ -260,7 +262,6 @@ void test_compare_equal_two_uint64(TestContext* context) {
 	}
 
 	Function executable_function = (Function)machine_code.code;
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	uint64_t results[SAMPLE_COUNT];
 	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
@@ -270,6 +271,8 @@ void test_compare_equal_two_uint64(TestContext* context) {
 	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
 		assert(results[i] == (array_a[i] == array_b[i]));
 	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_compare_equal_less_for_uint64(TestContext* context) {
@@ -290,7 +293,6 @@ void test_compare_equal_less_for_uint64(TestContext* context) {
 	}
 
 	Function executable_function = (Function)machine_code.code;
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	uint64_t results[SAMPLE_COUNT];
 	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
@@ -300,6 +302,8 @@ void test_compare_equal_less_for_uint64(TestContext* context) {
 	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
 		assert(results[i] == (array_a[i] < array_b[i]));
 	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_compare_equal_greater_for_uint64(TestContext* context) {
@@ -320,7 +324,6 @@ void test_compare_equal_greater_for_uint64(TestContext* context) {
 	}
 
 	Function executable_function = (Function)machine_code.code;
-	free_executable(machine_code.code, machine_code.size_in_bytes);
 
 	uint64_t results[SAMPLE_COUNT];
 	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
@@ -330,6 +333,8 @@ void test_compare_equal_greater_for_uint64(TestContext* context) {
 	for (size_t i = 0; i < SAMPLE_COUNT; i += 1) {
 		assert(results[i] == (array_a[i] > array_b[i]));
 	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
 void test_mutate_argument(TestContext* context) {

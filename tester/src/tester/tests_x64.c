@@ -92,7 +92,13 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			allowed_registers &= ~(1 << REG_SP);
 			allowed_registers &= ~(1 << REG_BP);
 
-			uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_8, REG_9 };
+			// HACK: Some times the register allocator might allocate the whole register
+			//       to some instruction and also it's high part to the other, thus any
+			//       writes by any of the two instructions will be reflected in two places.
+			allowed_registers &= ~(1 << REG_SI);
+			allowed_registers &= ~(1 << REG_DI);
+
+			uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_D, REG_8, REG_9 };
 			for (size_t i = 0; i < array_size(cdecl_arg_regs); i += 1) {
 				allowed_registers &= ~(1 << cdecl_arg_regs[i]);
 			}

@@ -786,6 +786,10 @@ static bool _stdout_pipe_create(StdoutPipe* pipe) {
 		return false;
 	}
 
+	if (!SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0)) {
+		panic("SetHandleInformation failed");
+	}
+
 	*pipe = (StdoutPipe) {
 		.read = stdout_read,
 		.write = stdout_write,
@@ -855,16 +859,10 @@ ProcessRunResult process_capture_stdout(String executable_path,
 		return PROCESS_RUN_ERROR;
 	}
 
-	WaitForSingleObject(process_info.hProcess, INFINITE);
-
-	if (out_exit_code) {
-		DWORD code = 0;
-		GetExitCodeProcess(process_info.hProcess, &code);
-		*out_exit_code = (int32_t)code;
-	}
-
-	CloseHandle(process_info.hProcess);
 	CloseHandle(process_info.hThread);
+
+	// Close the write handle, so that it is possible to detect
+	// whenever the child process has terminated
 	CloseHandle(pipe.write);
 
 	String stdout_string = { .v = arena_alloc_array(allocator, char, 0), .length = 0 };
@@ -887,6 +885,16 @@ ProcessRunResult process_capture_stdout(String executable_path,
 	allocator->allocated = string_allocation_base + stdout_string.length;
 	*out_stdout = stdout_string;
 
+	WaitForSingleObject(process_info.hProcess, INFINITE);
+
+	if (out_exit_code) {
+		DWORD code = 0;
+		GetExitCodeProcess(process_info.hProcess, &code);
+		*out_exit_code = (int32_t)code;
+	}
+
+	CloseHandle(process_info.hProcess);
 	CloseHandle(pipe.read);
+
 	return PROCESS_RUN_OK;
 }

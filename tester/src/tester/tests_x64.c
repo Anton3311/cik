@@ -498,8 +498,6 @@ static MachineCodeBuffer _compile_conditional_call_between_two_calls(TestContext
 }
 
 void test_conditional_call_between_two_calls_1(TestContext* context) {
-	panic("disabled");
-
 	MachineCodeBuffer machine_code = _compile_conditional_call_between_two_calls(context);
 
 	typedef uint64_t(*Function)(uint64_t, uint64_t*);
@@ -518,8 +516,6 @@ void test_conditional_call_between_two_calls_1(TestContext* context) {
 }
 
 void test_conditional_call_between_two_calls_2(TestContext* context) {
-	panic("disabled");
-
 	MachineCodeBuffer machine_code = _compile_conditional_call_between_two_calls(context);
 
 	typedef uint64_t(*Function)(uint64_t, uint64_t*);

@@ -26,4 +26,9 @@ void test_conditional_call_2(TestContext* context);
 void test_conditional_call_between_two_calls_1(TestContext* context);
 void test_conditional_call_between_two_calls_2(TestContext* context);
 
+// Phi Node Tests
+void test_return_one_phi_node_1(TestContext* context);
+void test_return_one_phi_node_2(TestContext* context);
+void test_return_sum_of_phi_node_values(TestContext* context);
+
 #endif

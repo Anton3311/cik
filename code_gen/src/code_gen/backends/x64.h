@@ -74,6 +74,13 @@ typedef struct {
 	CodeBuffer* per_region_code_buffer;
 
 	const FunctionRefTable* ref_table;
+
+	uint16_t* phi_variant_counts_per_region;
+	InstrIndexArray* phi_variants_per_region;
+
+	// A per region array of phi instructions that select a variant from that region.
+	// Size of the array is in `phi_variant_counts_per_region`
+	InstrIndex** phi_node_of_variant;
 } X64CodeGenerator;
 
 typedef struct {

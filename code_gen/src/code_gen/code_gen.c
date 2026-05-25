@@ -61,6 +61,8 @@ uint16_t func_ref_table_insert(FunctionRefTable* table, String name) {
 }
 
 void func_ref_table_release(FunctionRefTable* table) {
-	allocator_release(table->allocator, table->refs);
+	if (table->refs != NULL) {
+		allocator_release(table->allocator, table->refs);
+	}
 	*table = (FunctionRefTable) {};
 }

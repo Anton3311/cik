@@ -536,3 +536,70 @@ void test_conditional_call_between_two_calls_2(TestContext* context) {
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
+
+static MachineCodeBuffer _compile_return_one_phi_node_value(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t main(uint64_t cond) {\n"
+			"    uint64_t result;\n"
+			"    if (cond == 1) {\n"
+			"        result = 10;\n"
+			"    } else {\n"
+			"        result = 88;\n"
+			"    }\n"
+			"    return result;\n"
+			"}\n");
+
+	return _compile(context, source_code);
+}
+
+void test_return_one_phi_node_1(TestContext* context) {
+	MachineCodeBuffer machine_code = _compile_return_one_phi_node_value(context);
+
+	typedef uint64_t(*Function)(uint64_t);
+	Function executable_function = (Function)machine_code.code;
+
+	uint64_t result = executable_function(1);
+	assert(result == 10);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_return_one_phi_node_2(TestContext* context) {
+	MachineCodeBuffer machine_code = _compile_return_one_phi_node_value(context);
+
+	typedef uint64_t(*Function)(uint64_t);
+	Function executable_function = (Function)machine_code.code;
+
+	uint64_t result = executable_function(0);
+	assert(result == 88);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_return_sum_of_phi_node_values(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t main(uint64_t cond) {\n"
+			"    uint64_t result_1;\n"
+			"    uint64_t result_2;\n"
+			"    if (cond == 1) {\n"
+			"        result_1 = 10;\n"
+			"        result_2 = 2;\n"
+			"    } else {\n"
+			"        result_1 = 88;\n"
+			"        result_2 = 22;\n"
+			"    }\n"
+			"    return result_1 + result_2;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t);
+	Function executable_function = (Function)machine_code.code;
+
+	uint64_t result = executable_function(0);
+	assert(result == 110);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}

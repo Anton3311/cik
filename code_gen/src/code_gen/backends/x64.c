@@ -308,68 +308,76 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 	// 3. At the end of variant's live range place a move,
 	//    which copies the value from the variant's location into phi's location.
 
-	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(gen->allocator,
-			uint16_t,
-			gen->instr_buffer.region_count);
+	{
+		uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(gen->allocator,
+				uint16_t,
+				gen->instr_buffer.region_count);
 
-	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		const Instr* instr = &gen->instr_buffer.instr[i];
-		if (instr->kind == INSTR_PHI) {
-			InstrInputs variants = instr->phi.variants;
-			for (uint16_t j = 0; j < variants.count; j += 1) {
-				const Instr* variant = &gen->instr_buffer.instr[gen->instr_buffer.inputs_buffer[variants.start + j].value];
-				assert(variant->kind == INSTR_SELECT);
+		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+			const Instr* instr = &gen->instr_buffer.instr[i];
+			if (instr->kind == INSTR_PHI) {
+				InstrInputs variants = instr->phi.variants;
+				for (uint16_t j = 0; j < variants.count; j += 1) {
+					InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
+					const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
+					assert(variant->kind == INSTR_SELECT);
 
-				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-				phi_variant_counts_per_region[region_id] += 1;
+					uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
+					phi_variant_counts_per_region[region_id] += 1;
+				}
 			}
 		}
-	}
 
-	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(gen->allocator,
-			InstrIndexArray,
-			gen->instr_buffer.region_count);
-	InstrIndex** phi_node_of_variant = arena_alloc_array_zeroed(gen->allocator,
-			InstrIndex*,
-			gen->instr_buffer.region_count);
+		InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(gen->allocator,
+				InstrIndexArray,
+				gen->instr_buffer.region_count);
+		InstrIndex** phi_node_of_variant = arena_alloc_array_zeroed(gen->allocator,
+				InstrIndex*,
+				gen->instr_buffer.region_count);
 
-	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-		phi_variants_per_region[i].instr = arena_alloc_array(gen->allocator,
-				InstrIndex,
-				phi_variant_counts_per_region[i]);
+		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
+			phi_variants_per_region[i].instr = arena_alloc_array(gen->allocator,
+					InstrIndex,
+					phi_variant_counts_per_region[i]);
 
-		phi_node_of_variant[i] = arena_alloc_array(gen->allocator,
-				InstrIndex,
-				phi_variant_counts_per_region[i]);
-	}
+			phi_node_of_variant[i] = arena_alloc_array(gen->allocator,
+					InstrIndex,
+					phi_variant_counts_per_region[i]);
+		}
 
-	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		const Instr* instr = &gen->instr_buffer.instr[i];
-		if (instr->kind == INSTR_PHI) {
-			InstrInputs variants = instr->phi.variants;
-			for (uint16_t j = 0; j < variants.count; j += 1) {
-				const Instr* variant = &gen->instr_buffer.instr[gen->instr_buffer.inputs_buffer[variants.start + j].value];
-				assert(variant->kind == INSTR_SELECT);
+		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+			const Instr* instr = &gen->instr_buffer.instr[i];
+			if (instr->kind == INSTR_PHI) {
+				InstrInputs variants = instr->phi.variants;
+				for (uint16_t j = 0; j < variants.count; j += 1) {
+					InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
+					const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
+					assert(variant->kind == INSTR_SELECT);
 
-				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-				uint16_t variant_count_in_region = phi_variants_per_region[region_id].count;
+					uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
+					uint16_t variant_count_in_region = phi_variants_per_region[region_id].count;
 
-				assert(variant_count_in_region < phi_variant_counts_per_region[region_id]);
-				phi_variants_per_region[region_id].instr[variant_count_in_region] = variant->select.value;
-				phi_variants_per_region[region_id].count += 1;
+					assert(variant_count_in_region < phi_variant_counts_per_region[region_id]);
+					phi_variants_per_region[region_id].instr[variant_count_in_region] = variant->select.value;
+					phi_variants_per_region[region_id].count += 1;
 
-				phi_node_of_variant[region_id][variant_count_in_region] = (InstrIndex) { .value = i };
+					phi_node_of_variant[region_id][variant_count_in_region] = (InstrIndex) { .value = i };
+				}
 			}
 		}
-	}
 
-	printf("phi_variants_per_region:\n");
-	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-		printf("%u:\n", (uint32_t)i);
-		for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
-			printf("  phi: %u variant_value: %u\n",
-					(uint32_t)phi_node_of_variant[i][j].value,
-					(uint32_t)phi_variants_per_region[i].instr[j].value);
+		gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
+		gen->phi_variants_per_region = phi_variants_per_region;
+		gen->phi_node_of_variant = phi_node_of_variant;
+
+		printf("phi_variants_per_region:\n");
+		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
+			printf("%u:\n", (uint32_t)i);
+			for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
+				printf("  phi: %u variant_value: %u\n",
+						(uint32_t)phi_node_of_variant[i][j].value,
+						(uint32_t)phi_variants_per_region[i].instr[j].value);
+			}
 		}
 	}
 
@@ -756,6 +764,41 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 // Code Generation
 //
 
+static void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer);
+static void _x64_generate_phi_variants(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
+	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
+
+	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
+	const InstrIndex* phi_nodes = gen->phi_node_of_variant[region_id];
+
+	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
+		InstrIndex variant_index = phi_variants.instr[i];
+		_x64_generate_code(gen, variant_index, code_buffer);
+	}
+}
+
+static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
+	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
+
+	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
+	const InstrIndex* phi_nodes = gen->phi_node_of_variant[region_id];
+
+	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
+		InstrIndex variant_index = phi_variants.instr[i];
+		InstrIndex phi_node_index = phi_nodes[i];
+		const Instr* value = &gen->instr_buffer.instr[variant_index.value];
+
+		const InstrStorageLocation value_storage = gen->instr_storage[phi_variants.instr[i].value];
+		const InstrStorageLocation phi_storage = gen->instr_storage[phi_node_index.value];
+
+		assert(value_storage.kind == INSTR_STORAGE_REG);
+		assert(phi_storage.kind == INSTR_STORAGE_REG);
+
+		uint8_t value_bit_size = s_instr_storage_requiremenets[value->kind].reg_size;
+		_emit_mov_regs(code_buffer, value_storage.reg, phi_storage.reg, value_bit_size);
+	}
+}
+
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
@@ -956,10 +999,19 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_x64_generate_code(gen, instr->branch.true_region, NULL);
 		_x64_generate_code(gen, instr->branch.false_region, NULL);
 		return;
-	case INSTR_JUMP:
+	case INSTR_JUMP: {
+		// HACK: Need to store somewhere the currently processed region
+		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
+
 		_x64_generate_code(gen, instr->jump.io_state, buffer);
+
+		_x64_generate_phi_variants(gen, current_region_id, buffer);
+
+		_x64_generate_phi_copies(gen, current_region_id, buffer);
+
 		_x64_generate_code(gen, instr->jump.target_region, NULL);
 		return;
+	}
 
 	case INSTR_RETURN_VALUE:
 		_x64_generate_code(gen, instr->return_value.io_state, buffer);
@@ -1054,6 +1106,19 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
 		_code_buffer_init(code_buffer, gen->allocator);
 		_x64_generate_code(gen, instr->region.last_instr, code_buffer);
+		return;
+	}
+	case INSTR_PHI:
+		// Nothing to do here, everything is already handled during code gen of `INSTR_REGION`
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t i = 0; i < variants.count; i += 1) {
+			InstrIndex instr = gen->instr_buffer.inputs_buffer[variants.start + i];
+			_x64_generate_code(gen, instr, buffer);
+		}
+
+		return;
+	case INSTR_SELECT: {
 		return;
 	}
 	}

@@ -173,6 +173,34 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		}
 	}
 
+	for (size_t i = 0; i < buffer.count; i += 1) {
+		if (usage_ranges[i].value == UINT32_MAX) {
+			continue;
+		}
+
+		const Instr* instr = &buffer.instr[i];
+		if (instr->kind == INSTR_PHI) {
+			InstrUsageRange phi_usage_range = usage_ranges[i];
+
+			InstrInputs variants = instr->phi.variants;
+			for (uint16_t j = variants.start; j < variants.start + variants.count; j += 1) {
+				InstrIndex select_index = buffer.inputs_buffer[j];
+				const Instr* select = &buffer.instr[select_index.value];
+				assert(select->kind == INSTR_SELECT);
+
+				InstrUsageRange variant_usage_range = usage_ranges[select->select.value.value];
+				phi_usage_range.first_usage.value = min(
+						phi_usage_range.first_usage.value,
+						variant_usage_range.first_usage.value);
+				phi_usage_range.last_usage.value = max(
+						phi_usage_range.last_usage.value,
+						variant_usage_range.last_usage.value);
+			}
+
+			usage_ranges[i] = phi_usage_range;
+		}
+	}
+
 	arena_end_temp(temp);
 	return usage_ranges;
 }

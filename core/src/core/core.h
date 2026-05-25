@@ -113,7 +113,7 @@ inline void allocator_release(Allocator allocator, void* ptr) {
 
 #define allocator_alloc(allocator, type) (type)allocator_alloc_bytes(allocator, sizeof(type), alignof(type));
 #define allocator_alloc_array(allocator, type, count) \
-	(type)allocator_alloc_bytes(allocator, sizeof(type) * count, alignof(type));
+	(type*)allocator_alloc_bytes(allocator, sizeof(type) * count, alignof(type));
 
 //
 // Heap Allocator

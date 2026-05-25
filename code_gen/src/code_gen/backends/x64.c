@@ -446,6 +446,9 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 		uint16_t allowed_cluster_registers = allowed_registers;
 		UInt16Array cluster = clusters.clusters[i];
 
+		// First allocate registers for the function arguments.
+		// It is done first, so that no other instruction takes those registers,
+		// since function argument have their dedicated registers defined by the calling convention
 		for (size_t j = 0; j < cluster.count; j += 1) {
 			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[cluster.values[j]];
 			const Instr* instr = &gen->instr_buffer.instr[overlapping_instr.value];
@@ -463,7 +466,19 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			if (instr->kind == INSTR_LOAD_ARG) {
 				assert(instr->load_arg.index < array_size(cdecl_arg_regs));
 				instr_storage[overlapping_instr.value].kind = INSTR_STORAGE_REG;
-				instr_storage[overlapping_instr.value].reg = cdecl_arg_regs[instr->load_arg.index];
+
+				X64Register reg = cdecl_arg_regs[instr->load_arg.index];
+				instr_storage[overlapping_instr.value].reg = reg;
+
+				allowed_cluster_registers &= ~(1 << reg);
+			}
+		}
+
+		for (size_t j = 0; j < cluster.count; j += 1) {
+			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[cluster.values[j]];
+			const Instr* instr = &gen->instr_buffer.instr[overlapping_instr.value];
+
+			if (instr->kind == INSTR_LOAD_ARG) {
 				continue;
 			}
 

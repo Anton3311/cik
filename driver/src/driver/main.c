@@ -181,11 +181,6 @@ int main(int argc, char *argv[]) {
 					allowed_registers &= ~(1 << REG_SI);
 					allowed_registers &= ~(1 << REG_DI);
 
-					uint16_t cdecl_arg_regs[] = { REG_A, REG_C, REG_D, REG_8, REG_9 };
-					for (size_t i = 0; i < array_size(cdecl_arg_regs); i += 1) {
-						allowed_registers &= ~(1 << cdecl_arg_regs[i]);
-					}
-
 					X64CodeGenerator gen = {};
 					gen.instr_buffer = func.instr_buffer;
 					gen.usage_ranges = func.usage_ranges;

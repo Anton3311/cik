@@ -880,6 +880,7 @@ ProcessRunResult process_capture_stdout(String executable_path,
 		}
 
 		stdout_string.length += (size_t)read_count;
+		allocator->allocated = string_allocation_base + stdout_string.length;
 	}
 
 	allocator->allocated = string_allocation_base + stdout_string.length;

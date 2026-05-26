@@ -172,6 +172,7 @@ static UInt16Array* _x64_build_interference_graph(const InstrBuffer instr_buffer
 		const InstrUsageRange* usage_ranges,
 		Arena* allocator) {
 
+	// Each array stores indices into `instr_with_storage_requirement`
 	UInt16Array* graph_edges = arena_alloc_array_zeroed(allocator,
 			UInt16Array,
 			instr_with_storage_requirement.count);
@@ -404,6 +405,7 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 		printf("\n");
 	}
 
+#if 0
 	InstrOverlapClusters clusters = _x64_build_overlapping_instr_clusters(instr_with_storage_requirement,
 			graph,
 			gen->allocator,
@@ -445,11 +447,87 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			arena_end_temp(temp);
 		}
 	}
+#endif
 
 	InstrStorageLocation* instr_storage = arena_alloc_array_zeroed(gen->allocator,
 			InstrStorageLocation,
 			gen->instr_buffer.count);
 
+	uint16_t* potential_instr_registers = arena_alloc_array(gen->allocator,
+			uint16_t,
+			gen->instr_buffer.count);
+
+	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		InstrKind kind = gen->instr_buffer.instr[i].kind;
+
+		if (kind == INSTR_LOAD_ARG) {
+			continue;
+		}
+
+		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
+			uint16_t instr_registers = s_instr_storage_requiremenets[kind].allowed_registers;
+			potential_instr_registers[i] = instr_registers & allowed_registers;
+
+			assert_msg(potential_instr_registers[i] != 0,
+					"This instruction must be spilled, but spilling is not yet implemented");
+		}
+	}
+
+	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
+		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
+		InstrKind kind = gen->instr_buffer.instr[i].kind;
+
+		if (kind != INSTR_LOAD_ARG) {
+			continue;
+		}
+
+		const Instr* instr = &gen->instr_buffer.instr[i];
+
+		// NOTE: INSTR_LOAD_ARG are handled separtely here.
+		//       Since these instructions access arguments which
+		//       are stored in the `cdecl_arg_regs`
+
+		// NOTE: Well that's slowly turning into a mess, why is it here?
+		//       Probably need to introduce a proper concept of calling
+		//       conventions on the code gen level
+		X64Register cdecl_arg_regs[] = { REG_C, REG_D, REG_8, REG_9 };
+		assert(instr->load_arg.index < array_size(cdecl_arg_regs));
+
+		X64Register reg = cdecl_arg_regs[instr->load_arg.index];
+		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
+		instr_storage[instr_index.value].reg = reg;
+
+		UInt16Array edges = graph[i];
+		for (size_t j = 0; j < edges.count; j += 1) {
+			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
+			potential_instr_registers[interfering_instr.value] &= ~(1 << reg);
+		}
+	}
+
+	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
+		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
+
+		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_NONE) {
+			continue;
+		}
+
+		uint16_t potential_registers = potential_instr_registers[instr_index.value];
+		assert(potential_registers != 0);
+
+		uint16_t first_potential_register = count_trailing_zeros(potential_registers);
+		assert(first_potential_register < 16);
+
+		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
+		instr_storage[instr_index.value].reg = first_potential_register;
+
+		UInt16Array edges = graph[i];
+		for (size_t j = 0; j < edges.count; j += 1) {
+			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
+			potential_instr_registers[interfering_instr.value] &= ~(1 << first_potential_register);
+		}
+	}
+
+#if 0
 	for (size_t i = 0; i < clusters.count; i += 1) {
 		uint16_t allowed_cluster_registers = allowed_registers;
 		UInt16Array cluster = clusters.clusters[i];
@@ -504,6 +582,7 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			allowed_cluster_registers &= ~(1 << first_potential_register);
 		}
 	}
+#endif
 
 	printf("Assigned storage locations:\n");
 	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {

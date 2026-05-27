@@ -55,7 +55,7 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_SELECT]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 };
 
-static const char* REG_BASE_NAMES[] = {
+static const char* X64_REG_BASE_NAMES[] = {
 	"A",
 	"C",
 	"D",
@@ -116,7 +116,7 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 		str_builder_append_char(builder, name_prefix);
 	}
 
-	str_builder_append_cstr(builder, REG_BASE_NAMES[reg_index]);
+	str_builder_append_cstr(builder, X64_REG_BASE_NAMES[reg_index]);
 
 	if (name_sufix) {
 		str_builder_append_char(builder, name_sufix);
@@ -238,7 +238,7 @@ static void _x64_run_graph_coloring(InstrBuffer instr_buffer,
 		// NOTE: Well that's slowly turning into a mess, why is it here?
 		//       Probably need to introduce a proper concept of calling
 		//       conventions on the code gen level
-		X64Register cdecl_arg_regs[] = { REG_C, REG_D, REG_8, REG_9 };
+		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
 		assert(instr->load_arg.index < array_size(cdecl_arg_regs));
 
 		X64Register reg = cdecl_arg_regs[instr->load_arg.index];
@@ -639,7 +639,7 @@ static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
 	uint8_t* bytes = _code_buffer_append(buffer, 3);
 	bytes[0] = _rex_prefix(1, 0, 0, 0);
 	bytes[1] = 0x81;
-	bytes[2] = _mod_rm_with_ext(5, REG_SP);
+	bytes[2] = _mod_rm_with_ext(5, X64_REG_SP);
 
 	_code_buffer_push_32(buffer, offset);
 }
@@ -652,7 +652,7 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 	uint8_t* bytes = _code_buffer_append(buffer, 3);
 	bytes[0] = _rex_prefix(1, 0, 0, 0);
 	bytes[1] = 0x81;
-	bytes[2] = _mod_rm_with_ext(0, REG_SP);
+	bytes[2] = _mod_rm_with_ext(0, X64_REG_SP);
 
 	_code_buffer_push_32(buffer, offset);
 }
@@ -935,7 +935,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->return_value.value.value];
 		assert(return_value_loc.kind == INSTR_STORAGE_REG);
 
-		_emit_mov_regs(buffer, return_value_loc.reg, REG_A, 64);
+		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 
 		_emit_return(buffer);
 		return;
@@ -955,13 +955,13 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		const uint32_t SHADOW_SPACE_SIZE = 32;
 
 		X64Register saved_registers[] = {
-			REG_A,
-			REG_C,
-			REG_D,
-			REG_8,
-			REG_9,
-			REG_10,
-			REG_11,
+			X64_REG_A,
+			X64_REG_C,
+			X64_REG_D,
+			X64_REG_8,
+			X64_REG_9,
+			X64_REG_10,
+			X64_REG_11,
 		};
 
 		assert(instr->call_internal.args.count <= 1);
@@ -980,14 +980,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		if (args.count == 1) {
 			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + 0];
 			const InstrStorageLocation arg_storage_loc = gen->instr_storage[arg_instr.value];
-			_emit_mov_regs(buffer, arg_storage_loc.reg, REG_C, 64);
+			_emit_mov_regs(buffer, arg_storage_loc.reg, X64_REG_C, 64);
 		}
 
 		uint16_t function_id = instr->call_internal.function_index;
 		assert(function_id < gen->ref_table->size);
 		const FunctionRef* ref = &gen->ref_table->refs[function_id];
 
-		_emit_load_const_64(buffer, REG_A, (uint64_t)ref->address);
+		_emit_load_const_64(buffer, X64_REG_A, (uint64_t)ref->address);
 
 		// push shadow space
 		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
@@ -1002,7 +1002,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		// Now move the return value into a the proper register dedicated
 		// exactly for the return value of this call instruction
-		_emit_mov_regs(buffer, REG_A, instr_storage.reg, 64);
+		_emit_mov_regs(buffer, X64_REG_A, instr_storage.reg, 64);
 
 		// Pop saved registers in reverse order
 		for (size_t i = array_size(saved_registers); i > 0; i -= 1) {

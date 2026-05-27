@@ -15,24 +15,24 @@ typedef enum {
 } X64RegisterFlag;
 
 typedef enum {
-	REG_A,
-	REG_C,
-	REG_D,
-	REG_B,
+	X64_REG_A,
+	X64_REG_C,
+	X64_REG_D,
+	X64_REG_B,
 
-	REG_SP,
-	REG_BP,
-	REG_SI,
-	REG_DI,
+	X64_REG_SP,
+	X64_REG_BP,
+	X64_REG_SI,
+	X64_REG_DI,
 
-	REG_8,
-	REG_9,
-	REG_10,
-	REG_11,
-	REG_12,
-	REG_13,
-	REG_14,
-	REG_15,
+	X64_REG_8,
+	X64_REG_9,
+	X64_REG_10,
+	X64_REG_11,
+	X64_REG_12,
+	X64_REG_13,
+	X64_REG_14,
+	X64_REG_15,
 } X64Register;
 
 // `size_index` - one of [0, 1, 2, 3]

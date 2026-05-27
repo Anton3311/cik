@@ -172,14 +172,14 @@ int main(int argc, char *argv[]) {
 					printf("\n");
 
 					uint16_t allowed_registers = UINT16_MAX;
-					allowed_registers &= ~(1 << REG_SP);
-					allowed_registers &= ~(1 << REG_BP);
+					allowed_registers &= ~(1 << X64_REG_SP);
+					allowed_registers &= ~(1 << X64_REG_BP);
 
 					// HACK: Some times the register allocator might allocate the whole register
 					//       to some instruction and also it's high part to the other, thus any
 					//       writes by any of the two instructions will be reflected in two places.
-					allowed_registers &= ~(1 << REG_SI);
-					allowed_registers &= ~(1 << REG_DI);
+					allowed_registers &= ~(1 << X64_REG_SI);
+					allowed_registers &= ~(1 << X64_REG_DI);
 
 					X64CodeGenerator gen = {};
 					gen.instr_buffer = func.instr_buffer;

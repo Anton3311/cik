@@ -40,6 +40,8 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_PTR_LOAD_32]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_PTR_LOAD_64]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
+	[INSTR_LOAD_ARG]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
 	[INSTR_BRANCH]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 	[INSTR_JUMP]                   = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 

@@ -187,6 +187,98 @@ static UInt16Array* _x64_build_interference_graph(const InstrBuffer instr_buffer
 	return graph_edges;
 }
 
+// Writes storage locations into `instr_storage` array.
+// This array must be of size `instr_buffer.count`
+static void _x64_run_graph_coloring(InstrBuffer instr_buffer,
+		InstrIndexArray instr_with_storage_requirement,
+		UInt16Array* interference_graph,
+		InstrStorageLocation* instr_storage,
+		uint16_t allowed_registers,
+		Arena* temp_allocator) {
+	profile_scope_start(__func__);
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	uint16_t* potential_instr_registers = arena_alloc_array(temp_allocator,
+			uint16_t,
+			instr_buffer.count);
+
+	for (size_t i = 0; i < instr_buffer.count; i += 1) {
+		InstrKind kind = instr_buffer.instr[i].kind;
+
+		if (kind == INSTR_LOAD_ARG) {
+			continue;
+		}
+
+		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
+			uint16_t instr_registers = s_instr_storage_requiremenets[kind].allowed_registers;
+			potential_instr_registers[i] = instr_registers & allowed_registers;
+
+			assert_msg(potential_instr_registers[i] != 0,
+					"This instruction must be spilled, but spilling is not yet implemented");
+		}
+	}
+
+	// Assign locations to function arguments
+	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
+		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
+		InstrKind kind = instr_buffer.instr[i].kind;
+
+		if (kind != INSTR_LOAD_ARG) {
+			continue;
+		}
+
+		const Instr* instr = &instr_buffer.instr[i];
+
+		// NOTE: INSTR_LOAD_ARG are handled separtely here.
+		//       Since these instructions access arguments which
+		//       are stored in the `cdecl_arg_regs`
+
+		// NOTE: Well that's slowly turning into a mess, why is it here?
+		//       Probably need to introduce a proper concept of calling
+		//       conventions on the code gen level
+		X64Register cdecl_arg_regs[] = { REG_C, REG_D, REG_8, REG_9 };
+		assert(instr->load_arg.index < array_size(cdecl_arg_regs));
+
+		X64Register reg = cdecl_arg_regs[instr->load_arg.index];
+		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
+		instr_storage[instr_index.value].reg = reg;
+
+		UInt16Array edges = interference_graph[i];
+		for (size_t j = 0; j < edges.count; j += 1) {
+			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
+			potential_instr_registers[interfering_instr.value] &= ~(1 << reg);
+		}
+	}
+
+	// Assign locations to the rest of the instructions
+	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
+		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
+
+		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_NONE) {
+			continue;
+		}
+
+		uint16_t potential_registers = potential_instr_registers[instr_index.value];
+		assert_msg(potential_registers != 0,
+				"This instruction must be spilled, but spilling is not yet implemented");
+
+		uint16_t first_potential_register = count_trailing_zeros(potential_registers);
+		assert(first_potential_register < 16);
+
+		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
+		instr_storage[instr_index.value].reg = first_potential_register;
+
+		UInt16Array edges = interference_graph[i];
+		for (size_t j = 0; j < edges.count; j += 1) {
+			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
+			potential_instr_registers[interfering_instr.value] &= ~(1 << first_potential_register);
+		}
+	}
+
+	arena_end_temp(temp);
+	profile_scope_end();
+}
+
 void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 	profile_scope_start(__func__);
 	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
@@ -278,12 +370,23 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 	InstrIndexArray instr_with_storage_requirement = _x64_gather_instr_with_storage_requirement(
 			gen->instr_buffer,
 			gen->usage_ranges,
-			gen->allocator);
+			gen->temp_allocator);
 
 	UInt16Array* interference_graph = _x64_build_interference_graph(gen->instr_buffer, 
 			instr_with_storage_requirement,
 			gen->usage_ranges,
-			gen->allocator);
+			gen->temp_allocator);
+
+	gen->instr_storage = arena_alloc_array_zeroed(gen->allocator,
+			InstrStorageLocation,
+			gen->instr_buffer.count);
+
+	_x64_run_graph_coloring(gen->instr_buffer,
+			instr_with_storage_requirement,
+			interference_graph,
+			gen->instr_storage,
+			allowed_registers,
+			gen->temp_allocator);
 
 	printf("Interference Graph Edges for each Instr:\n");
 	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
@@ -298,97 +401,19 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 		printf("\n");
 	}
 
-	InstrStorageLocation* instr_storage = arena_alloc_array_zeroed(gen->allocator,
-			InstrStorageLocation,
-			gen->instr_buffer.count);
-
-	uint16_t* potential_instr_registers = arena_alloc_array(gen->allocator,
-			uint16_t,
-			gen->instr_buffer.count);
-
-	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		InstrKind kind = gen->instr_buffer.instr[i].kind;
-
-		if (kind == INSTR_LOAD_ARG) {
-			continue;
-		}
-
-		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			uint16_t instr_registers = s_instr_storage_requiremenets[kind].allowed_registers;
-			potential_instr_registers[i] = instr_registers & allowed_registers;
-
-			assert_msg(potential_instr_registers[i] != 0,
-					"This instruction must be spilled, but spilling is not yet implemented");
-		}
-	}
-
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
-		InstrKind kind = gen->instr_buffer.instr[i].kind;
-
-		if (kind != INSTR_LOAD_ARG) {
-			continue;
-		}
-
-		const Instr* instr = &gen->instr_buffer.instr[i];
-
-		// NOTE: INSTR_LOAD_ARG are handled separtely here.
-		//       Since these instructions access arguments which
-		//       are stored in the `cdecl_arg_regs`
-
-		// NOTE: Well that's slowly turning into a mess, why is it here?
-		//       Probably need to introduce a proper concept of calling
-		//       conventions on the code gen level
-		X64Register cdecl_arg_regs[] = { REG_C, REG_D, REG_8, REG_9 };
-		assert(instr->load_arg.index < array_size(cdecl_arg_regs));
-
-		X64Register reg = cdecl_arg_regs[instr->load_arg.index];
-		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
-		instr_storage[instr_index.value].reg = reg;
-
-		UInt16Array edges = interference_graph[i];
-		for (size_t j = 0; j < edges.count; j += 1) {
-			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-			potential_instr_registers[interfering_instr.value] &= ~(1 << reg);
-		}
-	}
-
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
-
-		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_NONE) {
-			continue;
-		}
-
-		uint16_t potential_registers = potential_instr_registers[instr_index.value];
-		assert(potential_registers != 0);
-
-		uint16_t first_potential_register = count_trailing_zeros(potential_registers);
-		assert(first_potential_register < 16);
-
-		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
-		instr_storage[instr_index.value].reg = first_potential_register;
-
-		UInt16Array edges = interference_graph[i];
-		for (size_t j = 0; j < edges.count; j += 1) {
-			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-			potential_instr_registers[interfering_instr.value] &= ~(1 << first_potential_register);
-		}
-	}
-
 	printf("Assigned storage locations:\n");
 	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
 		ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
 		String storage_string = STR_LIT("none");
 
-		if (instr_storage[i].kind == INSTR_STORAGE_REG) {
+		if (gen->instr_storage[i].kind == INSTR_STORAGE_REG) {
 			StringBuilder builder = { .arena = gen->temp_allocator };
 
 			const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
 			const X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr_kind];
 
-			_format_reg_name(&builder, instr_storage[i].reg, storage_requirement.reg_size);
+			_format_reg_name(&builder, gen->instr_storage[i].reg, storage_requirement.reg_size);
 			storage_string = builder.string;
 		}
 
@@ -396,8 +421,6 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 
 		arena_end_temp(temp);
 	}
-
-	gen->instr_storage = instr_storage;
 
 	arena_end_temp(temp);
 	profile_scope_end();

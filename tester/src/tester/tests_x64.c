@@ -680,3 +680,25 @@ void test_phi_in_nested_if_without_else(TestContext* context) {
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
+
+void test_min(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t main(uint64_t a, uint64_t b) {\n"
+			"    uint64_t result;\n"
+			"    if (a < b) { result = a; } else { result = b; }\n"
+			"    return result;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t, uint64_t);
+	Function executable_function = (Function)machine_code.code;
+
+	assert(executable_function(10, 9) == 9);
+	assert(executable_function(4, 3) == 3);
+	assert(executable_function(9812, 7777881) == 9812);
+	assert(executable_function(10, 10) == 10);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}

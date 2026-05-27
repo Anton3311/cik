@@ -109,6 +109,7 @@ static TestCase x64_tests[] = {
 	test(test_phi_in_nested_if_else),
 	test(test_phi_in_if_without_else),
 	test(test_phi_in_nested_if_without_else),
+	test(test_min),
 };
 
 static TestSuite s_test_suites[] = {

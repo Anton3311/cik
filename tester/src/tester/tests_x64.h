@@ -33,5 +33,6 @@ void test_return_sum_of_phi_node_values(TestContext* context);
 void test_phi_in_nested_if_else(TestContext* context);
 void test_phi_in_if_without_else(TestContext* context);
 void test_phi_in_nested_if_without_else(TestContext* context);
+void test_min(TestContext* context);
 
 #endif

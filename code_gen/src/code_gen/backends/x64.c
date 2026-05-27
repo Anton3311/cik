@@ -888,9 +888,17 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 
-	case INSTR_BRANCH:
+	case INSTR_BRANCH: {
 		_x64_generate_code(gen, instr->branch.io_state, buffer);
+
+		// HACK: Need to store somewhere the currently processed region
+		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
+
+		_x64_generate_phi_variants(gen, current_region_id, buffer);
+
 		_x64_generate_code(gen, instr->branch.condition, buffer);
+
+		_x64_generate_phi_copies(gen, current_region_id, buffer);
 
 		const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
 		assert(cond_loc.kind == INSTR_STORAGE_REG);
@@ -902,6 +910,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_x64_generate_code(gen, instr->branch.true_region, NULL);
 		_x64_generate_code(gen, instr->branch.false_region, NULL);
 		return;
+	}
 	case INSTR_JUMP: {
 		// HACK: Need to store somewhere the currently processed region
 		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);

@@ -891,6 +891,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_BRANCH:
 		_x64_generate_code(gen, instr->branch.io_state, buffer);
 		_x64_generate_code(gen, instr->branch.condition, buffer);
+
+		const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
+		assert(cond_loc.kind == INSTR_STORAGE_REG);
+
+		_code_buffer_push_8(buffer, _rex_prefix(1, cond_loc.reg >> 3, 0, cond_loc.reg >> 3));
+		_code_buffer_push_8(buffer, 0x85);
+		_code_buffer_push_8(buffer, _mod_rm_with_ext(cond_loc.reg & 0b111, cond_loc.reg & 0b111));
+
 		_x64_generate_code(gen, instr->branch.true_region, NULL);
 		_x64_generate_code(gen, instr->branch.false_region, NULL);
 		return;
@@ -1054,6 +1062,7 @@ static void _encode_control_instr(const Instr* instr,
 		uint32_t relative_offset = (uint32_t)target_offset - ((uint32_t)current_block_end_offset + 5);
 		assert(relative_offset <= UINT32_MAX);
 
+		// jmp
 		out_encoding[0] = 0xe9;
 		memcpy(out_encoding + 1, &relative_offset, sizeof(relative_offset));
 		break;
@@ -1075,10 +1084,12 @@ static void _encode_control_instr(const Instr* instr,
 		uint32_t false_relative_offset = (uint32_t)false_offset - ((uint32_t)current_block_end_offset + 6 + 5);
 		assert(false_relative_offset <= UINT32_MAX);
 
+		// jnz
 		out_encoding[0] = 0x0f;
-		out_encoding[1] = 0x84;
+		out_encoding[1] = 0x85;
 		memcpy(out_encoding + 2, &true_relative_offset, sizeof(true_relative_offset));
 
+		// jmp
 		out_encoding[6] = 0xe9;
 		memcpy(out_encoding + 7, &false_relative_offset, sizeof(false_relative_offset));
 		break;

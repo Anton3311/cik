@@ -599,3 +599,84 @@ void test_return_sum_of_phi_node_values(TestContext* context) {
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
+
+void test_phi_in_nested_if_else(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t main(uint64_t primary, uint64_t secondary) {\n"
+			"    uint64_t result;\n"
+			"    if (primary == 10) {\n"
+			"        if (secondary == 99) {\n"
+			"            result = 8;\n"
+			"        } else {\n"
+			"            result = 11;\n"
+			"        }\n"
+			"    } else {\n"
+			"        result = 3;\n"
+			"    }\n"
+			"    return result;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t, uint64_t);
+	Function executable_function = (Function)machine_code.code;
+
+	assert(executable_function(10, 0) == 11);
+	assert(executable_function(10, 99) == 8);
+	assert(executable_function(8, 0) == 3);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_phi_in_if_without_else(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t main(uint64_t cond) {\n"
+			"    uint64_t result = 10;\n"
+			"    if (cond == 10) {\n"
+		    "        result = 11;\n"
+			"    }\n"
+			"    return result;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t);
+	Function executable_function = (Function)machine_code.code;
+
+	assert(executable_function(10) == 11);
+	assert(executable_function(1) == 10);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_phi_in_nested_if_without_else(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t main(uint64_t primary, uint64_t secondary) {\n"
+			"    uint64_t result = 5;\n"
+			"    if (primary == 10) {\n"
+			"        if (secondary == 99) {\n"
+			"            result = 8;\n"
+			"        }\n"
+			"    } else {\n"
+			"        if (secondary == 0) {\n"
+			"            result = 2;\n"
+			"        }\n"
+			"    }\n"
+			"    return result;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t, uint64_t);
+	Function executable_function = (Function)machine_code.code;
+
+	assert(executable_function(10, 0) == 5);
+	assert(executable_function(10, 99) == 8);
+	assert(executable_function(8, 4) == 5);
+	assert(executable_function(8, 0) == 2);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}

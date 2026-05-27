@@ -106,6 +106,9 @@ static TestCase x64_tests[] = {
 	test(test_return_one_phi_node_1),
 	test(test_return_one_phi_node_2),
 	test(test_return_sum_of_phi_node_values),
+	test(test_phi_in_nested_if_else),
+	test(test_phi_in_if_without_else),
+	test(test_phi_in_nested_if_without_else),
 };
 
 static TestSuite s_test_suites[] = {

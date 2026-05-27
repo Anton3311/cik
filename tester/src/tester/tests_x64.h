@@ -30,5 +30,8 @@ void test_conditional_call_between_two_calls_2(TestContext* context);
 void test_return_one_phi_node_1(TestContext* context);
 void test_return_one_phi_node_2(TestContext* context);
 void test_return_sum_of_phi_node_values(TestContext* context);
+void test_phi_in_nested_if_else(TestContext* context);
+void test_phi_in_if_without_else(TestContext* context);
+void test_phi_in_nested_if_without_else(TestContext* context);
 
 #endif

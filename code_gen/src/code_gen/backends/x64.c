@@ -847,17 +847,19 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			switch (instr->compare.kind) {
 			case INSTR_CMP_EQUAL:
 				instr_bytes[1] = 0x94; // setz
-				break;
+				return;
 			case INSTR_CMP_NOT_EQUAL:
 				instr_bytes[1] = 0x95; // setne
-				break;
+				return;
 			case INSTR_CMP_LESS:
 				instr_bytes[1] = 0x9c; // setl
-				break;
+				return;
 			case INSTR_CMP_GREATER:
 				instr_bytes[1] = 0x9f; // setg
-				break;
+				return;
 			}
+
+			unreachable();
 		}
 
 		return;

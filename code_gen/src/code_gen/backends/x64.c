@@ -223,13 +223,13 @@ static void _x64_run_graph_coloring(InstrBuffer instr_buffer,
 	// Assign locations to function arguments
 	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
 		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
-		InstrKind kind = instr_buffer.instr[i].kind;
+		InstrKind kind = instr_buffer.instr[instr_index.value].kind;
 
 		if (kind != INSTR_LOAD_ARG) {
 			continue;
 		}
 
-		const Instr* instr = &instr_buffer.instr[i];
+		const Instr* instr = &instr_buffer.instr[instr_index.value];
 
 		// NOTE: INSTR_LOAD_ARG are handled separtely here.
 		//       Since these instructions access arguments which

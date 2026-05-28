@@ -131,67 +131,70 @@ int main(int argc, char *argv[]) {
 			print_parsed_node(parsed_ast.root_nodes.first);
 		}
 
-		if (diagnostics.first == NULL) {
-			for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-				if (node->kind == AST_NODE_FUNCTION) {
-					if (node->function_def->body == NULL) {
-						continue;
-					}
+		if (diagnostics.first != NULL) {
+			diagnostics_print(&diagnostics);
+			return EXIT_FAILURE;
+		}
 
-					Arena input_instr_array_allocator = arena_alloc_sub_arena(&arena, 4096);
-
-					FunctionCompiler c = {};
-					c.function = node->function_def;
-					c.allocator = &arena;
-					c.instr_allocator = &arena;
-					c.input_instr_array_allocator = &input_instr_array_allocator;
-					c.temp_allocator = &temp_arena;
-					c.pointer_type_layout = type_layout_new(8, 8);
-					c.func_ref_table.allocator = heap_allocator_new();
-
-					CompiledFunction func = function_compiler_compile(&c);
-					compiler_resolve_default_func_refs(&func.func_ref_table);
-
-					if (!has_flag(flags, C_FLAG_KEEP_DEAD_INSTR)) {
-						instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
-					}
-
-					if (has_flag(flags, C_FLAG_PRINT_IR_INSTR)) {
-						instr_print_all(func.instr_buffer, &temp_arena);
-					}
-
-					uint16_t allowed_registers = UINT16_MAX;
-					allowed_registers &= ~(1 << X64_REG_SP);
-					allowed_registers &= ~(1 << X64_REG_BP);
-
-					// HACK: Some times the register allocator might allocate the whole register
-					//       to some instruction and also it's high part to the other, thus any
-					//       writes by any of the two instructions will be reflected in two places.
-					allowed_registers &= ~(1 << X64_REG_SI);
-					allowed_registers &= ~(1 << X64_REG_DI);
-
-					X64CodeGenerator gen = {};
-					gen.instr_buffer = func.instr_buffer;
-					gen.usage_ranges = func.usage_ranges;
-					gen.allocator = &arena;
-					gen.temp_allocator = &temp_arena;
-					gen.ref_table = &func.func_ref_table;
-
-					x64_alloc_registers(&gen, allowed_registers);
-					MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
-
-					// Free function symbol table
-					func_ref_table_release(&func.func_ref_table);
-
-					typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
-					ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;
-
-					uint64_t result = executable_function(argc, argv);
-
-					free_executable(machine_code.code, machine_code.size_in_bytes);
-
-					printf("%llu\n", result);
+		for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+			if (node->kind == AST_NODE_FUNCTION) {
+				if (node->function_def->body == NULL) {
+					continue;
 				}
+
+				Arena input_instr_array_allocator = arena_alloc_sub_arena(&arena, 4096);
+
+				FunctionCompiler c = {};
+				c.function = node->function_def;
+				c.allocator = &arena;
+				c.instr_allocator = &arena;
+				c.input_instr_array_allocator = &input_instr_array_allocator;
+				c.temp_allocator = &temp_arena;
+				c.pointer_type_layout = type_layout_new(8, 8);
+				c.func_ref_table.allocator = heap_allocator_new();
+
+				CompiledFunction func = function_compiler_compile(&c);
+				compiler_resolve_default_func_refs(&func.func_ref_table);
+
+				if (!has_flag(flags, C_FLAG_KEEP_DEAD_INSTR)) {
+					instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
+				}
+
+				if (has_flag(flags, C_FLAG_PRINT_IR_INSTR)) {
+					instr_print_all(func.instr_buffer, &temp_arena);
+				}
+
+				uint16_t allowed_registers = UINT16_MAX;
+				allowed_registers &= ~(1 << X64_REG_SP);
+				allowed_registers &= ~(1 << X64_REG_BP);
+
+				// HACK: Some times the register allocator might allocate the whole register
+				//       to some instruction and also it's high part to the other, thus any
+				//       writes by any of the two instructions will be reflected in two places.
+				allowed_registers &= ~(1 << X64_REG_SI);
+				allowed_registers &= ~(1 << X64_REG_DI);
+
+				X64CodeGenerator gen = {};
+				gen.instr_buffer = func.instr_buffer;
+				gen.usage_ranges = func.usage_ranges;
+				gen.allocator = &arena;
+				gen.temp_allocator = &temp_arena;
+				gen.ref_table = &func.func_ref_table;
+
+				x64_alloc_registers(&gen, allowed_registers);
+				MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
+
+				// Free function symbol table
+				func_ref_table_release(&func.func_ref_table);
+
+				typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
+				ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;
+
+				uint64_t result = executable_function(argc, argv);
+
+				free_executable(machine_code.code, machine_code.size_in_bytes);
+
+				printf("%llu\n", result);
 			}
 		}
 
@@ -200,10 +203,9 @@ int main(int argc, char *argv[]) {
 		arena_release(&ident_arena);
 		arena_release(&ast_arena);
 		arena_release(&generated_tokens_arena);
-
-		diagnostics_print(&diagnostics);
 	} else {
 		printf("Usage: c <path_to_source_file>\n");
+		return EXIT_FAILURE;
 	}
 
 	arena_release(&arena);
@@ -213,6 +215,5 @@ int main(int argc, char *argv[]) {
 	profile_scope_end();
 
 	profile_finish();
-
 	return EXIT_SUCCESS;
 }

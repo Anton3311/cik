@@ -18,6 +18,78 @@ bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def) {
 	return type->enum_def == enum_def;
 }
 
+bool type_equal(const ParsedType* a, const ParsedType* b) {
+	ParsedTypeKind a_without_signed = a->kind & (~TYPE_FLAG_SIGNED);
+	ParsedTypeKind b_without_signed = b->kind & (~TYPE_FLAG_SIGNED);
+
+	if (a_without_signed != b_without_signed) {
+		return false;
+	}
+
+	if (a->qualifiers != b->qualifiers) {
+		return false;
+	}
+
+	switch (a->kind) {
+	case PARSED_TYPE_STRUCT:
+		return a->struct_def == b->struct_def;
+	case PARSED_TYPE_UNION:
+		return a->union_def == b->union_def;
+	case PARSED_TYPE_ENUM:
+		return a->enum_def == b->enum_def;
+	case PARSED_TYPE_VOID:
+	case PARSED_TYPE_SIZE_T:
+
+	case PARSED_TYPE_CHAR:
+	case PARSED_TYPE_INT:
+	case PARSED_TYPE_SHORT:
+	case PARSED_TYPE_LONG:
+	case PARSED_TYPE_LONG_LONG:
+	case PARSED_TYPE_INT8:
+	case PARSED_TYPE_INT16:
+	case PARSED_TYPE_INT32:
+	case PARSED_TYPE_INT64:
+
+	case PARSED_TYPE_SIGNED_CHAR:
+	case PARSED_TYPE_SIGNED_INT:
+	case PARSED_TYPE_SIGNED_SHORT:
+	case PARSED_TYPE_SIGNED_LONG:
+	case PARSED_TYPE_SIGNED_LONG_LONG:
+	case PARSED_TYPE_SIGNED_INT8:
+	case PARSED_TYPE_SIGNED_INT16:
+	case PARSED_TYPE_SIGNED_INT32:
+	case PARSED_TYPE_SIGNED_INT64:
+
+
+	case PARSED_TYPE_UNSIGNED_CHAR:
+	case PARSED_TYPE_UNSIGNED_INT:
+	case PARSED_TYPE_UNSIGNED_SHORT:
+	case PARSED_TYPE_UNSIGNED_LONG:
+	case PARSED_TYPE_UNSIGNED_LONG_LONG:
+	case PARSED_TYPE_UNSIGNED_INT8:
+	case PARSED_TYPE_UNSIGNED_INT16:
+	case PARSED_TYPE_UNSIGNED_INT32:
+	case PARSED_TYPE_UNSIGNED_INT64:
+
+	case PARSED_TYPE_FLOAT:
+	case PARSED_TYPE_DOUBLE:
+		return true;
+	
+	case PARSED_TYPE_POINTER:
+		assert(a->pointer_base_type != NULL);
+		assert(b->pointer_base_type != NULL);
+		return type_equal(a->pointer_base_type, b->pointer_base_type);
+	
+	case PARSED_TYPE_ARRAY:
+		assert(a->array.size == NULL);
+		assert(b->array.size == NULL);
+		return type_equal(a->array.element_type, a->array.element_type);
+	}
+
+	unreachable();
+	return false;
+}
+
 static String s_bin_op_kind_to_string[] = {
 	[BIN_OP_ADD] = STR_LIT("+"),
 	[BIN_OP_SUB] = STR_LIT("-"),

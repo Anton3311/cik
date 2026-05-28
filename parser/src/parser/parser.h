@@ -14,8 +14,6 @@ typedef struct IdentifierEntry IdentifierEntry;
 typedef struct IdentifierScope IdentifierScope;
 typedef struct IdentifierNamespace IdentifierNamespace;
 
-bool type_equal(const ParsedType* a, const ParsedType* b);
-
 //
 // IdentifierStorage
 //

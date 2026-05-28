@@ -156,6 +156,8 @@ struct ParsedType {
 	};
 };
 
+bool type_equal(const ParsedType* a, const ParsedType* b);
+
 inline bool type_kind_is_int(ParsedTypeKind kind) {
 	ParsedTypeKind kind_without_sign_flags = kind & ~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED);
 	return (kind_without_sign_flags >= PARSED_TYPE_CHAR

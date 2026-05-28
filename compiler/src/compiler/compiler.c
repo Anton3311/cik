@@ -192,6 +192,10 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 			break;
 		}
 
+		assert_msg(instr->kind != INSTR_NO_OP,
+				"Binary operation was not handled, "
+				"and thus haven't produced a valid instruction");
+
 		if (bin_op_is_compare(expr->binary.op)) {
 			return instr_new_cast(instr_buffer, instr_allocator, instr_index, 64);
 		}

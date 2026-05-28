@@ -25,6 +25,20 @@ typedef enum {
 	C_FLAG_PRINT_AST               = 1 << 3,
 } CompilerFlags;
 
+static const char* s_help_menu = 
+	"\n"
+	"  Usage:\n"
+	"    c.exe <path-to-c-file>\n"
+	"\n"
+	"  Compiler flags:\n"
+	"    --no-win-sdk           don't add Win SDK to include path\n"
+	"    -I<include-path>       specify an include path\n"
+	"    --show-ast             print AST after parsing\n"
+	"\n"
+	"  Backend flags:           \n"
+	"    --keep-dead-instr      don't eliminate dead instructions\n"
+	"    --show-ir              print IR instructions before lowering to machine code\n";
+
 int main(int argc, char *argv[]) {
 	profile_init(1000 * 1000);
 
@@ -209,7 +223,8 @@ int main(int argc, char *argv[]) {
 		arena_release(&ast_arena);
 		arena_release(&generated_tokens_arena);
 	} else {
-		printf("Usage: c <path_to_source_file>\n");
+		printf("No input file\n");
+		printf("%s", s_help_menu);
 		return EXIT_FAILURE;
 	}
 

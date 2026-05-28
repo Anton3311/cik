@@ -3,7 +3,6 @@
 void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
-	int a = 10 + 5;
-	assert(a == 15);
+	assert(10 + 5 == 15);
 	return 0;
 }

@@ -551,6 +551,19 @@ inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t va
 	_code_buffer_push_64(buffer, value);
 }
 
+inline void _emit_load_const_32(CodeBuffer* buffer, X64Register reg, uint32_t value) {
+	if (reg >= 8) {
+		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		bytes[0] = 0b00000000 | (1 << 3) | (reg >> 3);
+		bytes[1] = 0xb8 + (reg & 0b111);
+	} else {
+		uint8_t* bytes = _code_buffer_append(buffer, 1);
+		bytes[0] = 0xb8 + (reg & 0b111);
+	}
+
+	_code_buffer_push_32(buffer, value);
+}
+
 inline void _emit_return(CodeBuffer* buffer) {
 	*_code_buffer_append(buffer, 1) = 0xc3;
 }
@@ -706,8 +719,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 	case INSTR_CONST_8:
 	case INSTR_CONST_16:
-	case INSTR_CONST_32:
 		unreachable();
+	case INSTR_CONST_32:
+		assert(instr_storage.kind == INSTR_STORAGE_REG);
+		_emit_load_const_32(buffer, instr_storage.reg, instr->const_32.u);
+		return;
 
 	case INSTR_CONST_64:
 		assert(instr_storage.kind == INSTR_STORAGE_REG);

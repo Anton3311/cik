@@ -212,8 +212,41 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 	case EXPR_INTEGER_LITERAL: {
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-		instr->kind = INSTR_CONST_64;
-		instr->const_64.u = expr->int_literal.value;
+
+		assert(type_kind_is_int(expr->int_literal.integer_type));
+
+		ParsedType int_type = { .kind = expr->int_literal.integer_type };
+		size_t int_size = _type_get_layout(compiler, &int_type).size;
+
+		// NOTE: There is much of a support for non-64 bit numbers,
+		//       so for now always compile it down to a 64-bit int.
+		int_size = 8;
+
+		switch (int_size) {
+		case 1:
+			assert(expr->int_literal.value <= 0xff);
+			instr->kind = INSTR_CONST_8;
+			instr->const_8.u = (uint8_t)expr->int_literal.value;
+			break;
+		case 2:
+			assert(expr->int_literal.value <= 0xffff);
+			instr->kind = INSTR_CONST_16;
+			instr->const_16.u = (uint16_t)expr->int_literal.value;
+			break;
+		case 4:
+			assert(expr->int_literal.value <= 0xffffffff);
+			instr->kind = INSTR_CONST_32;
+			instr->const_32.u = (uint32_t)expr->int_literal.value;
+			break;
+		case 8:
+			assert(expr->int_literal.value <= 0xffffffffffffffff);
+			instr->kind = INSTR_CONST_64;
+			instr->const_64.u = expr->int_literal.value;
+			break;
+		default:
+			unreachable();
+		}
+
 		return instr_index;
 	}
 	case EXPR_STRING_LITERAL:

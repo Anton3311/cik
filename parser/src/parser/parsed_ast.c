@@ -281,6 +281,8 @@ ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
 			pointer_type->kind = PARSED_TYPE_POINTER;
 			pointer_type->pointer_base_type = right_type->array.element_type;
 			return pointer_type;
+		} else if (type_equal(left_type, right_type)) {
+			return left_type;
 		} else {
 			return NULL;
 		}

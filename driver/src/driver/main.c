@@ -22,6 +22,7 @@ typedef enum {
 	C_FLAG_KEEP_DEAD_INSTR         = 1 << 0,
 	C_FLAG_DO_NOT_INCLUDE_WIN_SDK  = 1 << 1,
 	C_FLAG_PRINT_IR_INSTR          = 1 << 2,
+	C_FLAG_PRINT_AST               = 1 << 3,
 } CompilerFlags;
 
 int main(int argc, char *argv[]) {
@@ -72,6 +73,8 @@ int main(int argc, char *argv[]) {
 				flags |= C_FLAG_KEEP_DEAD_INSTR;
 			} else if (str_equal(arg, STR_LIT("--show-ir"))) {
 				flags |= C_FLAG_PRINT_IR_INSTR;
+			} else if (str_equal(arg, STR_LIT("--show-ast"))) {
+				flags |= C_FLAG_PRINT_AST;
 			} else {
 				fprintf(stderr, "Unknown argument '%s'", argv[i]);
 				return EXIT_FAILURE;
@@ -127,8 +130,10 @@ int main(int argc, char *argv[]) {
 			profile_scope_end();
 		}
 
-		if (parsed_ast.root_nodes.first) {
-			print_parsed_node(parsed_ast.root_nodes.first);
+		if (has_flag(flags, C_FLAG_PRINT_AST)) {
+			if (parsed_ast.root_nodes.first) {
+				print_parsed_node(parsed_ast.root_nodes.first);
+			}
 		}
 
 		if (diagnostics.first != NULL) {

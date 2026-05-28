@@ -666,8 +666,6 @@ static void _x64_generate_phi_variants(X64CodeGenerator* gen, uint16_t region_id
 	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
 
 	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
-	const InstrIndex* phi_nodes = gen->phi_node_of_variant[region_id];
-
 	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
 		InstrIndex variant_index = phi_variants.instr[i];
 		_x64_generate_code(gen, variant_index, code_buffer);

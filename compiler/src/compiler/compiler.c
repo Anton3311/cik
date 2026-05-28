@@ -1,12 +1,5 @@
 #include "compiler.h"
 
-static InstrIndex _get_arg_load_instr(const FunctionCompiler* compiler, uint8_t arg_index) {
-	const ParsedFunction* func = compiler->function;
-	assert(arg_index < func->parameter_count);
-	assert(arg_index < compiler->instr_buffer.count);
-	return (InstrIndex) { .value = (uint16_t)arg_index };
-}
-
 static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const ParsedType* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_VOID:
@@ -562,7 +555,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
 	InstrIndex region = body_block.initial_region;
-	Instr* region_instr = instr_buffer_at(instr_buffer, region);
 
 	InstrUsageRange* usage_ranges = instr_compute_usage_ranges(compiler->instr_buffer,
 			region,

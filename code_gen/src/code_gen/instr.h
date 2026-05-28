@@ -65,6 +65,7 @@ typedef enum {
 	INSTR_BRANCH,
 	INSTR_JUMP,
 
+	INSTR_RET,
 	INSTR_RETURN_VALUE,
 
 	INSTR_IO_STATE,
@@ -192,6 +193,11 @@ struct Instr {
 			InstrIndex value;
 			InstrIndex io_state;
 		} return_value;
+
+		// Just returns without the value
+		struct {
+			InstrIndex io_state;
+		} ret;
 
 		struct {
 			InstrIndex producer;

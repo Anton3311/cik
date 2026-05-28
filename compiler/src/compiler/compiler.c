@@ -495,10 +495,29 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			break;
 		}
 		case AST_NODE_RETURN: {
-			assert(node->return_stmt.value != NULL);
-			InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
-			region_instr->region.last_instr = instr_new_return_value(instr_buffer, instr_allocator, value, compiler->io_state);
-			compiler->io_state = INVALID_INSTR_INDEX;
+			bool should_return_value = compiler->function->return_type.kind != PARSED_TYPE_VOID;
+
+			if (should_return_value) {
+				assert(node->return_stmt.value != NULL);
+
+				InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
+				region_instr->region.last_instr = instr_new_return_value(instr_buffer,
+						instr_allocator,
+						value,
+						compiler->io_state);
+				compiler->io_state = INVALID_INSTR_INDEX;
+			} else {
+				assert(node->return_stmt.value == NULL);
+
+				InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+				instr->kind = INSTR_RET;
+				instr->ret.io_state = compiler->io_state;
+
+				compiler->io_state = INVALID_INSTR_INDEX;
+
+				region_instr->region.last_instr = instr_index;
+			}
 			break;
 		}
 		case AST_NODE_EXPR:
@@ -555,6 +574,31 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
 	InstrIndex region = body_block.initial_region;
+
+	if (compiler->function->return_type.kind == PARSED_TYPE_VOID) {
+		if (!instr_region_finished(instr_buffer, region)) {
+			Instr* region_instr = instr_buffer_at(instr_buffer, region);
+			assert(region_instr->region.last_instr.value == INVALID_INSTR_INDEX.value);
+			assert_msg(compiler->io_state.value != INVALID_INSTR_INDEX.value,
+					"The final region of the function is still unifinished, "
+					"which means the `io_state` must still be valid, util it "
+					"gets by a control instruction");
+
+			InstrIndex final_return_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* final_return = instr_buffer_at(instr_buffer, final_return_index);
+			final_return->kind = INSTR_RET;
+			final_return->ret.io_state = compiler->io_state;
+
+			// Consume the io_state
+			compiler->io_state = INVALID_INSTR_INDEX;
+
+			region_instr->region.last_instr = final_return_index;
+		}
+	}
+
+	assert_msg(compiler->io_state.value == INVALID_INSTR_INDEX.value,
+			"`compiler->io_state` should have been consumed during the compilation "
+			"of the final region in the function body");
 
 	InstrUsageRange* usage_ranges = instr_compute_usage_ranges(compiler->instr_buffer,
 			region,

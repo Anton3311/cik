@@ -39,6 +39,7 @@ static String s_instr_kind_to_string[] = {
     [INSTR_LOAD_ARG] = STR_LIT("load_arg"),
     [INSTR_BRANCH] = STR_LIT("branch"),
     [INSTR_JUMP] = STR_LIT("jump"),
+    [INSTR_RET] = STR_LIT("ret"),
     [INSTR_RETURN_VALUE] = STR_LIT("return_value"),
     [INSTR_IO_STATE] = STR_LIT("io_state"),
     [INSTR_REGION] = STR_LIT("region"),
@@ -174,6 +175,9 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         instr_stack_push(out_dependencies, instr->jump.target_region);
         instr_stack_push(out_dependencies, instr->jump.io_state);
         break;
+    case INSTR_RET:
+        instr_stack_push(out_dependencies, instr->ret.io_state);
+        break;
     case INSTR_RETURN_VALUE:
         instr_stack_push(out_dependencies, instr->return_value.value);
         instr_stack_push(out_dependencies, instr->return_value.io_state);
@@ -301,6 +305,9 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_JUMP:
         printf("target_region: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->jump.target_region.value, (uint32_t)instr->jump.io_state.value);
+        break;
+    case INSTR_RET:
+        printf("io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ret.io_state.value);
         break;
     case INSTR_RETURN_VALUE:
         printf("value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->return_value.value.value, (uint32_t)instr->return_value.io_state.value);

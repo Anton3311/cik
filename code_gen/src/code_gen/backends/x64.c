@@ -937,6 +937,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		_emit_return(buffer);
 		return;
+	case INSTR_RET:
+		_x64_generate_code(gen, instr->ret.io_state, buffer);
+		_emit_return(buffer);
+		return;
 	
 	case INSTR_IO_STATE:
 		if (instr->io_state.producer.value != UINT16_MAX) {
@@ -1052,6 +1056,7 @@ static size_t _compute_control_instr_encoding_size(const Instr* instr) {
 		// 2. Jump to the false region otherwise
 		return jump_offset_size + 2 + jump_offset_size + 1;
 	case INSTR_RETURN_VALUE:
+	case INSTR_RET:
 		return 1;
 	default:
 		unreachable();
@@ -1106,6 +1111,7 @@ static void _encode_control_instr(const Instr* instr,
 		break;
 	}
 	case INSTR_RETURN_VALUE:
+	case INSTR_RET:
 		out_encoding[0] = 0xc3;
 		break;
 	default:

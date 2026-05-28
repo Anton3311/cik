@@ -44,6 +44,7 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_JUMP] = INSTR_FEATURE_CONTROL,
 
 	[INSTR_RETURN_VALUE] = INSTR_FEATURE_CONTROL,
+	[INSTR_RET] = INSTR_FEATURE_CONTROL,
 
 	[INSTR_CALL_INTERNAL] = INSTR_FEATURE_CONTROL | INSTR_FEATURE_REG_STORAGE,
 
@@ -235,6 +236,7 @@ InstrIndexArray _instr_gather_regions_in_dfs_order(const InstrBuffer instr_buffe
 		dfs_order.instr[dfs_order.count] = region_index;
 		dfs_order.count += 1;
 
+		assert(region->region.last_instr.value < instr_buffer.count);
 		const Instr* last_instr = &instr_buffer.instr[region->region.last_instr.value];
 		switch (last_instr->kind) {
 		case INSTR_BRANCH: {
@@ -261,6 +263,7 @@ InstrIndexArray _instr_gather_regions_in_dfs_order(const InstrBuffer instr_buffe
 			break;
 		}
 		case INSTR_RETURN_VALUE:
+		case INSTR_RET:
 			break;
 		default:
 			unreachable();

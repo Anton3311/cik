@@ -1121,7 +1121,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
-	InstrIndexArray regions_in_dfs_order = _x64_gather_regions_in_dfs_order(gen->instr_buffer,
+	InstrIndexArray regions_in_dfs_order = _instr_gather_regions_in_dfs_order(gen->instr_buffer,
 			gen->allocator,
 			gen->temp_allocator,
 			root_region);

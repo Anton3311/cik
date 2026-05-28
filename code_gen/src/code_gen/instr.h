@@ -306,6 +306,14 @@ inline InstrIndex instr_queue_pop_front(InstrQueue* queue) {
 	return instr;
 }
 
+inline InstrIndex instr_queue_pop_back(InstrQueue* queue) {
+	assert(queue->count > 0);
+
+	InstrIndex instr = queue->buffer[(queue->head + queue->count - 1) % queue->capacity];
+	queue->count -= 1;
+	return instr;
+}
+
 struct InstrUsageRange {
 	union {
 		struct {
@@ -436,7 +444,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		Arena* allocator,
 		Arena* temp_allocator);
 
-InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
+InstrIndexArray _x64_gather_regions_in_dfs_order(const InstrBuffer instr_buffer,
 		Arena* allocator,
 		Arena* temp_allocator,
 		InstrIndex start_region);

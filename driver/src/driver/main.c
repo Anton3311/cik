@@ -160,17 +160,6 @@ int main(int argc, char *argv[]) {
 						instr_print_all(func.instr_buffer, &temp_arena);
 					}
 
-					InstrIndexArray region_bfs_order = _x64_gather_regions_in_bfs_order(func.instr_buffer,
-							&arena,
-							&temp_arena,
-							func.start_region);
-
-					printf("Region BFS traversal order:\n");
-					for (size_t i = 0; i < region_bfs_order.count; i += 1) {
-						printf("%u ", region_bfs_order.instr[i].value);
-					}
-					printf("\n");
-
 					uint16_t allowed_registers = UINT16_MAX;
 					allowed_registers &= ~(1 << X64_REG_SP);
 					allowed_registers &= ~(1 << X64_REG_BP);

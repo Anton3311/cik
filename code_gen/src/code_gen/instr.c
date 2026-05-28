@@ -205,7 +205,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 	return usage_ranges;
 }
 
-InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
+InstrIndexArray _x64_gather_regions_in_dfs_order(const InstrBuffer instr_buffer,
 		Arena* allocator,
 		Arena* temp_allocator,
 		InstrIndex start_region) {
@@ -226,7 +226,7 @@ InstrIndexArray _x64_gather_regions_in_bfs_order(const InstrBuffer instr_buffer,
 	bit_array_set(&visited, start_region.value, true);
 
 	while (queue.count > 0) {
-		InstrIndex region_index = instr_queue_pop_front(&queue);
+		InstrIndex region_index = instr_queue_pop_back(&queue);
 		const Instr* region = &instr_buffer.instr[region_index.value];
 		assert(region->kind == INSTR_REGION);
 		assert(bit_array_get(&visited, region_index.value));

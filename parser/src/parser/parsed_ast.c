@@ -296,7 +296,7 @@ ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
 	case EXPR_VARIABLE_REFERENCE:
 		return &expr->variable_ref->type;
 	case EXPR_INTEGER_LITERAL: {
-		ParsedType* type = arena_alloc(temp_allocator, ParsedType);
+		ParsedType* type = arena_alloc_zeroed(temp_allocator, ParsedType);
 		type->kind = PARSED_TYPE_UNSIGNED_LONG_LONG;
 		return type;
 	}

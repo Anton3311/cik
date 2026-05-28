@@ -86,6 +86,8 @@ typedef enum {
 	INSTR_BIN_DIV,
 } InstrBinOp;
 
+bool instr_bin_op_is_commutative(InstrBinOp op);
+
 typedef enum {
 	INSTR_CMP_EQUAL,
 	INSTR_CMP_NOT_EQUAL,

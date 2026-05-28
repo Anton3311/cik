@@ -166,6 +166,12 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 			instr->bin_op.left = left;
 			instr->bin_op.right = right;
 			break;
+		case BIN_OP_SUB:
+			instr->kind = INSTR_BIN_OP_64;
+			instr->bin_op.kind = INSTR_BIN_SUB;
+			instr->bin_op.left = left;
+			instr->bin_op.right = right;
+			break;
 		case BIN_OP_LOGICAL_EQUAL:
 			instr->kind = INSTR_COMPARE_64;
 			instr->compare.kind = INSTR_CMP_EQUAL;

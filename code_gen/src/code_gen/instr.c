@@ -1,5 +1,19 @@
 #include "instr.h"
 
+bool instr_bin_op_is_commutative(InstrBinOp op) {
+	switch (op) {
+	case INSTR_BIN_ADD:
+	case INSTR_BIN_MUL:
+		return true;
+	case INSTR_BIN_SUB:
+	case INSTR_BIN_DIV:
+		return false;
+	}
+
+	unreachable();
+	return false;
+}
+
 InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_NO_OP] = 0,
 

@@ -747,24 +747,66 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		uint8_t* instr_bytes;
 
-		if (right_loc.reg == dst_loc.reg) {
-			_emit_mov_regs(buffer, right_loc.reg, dst_loc.reg, 64);
+		uint8_t left_reg;
+		uint8_t right_reg;
 
-			instr_bytes = _code_buffer_append(buffer, 3);
-			instr_bytes[0] = _rex_prefix_src_dst(1, dst_loc.reg, left_loc.reg);
-			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg & 0b111, left_loc.reg & 0b111);
+		// NOTE: We have two input register and one output.
+		//       It might happen that the output register overlaps with one of the input registers.
+		//       When encoding the instruction the register on the left is the output one, this is
+		//       fine if the output register of this bin op overlaps with left input. However the
+		//       other might happen, and the output might overlap with the right input, in such case
+		//       if the operation is commutative we can just swap the inputs.
+		//       
+		//       For non-commutative ops the solution for is:
+		//       If output overlaps with the left input, encode as is, this case doesn't require
+		//       any special treatment.
+		//       
+		//       Otherwise if the output overlaps with right right input, push the left register
+		//       onto the stack, do the computation while storing the result in the left input
+		//       register, move the result to the right register, and finally restore the right
+		//       register.
+		if (instr_bin_op_is_commutative(instr->bin_op.kind)) {
+			if (right_loc.reg == dst_loc.reg) {
+				_emit_mov_regs(buffer, right_loc.reg, dst_loc.reg, 64);
+
+				left_reg = dst_loc.reg;
+				right_reg = left_loc.reg;
+			} else {
+				_emit_mov_regs(buffer, left_loc.reg, dst_loc.reg, 64);
+
+				left_reg = dst_loc.reg;
+				right_reg = right_loc.reg;
+			}
 		} else {
-			_emit_mov_regs(buffer, left_loc.reg, dst_loc.reg, 64);
-
-			instr_bytes = _code_buffer_append(buffer, 3);
-			instr_bytes[0] = _rex_prefix_src_dst(1, dst_loc.reg, right_loc.reg);
-			instr_bytes[2] = _mod_rm(MOD_RM_RM, dst_loc.reg & 0b111, right_loc.reg & 0b111);
+			left_reg = left_loc.reg;
+			right_reg = right_loc.reg;
 		}
 
 		switch (instr->bin_op.kind) {
 		case INSTR_BIN_ADD:
+			instr_bytes = _code_buffer_append(buffer, 3);
+			instr_bytes[0] = _rex_prefix_src_dst(1, left_reg, right_reg);
 			instr_bytes[1] = 0x03;
+			instr_bytes[2] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
 			break;
+		case INSTR_BIN_SUB: {
+			bool should_save_right = dst_loc.reg == right_loc.reg;
+
+			if (should_save_right) {
+				_emit_push_reg(buffer, right_loc.reg, 64);
+			}
+
+			instr_bytes = _code_buffer_append(buffer, 3);
+			instr_bytes[0] = _rex_prefix_src_dst(1, left_reg, right_reg);
+			instr_bytes[1] = 0x2b;
+			instr_bytes[2] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
+
+			if (should_save_right) {
+				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, 64);
+				_emit_pop_reg(buffer, right_loc.reg, 64);
+			}
+			break;
+		}
 		}
 
 		return;

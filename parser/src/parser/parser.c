@@ -1460,7 +1460,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		assert(token.string.length > 0);
 		bool is_int_literal = is_digit(token.string.v[0]);
 		if (is_int_literal) {
-			IntegerLiteralInfo literal_info = int_literal_info_from_token(token);
+			IntegerLiteralInfo literal_info = int_literal_info_from_token(token, parser->diagnostics);
 
 			uint64_t literal_value = 0;
 			bool result = parse_integer_literal_value(parser->diagnostics,

@@ -1833,3 +1833,151 @@ void test_parse_union_def(TestContext* context) {
 	const ParsedStruct* union_def = entry->union_def;
 	assert(union_def->layout_kind == STRUCT_LAYOUT_KIND_UNION);
 }
+
+inline Token _create_string_token(String str, const SourceFile* file) {
+	return (Token) { .kind = TOKEN_STRING,
+		.string = str,
+		.source_range = source_string_to_range((SourceString) {
+				.string = str,
+				.source_file = file
+				})
+	};
+}
+
+void test_parse_int_literal_sufixes(TestContext* context) {
+	IntegerLiteralSufixKind std_sufix_kinds[] = {
+		INT_SUFIX_U,
+		INT_SUFIX_L,
+		INT_SUFIX_UL,
+		INT_SUFIX_LL,
+		INT_SUFIX_ULL,
+	};
+
+	String std_sufixes[] = {
+		STR_LIT("u"),
+		STR_LIT("l"),
+		STR_LIT("ul"),
+		STR_LIT("ll"),
+		STR_LIT("ull"),
+	};
+
+	String int_lit = STR_LIT("100");
+	for (size_t i = 0; i < array_size(std_sufix_kinds); i += 1) {
+		ArenaRegion temp = arena_begin_temp(context->temp_arena);
+		Diagnostics diagnostics = { .allocator = context->temp_arena };
+
+		StringBuilder builder = { .arena = context->temp_arena };
+		str_builder_append(&builder, int_lit);
+		str_builder_append(&builder, std_sufixes[i]);
+
+		SourceFile source_file = (SourceFile) {
+			.path = STR_LIT(DEFAULT_SOURCE_PATH),
+			.source_code = builder.string,
+			.line_info = line_info_from_source(context->temp_arena, builder.string),
+		};
+
+		IntegerLiteralInfo info = int_literal_info_from_token(
+				_create_string_token(builder.string, &source_file), 
+				&diagnostics);
+
+		assert(info.has_sufix);
+		assert(info.sufix_bit_count == 0);
+		assert(info.sufix_kind == std_sufix_kinds[i]);
+		assert(str_equal(info.int_part_string.string, int_lit));
+		assert(diagnostics.first == NULL);
+
+		arena_end_temp(temp);
+	}
+}
+
+void test_parse_int_literal_sufixes_with_bit_count(TestContext* context) {
+	size_t bit_count[] = { 8, 16, 32, 64 };
+	IntegerLiteralSufixKind std_sufix_kinds[] = {
+		INT_SUFIX_NONE,
+		INT_SUFIX_U,
+	};
+
+	String std_sufixes[] = {
+		STR_LIT(""),
+		STR_LIT("u"),
+	};
+
+	String int_lit = STR_LIT("100");
+
+	for (size_t i = 0; i < array_size(std_sufix_kinds); i += 1) {
+		for (size_t j = 0; j < array_size(bit_count); j += 1) {
+			ArenaRegion temp = arena_begin_temp(context->temp_arena);
+			Diagnostics diagnostics = { .allocator = context->temp_arena };
+
+			StringBuilder builder = { .arena = context->temp_arena };
+			str_builder_append(&builder, int_lit);
+			str_builder_append(&builder, std_sufixes[i]);
+			str_builder_append_char(&builder, 'i');
+			str_builder_append_int(&builder, bit_count[j]);
+
+			SourceFile source_file = (SourceFile) {
+				.path = STR_LIT(DEFAULT_SOURCE_PATH),
+				.source_code = builder.string,
+				.line_info = line_info_from_source(context->temp_arena, builder.string),
+			};
+
+			IntegerLiteralInfo info = int_literal_info_from_token(
+					_create_string_token(builder.string, &source_file), 
+					&diagnostics);
+
+			assert(info.has_sufix);
+			assert(info.sufix_bit_count == bit_count[j]);
+			assert(info.sufix_kind == std_sufix_kinds[i]);
+			assert(str_equal(info.int_part_string.string, int_lit));
+			assert(diagnostics.first == NULL);
+
+			arena_end_temp(temp);
+		}
+	}
+}
+
+void test_invalid_int_literal_sufixes(TestContext* context) {
+	String std_sufixes[] = {
+		STR_LIT("l"),
+		STR_LIT("ul"),
+		STR_LIT("ll"),
+		STR_LIT("ull"),
+	};
+
+	size_t bit_count[] = { 8, 16, 32, 64 };
+
+	String int_lit = STR_LIT("100");
+	for (size_t i = 0; i < array_size(std_sufixes); i += 1) {
+		for (size_t j = 0; j < array_size(bit_count); j += 1) {
+			ArenaRegion temp = arena_begin_temp(context->temp_arena);
+
+			Diagnostics diagnostics = { .allocator = context->temp_arena };
+			StringBuilder builder = { .arena = context->temp_arena };
+			str_builder_append(&builder, int_lit);
+			str_builder_append(&builder, std_sufixes[i]);
+			str_builder_append_char(&builder, 'i');
+			str_builder_append_int(&builder, bit_count[j]);
+
+			SourceFile source_file = (SourceFile) {
+				.path = STR_LIT(DEFAULT_SOURCE_PATH),
+				.source_code = builder.string,
+				.line_info = line_info_from_source(context->temp_arena, builder.string),
+			};
+
+			IntegerLiteralInfo info = int_literal_info_from_token(
+					_create_string_token(builder.string, &source_file), 
+					&diagnostics);
+
+			assert(!info.has_sufix);
+			assert(info.sufix_bit_count == 0);
+			assert(info.sufix_kind == INT_SUFIX_NONE);
+			assert(diagnostics.first != NULL);
+
+			SourceRange sufix_range = diagnostics.first->highlighted_ranges[0];
+			assert(sufix_range.start == int_lit.length);
+			assert(sufix_range.end == builder.string.length);
+
+			arena_end_temp(temp);
+		}
+	}
+}

@@ -87,4 +87,10 @@ void test_map_current_and_inner_anonymous_struct_fields(TestContext* context);
 void test_fields_not_mapped_for_struct_defined_inline_with_the_named_field(TestContext* context);
 void test_parse_union_def(TestContext* context);
 
+
+
+void test_parse_int_literal_sufixes(TestContext* context);
+void test_parse_int_literal_sufixes_with_bit_count(TestContext* context);
+void test_invalid_int_literal_sufixes(TestContext* context);
+
 #endif

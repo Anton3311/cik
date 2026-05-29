@@ -38,7 +38,7 @@ void _report_invalid_char_in_interger_literal(Diagnostics* diagnostics,
 			NULL);
 }
 
-IntegerLiteralInfo int_literal_info_from_token(Token token) {
+IntegerLiteralInfo int_literal_info_from_token(Token token, Diagnostics* diagnostics) {
 	IntergerLiteralFormat format = INT_LIT_FMT_DECIMAL;
 	String literal_string = token.string;
 
@@ -73,13 +73,124 @@ IntegerLiteralInfo int_literal_info_from_token(Token token) {
 		assert(prefix_parsed);
 	}
 
-	return (IntegerLiteralInfo) {
+	assert(literal_string.length > 0);
+
+	IntegerLiteralInfo info = (IntegerLiteralInfo) {
 		.format = format,
 		.int_part_string = (SourceString) {
 			.source_file = token.source_range.source_file,
 			.string = literal_string,
 		},
 	};
+
+	// First parse these bit-count sufixes, which are microsoft specific
+	//
+	// 100ui64
+	//     ^^^- this part
+	String bit_count_sufixes[] = {
+		STR_LIT("8"),
+		STR_LIT("16"),
+		STR_LIT("32"),
+		STR_LIT("64"),
+	};
+
+	size_t bit_count_part_length = 0;
+	for (size_t i = 0; i < array_size(bit_count_sufixes); i += 1) {
+		size_t sufix_length_with_i = bit_count_sufixes[i].length + 1; // length including `i` or `I` char
+		if (literal_string.length < sufix_length_with_i) {
+			continue;
+		}
+
+		String literal_end = sub_str(literal_string,
+				literal_string.length - bit_count_sufixes[i].length,
+				bit_count_sufixes[i].length);
+
+		if (!str_equal(literal_end, bit_count_sufixes[i])) {
+			continue;
+		}
+
+		size_t i_char_pos = literal_string.length - bit_count_sufixes[i].length - 1;
+		if (tolower(literal_string.v[i_char_pos]) == 'i') {
+			info.has_sufix = true;
+
+			uint8_t bit_counts[] = { 8, 16, 32, 64 };
+			info.sufix_bit_count = bit_counts[i];
+			bit_count_part_length = bit_count_sufixes[i].length + 1; // include the `i` char
+			break;
+		}
+	}
+
+	// Now parse the standard sufixes: u, ul, ll and ull
+	//
+	// 100ui64
+	//    ^ - this part
+	String std_sufixes[] = {
+		STR_LIT("u"),
+		STR_LIT("l"),
+		STR_LIT("ul"),
+		STR_LIT("ll"),
+		STR_LIT("ull"),
+	};
+
+	IntegerLiteralSufixKind std_sufix_kinds[] = {
+		INT_SUFIX_U,
+		INT_SUFIX_L,
+		INT_SUFIX_UL,
+		INT_SUFIX_LL,
+		INT_SUFIX_ULL,
+	};
+
+	size_t final_sufix_length = bit_count_part_length;
+	for (size_t i = 0; i < array_size(std_sufixes); i += 1) {
+		size_t full_sufix_length = std_sufixes[i].length + bit_count_part_length;
+
+		if (literal_string.length <= full_sufix_length) {
+			// No way that literal has this sufix
+			continue;
+		}
+
+		size_t start = literal_string.length - full_sufix_length;
+		bool sufix_matches = true;
+		for (size_t j = 0; j < std_sufixes[i].length; j += 1) {
+			if (tolower(literal_string.v[start + j]) != std_sufixes[i].v[j]) {
+				sufix_matches = false;
+				break;
+			}
+		}
+
+		if (sufix_matches) {
+			info.has_sufix = true;
+			info.sufix_kind = std_sufix_kinds[i];
+
+			final_sufix_length = full_sufix_length;
+		}
+	}
+	
+	if (info.has_sufix) {
+		if (info.sufix_bit_count != 0
+				&& (info.sufix_kind != INT_SUFIX_NONE && info.sufix_kind != INT_SUFIX_U)) {
+			// We have an invalid sufix combination
+
+			info.has_sufix = false;
+			info.sufix_kind = INT_SUFIX_NONE;
+			info.sufix_bit_count = 0;
+
+			String sufix_string = sub_str(info.int_part_string.string,
+					info.int_part_string.string.length - final_sufix_length,
+					final_sufix_length);
+
+			diagnostics_report_error(diagnostics,
+					source_string_to_range((SourceString) {
+						.string = sufix_string,
+						.source_file = token.source_range.source_file,
+					}),
+					STR_LIT("Invalid sufix on integer"),
+					NULL);
+		}
+	}
+
+	info.int_part_string.string.length -= final_sufix_length;
+	return info;
 }
 
 bool parse_integer_literal_value(Diagnostics* diagnostics,

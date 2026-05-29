@@ -1993,3 +1993,69 @@ void test_invalid_int_literal_sufixes(TestContext* context) {
 		}
 	}
 }
+
+void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
+	String sub_tests[] = {
+		STR_LIT("1i8;"),
+		STR_LIT("1i16;"),
+		STR_LIT("1i32;"),
+		STR_LIT("1i64;"),
+
+		STR_LIT("1ui8;"),
+		STR_LIT("1ui16;"),
+		STR_LIT("1ui32;"),
+		STR_LIT("1ui64;"),
+
+		STR_LIT("1u;"),
+		STR_LIT("1l;"),
+		STR_LIT("1ul;"),
+		STR_LIT("1ll;"),
+		STR_LIT("1ull;"),
+	};
+
+	ParsedTypeKind expected_types[] = {
+		PARSED_TYPE_INT8,
+		PARSED_TYPE_INT16,
+		PARSED_TYPE_INT32,
+		PARSED_TYPE_INT64,
+
+		PARSED_TYPE_UNSIGNED_INT8,
+		PARSED_TYPE_UNSIGNED_INT16,
+		PARSED_TYPE_UNSIGNED_INT32,
+		PARSED_TYPE_UNSIGNED_INT64,
+
+		PARSED_TYPE_UNSIGNED_INT,
+		PARSED_TYPE_LONG,
+		PARSED_TYPE_UNSIGNED_LONG,
+		PARSED_TYPE_LONG_LONG,
+		PARSED_TYPE_UNSIGNED_LONG_LONG,
+	};
+
+	static_assert(array_size(sub_tests) == array_size(expected_types),
+			"Number of expected results doesn't match the number of sub tests");
+
+	for (size_t i = 0; i < array_size(sub_tests); i += 1) {
+		ArenaRegion temp1 = arena_begin_temp(context->arena);
+		ArenaRegion temp2 = arena_begin_temp(context->temp_arena);
+
+		Diagnostics diagnostics;
+		SourceStorage source_storage;
+		ParsedAST ast;
+
+		run_parser_test(context, &diagnostics, &source_storage, sub_tests[i], &ast);
+		assert(diagnostics.first == NULL);
+
+		assert(ast.root_nodes.count == 1);
+		ParsedNode* first = ast.root_nodes.first;
+		assert(first->kind == AST_NODE_EXPR);
+
+		ParsedExpr* expr = &first->expr;
+		assert(expr->kind == EXPR_INTEGER_LITERAL);
+		assert(expr->int_literal.format == INT_LIT_FMT_DECIMAL);
+		assert(expr->int_literal.integer_type == expected_types[i]);
+		assert(expr->int_literal.value == 1);
+
+		arena_end_temp(temp2);
+		arena_end_temp(temp1);
+	}
+}

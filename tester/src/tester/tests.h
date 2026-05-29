@@ -92,5 +92,6 @@ void test_parse_union_def(TestContext* context);
 void test_parse_int_literal_sufixes(TestContext* context);
 void test_parse_int_literal_sufixes_with_bit_count(TestContext* context);
 void test_invalid_int_literal_sufixes(TestContext* context);
+void test_parse_type_of_int_literal_with_sufix(TestContext* context);
 
 #endif

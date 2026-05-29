@@ -1460,25 +1460,59 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		assert(token.string.length > 0);
 		bool is_int_literal = is_digit(token.string.v[0]);
 		if (is_int_literal) {
-			IntegerLiteralInfo literal_info = int_literal_info_from_token(token, parser->diagnostics);
-
-			uint64_t literal_value = 0;
-			bool result = parse_integer_literal_value(parser->diagnostics,
-					token,
-					literal_info.int_part_string,
-					literal_info.format,
-					&literal_value);
-
-			if (!result) {
+			IntLiteral literal = {};
+			bool literal_parsed = parse_int_literal(token, parser->diagnostics, &literal);
+			if (!literal_parsed) {
 				return EXPR_PARSE_ERROR;
+			}
+
+			ParsedTypeKind int_type = PARSED_TYPE_VOID;
+			if (literal.has_sufix) {
+				switch (literal.sufix_kind) {
+				case INT_SUFIX_NONE: {
+					assert(literal.sufix_bit_count > 0);
+					uint8_t bit_count_index = count_trailing_zeros(literal.sufix_bit_count / 8);
+					int_type = PARSED_TYPE_INT8 + bit_count_index;
+					break;
+				}
+				case INT_SUFIX_U: {
+					if (literal.sufix_bit_count > 0) {
+						uint8_t bit_count_index = count_trailing_zeros(literal.sufix_bit_count / 8);
+						int_type = PARSED_TYPE_INT8 + bit_count_index;
+					} else {
+						int_type = PARSED_TYPE_INT;
+					}
+
+					int_type |= TYPE_FLAG_UNSIGNED;
+					break;
+				}
+				case INT_SUFIX_L:
+					assert(literal.sufix_bit_count == 0);
+					int_type = PARSED_TYPE_LONG;
+					break;
+				case INT_SUFIX_UL:
+					assert(literal.sufix_bit_count == 0);
+					int_type = PARSED_TYPE_UNSIGNED_LONG;
+					break;
+				case INT_SUFIX_LL:
+					assert(literal.sufix_bit_count == 0);
+					int_type = PARSED_TYPE_LONG_LONG;
+					break;
+				case INT_SUFIX_ULL:
+					assert(literal.sufix_bit_count == 0);
+					int_type = PARSED_TYPE_UNSIGNED_LONG_LONG;
+					break;
+				}
+			} else {
+				int_type = PARSED_TYPE_INT;
 			}
 
 			out_expr->kind = EXPR_INTEGER_LITERAL;
 			out_expr->int_literal = (ParsedIntegerLiteral) {
 				.source_range = token.source_range,
-				.format = literal_info.format,
-				.integer_type = PARSED_TYPE_INT,
-				.value = literal_value,
+				.format = literal.format,
+				.integer_type = int_type,
+				.value = literal.value,
 			};
 
 			return EXPR_PARSE_OK;

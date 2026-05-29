@@ -1862,6 +1862,7 @@ void test_parse_int_literal_sufixes(TestContext* context) {
 	};
 
 	String int_lit = STR_LIT("100");
+	uint64_t int_lit_value = 100;
 	for (size_t i = 0; i < array_size(std_sufix_kinds); i += 1) {
 		ArenaRegion temp = arena_begin_temp(context->temp_arena);
 		Diagnostics diagnostics = { .allocator = context->temp_arena };
@@ -1876,14 +1877,18 @@ void test_parse_int_literal_sufixes(TestContext* context) {
 			.line_info = line_info_from_source(context->temp_arena, builder.string),
 		};
 
-		IntegerLiteralInfo info = int_literal_info_from_token(
+		IntLiteral literal = {};
+		bool parsed = parse_int_literal(
 				_create_string_token(builder.string, &source_file), 
-				&diagnostics);
+				&diagnostics,
+				&literal);
 
-		assert(info.has_sufix);
-		assert(info.sufix_bit_count == 0);
-		assert(info.sufix_kind == std_sufix_kinds[i]);
-		assert(str_equal(info.int_part_string.string, int_lit));
+		assert(parsed);
+
+		assert(literal.has_sufix);
+		assert(literal.sufix_bit_count == 0);
+		assert(literal.sufix_kind == std_sufix_kinds[i]);
+		assert(literal.value == int_lit_value);
 		assert(diagnostics.first == NULL);
 
 		arena_end_temp(temp);
@@ -1921,14 +1926,17 @@ void test_parse_int_literal_sufixes_with_bit_count(TestContext* context) {
 				.line_info = line_info_from_source(context->temp_arena, builder.string),
 			};
 
-			IntegerLiteralInfo info = int_literal_info_from_token(
+			IntLiteral literal = {};
+			bool parsed = parse_int_literal(
 					_create_string_token(builder.string, &source_file), 
-					&diagnostics);
+					&diagnostics,
+					&literal);
 
-			assert(info.has_sufix);
-			assert(info.sufix_bit_count == bit_count[j]);
-			assert(info.sufix_kind == std_sufix_kinds[i]);
-			assert(str_equal(info.int_part_string.string, int_lit));
+			assert(parsed);
+
+			assert(literal.has_sufix);
+			assert(literal.sufix_bit_count == bit_count[j]);
+			assert(literal.sufix_kind == std_sufix_kinds[i]);
 			assert(diagnostics.first == NULL);
 
 			arena_end_temp(temp);
@@ -1964,13 +1972,17 @@ void test_invalid_int_literal_sufixes(TestContext* context) {
 				.line_info = line_info_from_source(context->temp_arena, builder.string),
 			};
 
-			IntegerLiteralInfo info = int_literal_info_from_token(
+			IntLiteral literal = {};
+			bool parsed = parse_int_literal(
 					_create_string_token(builder.string, &source_file), 
-					&diagnostics);
+					&diagnostics,
+					&literal);
 
-			assert(!info.has_sufix);
-			assert(info.sufix_bit_count == 0);
-			assert(info.sufix_kind == INT_SUFIX_NONE);
+			assert(!parsed);
+
+			assert(!literal.has_sufix);
+			assert(literal.sufix_bit_count == 0);
+			assert(literal.sufix_kind == INT_SUFIX_NONE);
 			assert(diagnostics.first != NULL);
 
 			SourceRange sufix_range = diagnostics.first->highlighted_ranges[0];

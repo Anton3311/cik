@@ -16,44 +16,26 @@ String int_literal_format_to_string(IntergerLiteralFormat format) {
 	return (String){};
 }
 
-void _report_invalid_char_in_interger_literal(Diagnostics* diagnostics,
-		SourceString literal_string,
-		size_t invalid_char_position,
-		IntergerLiteralFormat format) {
-
-	String format_string = int_literal_format_to_string(format);
-	String invalid_char_sub_str = sub_str(literal_string.string, invalid_char_position, 1);
-
-	StringBuilder builder = { .arena = diagnostics->allocator };
-	str_builder_append(&builder, STR_LIT("Unexpected char in "));
-	str_builder_append(&builder, format_string);
-	str_builder_append(&builder, STR_LIT(" integer literal"));
-
-	diagnostics_report_error(diagnostics,
-			source_string_to_range((SourceString) {
-				.string = invalid_char_sub_str,
-				.source_file = literal_string.source_file,
-			}),
-			builder.string,
-			NULL);
-}
-
-IntegerLiteralInfo int_literal_info_from_token(Token token, Diagnostics* diagnostics) {
+// Parse int literal prefixes: 0x, 0 (for octal), and 0b
+// If the token is just a single `0` char, keeps it as decimal.
+//
+// Returns a literal string with the prefix removed
+// The parsed prefix is stored in the provided `IntLiteral`
+static String _parse_int_literal_prefix(String string, IntLiteral* out_result) {
 	IntergerLiteralFormat format = INT_LIT_FMT_DECIMAL;
-	String literal_string = token.string;
 
-	if (token.string.v[0] == '0') {
+	if (string.v[0] == '0') {
 		bool prefix_parsed = false;
-		if (token.string.length > 2) {
-			if (token.string.v[1] == 'x') {
+		if (string.length > 2) {
+			if (string.v[1] == 'x') {
 				format = INT_LIT_FMT_HEX;
-				literal_string.v += 2;
-				literal_string.length -= 2;
+				string.v += 2;
+				string.length -= 2;
 				prefix_parsed = true;
-			} else if (token.string.v[1] == 'b') {
+			} else if (string.v[1] == 'b') {
 				format = INT_LIT_FMT_BIN;
-				literal_string.v += 2;
-				literal_string.length -= 2;
+				string.v += 2;
+				string.length -= 2;
 				prefix_parsed = true;
 			}
 		}
@@ -61,10 +43,10 @@ IntegerLiteralInfo int_literal_info_from_token(Token token, Diagnostics* diagnos
 		if (!prefix_parsed) {
 
 			// NOTE: Avoid discarding the leading zero, if the literal is just a zero
-			if (token.string.length > 1) {
+			if (string.length > 1) {
 				format = INT_LIT_FMT_OCTAL;
-				literal_string.v += 1;
-				literal_string.length -= 1;
+				string.v += 1;
+				string.length -= 1;
 			}
 
 			prefix_parsed = true;
@@ -73,15 +55,22 @@ IntegerLiteralInfo int_literal_info_from_token(Token token, Diagnostics* diagnos
 		assert(prefix_parsed);
 	}
 
-	assert(literal_string.length > 0);
+	assert(string.length > 0);
 
-	IntegerLiteralInfo info = (IntegerLiteralInfo) {
-		.format = format,
-		.int_part_string = (SourceString) {
-			.source_file = token.source_range.source_file,
-			.string = literal_string,
-		},
-	};
+	out_result->format = format;
+	return string;
+}
+
+typedef struct {
+	uint8_t sufix_length;
+bool is_valid;
+} SufixParseResult;
+
+// Returns a literal string with the sufix removed, if parsed any
+static SufixParseResult _parse_int_literal_sufix(String literal_string,
+		const SourceFile* source_file,
+		Diagnostics* diagnostics,
+		IntLiteral* out_result) {
 
 	// First parse these bit-count sufixes, which are microsoft specific
 	//
@@ -111,10 +100,10 @@ IntegerLiteralInfo int_literal_info_from_token(Token token, Diagnostics* diagnos
 
 		size_t i_char_pos = literal_string.length - bit_count_sufixes[i].length - 1;
 		if (tolower(literal_string.v[i_char_pos]) == 'i') {
-			info.has_sufix = true;
+			out_result->has_sufix = true;
 
 			uint8_t bit_counts[] = { 8, 16, 32, 64 };
-			info.sufix_bit_count = bit_counts[i];
+			out_result->sufix_bit_count = bit_counts[i];
 			bit_count_part_length = bit_count_sufixes[i].length + 1; // include the `i` char
 			break;
 		}
@@ -159,56 +148,88 @@ IntegerLiteralInfo int_literal_info_from_token(Token token, Diagnostics* diagnos
 		}
 
 		if (sufix_matches) {
-			info.has_sufix = true;
-			info.sufix_kind = std_sufix_kinds[i];
+			out_result->has_sufix = true;
+			out_result->sufix_kind = std_sufix_kinds[i];
 
 			final_sufix_length = full_sufix_length;
 		}
 	}
 	
-	if (info.has_sufix) {
-		if (info.sufix_bit_count != 0
-				&& (info.sufix_kind != INT_SUFIX_NONE && info.sufix_kind != INT_SUFIX_U)) {
+	if (out_result->has_sufix) {
+		if (out_result->sufix_bit_count != 0
+				&& (out_result->sufix_kind != INT_SUFIX_NONE && out_result->sufix_kind != INT_SUFIX_U)) {
 			// We have an invalid sufix combination
 
-			info.has_sufix = false;
-			info.sufix_kind = INT_SUFIX_NONE;
-			info.sufix_bit_count = 0;
+			out_result->has_sufix = false;
+			out_result->sufix_kind = INT_SUFIX_NONE;
+			out_result->sufix_bit_count = 0;
 
-			String sufix_string = sub_str(info.int_part_string.string,
-					info.int_part_string.string.length - final_sufix_length,
+			String sufix_string = sub_str(literal_string,
+					literal_string.length - final_sufix_length,
 					final_sufix_length);
 
 			diagnostics_report_error(diagnostics,
 					source_string_to_range((SourceString) {
 						.string = sufix_string,
-						.source_file = token.source_range.source_file,
+						.source_file = source_file,
 					}),
 					STR_LIT("Invalid sufix on integer"),
 					NULL);
+
+			return (SufixParseResult) {
+				.sufix_length = (uint8_t)final_sufix_length,
+				.is_valid = false,
+			};
 		}
 	}
 
-	info.int_part_string.string.length -= final_sufix_length;
-	return info;
+	return (SufixParseResult) {
+		.sufix_length = (uint8_t)final_sufix_length,
+		.is_valid = true,
+	};
 }
 
-bool parse_integer_literal_value(Diagnostics* diagnostics,
+static void _report_invalid_char_in_interger_literal(Diagnostics* diagnostics,
+		String literal_string,
+		const SourceFile* source_file,
+		size_t invalid_char_position,
+		IntergerLiteralFormat format) {
+
+	String format_string = int_literal_format_to_string(format);
+	String invalid_char_sub_str = sub_str(literal_string, invalid_char_position, 1);
+
+	StringBuilder builder = { .arena = diagnostics->allocator };
+	str_builder_append(&builder, STR_LIT("Unexpected char in "));
+	str_builder_append(&builder, format_string);
+	str_builder_append(&builder, STR_LIT(" integer literal"));
+
+	diagnostics_report_error(diagnostics,
+			source_string_to_range((SourceString) {
+				.string = invalid_char_sub_str,
+				.source_file = source_file,
+			}),
+			builder.string,
+			NULL);
+}
+
+static bool _parse_int_literal_value(Diagnostics* diagnostics,
 		Token literal_token,
-		SourceString int_part_string,
+		String string,
+		const SourceFile* source_file,
 		IntergerLiteralFormat format,
 		uint64_t* out_result) {
-	if (int_part_string.string.length == 0) {
+	if (string.length == 0) {
 		diagnostics_report_error(diagnostics,
-				literal_token.source_range,
+				source_string_to_range((SourceString) {
+					.string = string,
+					.source_file = source_file,
+				}),
 				STR_LIT("Invalid integer literal"),
 				NULL);
 		return false;
 	}
 
-	String string = int_part_string.string;
 	uint64_t result = 0;
-
 	switch (format) {
 	case INT_LIT_FMT_DECIMAL:
 		for (size_t i = 0; i < string.length; i += 1) {
@@ -216,7 +237,7 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 				uint64_t digit = (uint64_t)(string.v[i] - '0');
 				result = result * 10 + digit;
 			} else {
-				_report_invalid_char_in_interger_literal(diagnostics, int_part_string, i, format);
+				_report_invalid_char_in_interger_literal(diagnostics, string, source_file, i, format);
 				return false;
 			}
 		}
@@ -243,7 +264,7 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 				uint64_t digit = (uint64_t)(string.v[i] - '0');
 				result = result << shift | digit;
 			} else {
-				_report_invalid_char_in_interger_literal(diagnostics, int_part_string, i, format);
+				_report_invalid_char_in_interger_literal(diagnostics, string, source_file, i, format);
 				return false;
 			}
 		}
@@ -261,7 +282,7 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 			} else if (string.v[i] >= 'A' && string.v[i] <= 'F') {
 				digit = (uint64_t)(string.v[i] - 'A' + 10);
 			} else {
-				_report_invalid_char_in_interger_literal(diagnostics, int_part_string, i, format);
+				_report_invalid_char_in_interger_literal(diagnostics, string, source_file, i, format);
 				return false;
 			}
 
@@ -275,4 +296,30 @@ bool parse_integer_literal_value(Diagnostics* diagnostics,
 
 	unreachable();
 	return false;
+}
+
+bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_result) {
+	String unprefixed_literal = _parse_int_literal_prefix(token.string, out_result);
+	assert(unprefixed_literal.length > 0);
+
+	SufixParseResult sufix_result = _parse_int_literal_sufix(unprefixed_literal,
+			token.source_range.source_file,
+			diagnostics,
+			out_result);
+
+	if (!sufix_result.is_valid) {
+		return false;
+	}
+
+	String digits = unprefixed_literal;
+
+	assert(sufix_result.sufix_length <= digits.length);
+	digits.length -= sufix_result.sufix_length;
+
+	return _parse_int_literal_value(diagnostics,
+			token,
+			digits,
+			token.source_range.source_file,
+			out_result->format,
+			&out_result->value);
 }

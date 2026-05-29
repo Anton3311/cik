@@ -992,17 +992,17 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state,
 			expr->op_defined.macro = macro;
 			return expr;
 		} else if (is_digit(token.string.v[0])) {
-			uint64_t value = 0;
-			bool result = parse_integer_literal(state->diagnostics, token, &value);
-
+			IntLiteral literal = {};
+			bool result = parse_int_literal(token, state->diagnostics, &literal);
 			if (!result) {
 				return NULL;
 			}
 
+			assert_msg(!literal.has_sufix, "todo: handle int literals with sufixes");
+
 			Expr* expr = arena_alloc(allocator, Expr);
 			expr->kind = EXPR_INT_LITERAL;
-			expr->integer_literal.value = value;
-
+			expr->integer_literal.value = literal.value;
 			return expr;
 		} else {
 			if (expand_macro_calls) {

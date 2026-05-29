@@ -32,21 +32,16 @@ typedef struct {
 	IntegerLiteralSufixKind sufix_kind;
 } IntegerLiteralInfo;
 
-IntegerLiteralInfo int_literal_info_from_token(Token token, Diagnostics* diagnostics);
+typedef struct {
+	uint64_t value;
 
-bool parse_integer_literal_value(Diagnostics* diagnostics,
-		Token literal_token,
-		SourceString int_part_string,
-		IntergerLiteralFormat format,
-		uint64_t* out_result);
+	IntergerLiteralFormat format;
 
-inline bool parse_integer_literal(Diagnostics* diagnostics, Token literal_token, uint64_t* out_result) {
-	IntegerLiteralInfo literal_info = int_literal_info_from_token(literal_token, diagnostics);
-	return parse_integer_literal_value(diagnostics,
-			literal_token,
-			literal_info.int_part_string,
-			literal_info.format,
-			out_result);
-}
+	bool has_sufix;
+	uint8_t sufix_bit_count;
+	IntegerLiteralSufixKind sufix_kind;
+} IntLiteral;
+
+bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_result);
 
 #endif

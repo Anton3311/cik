@@ -1996,21 +1996,21 @@ void test_invalid_int_literal_sufixes(TestContext* context) {
 
 void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
 	String sub_tests[] = {
-		STR_LIT("1i8;"),
-		STR_LIT("1i16;"),
-		STR_LIT("1i32;"),
-		STR_LIT("1i64;"),
+		STR_LIT("i8;"),
+		STR_LIT("i16;"),
+		STR_LIT("i32;"),
+		STR_LIT("i64;"),
 
-		STR_LIT("1ui8;"),
-		STR_LIT("1ui16;"),
-		STR_LIT("1ui32;"),
-		STR_LIT("1ui64;"),
+		STR_LIT("ui8;"),
+		STR_LIT("ui16;"),
+		STR_LIT("ui32;"),
+		STR_LIT("ui64;"),
 
-		STR_LIT("1u;"),
-		STR_LIT("1l;"),
-		STR_LIT("1ul;"),
-		STR_LIT("1ll;"),
-		STR_LIT("1ull;"),
+		STR_LIT("u;"),
+		STR_LIT("l;"),
+		STR_LIT("ul;"),
+		STR_LIT("ll;"),
+		STR_LIT("ull;"),
 	};
 
 	ParsedTypeKind expected_types[] = {
@@ -2034,28 +2034,40 @@ void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
 	static_assert(array_size(sub_tests) == array_size(expected_types),
 			"Number of expected results doesn't match the number of sub tests");
 
+	uint64_t test_ints[] = { 0, 1 };
+	String test_ints_as_str[] = {
+		STR_LIT("0"),
+		STR_LIT("1"),
+	};
+
 	for (size_t i = 0; i < array_size(sub_tests); i += 1) {
-		ArenaRegion temp1 = arena_begin_temp(context->arena);
-		ArenaRegion temp2 = arena_begin_temp(context->temp_arena);
+		for (size_t j = 0; j < array_size(test_ints); j += 1) {
+			ArenaRegion temp1 = arena_begin_temp(context->arena);
+			ArenaRegion temp2 = arena_begin_temp(context->temp_arena);
 
-		Diagnostics diagnostics;
-		SourceStorage source_storage;
-		ParsedAST ast;
+			StringBuilder builder = { .arena = context->temp_arena };
+			str_builder_append(&builder, test_ints_as_str[j]);
+			str_builder_append(&builder, sub_tests[i]);
 
-		run_parser_test(context, &diagnostics, &source_storage, sub_tests[i], &ast);
-		assert(diagnostics.first == NULL);
+			Diagnostics diagnostics;
+			SourceStorage source_storage;
+			ParsedAST ast;
 
-		assert(ast.root_nodes.count == 1);
-		ParsedNode* first = ast.root_nodes.first;
-		assert(first->kind == AST_NODE_EXPR);
+			run_parser_test(context, &diagnostics, &source_storage, builder.string, &ast);
+			assert(diagnostics.first == NULL);
 
-		ParsedExpr* expr = &first->expr;
-		assert(expr->kind == EXPR_INTEGER_LITERAL);
-		assert(expr->int_literal.format == INT_LIT_FMT_DECIMAL);
-		assert(expr->int_literal.integer_type == expected_types[i]);
-		assert(expr->int_literal.value == 1);
+			assert(ast.root_nodes.count == 1);
+			ParsedNode* first = ast.root_nodes.first;
+			assert(first->kind == AST_NODE_EXPR);
 
-		arena_end_temp(temp2);
-		arena_end_temp(temp1);
+			ParsedExpr* expr = &first->expr;
+			assert(expr->kind == EXPR_INTEGER_LITERAL);
+			assert(expr->int_literal.format == INT_LIT_FMT_DECIMAL);
+			assert(expr->int_literal.integer_type == expected_types[i]);
+			assert(expr->int_literal.value == test_ints[j]);
+
+			arena_end_temp(temp2);
+			arena_end_temp(temp1);
+		}
 	}
 }

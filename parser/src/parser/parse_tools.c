@@ -299,10 +299,7 @@ static bool _parse_int_literal_value(Diagnostics* diagnostics,
 }
 
 bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_result) {
-	String unprefixed_literal = _parse_int_literal_prefix(token.string, out_result);
-	assert(unprefixed_literal.length > 0);
-
-	SufixParseResult sufix_result = _parse_int_literal_sufix(unprefixed_literal,
+	SufixParseResult sufix_result = _parse_int_literal_sufix(token.string,
 			token.source_range.source_file,
 			diagnostics,
 			out_result);
@@ -311,10 +308,12 @@ bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_re
 		return false;
 	}
 
-	String digits = unprefixed_literal;
+	String literal_without_sufix = token.string;
+	assert(sufix_result.sufix_length <= literal_without_sufix.length);
+	literal_without_sufix.length -= sufix_result.sufix_length;
 
-	assert(sufix_result.sufix_length <= digits.length);
-	digits.length -= sufix_result.sufix_length;
+	String digits = _parse_int_literal_prefix(literal_without_sufix, out_result);
+	assert(digits.length > 0);
 
 	return _parse_int_literal_value(diagnostics,
 			token,

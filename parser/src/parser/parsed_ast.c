@@ -284,6 +284,7 @@ ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
 		} else if (type_equal(left_type, right_type)) {
 			return left_type;
 		} else {
+			unreachable_msg("Failed to get expr type");
 			return NULL;
 		}
 
@@ -297,7 +298,7 @@ ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
 		return &expr->variable_ref->type;
 	case EXPR_INTEGER_LITERAL: {
 		ParsedType* type = arena_alloc_zeroed(temp_allocator, ParsedType);
-		type->kind = PARSED_TYPE_UNSIGNED_LONG_LONG;
+		type->kind = expr->int_literal.integer_type;
 		return type;
 	}
 	case EXPR_STRING_LITERAL:
@@ -312,7 +313,7 @@ ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
 	}
 	}
 
-	unreachable();
+	unreachable_msg("Failed to expr type");
 	return NULL;
 }
 

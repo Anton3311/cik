@@ -61,7 +61,7 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Parse
 	return (TypeLayout) {};
 }
 
-static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* expr) {
+static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 	switch (expr->kind) {
@@ -76,7 +76,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 				compiler->input_instr_array_allocator);
 
 		for (uint16_t i = 0; i < arg_inputs.count; i += 1) {
-			const ParsedExpr* arg= expr->call.args.exprs[i];
+			ParsedExpr* arg = expr->call.args.exprs[i];
 			instr_buffer->inputs_buffer[arg_inputs.start + i] = _compile_expr(compiler, arg);
 		}
 
@@ -109,7 +109,6 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 			} else {
 				panic("Assignment to this expression kind is not supported");
 			}
-
 		}
 
 		ParsedType* left_type = expr_get_type(expr->binary.left, compiler->temp_allocator);
@@ -159,39 +158,48 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
+		ParsedType* result_type = expr_get_type(expr, compiler->temp_allocator);
+
+		// 0 -> 8-bits
+		// 1 -> 16-bits
+		// 2 -> 32-bits
+		// 3 -> 64-bits
+		size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, result_type).size);
+		printf("bit count: %zu\n", result_bit_size_index);
+
 		switch (expr->binary.op) {
 		case BIN_OP_ADD:
-			instr->kind = INSTR_BIN_OP_64;
+			instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 			instr->bin_op.kind = INSTR_BIN_ADD;
 			instr->bin_op.left = left;
 			instr->bin_op.right = right;
 			break;
 		case BIN_OP_SUB:
-			instr->kind = INSTR_BIN_OP_64;
+			instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 			instr->bin_op.kind = INSTR_BIN_SUB;
 			instr->bin_op.left = left;
 			instr->bin_op.right = right;
 			break;
 		case BIN_OP_LOGICAL_EQUAL:
-			instr->kind = INSTR_COMPARE_64;
+			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 			instr->compare.kind = INSTR_CMP_EQUAL;
 			instr->compare.left = left;
 			instr->compare.right = right;
 			break;
 		case BIN_OP_LOGICAL_NOT_EQUAL:
-			instr->kind = INSTR_COMPARE_64;
+			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 			instr->compare.kind = INSTR_CMP_NOT_EQUAL;
 			instr->compare.left = left;
 			instr->compare.right = right;
 			break;
 		case BIN_OP_LOGICAL_LESS:
-			instr->kind = INSTR_COMPARE_64;
+			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 			instr->compare.kind = INSTR_CMP_LESS;
 			instr->compare.left = left;
 			instr->compare.right = right;
 			break;
 		case BIN_OP_LOGICAL_GREATER:
-			instr->kind = INSTR_COMPARE_64;
+			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 			instr->compare.kind = INSTR_CMP_GREATER;
 			instr->compare.left = left;
 			instr->compare.right = right;
@@ -203,7 +211,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 				"and thus haven't produced a valid instruction");
 
 		if (bin_op_is_compare(expr->binary.op)) {
-			return instr_new_cast(instr_buffer, instr_allocator, instr_index, 64);
+			return instr_new_cast(instr_buffer, instr_allocator, instr_index, _type_get_layout(compiler, result_type).size * 8);
 		}
 
 		return instr_index;
@@ -223,11 +231,6 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, const ParsedExpr* ex
 
 		ParsedType int_type = { .kind = expr->int_literal.integer_type };
 		size_t int_size = _type_get_layout(compiler, &int_type).size;
-
-		// NOTE: There is much of a support for non-64 bit numbers,
-		//       so for now always compile it down to a 64-bit int.
-		int_size = 8;
-
 		switch (int_size) {
 		case 1:
 			assert(expr->int_literal.value <= 0xff);
@@ -358,7 +361,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 	InstrIndex initial_region = instr_new_region(instr_buffer, instr_allocator);
 	InstrIndex region_instr_index = initial_region;
 
-	for (const ParsedNode* node = first_node; node != NULL; node = node->next) {
+	for (ParsedNode* node = first_node; node != NULL; node = node->next) {
 		Instr* region_instr = instr_buffer_at(instr_buffer, region_instr_index);
 
 		switch (node->kind) {

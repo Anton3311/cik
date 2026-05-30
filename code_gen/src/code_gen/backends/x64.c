@@ -2,6 +2,10 @@
 
 #include "core/profiler.h"
 
+inline uint8_t _bit_count_from_index(uint8_t i) {
+	return (1 << i) * 8;
+}
+
 static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_NO_OP]                  = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
@@ -731,10 +735,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 
 	case INSTR_BIN_OP_8:
+		unreachable();
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
-		unreachable();
 	case INSTR_BIN_OP_64: {
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_BIN_OP_8);
+
 		_x64_generate_code(gen, instr->bin_op.left, buffer);
 		_x64_generate_code(gen, instr->bin_op.right, buffer);
 
@@ -767,12 +773,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		//       register.
 		if (instr_bin_op_is_commutative(instr->bin_op.kind)) {
 			if (right_loc.reg == dst_loc.reg) {
-				_emit_mov_regs(buffer, right_loc.reg, dst_loc.reg, 64);
+				_emit_mov_regs(buffer, right_loc.reg, dst_loc.reg, bit_count);
 
 				left_reg = dst_loc.reg;
 				right_reg = left_loc.reg;
 			} else {
-				_emit_mov_regs(buffer, left_loc.reg, dst_loc.reg, 64);
+				_emit_mov_regs(buffer, left_loc.reg, dst_loc.reg, bit_count);
 
 				left_reg = dst_loc.reg;
 				right_reg = right_loc.reg;
@@ -802,8 +808,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			instr_bytes[2] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
 
 			if (should_save_right) {
-				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, 64);
-				_emit_pop_reg(buffer, right_loc.reg, 64);
+				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, bit_count);
+				_emit_pop_reg(buffer, right_loc.reg, bit_count);
 			}
 			break;
 		}

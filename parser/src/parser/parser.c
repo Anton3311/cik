@@ -1297,7 +1297,7 @@ static bool _parser_parse_function_params(Parser* parser,
 			}
 		}
 
-		ParsedFunctionParam* param = arena_alloc(parser->temp_allocator, ParsedFunctionParam);
+		ParsedFunctionParam* param = arena_alloc_zeroed(parser->temp_allocator, ParsedFunctionParam);
 		param_count += 1;
 
 		if (!_parser_parse_type(parser, &param->type, true)) {

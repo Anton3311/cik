@@ -133,17 +133,12 @@ typedef enum {
 } ParsedTypeKind;
 
 struct ParsedType {
-	SourceRange source_range;
 	ParsedTypeKind kind;
 
 	TypeQualifiers qualifiers;
 	ParsedTypeDef* alias_definition;
 
 	union {
-		struct {
-			SourceString name;
-		} named;
-		
 		ParsedStruct* struct_def;
 		ParsedStruct* union_def;
 		ParsedEnum* enum_def;
@@ -274,7 +269,6 @@ struct ParsedStringLiteral {
 };
 
 struct ParsedIntegerLiteral {
-	SourceRange source_range;
 	IntergerLiteralFormat format;
 	ParsedTypeKind integer_type;
 	uint64_t value;

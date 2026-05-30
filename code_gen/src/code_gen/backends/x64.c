@@ -886,8 +886,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:
-	case INSTR_COMPARE_32:
 		unreachable();
+	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64: {
 		_x64_generate_code(gen, instr->compare.left, buffer);
 		_x64_generate_code(gen, instr->compare.right, buffer);
@@ -900,7 +900,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(right_loc.kind == INSTR_STORAGE_REG);
 
 		{
-			_code_buffer_push_8(buffer, _rex_prefix(1, left_loc.reg >> 3, 0, right_loc.reg >> 3));
+			if (instr->kind == INSTR_COMPARE_64 || left_loc.reg >> 3 || right_loc.reg >> 3) {
+				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_COMPARE_64, left_loc.reg >> 3, 0, right_loc.reg >> 3);
+				_code_buffer_push_8(buffer, rex_prefix);
+			}
+
 			_code_buffer_push_8(buffer, 0x3b);
 			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
 		}
@@ -938,8 +942,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	
 	case INSTR_CAST_TO_8:
 	case INSTR_CAST_TO_16:
-	case INSTR_CAST_TO_32:
 		unreachable();
+	case INSTR_CAST_TO_32:
 	case INSTR_CAST_TO_64: {
 		_x64_generate_code(gen, instr->cast.value, buffer);
 
@@ -953,7 +957,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);
 
-		_code_buffer_push_8(buffer, _rex_prefix(1, dst_loc.reg >> 3, 0, src_loc.reg >> 3));
+		if (instr->kind == INSTR_CAST_TO_8 || (src_loc.reg >= 8 || dst_loc.reg >= 8)) {
+			uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_CAST_TO_8, dst_loc.reg >> 3, 0, src_loc.reg >> 3);
+			_code_buffer_push_8(buffer, rex_prefix);
+		}
 
 		// movzx
 		_code_buffer_push_8(buffer, 0x0f);

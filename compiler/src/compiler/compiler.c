@@ -111,14 +111,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 			}
 		}
 
-		ParsedType* left_type = expr_get_type(expr->binary.left, compiler->temp_allocator);
-		ParsedType* right_type = expr_get_type(expr->binary.right, compiler->temp_allocator);
+		ParsedType left_type;
+		ParsedType right_type;
 
-		assert(left_type);
-		assert(right_type);
+		expr_get_type(expr->binary.left, &left_type);
+		expr_get_type(expr->binary.right, &right_type);
 
-		bool left_is_pointer_like = type_kind_is_pointer_like(left_type->kind);
-		bool right_is_pointer_like = type_kind_is_pointer_like(right_type->kind);
+		bool left_is_pointer_like = type_kind_is_pointer_like(left_type.kind);
+		bool right_is_pointer_like = type_kind_is_pointer_like(right_type.kind);
 
 		InstrIndex left = _compile_expr(compiler, expr->binary.left);
 		InstrIndex right = _compile_expr(compiler, expr->binary.right);
@@ -131,8 +131,8 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		//
 		//       Since during pointer arithmetics those integer constants
 		//       encode an offset by a number of array elements and not bytes.
-		if (left_is_pointer_like && type_kind_is_int(right_type->kind)) {
-			ParsedType* base_type = type_extract_pointer_base_type(left_type);
+		if (left_is_pointer_like && type_kind_is_int(right_type.kind)) {
+			ParsedType* base_type = type_extract_pointer_base_type(&left_type);
 			TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
 			assert(is_power_of_2(value_layout.size));
@@ -142,8 +142,8 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 					instr_allocator,
 					right,
 					(uint8_t)shift_count);
-		} else if (right_is_pointer_like && type_kind_is_int(left_type->kind)) {
-			ParsedType* base_type = type_extract_pointer_base_type(right_type);
+		} else if (right_is_pointer_like && type_kind_is_int(left_type.kind)) {
+			ParsedType* base_type = type_extract_pointer_base_type(&right_type);
 			TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
 			assert(is_power_of_2(value_layout.size));
@@ -158,13 +158,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
-		ParsedType* result_type = expr_get_type(expr, compiler->temp_allocator);
+		ParsedType result_type;
+		expr_get_type(expr, &result_type);
 
 		// 0 -> 8-bits
 		// 1 -> 16-bits
 		// 2 -> 32-bits
 		// 3 -> 64-bits
-		size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, result_type).size);
+		size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
 		printf("bit count: %zu\n", result_bit_size_index);
 
 		switch (expr->binary.op) {
@@ -211,7 +212,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 				"and thus haven't produced a valid instruction");
 
 		if (bin_op_is_compare(expr->binary.op)) {
-			return instr_new_cast(instr_buffer, instr_allocator, instr_index, _type_get_layout(compiler, result_type).size * 8);
+			return instr_new_cast(instr_buffer, instr_allocator, instr_index, _type_get_layout(compiler, &result_type).size * 8);
 		}
 
 		return instr_index;
@@ -269,14 +270,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		switch (expr->unary.op) {
 		case UNARY_OP_DEREFERENCE: {
 			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-
-			ParsedType* operand_type = expr_get_type(expr->unary.operand, compiler->temp_allocator);
+			ParsedType operand_type;
+			expr_get_type(expr->unary.operand, &operand_type);
 
 			const ParsedType* base_type = NULL;
-			if (operand_type->kind == PARSED_TYPE_POINTER) {
-				base_type = operand_type->pointer_base_type;
-			} else if (operand_type->kind == PARSED_TYPE_ARRAY) {
-				base_type = operand_type->array.element_type;
+			if (operand_type.kind == PARSED_TYPE_POINTER) {
+				base_type = operand_type.pointer_base_type;
+			} else if (operand_type.kind == PARSED_TYPE_ARRAY) {
+				base_type = operand_type.array.element_type;
 			} else {
 				panic("todo: report error");
 			}

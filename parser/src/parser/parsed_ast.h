@@ -152,6 +152,7 @@ struct ParsedType {
 };
 
 bool type_equal(const ParsedType* a, const ParsedType* b);
+void type_array_to_pointer(const ParsedType* type, ParsedType* out_type);
 
 inline bool type_kind_is_int(ParsedTypeKind kind) {
 	ParsedTypeKind kind_without_sign_flags = kind & ~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED);
@@ -159,6 +160,8 @@ inline bool type_kind_is_int(ParsedTypeKind kind) {
 		&& kind_without_sign_flags <= PARSED_TYPE_INT64)
 		|| kind == PARSED_TYPE_SIZE_T;
 }
+
+uint32_t type_get_int_convertion_rank(const ParsedType* type);
 
 inline bool type_kind_is_pointer_like(ParsedTypeKind kind) {
 	return kind == PARSED_TYPE_POINTER || kind == PARSED_TYPE_ARRAY;
@@ -250,9 +253,21 @@ uint32_t bin_op_precedence(BinOpKind op);
 
 struct ParsedBinExpr {
 	BinOpKind op;
+
+	// `ParsedTypeKind` and `pointer_base_type` is enough to
+	// represent all possible arithmetic types, since binary
+	// operations are only supported by arithmetic types 
+	ParsedTypeKind result_type_kind;
+	ParsedType* pointer_base_type;
+
 	ParsedExpr* left;
 	ParsedExpr* right;
 };
+
+void bin_expr_select_result_type(
+		const ParsedType* left_type,
+		const ParsedType* right_type,
+		ParsedType* out_type);
 
 struct ParsedUnaryExpr {
 	UnaryOpKind op;
@@ -310,7 +325,7 @@ struct ParsedExpr {
 	};
 };
 
-ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator);
+void expr_get_type(ParsedExpr* expr, ParsedType* out_type);
 
 //
 // Struct

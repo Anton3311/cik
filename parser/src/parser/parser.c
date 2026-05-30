@@ -1714,10 +1714,20 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 
 			*left_operand = *current_expr;
 
+			ParsedType left_type;
+			ParsedType right_type;
+			expr_get_type(left_operand, &left_type);
+			expr_get_type(right_operand, &right_type);
+
+			ParsedType result_type;
+			bin_expr_select_result_type(&left_type, &right_type, &result_type);
+
 			*current_expr = (ParsedExpr) {
 				.kind = EXPR_BINARY,
 				.binary = (ParsedBinExpr) {
 					.op = current_bin_op,
+					.result_type_kind = result_type.kind,
+					.pointer_base_type = result_type.pointer_base_type,
 					.left = left_operand,
 					.right = right_operand,
 				}

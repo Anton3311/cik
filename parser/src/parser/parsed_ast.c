@@ -90,6 +90,76 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 	return false;
 }
 
+void type_array_to_pointer(const ParsedType* type, ParsedType* out_type) {
+	assert(type->kind == PARSED_TYPE_ARRAY);
+
+	ParsedType* element_type = type->array.element_type;
+
+	out_type->kind = PARSED_TYPE_POINTER;
+	out_type->pointer_base_type = element_type;
+}
+
+uint32_t type_get_int_convertion_rank(const ParsedType* type) {
+	switch (type->kind) {
+	case PARSED_TYPE_VOID:
+		unreachable();
+
+	case PARSED_TYPE_CHAR:
+	case PARSED_TYPE_SIGNED_CHAR:
+	case PARSED_TYPE_UNSIGNED_CHAR:
+	case PARSED_TYPE_INT8:
+	case PARSED_TYPE_SIGNED_INT8:
+	case PARSED_TYPE_UNSIGNED_INT8:
+		return 1;
+
+	case PARSED_TYPE_SHORT:
+	case PARSED_TYPE_SIGNED_SHORT:
+	case PARSED_TYPE_UNSIGNED_SHORT:
+	case PARSED_TYPE_INT16:
+	case PARSED_TYPE_SIGNED_INT16:
+	case PARSED_TYPE_UNSIGNED_INT16:
+		return 2;
+
+	case PARSED_TYPE_INT:
+	case PARSED_TYPE_SIGNED_INT:
+	case PARSED_TYPE_UNSIGNED_INT:
+	case PARSED_TYPE_LONG:
+	case PARSED_TYPE_SIGNED_LONG:
+	case PARSED_TYPE_UNSIGNED_LONG:
+	case PARSED_TYPE_INT32:
+	case PARSED_TYPE_SIGNED_INT32:
+	case PARSED_TYPE_UNSIGNED_INT32:
+		return 3;
+
+	case PARSED_TYPE_LONG_LONG:
+	case PARSED_TYPE_SIGNED_LONG_LONG:
+	case PARSED_TYPE_UNSIGNED_LONG_LONG:
+	case PARSED_TYPE_INT64:
+	case PARSED_TYPE_SIGNED_INT64:
+	case PARSED_TYPE_UNSIGNED_INT64:
+		return 4;
+	
+	case PARSED_TYPE_SIZE_T:
+		return 5;
+
+	case PARSED_TYPE_FLOAT:
+	case PARSED_TYPE_DOUBLE:
+		break;
+
+	case PARSED_TYPE_STRUCT:
+	case PARSED_TYPE_UNION:
+	case PARSED_TYPE_ENUM:
+		break;
+
+	case PARSED_TYPE_POINTER:
+	case PARSED_TYPE_ARRAY:
+		break;
+	}
+
+	unreachable_msg("The provided type is not an integer and this doesn't have a convertion rank");
+	return 0;
+}
+
 static String s_bin_op_kind_to_string[] = {
 	[BIN_OP_ADD] = STR_LIT("+"),
 	[BIN_OP_SUB] = STR_LIT("-"),
@@ -216,6 +286,49 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
+void bin_expr_select_result_type(const ParsedType* left_type, const ParsedType* right_type, ParsedType* out_type) {
+	if (left_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(right_type->kind)) {
+		*out_type = *left_type;
+		return;
+	}
+
+	if (left_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
+		type_array_to_pointer(left_type, out_type);
+		return;
+	}
+
+	if (right_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(left_type->kind)) {
+		*out_type = *right_type;
+		return;
+	}
+
+	if (right_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
+		type_array_to_pointer(right_type, out_type);
+		return;
+	}
+
+	assert(type_kind_is_int(left_type->kind));
+	assert(type_kind_is_int(right_type->kind));
+
+	uint32_t left_convertion_rank = type_get_int_convertion_rank(left_type);
+	uint32_t right_convertion_rank = type_get_int_convertion_rank(right_type);
+	if (left_convertion_rank == right_convertion_rank) {
+		if (left_type->kind == PARSED_TYPE_SIZE_T || right_type->kind == PARSED_TYPE_SIZE_T) {
+			out_type->kind = PARSED_TYPE_SIZE_T;
+		} else if (has_flag(left_type->kind, TYPE_FLAG_UNSIGNED)) {
+			*out_type = *left_type;
+		} else if (has_flag(right_type->kind, TYPE_FLAG_UNSIGNED)) {
+			*out_type = *right_type;
+		} else {
+			*out_type = *left_type;
+		}
+	} else if (left_convertion_rank > right_convertion_rank) {
+		*out_type = *left_type;
+	} else  {
+		*out_type = *right_type;
+	}
+}
+
 String function_calling_convetion_to_string(FunctionCallingConvention conv) {
 	switch (conv) {
 	case FUNC_CALL_CONV_DEFAULT:
@@ -252,69 +365,45 @@ void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node) {
 	}
 }
 
-ParsedType* expr_get_type(ParsedExpr* expr, Arena* temp_allocator) {
+void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 	switch (expr->kind) {
 	case EXPR_CALL: {
 		ParsedExpr* callable = expr->call.callable;
-		if (callable->kind == EXPR_FUNCTION_REFERENCE) {
-			return &callable->function_ref->return_type;
-		}
+		assert_msg(callable->kind == EXPR_FUNCTION_REFERENCE, "A callable expression is not function");
 
-		// The callable expression can't be called
-		return NULL;
+		*out_type = callable->function_ref->return_type;
+		return;
 	}
 	case EXPR_BINARY: {
-		ParsedType* left_type = expr_get_type(expr->binary.left, temp_allocator);
-		ParsedType* right_type = expr_get_type(expr->binary.right, temp_allocator);
-
-		if (left_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(right_type->kind)) {
-			return left_type;
-		} else if (right_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(left_type->kind)) {
-			return right_type;
-		} else if (left_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
-			ParsedType* pointer_type = arena_alloc(temp_allocator, ParsedType);
-			pointer_type->kind = PARSED_TYPE_POINTER;
-			pointer_type->pointer_base_type = left_type->array.element_type;
-			return pointer_type;
-		} else if (right_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
-			ParsedType* pointer_type = arena_alloc(temp_allocator, ParsedType);
-			pointer_type->kind = PARSED_TYPE_POINTER;
-			pointer_type->pointer_base_type = right_type->array.element_type;
-			return pointer_type;
-		} else if (type_equal(left_type, right_type)) {
-			return left_type;
-		} else {
-			unreachable_msg("Failed to get expr type");
-			return NULL;
-		}
-
-		break;
+		out_type->kind = expr->binary.result_type_kind;
+		out_type->pointer_base_type = expr->binary.pointer_base_type;
+		return;
 	}
 	case EXPR_UNARY:
 		break;
 	case EXPR_FUNCTION_REFERENCE:
 		panic("todo: return a type that correspond to the function signature (function pointer type)");
 	case EXPR_VARIABLE_REFERENCE:
-		return &expr->variable_ref->type;
+		*out_type = expr->variable_ref->type;
+		return;
 	case EXPR_INTEGER_LITERAL: {
-		ParsedType* type = arena_alloc_zeroed(temp_allocator, ParsedType);
-		type->kind = expr->int_literal.integer_type;
-		return type;
+		out_type->kind = expr->int_literal.integer_type;
+		return;
 	}
 	case EXPR_STRING_LITERAL:
 		break;
 	case EXPR_ENUM_CONSTANT:
 		break;
 	case EXPR_FUNCTION_PARAM: {
-		// HACK: Make `ParsedType` use only const pointers to reference inner types, line a base type of the pointer.
-		ParsedFunction* func = (ParsedFunction*)expr->function_param.function_def;
+		const ParsedFunction* func = expr->function_param.function_def;
 		assert(expr->function_param.param_index < func->parameter_count);
-		return &func->parameters[expr->function_param.param_index].type;
+		*out_type = func->parameters[expr->function_param.param_index].type;
+		return;
 	}
 	}
 
 	unreachable_msg("Failed to expr type");
-	return NULL;
+	return;
 }
 
 size_t struct_field_namespace_index_of(const ParsedStructFieldNamespace* struct_namespace, String name) {
@@ -447,15 +536,23 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		printer_string_field(printer, "name", expr->variable_ref->name.string);
 		printer_end_struct(printer);
 		break;
-	case EXPR_BINARY:
+	case EXPR_BINARY: {
+		ParsedType result_type = {
+			.kind = expr->binary.result_type_kind,
+			.pointer_base_type = expr->binary.pointer_base_type
+		};
+
 		printer_begin_struct(printer, "binary_expr");
 		printer_string_field(printer, "kind", bin_op_kind_to_string(expr->binary.op));
+		printer_field(printer, "result_type");
+		print_type(printer, &result_type);
 		printer_field(printer, "left");
 		print_expr(printer, expr->binary.left);
 		printer_field(printer, "right");
 		print_expr(printer, expr->binary.right);
 		printer_end_struct(printer);
 		break;
+	}
 	case EXPR_UNARY:
 		printer_begin_struct(printer, "unary_expr");
 		printer_string_field(printer, "kind", unary_op_kind_to_string(expr->unary.op));

@@ -1054,6 +1054,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	}
 	
 	case INSTR_CAST_TO_8: {
+		// NOTE: To cast a highler bit count value to 8-bit, just copy the
+		//       lower 8-bits of the corresponding register
 		_x64_generate_code(gen, instr->cast.value, buffer);
 
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
@@ -1061,7 +1063,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
-		assert(s_instr_storage_requiremenets[value->kind].reg_size == 8);
+
+		assert_msg(s_instr_storage_requiremenets[value->kind].reg_size != 16, "16-bit not yet supported");
 
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);

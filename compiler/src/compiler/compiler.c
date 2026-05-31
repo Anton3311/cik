@@ -411,7 +411,16 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			compiler->var_parent_scopes[node->variable.id] = node->parent_scope;
 
 			if (node->variable.value) {
-				compiler->var_values[node->variable.id] = _compile_expr(compiler, node->variable.value);
+				ParsedType value_type;
+				expr_get_type(node->variable.value, &value_type);
+
+				InstrIndex value = _compile_expr(compiler, node->variable.value);
+
+				// insert an implicit cast to the variable type
+				compiler->var_values[node->variable.id] = _compile_int_cast(compiler,
+						&value_type,
+						&node->variable.type,
+						value);
 			}
 
 			break;

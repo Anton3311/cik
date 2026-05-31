@@ -161,13 +161,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		ParsedType result_type;
 		expr_get_type(expr, &result_type);
 
+		assert(type_equal(&result_type, &left_type));
+		assert(type_equal(&result_type, &right_type));
+
 		// 0 -> 8-bits
 		// 1 -> 16-bits
 		// 2 -> 32-bits
 		// 3 -> 64-bits
 		size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
-		printf("bit count: %zu\n", result_bit_size_index);
-
 		switch (expr->binary.op) {
 		case BIN_OP_ADD:
 			instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;

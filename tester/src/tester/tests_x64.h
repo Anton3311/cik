@@ -35,5 +35,7 @@ void test_phi_in_if_without_else(TestContext* context);
 void test_phi_in_nested_if_without_else(TestContext* context);
 void test_phi_placement_during_conditional_function_arg_assignment(TestContext* context);
 void test_min(TestContext* context);
+void test_char_to_lower(TestContext* context);
+void test_char_to_upper(TestContext* context);
 
 #endif

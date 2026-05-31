@@ -725,3 +725,65 @@ void test_min(TestContext* context) {
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
+
+void test_char_to_lower(TestContext* context) {
+	String source_code = STR_LIT(
+			"char main(unsigned int a) {\n"
+			"    char result;\n"
+			"    if (a >= 'A') {\n"
+			"        if (a <= 'Z') {\n"
+			"            result = 'a' + a - 'A';\n"
+			"        } else {\n"
+			"            result = a;\n"
+			"        }\n"
+			"    } else {\n"
+			"        result = a;\n"
+			"    }\n"
+			"    return result;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef char(*Function)(uint32_t);
+	Function executable_function = (Function)machine_code.code;
+
+	for (uint32_t i = 0; i < 0xff; i += 1) {
+		char input = (char)i;
+		char a = executable_function(input);
+
+		assert(a == tolower(input));
+	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_char_to_upper(TestContext* context) {
+	String source_code = STR_LIT(
+			"char main(unsigned int a) {\n"
+			"    char result;\n"
+			"    if (a >= 'a') {\n"
+			"        if (a <= 'z') {\n"
+			"            result = 'A' + a - 'a';\n"
+			"        } else {\n"
+			"            result = a;\n"
+			"        }\n"
+			"    } else {\n"
+			"        result = a;\n"
+			"    }\n"
+			"    return result;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef char(*Function)(uint32_t);
+	Function executable_function = (Function)machine_code.code;
+
+	for (uint32_t i = 0; i < 0xff; i += 1) {
+		char input = (char)i;
+		char a = executable_function(input);
+
+		assert(a == toupper(input));
+	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}

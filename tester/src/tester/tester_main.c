@@ -115,6 +115,8 @@ static TestCase x64_tests[] = {
 	test(test_phi_in_nested_if_without_else),
 	test(test_phi_placement_during_conditional_function_arg_assignment),
 	test(test_min),
+	test(test_char_to_lower),
+	test(test_char_to_upper),
 };
 
 static TestSuite s_test_suites[] = {

@@ -1053,27 +1053,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 	
-	case INSTR_CAST_TO_8: {
-		// NOTE: To cast a highler bit count value to 8-bit, just copy the
-		//       lower 8-bits of the corresponding register
-		_x64_generate_code(gen, instr->cast.value, buffer);
-
-		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
-		const InstrStorageLocation src_loc = gen->instr_storage[instr->cast.value.value];
-
-		InstrBuffer* instr_buffer = &gen->instr_buffer;
-		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
-
-		assert_msg(s_instr_storage_requiremenets[value->kind].reg_size != 16, "16-bit not yet supported");
-
-		assert(dst_loc.kind == INSTR_STORAGE_REG);
-		assert(src_loc.kind == INSTR_STORAGE_REG);
-
-		_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, 8);
-		return;
-	}
+	case INSTR_CAST_TO_8:
 	case INSTR_CAST_TO_16:
-		unreachable();
 	case INSTR_CAST_TO_32:
 	case INSTR_CAST_TO_64: {
 		_x64_generate_code(gen, instr->cast.value, buffer);
@@ -1085,10 +1066,20 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
 
 		uint8_t operand_size = s_instr_storage_requiremenets[value->kind].reg_size;
-		assert(operand_size == 8 || operand_size == 32);
+		uint8_t output_size = 8 << (instr->kind - INSTR_CAST_TO_8);
+
+		assert_msg(operand_size != 16, "16-bit not yet implemented");
+		assert_msg(output_size != 16, "16-bit not yet implemented");
 
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);
+
+		if (output_size < operand_size) {
+			// NOTE: When casting to a smaller bit count, just copy the corresponding
+			//       lower half of an input register
+			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, output_size);
+			return;
+		}
 
 		if (operand_size == 8) {
 			if (instr->kind == INSTR_CAST_TO_64 || (src_loc.reg >= 8 || dst_loc.reg >= 8)) {

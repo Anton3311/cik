@@ -122,13 +122,32 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 			ParsedExpr* target = expr->binary.left;
 
 			if (target->kind == EXPR_VARIABLE_REFERENCE) {
+				ParsedType value_type;
+				expr_get_type(expr->binary.right, &value_type);
+
 				InstrIndex value = _compile_expr(compiler, expr->binary.right);
+
 				const ParsedVariable* variable = target->variable_ref;
+
+				value = _compile_int_cast(compiler,
+						&value_type,
+						&variable->type,
+						value);
 				compiler->var_values[variable->id] = value;
 				return value;
 			} else if (target->kind == EXPR_FUNCTION_PARAM) {
+				ParsedType value_type;
+				expr_get_type(expr->binary.right, &value_type);
+
 				InstrIndex value = _compile_expr(compiler, expr->binary.right);
+
 				size_t arg_index = target->function_param.param_index;
+
+				value = _compile_int_cast(compiler,
+						&value_type,
+						&compiler->function->parameters[arg_index].type,
+						value);
+
 				compiler->arg_states[arg_index] = value;
 				return value;
 			} else {

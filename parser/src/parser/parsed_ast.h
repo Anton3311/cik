@@ -21,6 +21,7 @@ typedef struct ParsedVariable ParsedVariable;
 typedef struct ParsedScope ParsedScope;
 typedef struct ParsedCall ParsedCall;
 typedef struct ParsedStringLiteral ParsedStringLiteral;
+typedef struct ParsedCharLiteral ParsedCharLiteral;
 typedef struct ParsedExpr ParsedExpr;
 typedef struct ParsedExprArray ParsedExprArray;
 typedef struct ParsedBinExpr ParsedBinExpr;
@@ -283,6 +284,13 @@ struct ParsedStringLiteral {
 	String full_string;
 };
 
+// TODO: When implmenenting wide char support,
+//       can just add a EXPR_WIDE_CHAR_LITERAL,
+//       instead of adding a flag here.
+struct ParsedCharLiteral {
+	uint32_t value;
+};
+
 struct ParsedIntegerLiteral {
 	IntergerLiteralFormat format;
 	ParsedTypeKind integer_type;
@@ -297,6 +305,7 @@ typedef enum {
 	EXPR_VARIABLE_REFERENCE,
 	EXPR_INTEGER_LITERAL,
 	EXPR_STRING_LITERAL,
+	EXPR_CHAR_LITERAL,
 	EXPR_ENUM_CONSTANT,
 	EXPR_FUNCTION_PARAM,
 } ExprKind;
@@ -312,6 +321,7 @@ struct ParsedExpr {
 		ParsedUnaryExpr unary;
 		ParsedIntegerLiteral int_literal;
 		ParsedStringLiteral string_literal;
+		ParsedCharLiteral char_literal;
 		
 		struct {
 			const ParsedEnum* enum_def;

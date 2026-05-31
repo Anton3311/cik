@@ -1559,9 +1559,42 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 
 		unreachable();
 	} else if (token.kind == TOKEN_STRING) {
-		_parser_parse_string_literal(parser, &out_expr->string_literal);
-		out_expr->kind = EXPR_STRING_LITERAL;
-		return EXPR_PARSE_OK;
+		if (token.string.v[0] == '\'') {
+			// we have a char literal
+
+			assert(token.string.length >= 3);
+			size_t char_literal_length = token.string.length - 2; // the token includes quotes
+
+			if (char_literal_length == 0) {
+				diagnostics_report_error(parser->diagnostics,
+						token.source_range,
+						STR_LIT("Empty character constant"),
+						NULL);
+
+				preprocessor_next_token(parser->preprocessor);
+				return EXPR_PARSE_ERROR;
+			} else if (char_literal_length > 1) {
+				diagnostics_report_error(parser->diagnostics,
+						token.source_range,
+						STR_LIT("Character constant is tool long"),
+						NULL);
+
+				preprocessor_next_token(parser->preprocessor);
+				return EXPR_PARSE_ERROR;
+			}
+
+			out_expr->kind = EXPR_CHAR_LITERAL;
+			out_expr->char_literal.value = (uint32_t)token.string.v[1];
+			preprocessor_next_token(parser->preprocessor);
+			return EXPR_PARSE_OK;
+		} else if (token.string.v[0] == '"') {
+			// we have a string literal
+			_parser_parse_string_literal(parser, &out_expr->string_literal);
+			out_expr->kind = EXPR_STRING_LITERAL;
+			return EXPR_PARSE_OK;
+		}
+
+		unreachable();
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
 

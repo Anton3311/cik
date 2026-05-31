@@ -420,6 +420,9 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 	}
 	case EXPR_STRING_LITERAL:
 		break;
+	case EXPR_CHAR_LITERAL:
+		out_type->kind = PARSED_TYPE_CHAR;
+		return;
 	case EXPR_ENUM_CONSTANT:
 		break;
 	case EXPR_FUNCTION_PARAM: {
@@ -602,6 +605,12 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 	case EXPR_STRING_LITERAL:
 		printer_begin_struct(printer, "string");
 		printer_string_field(printer, "value", expr->string_literal.full_string);
+		printer_end_struct(printer);
+		break;
+	case EXPR_CHAR_LITERAL:
+		printer_begin_struct(printer, "char");
+		printer_field(printer, "value");
+		printf("%u %c\n", expr->char_literal.value, (char)(expr->char_literal.value));
 		printer_end_struct(printer);
 		break;
 	case EXPR_CALL: {

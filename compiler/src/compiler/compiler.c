@@ -366,6 +366,16 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		}
 		}
 		break;
+	case EXPR_CHAR_LITERAL: {
+		assert(expr->char_literal.value <= 0xff);
+
+		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+		instr->kind = INSTR_CONST_8;
+		instr->const_8.u = (uint8_t)expr->char_literal.value;
+		return instr_index;
+	}
 	}
 
 	unreachable();

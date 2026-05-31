@@ -256,9 +256,21 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 			instr->compare.left = left;
 			instr->compare.right = right;
 			break;
+		case BIN_OP_LOGICAL_LESS_OR_EQUAL:
+			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+			instr->compare.kind = INSTR_CMP_LESS_OR_EQUAL;
+			instr->compare.left = left;
+			instr->compare.right = right;
+			break;
 		case BIN_OP_LOGICAL_GREATER:
 			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 			instr->compare.kind = INSTR_CMP_GREATER;
+			instr->compare.left = left;
+			instr->compare.right = right;
+			break;
+		case BIN_OP_LOGICAL_GREATER_OR_EQUAL:
+			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+			instr->compare.kind = INSTR_CMP_GREATER_OR_EQUAL;
 			instr->compare.left = left;
 			instr->compare.right = right;
 			break;

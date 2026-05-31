@@ -866,6 +866,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			bool should_save_right = dst_loc.reg == right_loc.reg;
 
 			if (should_save_right) {
+				// NOTE: When saving the register, push/pop the whole 64-bit register
 				_emit_push_reg(buffer, right_loc.reg, 64);
 			}
 
@@ -880,7 +881,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 			if (should_save_right) {
 				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, bit_count);
-				_emit_pop_reg(buffer, right_loc.reg, bit_count);
+				_emit_pop_reg(buffer, right_loc.reg, 64);
 			}
 			break;
 		}
@@ -988,8 +989,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			case INSTR_CMP_LESS:
 				instr_bytes[1] = 0x9c; // setl
 				return;
+			case INSTR_CMP_LESS_OR_EQUAL:
+				instr_bytes[1] = 0x9e; // setng
+				return;
 			case INSTR_CMP_GREATER:
 				instr_bytes[1] = 0x9f; // setg
+				return;
+			case INSTR_CMP_GREATER_OR_EQUAL:
+				instr_bytes[1] = 0x9d; // setge
 				return;
 			}
 
@@ -1042,8 +1049,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			case INSTR_CMP_LESS:
 				instr_bytes[1] = 0x9c; // setl
 				return;
+			case INSTR_CMP_LESS_OR_EQUAL:
+				instr_bytes[1] = 0x9e; // setng
+				return;
 			case INSTR_CMP_GREATER:
 				instr_bytes[1] = 0x9f; // setg
+				return;
+			case INSTR_CMP_GREATER_OR_EQUAL:
+				instr_bytes[1] = 0x9d; // setge
 				return;
 			}
 

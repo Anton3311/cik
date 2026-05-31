@@ -485,6 +485,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
 				InstrIndex* original_var_values = compiler->var_values;
+				InstrIndex* original_arg_values = compiler->arg_states;
 
 				// Create copies of variable value arrays
 				InstrIndex* var_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
@@ -497,8 +498,21 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				array_copy(var_values_for_true_path, compiler->var_values, compiler->var_count);
 				array_copy(var_values_for_false_path, compiler->var_values, compiler->var_count);
 
+				size_t arg_count = compiler->function->parameter_count;
+				InstrIndex* arg_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
+						InstrIndex,
+						arg_count);
+
+				InstrIndex* arg_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
+						InstrIndex,
+						arg_count);
+
+				array_copy(arg_values_for_true_path, compiler->arg_states, arg_count);
+				array_copy(arg_values_for_false_path, compiler->arg_states, arg_count);
+
 				{
 					compiler->var_values = var_values_for_true_path;
+					compiler->arg_states = arg_values_for_true_path;
 
 					true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
 
@@ -513,6 +527,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 
 				{
 					compiler->var_values = var_values_for_false_path;
+					compiler->arg_states = arg_values_for_false_path;
 
 					if (node->if_stmt.false_node) {
 						false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
@@ -563,11 +578,32 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 
 					original_var_values[i] = phi;
 				}
+				
+				for (size_t i = 0; i < arg_count; i += 1) {
+					bool assigned_in_true_path =
+						arg_values_for_true_path[i].value != original_arg_values[i].value;
+					bool assigned_in_false_path =
+						arg_values_for_false_path[i].value != original_arg_values[i].value;
+
+					if (!assigned_in_true_path && !assigned_in_false_path) {
+						// No need to place a phi node, since no new values were assigned
+						continue;
+					}
+
+					InstrIndex phi = _create_phi_of_2_variants(compiler,
+							arg_values_for_true_path[i],
+							true_block.final_region,
+							arg_values_for_false_path[i],
+							false_block.final_region);
+
+					original_arg_values[i] = phi;
+				}
 
 				arena_end_temp(temp);
 
 				// Reset back to the original array of values
 				compiler->var_values = original_var_values;
+				compiler->arg_states = original_arg_values;
 			}
 
 			instr->branch.true_region = true_block.initial_region;

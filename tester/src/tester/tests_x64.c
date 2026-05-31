@@ -681,6 +681,29 @@ void test_phi_in_nested_if_without_else(TestContext* context) {
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
+void test_phi_placement_during_conditional_function_arg_assignment(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned int uint32_t;\n"
+			"uint32_t main(uint32_t primary, uint32_t secondary) {\n"
+			"    if (primary == 10) {\n"
+			"        secondary = 8;\n"
+			"    } else {\n"
+			"        secondary = 4;\n"
+			"    }\n"
+			"    return secondary;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint32_t(*Function)(uint32_t, uint32_t);
+	Function executable_function = (Function)machine_code.code;
+
+	assert(executable_function(10, 0) == 8);
+	assert(executable_function(0, 0) == 4);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
 void test_min(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"

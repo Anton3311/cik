@@ -113,6 +113,7 @@ static TestCase x64_tests[] = {
 	test(test_phi_in_nested_if_else),
 	test(test_phi_in_if_without_else),
 	test(test_phi_in_nested_if_without_else),
+	test(test_phi_placement_during_conditional_function_arg_assignment),
 	test(test_min),
 };
 

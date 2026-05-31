@@ -151,9 +151,6 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		ParsedType result_type;
 		expr_get_type(expr, &result_type);
 
-		left = _compile_int_cast(compiler, &left_type, &result_type, left);
-		right = _compile_int_cast(compiler, &right_type, &result_type, right);
-
 		// TODO: Don't scale int constants during compare operations.
 
 		// NOTE: In case we are doing pointer arithmetics here,
@@ -166,9 +163,15 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 			ParsedType* base_type = type_extract_pointer_base_type(&left_type);
 			TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
-			assert(is_power_of_2(value_layout.size));
-			size_t shift_count = count_trailing_zeros(value_layout.size);
+			if (value_layout.size != compiler->pointer_type_layout.size) {
+				// promote the right operand to match the pointer size
+				right = instr_new_cast(instr_buffer,
+						instr_allocator,
+						right,
+						compiler->pointer_type_layout.size * 8);
+			}
 
+			size_t shift_count = count_trailing_zeros(value_layout.size);
 			right = instr_new_logical_shift_left_by(instr_buffer,
 					instr_allocator,
 					right,
@@ -177,13 +180,22 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 			ParsedType* base_type = type_extract_pointer_base_type(&right_type);
 			TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
-			assert(is_power_of_2(value_layout.size));
-			size_t shift_count = count_trailing_zeros(value_layout.size);
+			if (value_layout.size != compiler->pointer_type_layout.size) {
+				// promote the left operand to match the pointer size
+				left = instr_new_cast(instr_buffer,
+						instr_allocator,
+						left,
+						compiler->pointer_type_layout.size * 8);
+			}
 
+			size_t shift_count = count_trailing_zeros(value_layout.size);
 			left = instr_new_logical_shift_left_by(instr_buffer,
 					instr_allocator,
 					left,
 					(uint8_t)shift_count);
+		} else {
+			left = _compile_int_cast(compiler, &left_type, &result_type, left);
+			right = _compile_int_cast(compiler, &right_type, &result_type, right);
 		}
 
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);

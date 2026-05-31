@@ -379,8 +379,36 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 		out_type->pointer_base_type = expr->binary.pointer_base_type;
 		return;
 	}
-	case EXPR_UNARY:
-		break;
+	case EXPR_UNARY: {
+		switch (expr->unary.op) {
+		case UNARY_OP_NEGATE:
+		case UNARY_OP_PLUS:
+		case UNARY_OP_LOGICAL_NOT:
+
+		case UNARY_OP_BITWISE_NOT:
+
+		case UNARY_OP_PRE_INCREMENT:
+		case UNARY_OP_POST_INCREMENT:
+
+		case UNARY_OP_PRE_DECREMENT:
+		case UNARY_OP_POST_DECREMENT:
+			expr_get_type(expr->unary.operand, out_type);
+			break;
+		case UNARY_OP_DEREFERENCE: {
+			ParsedType operand_type;
+			expr_get_type(expr->unary.operand, &operand_type);
+
+			assert_msg(type_kind_is_pointer_like(operand_type.kind),
+					"Dereferencing a non-pointer like type is not allowed");
+
+			const ParsedType* base_type = type_extract_pointer_base_type(&operand_type);
+			*out_type = *base_type;
+			break;
+		}
+		}
+
+		return;
+	}
 	case EXPR_FUNCTION_REFERENCE:
 		panic("todo: return a type that correspond to the function signature (function pointer type)");
 	case EXPR_VARIABLE_REFERENCE:
@@ -402,7 +430,7 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 	}
 	}
 
-	unreachable_msg("Failed to expr type");
+	unreachable_msg("Failed to get expr type");
 	return;
 }
 

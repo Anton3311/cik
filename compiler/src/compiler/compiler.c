@@ -61,6 +61,31 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Parse
 	return (TypeLayout) {};
 }
 
+static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
+		const ParsedType* int_type,
+		const ParsedType* target_type,
+		InstrIndex value_instr) {
+	assert(type_kind_is_int(int_type->kind));
+	assert(type_kind_is_int(target_type->kind));
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	TypeLayout int_layout = _type_get_layout(compiler, int_type);
+	TypeLayout result_layout = _type_get_layout(compiler, target_type);
+
+	if (int_layout.size == result_layout.size) {
+		assert(int_layout.alignment == result_layout.alignment);
+		return value_instr;
+	}
+
+	size_t result_bit_size_index = count_trailing_zeros(result_layout.size);
+	return instr_new_cast(instr_buffer,
+			instr_allocator,
+			value_instr,
+			result_layout.size * 8);
+}
+
 static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -123,6 +148,12 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		InstrIndex left = _compile_expr(compiler, expr->binary.left);
 		InstrIndex right = _compile_expr(compiler, expr->binary.right);
 
+		ParsedType result_type;
+		expr_get_type(expr, &result_type);
+
+		left = _compile_int_cast(compiler, &left_type, &result_type, left);
+		right = _compile_int_cast(compiler, &right_type, &result_type, right);
+
 		// TODO: Don't scale int constants during compare operations.
 
 		// NOTE: In case we are doing pointer arithmetics here,
@@ -157,12 +188,6 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-
-		ParsedType result_type;
-		expr_get_type(expr, &result_type);
-
-		assert(type_equal(&result_type, &left_type));
-		assert(type_equal(&result_type, &right_type));
 
 		// 0 -> 8-bits
 		// 1 -> 16-bits

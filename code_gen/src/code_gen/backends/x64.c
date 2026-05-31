@@ -586,7 +586,10 @@ inline void _emit_return(CodeBuffer* buffer) {
 }
 
 inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst, uint8_t reg_bit_count) {
-	if (src == dst) {
+	// NOTE: emit the mov anyways for 32-bit regs even if the src and dst are the same,
+	//       since writing to a 32-bit resgister zeros out an upper half of the corresponding 64-bit reg,
+	//       thus this function can be used to zero extend 32-bit values to 64 bits
+	if (src == dst && reg_bit_count != 32) {
 		return;
 	}
 
@@ -1077,21 +1080,31 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
-		assert(s_instr_storage_requiremenets[value->kind].reg_size == 8);
+
+		uint8_t operand_size = s_instr_storage_requiremenets[value->kind].reg_size;
+		assert(operand_size == 8 || operand_size == 32);
 
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);
 
-		if (instr->kind == INSTR_CAST_TO_8 || (src_loc.reg >= 8 || dst_loc.reg >= 8)) {
-			uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_CAST_TO_8, dst_loc.reg >> 3, 0, src_loc.reg >> 3);
-			_code_buffer_push_8(buffer, rex_prefix);
+		if (operand_size == 8) {
+			if (instr->kind == INSTR_CAST_TO_64 || (src_loc.reg >= 8 || dst_loc.reg >= 8)) {
+				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_CAST_TO_64, dst_loc.reg >> 3, 0, src_loc.reg >> 3);
+				_code_buffer_push_8(buffer, rex_prefix);
+			}
+
+			// movzx
+			_code_buffer_push_8(buffer, 0x0f);
+			_code_buffer_push_8(buffer, 0xb6);
+
+			_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg & 0b111, src_loc.reg & 0b111));
+		} else if (operand_size == 32) {
+			// NOTE: Moving writing to a 32-bit register zeros out the upper half of the corresponding 64-bit regiters.
+			//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
+			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, 32);
+		} else {
+			panic("Not implemented for this operand size");
 		}
-
-		// movzx
-		_code_buffer_push_8(buffer, 0x0f);
-		_code_buffer_push_8(buffer, 0xb6);
-
-		_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg & 0b111, src_loc.reg & 0b111));
 		return;
 	}
 

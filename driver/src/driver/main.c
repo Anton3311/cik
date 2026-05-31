@@ -72,6 +72,12 @@ int main(int argc, char *argv[]) {
 	if (argc >= 2) {
 		SourceStorage source_storage = {};
 
+		// NOTE: Allocate this before the `include_dirs` array, so that they don't interfere
+		String sdk_path = path_append(install_path, sdks.values[0], &arena);
+		String um_include_path = path_append(sdk_path, STR_LIT("um"), &arena);
+		String ucrt_include_path = path_append(sdk_path, STR_LIT("ucrt"), &arena);
+		String shared_include_path = path_append(sdk_path, STR_LIT("shared"), &arena);
+
 		StringArray include_dirs = {};
 		include_dirs.values = arena_alloc_array(&arena, String, 0);
 
@@ -96,11 +102,6 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (!has_flag(flags, C_FLAG_DO_NOT_INCLUDE_WIN_SDK)) {
-			String sdk_path = path_append(install_path, sdks.values[0], &arena);
-			String um_include_path = path_append(sdk_path, STR_LIT("um"), &arena);
-			String ucrt_include_path = path_append(sdk_path, STR_LIT("ucrt"), &arena);
-			String shared_include_path = path_append(sdk_path, STR_LIT("shared"), &arena);
-
 			str_array_append(&include_dirs, &arena, um_include_path);
 			str_array_append(&include_dirs, &arena, ucrt_include_path);
 			str_array_append(&include_dirs, &arena, shared_include_path);

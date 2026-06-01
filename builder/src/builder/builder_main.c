@@ -82,9 +82,8 @@ int main(int argc, char *argv[]) {
 	build_add_include(&context, STR_LIT("tester/src/"));
 	build_end_project(&context);
 
-	build_run(&context, argv, argc);
+	// NOTE: No need to release arenas, as the memory will be cleaned by the OS
+	//       after the process termination
 
-	arena_release(&allocator);
-	arena_release(&unit_allocator);
-	arena_release(&dependency_allocator);
+	return build_run(&context, argv, argc);
 }

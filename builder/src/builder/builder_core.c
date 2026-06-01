@@ -291,18 +291,31 @@ static bool _verify_dependecies_status(BuildContext* context, BuildUnitId unit_i
 	return true;
 }
 
-static BuildQueue _build_build_queue(BuildContext* context) {
+// `project_name` specify the name of the project the dependencies will be enumerated.
+// If it is empty, the queue will contains dependencies for all the projects
+static BuildQueue _build_build_queue(BuildContext* context, String project_name) {
 	BuildUnitId* root_units = arena_alloc_array(context->allocator, BuildUnitId, 0);
 	size_t root_unit_count = 0;
 
 	// Collect root units
 	for (size_t i = 0; i < context->unit_count; i += 1) {
 		const BuildUnit* unit = &context->units[i];
-		if (unit->output_type == OUTPUT_EXE) {
-			BuildUnitId* id = arena_alloc(context->allocator, BuildUnitId);
-			id->value = (uint16_t)i;
-			root_unit_count += 1;
+
+		bool matches = false;
+		if (project_name.length > 0) {
+			matches = (unit->output_type == OUTPUT_EXE || unit->output_type == OUTPUT_LIB)
+				&& str_equal(unit->name, project_name);
+		} else {
+			matches = unit->output_type == OUTPUT_EXE;
 		}
+
+		if (!matches) {
+			continue;
+		}
+
+		BuildUnitId* id = arena_alloc(context->allocator, BuildUnitId);
+		id->value = (uint16_t)i;
+		root_unit_count += 1;
 	}
 
 	// Create build queue
@@ -326,8 +339,15 @@ static void _print_result(bool success, String operation_name, String message) {
 	}
 }
 
-static void _run_build_process(BuildContext* context) {
-	BuildQueue build_queue = _build_build_queue(context);
+static bool _run_build_process(BuildContext* context, String project_name) {
+	BuildQueue build_queue = _build_build_queue(context, project_name);
+
+	if (build_queue.count == 0) {
+		fprintf(stderr, "\033[31;1mNo targets to build\n\033[0m");
+		return false;
+	}
+
+	bool result = true;
 
 	// Build units
 	UnitStatus* status = arena_alloc_array_zeroed(context->allocator, UnitStatus, context->unit_count);
@@ -356,6 +376,7 @@ static void _run_build_process(BuildContext* context) {
 				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
 				status[unit_id.value] = UNIT_STATUS_FAILED;
+				result = false;
 			}
 
 			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("link"), unit->name);
@@ -374,6 +395,7 @@ static void _run_build_process(BuildContext* context) {
 				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
 				status[unit_id.value] = UNIT_STATUS_FAILED;
+				result = false;
 			}
 
 			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("link"), unit->name);
@@ -394,6 +416,7 @@ static void _run_build_process(BuildContext* context) {
 				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
 				status[unit_id.value] = UNIT_STATUS_FAILED;
+				result = false;
 			}
 
 			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("compile"), unit->path);
@@ -405,41 +428,77 @@ static void _run_build_process(BuildContext* context) {
 
 		arena_end_temp(temp);
 	}
+
+	return result;
 }
 
-typedef enum {
-	CMD_BUILD,
-	CMD_INVALID,
-} Command;
+static void _print_all_targets(const BuildContext* context) {
+	printf("\nAvailable targets:\n\n");
+	for (size_t i = 0; i < context->unit_count; i += 1) {
+		const BuildUnit* unit = &context->units[i];
 
-void build_run(BuildContext* context, char* argv[], size_t argc) {
-	bool has_error = false;
-	Command command = CMD_INVALID;
-	if (argc == 1) {
-		return;
-	} else if (argc > 1) {
-		if (strcmp(argv[1], "build") == 0) {
-			command = CMD_BUILD;
+		const char* output_type_string;
+		switch (unit->output_type) {
+		case OUTPUT_LIB:
+			output_type_string = "lib";
+			break;
+		case OUTPUT_EXE:
+			output_type_string = "exe";
+			break;
+		default:
+			continue;
+		}
+
+		printf("  %s \033[1;32m%.*s\033[0m\n", output_type_string, STR_FMT(unit->name));
+	}
+
+	printf("\n");
+}
+
+static const char* s_help_message =
+	"\n"
+	"  Usage:\n"
+	"    bb.exe <command> <args>\n"
+	"\n"
+	"  Commands:\n"
+	"    build                 build all projects\n"
+	"    build <project-name>  build specific project\n"
+	"    list                  show a list of available build targets\n"
+	"    help                  show help message\n";
+
+int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
+	if (argc <= 1) {
+		fprintf(stderr, "\033[1;31mNot enough arguments\033[0m\n");
+		printf("%s", s_help_message);
+		return EXIT_FAILURE;
+	}
+
+	size_t arg_index = 1;
+	while (arg_index < argc) {
+		if (strcmp(argv[arg_index], "build") == 0) {
+			arg_index += 1;
+
+			String project_name = {};
+			if (arg_index < argc) {
+				project_name = str_from_cstr(argv[arg_index]);
+				arg_index += 1;
+			}
+
+			return _run_build_process(context, project_name)
+				? EXIT_SUCCESS
+				: EXIT_FAILURE;
+		} else if (strcmp(argv[arg_index], "help") == 0) {
+			printf("%s", s_help_message);
+			return EXIT_SUCCESS;
+		} else if (strcmp(argv[arg_index], "list") == 0) {
+			_print_all_targets(context);
+			return EXIT_SUCCESS;
 		} else {
-			fprintf(stderr, "Unknown command: '%s'", argv[1]);
-			has_error = true;
-		}
-
-		for (size_t i = 2; i < argc; i += 1) {
-			fprintf(stderr, "Unknown argument: '%s'", argv[i]);
-			has_error = true;
-		}
-
-		if (has_error) {
-			return;
+			fprintf(stderr, "\033[1;31mUnknown argument: '%s'\033[0m", argv[arg_index]);
+			return EXIT_FAILURE;
 		}
 	}
 
-	switch (command) {
-	case CMD_BUILD:
-		_run_build_process(context);
-		break;
-	case CMD_INVALID:
-		unreachable();
-	}
+	unreachable();
+	return EXIT_FAILURE;
 }

@@ -76,7 +76,12 @@ bool _parse(GenContext* context,
 
 	parser_parse(&parser, out_ast);
 
-	return diagnostics.first == NULL;
+	if (diagnostics.first == NULL) {
+		return true;
+	}
+
+	diagnostics_print(&diagnostics);
+	return false;
 }
 
 void _emit_generated_notice(StringBuilder* builder, const char* generator_function_name) {

@@ -339,7 +339,15 @@ static void _print_result(bool success, String operation_name, String message) {
 	}
 }
 
-static bool _run_build_process(BuildContext* context, String project_name) {
+typedef struct {
+	String cmd_log;
+} BuildResult;
+
+static bool _run_build_process(BuildContext* context,
+		String project_name,
+		bool cmd_log_enabled,
+		BuildResult* out_result) {
+
 	BuildQueue build_queue = _build_build_queue(context, project_name);
 
 	if (build_queue.count == 0) {
@@ -351,6 +359,8 @@ static bool _run_build_process(BuildContext* context, String project_name) {
 
 	// Build units
 	UnitStatus* status = arena_alloc_array_zeroed(context->allocator, UnitStatus, context->unit_count);
+
+	StringBuilder cmd_log = { .arena = context->unit_allocator };
 	for (size_t i = 0; i < build_queue.count; i += 1) {
 		ArenaRegion temp = arena_begin_temp(context->allocator);
 
@@ -372,6 +382,12 @@ static bool _run_build_process(BuildContext* context, String project_name) {
 						link_cmd,
 						&exit_code,
 						context->allocator) == PROCESS_RUN_OK;
+
+			if (cmd_log_enabled) {
+				str_builder_append(&cmd_log, link_cmd);
+				str_builder_append_char(&cmd_log, '\n');
+			}
+
 			if (success && exit_code == 0) {
 				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
@@ -391,6 +407,12 @@ static bool _run_build_process(BuildContext* context, String project_name) {
 						link_cmd,
 						&exit_code,
 						context->allocator) == PROCESS_RUN_OK;
+
+			if (cmd_log_enabled) {
+				str_builder_append(&cmd_log, link_cmd);
+				str_builder_append_char(&cmd_log, '\n');
+			}
+
 			if (success && exit_code == 0) {
 				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
@@ -412,6 +434,12 @@ static bool _run_build_process(BuildContext* context, String project_name) {
 						cmd,
 						&exit_code,
 						context->allocator) == PROCESS_RUN_OK;
+
+			if (cmd_log_enabled) {
+				str_builder_append(&cmd_log, cmd);
+				str_builder_append_char(&cmd_log, '\n');
+			}
+
 			if (success && exit_code == 0) {
 				status[unit_id.value] = UNIT_STATUS_DONE;
 			} else {
@@ -427,6 +455,10 @@ static bool _run_build_process(BuildContext* context, String project_name) {
 		}
 
 		arena_end_temp(temp);
+	}
+
+	if (cmd_log_enabled) {
+		out_result->cmd_log = cmd_log.string;
 	}
 
 	return result;
@@ -458,10 +490,10 @@ static void _print_all_targets(const BuildContext* context) {
 static const char* s_help_message =
 	"\n"
 	"  Usage:\n"
-	"    bb.exe <command> <args>\n"
+	"    bb.exe <command> [<args>]\n"
 	"\n"
 	"  Commands:\n"
-	"    build                 build all projects\n"
+	"    build                 build all projects and generate scripts/build_all.bat\n"
 	"    build <project-name>  build specific project\n"
 	"    list                  show a list of available build targets\n"
 	"    help                  show help message\n";
@@ -479,14 +511,30 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 			arg_index += 1;
 
 			String project_name = {};
+			bool cmd_log_enabled = false;
 			if (arg_index < argc) {
 				project_name = str_from_cstr(argv[arg_index]);
 				arg_index += 1;
+			} else {
+				cmd_log_enabled = true;
 			}
 
-			return _run_build_process(context, project_name)
+			BuildResult result = {};
+			int32_t exit_code = _run_build_process(context, project_name, cmd_log_enabled, &result)
 				? EXIT_SUCCESS
 				: EXIT_FAILURE;
+
+			if (cmd_log_enabled) {
+				const char* build_all_path = "scripts/build_all.bat";
+				bool written = write_str_to_file(build_all_path, result.cmd_log);
+				_print_result(written, str_from_cstr(build_all_path), (String) {});
+
+				if (!written) {
+					exit_code = EXIT_FAILURE;
+				}
+			}
+
+			return exit_code;
 		} else if (strcmp(argv[arg_index], "help") == 0) {
 			printf("%s", s_help_message);
 			return EXIT_SUCCESS;

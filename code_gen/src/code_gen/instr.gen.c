@@ -57,7 +57,9 @@ static String s_instr_compare_kind_to_string[] = {
     [INSTR_CMP_EQUAL] = STR_LIT("equal"),
     [INSTR_CMP_NOT_EQUAL] = STR_LIT("not_equal"),
     [INSTR_CMP_LESS] = STR_LIT("less"),
+    [INSTR_CMP_LESS_OR_EQUAL] = STR_LIT("less_or_equal"),
     [INSTR_CMP_GREATER] = STR_LIT("greater"),
+    [INSTR_CMP_GREATER_OR_EQUAL] = STR_LIT("greater_or_equal"),
 };
 String instr_name(InstrKind instr_kind) {
 	return s_instr_kind_to_string[instr_kind];

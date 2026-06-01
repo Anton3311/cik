@@ -10,6 +10,8 @@
 		size_t length;
 	} String;
 
+	typedef uint8_t bool;
+
 	#define assert(...)
 	#define assert_msg(...)
 #else

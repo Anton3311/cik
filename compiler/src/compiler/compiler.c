@@ -79,7 +79,6 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		return value_instr;
 	}
 
-	size_t result_bit_size_index = count_trailing_zeros(result_layout.size);
 	return instr_new_cast(instr_buffer,
 			instr_allocator,
 			value_instr,

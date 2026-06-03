@@ -121,6 +121,11 @@ static size_t MIN_BRANCH_REGION_STACK_DEPTH = 1;
 struct Preprocessor {
 	Arena* allocator;
 	Arena* temp_allocator;
+
+	// `generated_tokens_allocator` is used to allocate tokens
+	// that are generated on the fly, and can't be encountered
+	// in the actual source code. Such tokens are produced by
+	// builtin macros like: __FILE__ or __LINE__.
 	Arena* generated_tokens_allocator;
 	Diagnostics* diagnostics;
 	SourceStorage* source_storage;
@@ -215,7 +220,12 @@ void preprocessor_init(Preprocessor* state,
 		Arena* temp_allocator,
 		Arena* generated_tokens_allocator);
 
+// Returns the next token, without consuming it.
+// The next call to `preprocessor_view_next` or
+// `preprocessor_next_token` will return the same token.
 Token preprocessor_view_next(Preprocessor* state);
+
+// Returns the next token, while also consuming it.
 Token preprocessor_next_token(Preprocessor* state);
 
 #endif

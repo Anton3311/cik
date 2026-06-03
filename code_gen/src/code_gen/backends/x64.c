@@ -532,17 +532,12 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 	}
 
 	switch (reg_bit_count) {
-	case 8: {
-		if (src >= 8 || dst >= 8) {
-			uint8_t rex_prefix = _rex_prefix_src_dst(0, src, dst);
-			code_buffer_push_8(buffer, rex_prefix);
-		}
-
-		uint8_t* bytes = code_buffer_append(buffer, 2);
-		bytes[0] = 0x88;
-		bytes[1] = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
+	case 8:
+		encode(buffer,
+				MNEMONIC_MOV,
+				operand_reg(dst, reg_bit_count),
+				operand_reg(src, reg_bit_count));
 		break;
-	}
 	case 16:
 		unreachable();
 	case 32:
@@ -613,12 +608,10 @@ static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	uint8_t* bytes = code_buffer_append(buffer, 3);
-	bytes[0] = _rex_prefix(1, 0, 0, 0);
-	bytes[1] = 0x81;
-	bytes[2] = _mod_rm_with_ext(5, X64_REG_SP);
-
-	code_buffer_push_32(buffer, offset);
+	encode(buffer,
+			MNEMONIC_SUB,
+			operand_reg(X64_REG_SP, 64),
+			operand_imm(offset, 32));
 }
 
 static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
@@ -626,12 +619,10 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	uint8_t* bytes = code_buffer_append(buffer, 3);
-	bytes[0] = _rex_prefix(1, 0, 0, 0);
-	bytes[1] = 0x81;
-	bytes[2] = _mod_rm_with_ext(0, X64_REG_SP);
-
-	code_buffer_push_32(buffer, offset);
+	encode(buffer,
+			MNEMONIC_ADD,
+			operand_reg(X64_REG_SP, 64),
+			operand_imm(offset, 32));
 }
 
 //

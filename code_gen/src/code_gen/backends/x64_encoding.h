@@ -59,6 +59,9 @@ inline void code_buffer_push_8(CodeBuffer* buffer, uint8_t value) {
 typedef struct Operand Operand;
 
 typedef enum {
+	MNEMONIC_ADD,
+	MNEMONIC_SUB,
+
 	MNEMONIC_MOV,
 } MnemonicKind;
 
@@ -90,12 +93,13 @@ inline Operand operand_reg(uint8_t reg_index, uint8_t bit_count) {
 
 inline Operand operand_imm(uint64_t imm, uint8_t bit_count) {
 	Operand op = {};
-	op.kind = OP_REG;
+	op.kind = OP_IMM;
 	op.imm = imm;
 	op.bit_count = bit_count;
 	return op;
 }
 
+// For instructoons that store a result, the first register is the destination
 void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1);
 
 #endif

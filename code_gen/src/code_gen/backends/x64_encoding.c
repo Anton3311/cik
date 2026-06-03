@@ -63,6 +63,9 @@ typedef struct {
 } Encoding;
 
 static Encoding s_encodings[] = {
+	(Encoding) { MNEMONIC_ADD, ENC_NONE, 0x81, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_IMM, 16 | 32 },
+	(Encoding) { MNEMONIC_SUB, ENC_NONE, 0x81, 0x5, OP_REG | OP_MEM, 16 | 32 | 64, OP_IMM, 16 | 32 },
+
 	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, OP_REG | OP_MEM, 8,            OP_REG, 8 },
 	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG, 16 | 32 | 64 },
 };
@@ -92,18 +95,28 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		uint8_t rex_prefix_bits = 0;
 		uint8_t mod_rm_byte = MOD_RM_RM;
 
-		if (op0.bit_count == 64 || op1.bit_count == 64) {
-			rex_prefix_bits |= 0b1000;
+		if (op1.kind == OP_REG) {
+			rex_prefix_bits |= ((op1.reg >> 3) << 2);
+			mod_rm_byte |= (op1.reg & 0b111) << 3;
+
+			if (op1.bit_count == 64) {
+				rex_prefix_bits |= 0b1000;
+			}
+		} else if (op1.kind == OP_IMM) {
+			// the input is an imm, so set use the mod rm extension
+			mod_rm_byte |= (encoding.mod_rm_ext << 3);
 		}
 
-		rex_prefix_bits |= ((op1.reg >> 3) << 2);
-		rex_prefix_bits |= ((op0.reg >> 3) << 0);
+		if (op0.kind == OP_REG) {
+			rex_prefix_bits |= ((op0.reg >> 3) << 0);
+			mod_rm_byte |= (op0.reg & 0b111) << 0;
 
-		mod_rm_byte |= (op1.reg & 0b111) << 3;
-		mod_rm_byte |= (op0.reg & 0b111) << 0;
+			if (op0.bit_count == 64) {
+				rex_prefix_bits |= 0b1000;
+			}
+		}
 
 		size_t encoding_size = 0;
-
 		// 0f prefix
 		encoding_size += has_flag(encoding.flags, ENC_HAS_0F_PREFIX) ? 1 : 0;
 		// rex prefix
@@ -112,8 +125,19 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		encoding_size += 1;
 		// modrm byte
 		encoding_size += 1;
+		// imm sizes
+
+		if (op0.kind == OP_IMM) {
+			encoding_size += op0.bit_count / 8;
+		}
+
+		if (op1.kind == OP_IMM) {
+			encoding_size += op1.bit_count / 8;
+		}
 
 		assert(encoding_size <= 16);
+
+		// now fill the bytes
 
 		uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
 		uint8_t* write_ptr = buffer;
@@ -137,6 +161,17 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		// morm byte
 		*write_ptr = mod_rm_byte;
 		write_ptr += 1;
+
+		// write imm
+		if (op0.kind == OP_IMM) {
+			memcpy(write_ptr, &op0.imm, op0.bit_count / 8);
+			write_ptr += op0.bit_count / 8;
+		}
+
+		if (op1.kind == OP_IMM) {
+			memcpy(write_ptr, &op1.imm, op1.bit_count / 8);
+			write_ptr += op1.bit_count / 8;
+		}
 
 		assert(write_ptr - buffer == encoding_size);
 		

@@ -545,27 +545,13 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 	}
 	case 16:
 		unreachable();
-	case 32: {
-		if (src >= 8 || dst >= 8) {
-			uint8_t rex_prefix = _rex_prefix_src_dst(0, src, dst);
-			code_buffer_push_8(buffer, rex_prefix);
-		}
-
-		uint8_t* bytes = code_buffer_append(buffer, 2);
-		bytes[0] = 0x89;
-		bytes[1] = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
+	case 32:
+	case 64:
+		encode(buffer,
+				MNEMONIC_MOV,
+				operand_reg(dst, reg_bit_count),
+				operand_reg(src, reg_bit_count));
 		break;
-	}
-	case 64: {
-		uint8_t rex_prefix = _rex_prefix_src_dst(1, src, dst);
-		uint8_t rm = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
-
-		uint8_t* bytes = code_buffer_append(buffer, 3);
-		bytes[0] = rex_prefix;
-		bytes[1] = 0x89;
-		bytes[2] = rm;
-		break;
-	}
 	default:
 		 unreachable();
 	}

@@ -52,4 +52,50 @@ inline void code_buffer_push_8(CodeBuffer* buffer, uint8_t value) {
 	*a = value;
 }
 
+//
+// Encoding
+//
+
+typedef struct Operand Operand;
+
+typedef enum {
+	MNEMONIC_MOV,
+} MnemonicKind;
+
+enum OperandKind {
+	OP_REG   = 1 << 0,
+	OP_IMM   = 1 << 1,
+	OP_MEM   = 1 << 2,
+};
+
+typedef uint8_t OperandKind;
+
+struct Operand {
+	OperandKind kind;
+	uint8_t bit_count;
+
+	union {
+		uint8_t reg;
+		uint64_t imm;
+	};
+};
+
+inline Operand operand_reg(uint8_t reg_index, uint8_t bit_count) {
+	Operand op = {};
+	op.kind = OP_REG;
+	op.reg = reg_index;
+	op.bit_count = bit_count;
+	return op;
+}
+
+inline Operand operand_imm(uint64_t imm, uint8_t bit_count) {
+	Operand op = {};
+	op.kind = OP_REG;
+	op.imm = imm;
+	op.bit_count = bit_count;
+	return op;
+}
+
+void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1);
+
 #endif

@@ -3,6 +3,7 @@
 
 #include "code_gen/instr.h"
 #include "code_gen/code_gen.h"
+#include "code_gen/backends/x64_encoding.h"
 
 #define REG_INDEX_MASK_BIT_COUNT (4)
 #define REG_INDEX_MASK ((1 << REG_INDEX_MASK_BIT_COUNT) - 1)
@@ -55,13 +56,6 @@ typedef struct {
 		X64Register reg;
 	};
 } InstrStorageLocation;
-
-typedef struct {
-	uint8_t* buffer;
-	size_t size;
-	size_t capacity;
-	Arena* allocator;
-} CodeBuffer;
 
 typedef struct {
 	InstrBuffer instr_buffer;

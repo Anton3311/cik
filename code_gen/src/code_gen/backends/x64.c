@@ -454,68 +454,6 @@ static bool _x64_validate(X64CodeGenerator* gen) {
 	return result;
 }
 
-//
-// CodeBuffer
-//
-
-static const size_t CODE_BUFFER_ALLOCATION_STEP = 64;
-static const size_t CODE_BUFFER_ALLOCATION_STEP_MASK = CODE_BUFFER_ALLOCATION_STEP - 1;
-
-static void _code_buffer_init(CodeBuffer* buffer, Arena* allocator) {
-	buffer->allocator = allocator;
-	buffer->capacity = 0;
-	buffer->size = 0;
-	buffer->buffer = arena_alloc_array(allocator, uint8_t, 0);
-}
-
-static void _code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity) {
-	size_t capacity_delta = expected_capacity - buffer->capacity;
-	size_t allocation_size = (capacity_delta + CODE_BUFFER_ALLOCATION_STEP - 1) & ~CODE_BUFFER_ALLOCATION_STEP_MASK;
-
-	assert_msg(buffer->buffer + buffer->capacity == buffer->allocator->base + buffer->allocator->allocated,
-			"Trying to grow CodeBuffer, however since the last grow there were allocations done, "
-			"with the arena associated with this code buffer");
-
-	arena_alloc_array(buffer->allocator, uint8_t, allocation_size);
-
-	buffer->capacity += allocation_size;
-}
-
-inline uint8_t* _code_buffer_append(CodeBuffer* buffer, size_t byte_count) {
-	if (buffer->size + byte_count > buffer->capacity) {
-		_code_buffer_grow(buffer, buffer->size + byte_count);
-	}
-
-	uint8_t* bytes = buffer->buffer + buffer->size;
-	buffer->size += byte_count;
-	return bytes;
-}
-
-inline void _code_buffer_push_64(CodeBuffer* buffer, uint64_t value) {
-	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
-	a[7] = (uint8_t)(value >> 56);
-	a[6] = (uint8_t)((value >> 48) & 0xff);
-	a[5] = (uint8_t)((value >> 40) & 0xff);
-	a[4] = (uint8_t)((value >> 32) & 0xff);
-	a[3] = (uint8_t)((value >> 24) & 0xff);
-	a[2] = (uint8_t)((value >> 16) & 0xff);
-	a[1] = (uint8_t)((value >> 8) & 0xff);
-	a[0] = (uint8_t)((value >> 0) & 0xff);
-}
-
-inline void _code_buffer_push_32(CodeBuffer* buffer, uint32_t value) {
-	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
-	a[3] = (uint8_t)((value >> 24) & 0xff);
-	a[2] = (uint8_t)((value >> 16) & 0xff);
-	a[1] = (uint8_t)((value >> 8) & 0xff);
-	a[0] = (uint8_t)((value >> 0) & 0xff);
-}
-
-inline void _code_buffer_push_8(CodeBuffer* buffer, uint8_t value) {
-	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
-	*a = value;
-}
-
 inline uint8_t _rex_prefix(uint8_t w, uint8_t r, uint8_t x, uint8_t b) {
 	assert(w <= 1);
 	assert(r <= 1);
@@ -549,40 +487,40 @@ inline uint8_t _mod_rm_with_ext(uint8_t extension, uint8_t reg) {
 }
 
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
-	uint8_t* bytes = _code_buffer_append(buffer, 2);
+	uint8_t* bytes = code_buffer_append(buffer, 2);
 	bytes[0] = 0b01000000 | (1 << 3) | (reg >> 3);
 	bytes[1] = 0xb8 + (reg & 0b111);
-	_code_buffer_push_64(buffer, value);
+	code_buffer_push_64(buffer, value);
 }
 
 inline void _emit_load_const_32(CodeBuffer* buffer, X64Register reg, uint32_t value) {
 	if (reg >= 8) {
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		uint8_t* bytes = code_buffer_append(buffer, 2);
 		bytes[0] = 0b00000000 | (1 << 3) | (reg >> 3);
 		bytes[1] = 0xb8 + (reg & 0b111);
 	} else {
-		uint8_t* bytes = _code_buffer_append(buffer, 1);
+		uint8_t* bytes = code_buffer_append(buffer, 1);
 		bytes[0] = 0xb8 + (reg & 0b111);
 	}
 
-	_code_buffer_push_32(buffer, value);
+	code_buffer_push_32(buffer, value);
 }
 
 inline void _emit_load_const_8(CodeBuffer* buffer, X64Register reg, uint8_t value) {
 	if (reg >= 8) {
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		uint8_t* bytes = code_buffer_append(buffer, 2);
 		bytes[0] = 0b00000000 | (1 << 3) | (reg >> 3);
 		bytes[1] = 0xb0 + (reg & 0b111);
 	} else {
-		uint8_t* bytes = _code_buffer_append(buffer, 1);
+		uint8_t* bytes = code_buffer_append(buffer, 1);
 		bytes[0] = 0xb0 + (reg & 0b111);
 	}
 
-	_code_buffer_push_8(buffer, value);
+	code_buffer_push_8(buffer, value);
 }
 
 inline void _emit_return(CodeBuffer* buffer) {
-	*_code_buffer_append(buffer, 1) = 0xc3;
+	*code_buffer_append(buffer, 1) = 0xc3;
 }
 
 inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst, uint8_t reg_bit_count) {
@@ -597,10 +535,10 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 	case 8: {
 		if (src >= 8 || dst >= 8) {
 			uint8_t rex_prefix = _rex_prefix_src_dst(0, src, dst);
-			_code_buffer_push_8(buffer, rex_prefix);
+			code_buffer_push_8(buffer, rex_prefix);
 		}
 
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		uint8_t* bytes = code_buffer_append(buffer, 2);
 		bytes[0] = 0x88;
 		bytes[1] = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
 		break;
@@ -610,10 +548,10 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 	case 32: {
 		if (src >= 8 || dst >= 8) {
 			uint8_t rex_prefix = _rex_prefix_src_dst(0, src, dst);
-			_code_buffer_push_8(buffer, rex_prefix);
+			code_buffer_push_8(buffer, rex_prefix);
 		}
 
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		uint8_t* bytes = code_buffer_append(buffer, 2);
 		bytes[0] = 0x89;
 		bytes[1] = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
 		break;
@@ -622,7 +560,7 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 		uint8_t rex_prefix = _rex_prefix_src_dst(1, src, dst);
 		uint8_t rm = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
 
-		uint8_t* bytes = _code_buffer_append(buffer, 3);
+		uint8_t* bytes = code_buffer_append(buffer, 3);
 		bytes[0] = rex_prefix;
 		bytes[1] = 0x89;
 		bytes[2] = rm;
@@ -643,7 +581,7 @@ inline void _emit_push_reg(CodeBuffer* buffer, X64Register reg, uint8_t reg_bit_
 		// The register index dones't fit in 3-bit,
 		// so we need a REX prefix with R set 1,
 		// for an extension of the register index in MODRM
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		uint8_t* bytes = code_buffer_append(buffer, 2);
 		if (reg >= 8) {
 			bytes[0] = _rex_prefix(0, 0, (reg >> 3), 1);
 			bytes[1] = 0x50 + (reg & 0b111);
@@ -670,7 +608,7 @@ inline void _emit_pop_reg(CodeBuffer* buffer, X64Register dst_reg, uint8_t reg_b
 		// so we need a REX prefix with R set 1,
 		// for an extension of the register index in MODRM
 
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
+		uint8_t* bytes = code_buffer_append(buffer, 2);
 		if (dst_reg >= 8) {
 			bytes[0] = _rex_prefix(0, 0, (dst_reg >> 3), 1);
 			bytes[1] = 0x58 + (dst_reg & 0b111);
@@ -689,12 +627,12 @@ static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	uint8_t* bytes = _code_buffer_append(buffer, 3);
+	uint8_t* bytes = code_buffer_append(buffer, 3);
 	bytes[0] = _rex_prefix(1, 0, 0, 0);
 	bytes[1] = 0x81;
 	bytes[2] = _mod_rm_with_ext(5, X64_REG_SP);
 
-	_code_buffer_push_32(buffer, offset);
+	code_buffer_push_32(buffer, offset);
 }
 
 static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
@@ -702,12 +640,12 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	uint8_t* bytes = _code_buffer_append(buffer, 3);
+	uint8_t* bytes = code_buffer_append(buffer, 3);
 	bytes[0] = _rex_prefix(1, 0, 0, 0);
 	bytes[1] = 0x81;
 	bytes[2] = _mod_rm_with_ext(0, X64_REG_SP);
 
-	_code_buffer_push_32(buffer, offset);
+	code_buffer_push_32(buffer, offset);
 }
 
 //
@@ -855,10 +793,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		case INSTR_BIN_ADD:
 			if (instr->kind == INSTR_BIN_OP_64 || left_reg >> 3 || right_reg >> 3) {
 				uint8_t rex_prefix = _rex_prefix_src_dst(instr->kind == INSTR_BIN_OP_64, left_reg, right_reg);
-				_code_buffer_push_8(buffer, rex_prefix);
+				code_buffer_push_8(buffer, rex_prefix);
 			}
 
-			instr_bytes = _code_buffer_append(buffer, 2);
+			instr_bytes = code_buffer_append(buffer, 2);
 			instr_bytes[0] = opcode_byte;
 			instr_bytes[1] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
 			break;
@@ -872,10 +810,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 			if (instr->kind == INSTR_BIN_OP_64 || left_reg >> 3 || right_reg >> 3) {
 				uint8_t rex_prefix = _rex_prefix_src_dst(instr->kind == INSTR_BIN_OP_64, left_reg, right_reg);
-				_code_buffer_push_8(buffer, rex_prefix);
+				code_buffer_push_8(buffer, rex_prefix);
 			}
 
-			instr_bytes = _code_buffer_append(buffer, 2);
+			instr_bytes = code_buffer_append(buffer, 2);
 			instr_bytes[0] = opcode_byte;
 			instr_bytes[1] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
 
@@ -905,7 +843,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		uint8_t rex_prefix = _rex_prefix_src_dst(1, dst_loc.reg, ptr_loc.reg);
 		uint8_t rm = _mod_rm(MOD_RM_ADDRESS_RM, dst_loc.reg & 0b111, ptr_loc.reg & 0b111);
 
-		uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
+		uint8_t* instr_bytes = code_buffer_append(buffer, 3);
 		instr_bytes[0] = rex_prefix;
 		instr_bytes[1] = 0x8b;
 		instr_bytes[2] = rm;
@@ -939,7 +877,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		uint8_t rex_prefix = _rex_prefix_src_dst(1, 0, dst_loc.reg);
 		uint8_t rm = _mod_rm_with_ext(4, dst_loc.reg & 0b111);
 
-		uint8_t* instr_bytes = _code_buffer_append(buffer, 4);
+		uint8_t* instr_bytes = code_buffer_append(buffer, 4);
 		instr_bytes[0] = rex_prefix;
 		instr_bytes[1] = 0xc1;
 		instr_bytes[2] = rm;
@@ -962,20 +900,20 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		{
 			if (left_loc.reg >> 3 || right_loc.reg >> 3) {
 				uint8_t rex_prefix = _rex_prefix(0, left_loc.reg >> 3, 0, right_loc.reg >> 3);
-				_code_buffer_push_8(buffer, rex_prefix);
+				code_buffer_push_8(buffer, rex_prefix);
 			}
 
-			_code_buffer_push_8(buffer, 0x38);
-			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
+			code_buffer_push_8(buffer, 0x38);
+			code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
 		}
 
 		{
 			if (dst_loc.reg >> 3) {
 				// Why REX.B needs to be set instead of REX.R?
-				_code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
+				code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
 			}
 
-			uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
+			uint8_t* instr_bytes = code_buffer_append(buffer, 3);
 			instr_bytes[0] = 0x0f;
 			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg & 0b111);
 
@@ -1022,20 +960,20 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		{
 			if (instr->kind == INSTR_COMPARE_64 || left_loc.reg >> 3 || right_loc.reg >> 3) {
 				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_COMPARE_64, left_loc.reg >> 3, 0, right_loc.reg >> 3);
-				_code_buffer_push_8(buffer, rex_prefix);
+				code_buffer_push_8(buffer, rex_prefix);
 			}
 
-			_code_buffer_push_8(buffer, 0x3b);
-			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
+			code_buffer_push_8(buffer, 0x3b);
+			code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
 		}
 
 		{
 			if (dst_loc.reg >> 3) {
 				// Why REX.B needs to be set instead of REX.R?
-				_code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
+				code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
 			}
 
-			uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
+			uint8_t* instr_bytes = code_buffer_append(buffer, 3);
 			instr_bytes[0] = 0x0f;
 			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg & 0b111);
 
@@ -1097,14 +1035,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		if (operand_size == 8) {
 			if (instr->kind == INSTR_CAST_TO_64 || (src_loc.reg >= 8 || dst_loc.reg >= 8)) {
 				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_CAST_TO_64, dst_loc.reg >> 3, 0, src_loc.reg >> 3);
-				_code_buffer_push_8(buffer, rex_prefix);
+				code_buffer_push_8(buffer, rex_prefix);
 			}
 
 			// movzx
-			_code_buffer_push_8(buffer, 0x0f);
-			_code_buffer_push_8(buffer, 0xb6);
+			code_buffer_push_8(buffer, 0x0f);
+			code_buffer_push_8(buffer, 0xb6);
 
-			_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg & 0b111, src_loc.reg & 0b111));
+			code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg & 0b111, src_loc.reg & 0b111));
 		} else if (operand_size == 32) {
 			// NOTE: Moving writing to a 32-bit register zeros out the upper half of the corresponding 64-bit regiters.
 			//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
@@ -1130,9 +1068,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
 		assert(cond_loc.kind == INSTR_STORAGE_REG);
 
-		_code_buffer_push_8(buffer, _rex_prefix(1, cond_loc.reg >> 3, 0, cond_loc.reg >> 3));
-		_code_buffer_push_8(buffer, 0x85);
-		_code_buffer_push_8(buffer, _mod_rm_with_ext(cond_loc.reg & 0b111, cond_loc.reg & 0b111));
+		code_buffer_push_8(buffer, _rex_prefix(1, cond_loc.reg >> 3, 0, cond_loc.reg >> 3));
+		code_buffer_push_8(buffer, 0x85);
+		code_buffer_push_8(buffer, _mod_rm_with_ext(cond_loc.reg & 0b111, cond_loc.reg & 0b111));
 
 		_x64_generate_code(gen, instr->branch.true_region, NULL);
 		_x64_generate_code(gen, instr->branch.false_region, NULL);
@@ -1220,7 +1158,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
 
 		// call
-		uint8_t* instr_bytes = _code_buffer_append(buffer, 2);
+		uint8_t* instr_bytes = code_buffer_append(buffer, 2);
 		instr_bytes[0] = 0xff;
 		instr_bytes[1] = _mod_rm_with_ext(2, 0);
 
@@ -1247,7 +1185,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 	case INSTR_REGION: {
 		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
-		_code_buffer_init(code_buffer, gen->allocator);
+		code_buffer_init(code_buffer, gen->allocator);
 		_x64_generate_code(gen, instr->region.last_instr, code_buffer);
 		return;
 	}

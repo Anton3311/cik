@@ -487,36 +487,24 @@ inline uint8_t _mod_rm_with_ext(uint8_t extension, uint8_t reg) {
 }
 
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
-	uint8_t* bytes = code_buffer_append(buffer, 2);
-	bytes[0] = 0b01000000 | (1 << 3) | (reg >> 3);
-	bytes[1] = 0xb8 + (reg & 0b111);
-	code_buffer_push_64(buffer, value);
+	encode(buffer,
+			MNEMONIC_MOV,
+			operand_reg(reg, 64),
+			operand_imm(value, 64));
 }
 
 inline void _emit_load_const_32(CodeBuffer* buffer, X64Register reg, uint32_t value) {
-	if (reg >= 8) {
-		uint8_t* bytes = code_buffer_append(buffer, 2);
-		bytes[0] = 0b00000000 | (1 << 3) | (reg >> 3);
-		bytes[1] = 0xb8 + (reg & 0b111);
-	} else {
-		uint8_t* bytes = code_buffer_append(buffer, 1);
-		bytes[0] = 0xb8 + (reg & 0b111);
-	}
-
-	code_buffer_push_32(buffer, value);
+	encode(buffer,
+			MNEMONIC_MOV,
+			operand_reg(reg, 32),
+			operand_imm(value, 32));
 }
 
 inline void _emit_load_const_8(CodeBuffer* buffer, X64Register reg, uint8_t value) {
-	if (reg >= 8) {
-		uint8_t* bytes = code_buffer_append(buffer, 2);
-		bytes[0] = 0b00000000 | (1 << 3) | (reg >> 3);
-		bytes[1] = 0xb0 + (reg & 0b111);
-	} else {
-		uint8_t* bytes = code_buffer_append(buffer, 1);
-		bytes[0] = 0xb0 + (reg & 0b111);
-	}
-
-	code_buffer_push_8(buffer, value);
+	encode(buffer,
+			MNEMONIC_MOV,
+			operand_reg(reg, 8),
+			operand_imm(value, 8));
 }
 
 inline void _emit_return(CodeBuffer* buffer) {

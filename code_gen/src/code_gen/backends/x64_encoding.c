@@ -36,6 +36,8 @@ void code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity) {
 enum EncodingFlags {
 	ENC_NONE               = 0,
 	ENC_HAS_0F_PREFIX      = 1 << 0,
+
+	// The destination reg index is added to the opcode byte. ModRM not used.
 	ENC_ADD_REG_TO_OPCODE  = 1 << 1,
 };
 
@@ -68,6 +70,9 @@ static Encoding s_encodings[] = {
 
 	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, OP_REG | OP_MEM, 8,            OP_REG, 8 },
 	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG, 16 | 32 | 64 },
+
+	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, OP_REG, 8, OP_IMM, 8},
+	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, OP_REG, 16 | 32 | 64, OP_IMM, 16 | 32 | 64},
 };
 
 void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1) {
@@ -109,7 +114,10 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 
 		if (op0.kind == OP_REG) {
 			rex_prefix_bits |= ((op0.reg >> 3) << 0);
-			mod_rm_byte |= (op0.reg & 0b111) << 0;
+
+			if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+				mod_rm_byte |= (op0.reg & 0b111) << 0;
+			}
 
 			if (op0.bit_count == 64) {
 				rex_prefix_bits |= 0b1000;
@@ -124,7 +132,9 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		// opcode byte
 		encoding_size += 1;
 		// modrm byte
-		encoding_size += 1;
+		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+			encoding_size += 1;
+		}
 		// imm sizes
 
 		if (op0.kind == OP_IMM) {
@@ -155,12 +165,19 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		}
 
 		// opcode byte
-		*write_ptr = encoding.opcode;
+		if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+			*write_ptr = encoding.opcode + (op0.reg & 0b111);
+		} else {
+			*write_ptr = encoding.opcode;
+		}
+
 		write_ptr += 1;
 
 		// morm byte
-		*write_ptr = mod_rm_byte;
-		write_ptr += 1;
+		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+			*write_ptr = mod_rm_byte;
+			write_ptr += 1;
+		}
 
 		// write imm
 		if (op0.kind == OP_IMM) {

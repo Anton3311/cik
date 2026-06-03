@@ -511,33 +511,16 @@ inline void _emit_return(CodeBuffer* buffer) {
 	*code_buffer_append(buffer, 1) = 0xc3;
 }
 
+// NOTE: Not emitted when src and dst match. Don't use as a 32-bit movzx for that reason.
 inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst, uint8_t reg_bit_count) {
-	// NOTE: emit the mov anyways for 32-bit regs even if the src and dst are the same,
-	//       since writing to a 32-bit resgister zeros out an upper half of the corresponding 64-bit reg,
-	//       thus this function can be used to zero extend 32-bit values to 64 bits
-	if (src == dst && reg_bit_count != 32) {
+	if (src == dst) {
 		return;
 	}
 
-	switch (reg_bit_count) {
-	case 8:
-		encode(buffer,
-				MNEMONIC_MOV,
-				operand_reg(dst, reg_bit_count),
-				operand_reg(src, reg_bit_count));
-		break;
-	case 16:
-		unreachable();
-	case 32:
-	case 64:
-		encode(buffer,
-				MNEMONIC_MOV,
-				operand_reg(dst, reg_bit_count),
-				operand_reg(src, reg_bit_count));
-		break;
-	default:
-		 unreachable();
-	}
+	encode(buffer,
+			MNEMONIC_MOV,
+			operand_reg(dst, reg_bit_count),
+			operand_reg(src, reg_bit_count));
 }
 
 static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
@@ -728,13 +711,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 
-		uint8_t rex_prefix = _rex_prefix_src_dst(1, dst_loc.reg, ptr_loc.reg);
-		uint8_t rm = _mod_rm(MOD_RM_ADDRESS_RM, dst_loc.reg & 0b111, ptr_loc.reg & 0b111);
-
-		uint8_t* instr_bytes = code_buffer_append(buffer, 3);
-		instr_bytes[0] = rex_prefix;
-		instr_bytes[1] = 0x8b;
-		instr_bytes[2] = rm;
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_LOAD_8);
+		encode(buffer,
+				MNEMONIC_MOV,
+				operand_mem(ptr_loc.reg, bit_count),
+				operand_reg(dst_loc.reg, bit_count));
 		return;
 	}
 

@@ -104,6 +104,14 @@ inline Operand operand_reg(uint8_t reg_index, uint8_t bit_count) {
 	return op;
 }
 
+inline Operand operand_mem(uint8_t reg_index, uint8_t bit_count) {
+	Operand op = {};
+	op.kind = OP_MEM;
+	op.reg = reg_index;
+	op.bit_count = bit_count;
+	return op;
+}
+
 inline Operand operand_imm(uint64_t imm, uint8_t bit_count) {
 	Operand op = {};
 	op.kind = OP_IMM;

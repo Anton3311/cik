@@ -694,8 +694,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(left_loc.kind == INSTR_STORAGE_REG);
 		assert(right_loc.kind == INSTR_STORAGE_REG);
 
-		uint8_t* instr_bytes;
-
 		uint8_t left_reg;
 		uint8_t right_reg;
 
@@ -731,39 +729,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			right_reg = right_loc.reg;
 		}
 
-		uint8_t opcode_byte = 0xff;
-		if (instr->kind == INSTR_BIN_OP_8) {
-			switch (instr->bin_op.kind) {
-			case INSTR_BIN_ADD:
-				opcode_byte = 0x2;
-				break;
-			case INSTR_BIN_SUB:
-				opcode_byte = 0x2a;
-				break;
-			}
-		} else if (instr->kind == INSTR_BIN_OP_32 || instr->kind == INSTR_BIN_OP_64) {
-			switch (instr->bin_op.kind) {
-			case INSTR_BIN_ADD:
-				opcode_byte = 0x3;
-				break;
-			case INSTR_BIN_SUB:
-				opcode_byte = 0x2b;
-				break;
-			}
-		}
-
-		assert(opcode_byte != 0xff);
-
 		switch (instr->bin_op.kind) {
 		case INSTR_BIN_ADD:
-			if (instr->kind == INSTR_BIN_OP_64 || left_reg >> 3 || right_reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix_src_dst(instr->kind == INSTR_BIN_OP_64, left_reg, right_reg);
-				code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			instr_bytes = code_buffer_append(buffer, 2);
-			instr_bytes[0] = opcode_byte;
-			instr_bytes[1] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
+			encode(buffer,
+					MNEMONIC_ADD,
+					operand_reg(left_reg, bit_count),
+					operand_reg(right_reg, bit_count));
 			break;
 		case INSTR_BIN_SUB: {
 			bool should_save_right = dst_loc.reg == right_loc.reg;
@@ -773,14 +744,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 				_emit_push_reg(buffer, right_loc.reg, 64);
 			}
 
-			if (instr->kind == INSTR_BIN_OP_64 || left_reg >> 3 || right_reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix_src_dst(instr->kind == INSTR_BIN_OP_64, left_reg, right_reg);
-				code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			instr_bytes = code_buffer_append(buffer, 2);
-			instr_bytes[0] = opcode_byte;
-			instr_bytes[1] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
+			encode(buffer,
+					MNEMONIC_SUB,
+					operand_reg(left_reg, bit_count),
+					operand_reg(right_reg, bit_count));
 
 			if (should_save_right) {
 				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, bit_count);

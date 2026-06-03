@@ -68,6 +68,8 @@ typedef enum {
 
 	MNEMONIC_MOV,
 
+	MNEMONIC_MOVZX,
+
 	MNEMONIC_SHL,
 } MnemonicKind;
 

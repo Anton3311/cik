@@ -98,6 +98,10 @@ static Encoding s_encodings[] = {
 	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, OP_REG, 8,            OP_IMM, 8},
 	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, OP_REG, 16 | 32 | 64, OP_IMM, 16 | 32 | 64},
 
+	// movzx
+	(Encoding) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, OP_REG | OP_MEM, 8,  OP_REG, 16 | 32 | 64 },
+	(Encoding) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, OP_REG | OP_MEM, 16, OP_REG, 16 | 32 | 64 },
+
 	// shl
 	(Encoding) { MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, OP_REG | OP_MEM, 16 | 32 | 64, OP_IMM, 8 },
 };
@@ -152,18 +156,18 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		}
 
 		size_t encoding_size = 0;
-		// 0f prefix
-		encoding_size += has_flag(encoding.flags, ENC_HAS_0F_PREFIX) ? 1 : 0;
 		// rex prefix
 		encoding_size += (rex_prefix_bits == 0) ? 0 : 1;
+		// 0f prefix
+		encoding_size += has_flag(encoding.flags, ENC_HAS_0F_PREFIX) ? 1 : 0;
 		// opcode byte
 		encoding_size += 1;
 		// modrm byte
 		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
 			encoding_size += 1;
 		}
-		// imm sizes
 
+		// imm sizes
 		if (op0.kind == OP_IMM) {
 			encoding_size += op0.bit_count / 8;
 		}
@@ -179,15 +183,15 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
 		uint8_t* write_ptr = buffer;
 
-		// 0f prefix
-		if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
-			*write_ptr = 0x0f;
-			write_ptr += 1;
-		}
-
 		// rex prefix
 		if (rex_prefix_bits) {
 			*write_ptr = 0b01000000 | rex_prefix_bits;
+			write_ptr += 1;
+		}
+
+		// 0f prefix
+		if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
+			*write_ptr = 0x0f;
 			write_ptr += 1;
 		}
 

@@ -896,28 +896,34 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);
 
+		if (operand_size == output_size) {
+			// The cast is redundant
+			return;
+		}
+
 		if (output_size < operand_size) {
 			// NOTE: When casting to a smaller bit count, just copy the corresponding
 			//       lower half of an input register
-			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, output_size);
+			encode(buffer,
+					MNEMONIC_MOV,
+					operand_reg(dst_loc.reg, output_size),
+					operand_reg(src_loc.reg, output_size));
 			return;
 		}
 
 		if (operand_size == 8) {
-			if (instr->kind == INSTR_CAST_TO_64 || (src_loc.reg >= 8 || dst_loc.reg >= 8)) {
-				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_CAST_TO_64, dst_loc.reg >> 3, 0, src_loc.reg >> 3);
-				code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			// movzx
-			code_buffer_push_8(buffer, 0x0f);
-			code_buffer_push_8(buffer, 0xb6);
-
-			code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg & 0b111, src_loc.reg & 0b111));
+			encode(buffer,
+					MNEMONIC_MOVZX,
+					operand_reg(src_loc.reg, operand_size),
+					operand_reg(dst_loc.reg, output_size));
 		} else if (operand_size == 32) {
 			// NOTE: Moving writing to a 32-bit register zeros out the upper half of the corresponding 64-bit regiters.
 			//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
-			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, 32);
+
+			encode(buffer,
+					MNEMONIC_MOV,
+					operand_reg(dst_loc.reg, operand_size),
+					operand_reg(src_loc.reg, operand_size));
 		} else {
 			panic("Not implemented for this operand size");
 		}

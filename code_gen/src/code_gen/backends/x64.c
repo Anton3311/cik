@@ -813,68 +813,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 
-	case INSTR_COMPARE_8: {
-		// NOTE: This is mostly a duplicate of what is implemented for `INSTR_COMPARE_32` and `INSTR_COMPARE_64`
-		_x64_generate_code(gen, instr->compare.left, buffer);
-		_x64_generate_code(gen, instr->compare.right, buffer);
-
-		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
-		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
-		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
-		assert(dst_loc.kind == INSTR_STORAGE_REG);
-		assert(left_loc.kind == INSTR_STORAGE_REG);
-		assert(right_loc.kind == INSTR_STORAGE_REG);
-
-		{
-			if (left_loc.reg >> 3 || right_loc.reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix(0, left_loc.reg >> 3, 0, right_loc.reg >> 3);
-				code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			code_buffer_push_8(buffer, 0x38);
-			code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
-		}
-
-		{
-			if (dst_loc.reg >> 3) {
-				// Why REX.B needs to be set instead of REX.R?
-				code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
-			}
-
-			uint8_t* instr_bytes = code_buffer_append(buffer, 3);
-			instr_bytes[0] = 0x0f;
-			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg & 0b111);
-
-			switch (instr->compare.kind) {
-			case INSTR_CMP_EQUAL:
-				instr_bytes[1] = 0x94; // setz
-				return;
-			case INSTR_CMP_NOT_EQUAL:
-				instr_bytes[1] = 0x95; // setne
-				return;
-			case INSTR_CMP_LESS:
-				instr_bytes[1] = 0x9c; // setl
-				return;
-			case INSTR_CMP_LESS_OR_EQUAL:
-				instr_bytes[1] = 0x9e; // setng
-				return;
-			case INSTR_CMP_GREATER:
-				instr_bytes[1] = 0x9f; // setg
-				return;
-			case INSTR_CMP_GREATER_OR_EQUAL:
-				instr_bytes[1] = 0x9d; // setge
-				return;
-			}
-
+	case INSTR_COMPARE_8:
+	case INSTR_COMPARE_16:
+	case INSTR_COMPARE_32:
+	case INSTR_COMPARE_64: {
+		if (instr->kind == INSTR_COMPARE_16) {
 			unreachable();
 		}
 
-		return;
-	}
-	case INSTR_COMPARE_16:
-		unreachable();
-	case INSTR_COMPARE_32:
-	case INSTR_COMPARE_64: {
 		_x64_generate_code(gen, instr->compare.left, buffer);
 		_x64_generate_code(gen, instr->compare.right, buffer);
 
@@ -885,15 +831,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(left_loc.kind == INSTR_STORAGE_REG);
 		assert(right_loc.kind == INSTR_STORAGE_REG);
 
-		{
-			if (instr->kind == INSTR_COMPARE_64 || left_loc.reg >> 3 || right_loc.reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_COMPARE_64, left_loc.reg >> 3, 0, right_loc.reg >> 3);
-				code_buffer_push_8(buffer, rex_prefix);
-			}
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_COMPARE_8);
 
-			code_buffer_push_8(buffer, 0x3b);
-			code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
-		}
+		encode(buffer,
+				MNEMONIC_CMP,
+				operand_reg(left_loc.reg, bit_count),
+				operand_reg(right_loc.reg, bit_count));
 
 		{
 			if (dst_loc.reg >> 3) {
@@ -996,9 +939,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
 		assert(cond_loc.kind == INSTR_STORAGE_REG);
 
-		code_buffer_push_8(buffer, _rex_prefix(1, cond_loc.reg >> 3, 0, cond_loc.reg >> 3));
-		code_buffer_push_8(buffer, 0x85);
-		code_buffer_push_8(buffer, _mod_rm_with_ext(cond_loc.reg & 0b111, cond_loc.reg & 0b111));
+		encode(buffer,
+				MNEMONIC_TEST,
+				operand_reg(cond_loc.reg, 64),
+				operand_reg(cond_loc.reg, 64));
 
 		_x64_generate_code(gen, instr->branch.true_region, NULL);
 		_x64_generate_code(gen, instr->branch.false_region, NULL);

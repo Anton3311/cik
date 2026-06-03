@@ -87,6 +87,12 @@ static Encoding s_encodings[] = {
 	(Encoding) { MNEMONIC_CMP, ENC_NONE, 0x3a, 0x0, OP_REG,          8,            OP_REG | OP_MEM, 8 },
 	(Encoding) { MNEMONIC_CMP, ENC_NONE, 0x3b, 0x0, OP_REG,          16 | 32 | 64, OP_REG | OP_MEM, 16 | 32 | 64 },
 
+	// push
+	(Encoding) { MNEMONIC_PUSH, ENC_ADD_REG_TO_OPCODE, 0x50, 0x0, OP_REG | OP_MEM, 16 | 64, 0, 0 },
+
+	// pop
+	(Encoding) { MNEMONIC_POP,  ENC_ADD_REG_TO_OPCODE, 0x58, 0x0, OP_REG | OP_MEM, 16 | 64, 0, 0 },
+
 	// test
 	(Encoding) { MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, OP_REG | OP_MEM, 8,            OP_REG, 8 },
 	(Encoding) { MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG, 16 | 32 | 64 },

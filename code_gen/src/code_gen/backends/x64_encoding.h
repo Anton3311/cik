@@ -64,6 +64,9 @@ typedef enum {
 
 	MNEMONIC_CMP,
 
+	MNEMONIC_PUSH,
+	MNEMONIC_POP,
+
 	MNEMONIC_TEST,
 
 	MNEMONIC_MOV,
@@ -90,6 +93,8 @@ struct Operand {
 		uint64_t imm;
 	};
 };
+
+inline Operand operand_none() { return (Operand) {}; }
 
 inline Operand operand_reg(uint8_t reg_index, uint8_t bit_count) {
 	Operand op = {};

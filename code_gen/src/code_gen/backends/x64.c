@@ -540,57 +540,6 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 	}
 }
 
-inline void _emit_push_reg(CodeBuffer* buffer, X64Register reg, uint8_t reg_bit_count) {
-	switch (reg_bit_count) {
-	case 8:
-	case 16:
-	case 32:
-		unreachable();
-	case 64:
-		// The register index dones't fit in 3-bit,
-		// so we need a REX prefix with R set 1,
-		// for an extension of the register index in MODRM
-		uint8_t* bytes = code_buffer_append(buffer, 2);
-		if (reg >= 8) {
-			bytes[0] = _rex_prefix(0, 0, (reg >> 3), 1);
-			bytes[1] = 0x50 + (reg & 0b111);
-		} else {
-			bytes[0] = 0xff;
-			bytes[1] = _mod_rm_with_ext(6, reg);
-		}
-
-		break;
-	default:
-		unreachable();
-	}
-}
-
-inline void _emit_pop_reg(CodeBuffer* buffer, X64Register dst_reg, uint8_t reg_bit_count) {
-
-	switch (reg_bit_count) {
-	case 8:
-	case 16:
-	case 32:
-		unreachable();
-	case 64:
-		// The register index dones't fit in 3-bit,
-		// so we need a REX prefix with R set 1,
-		// for an extension of the register index in MODRM
-
-		uint8_t* bytes = code_buffer_append(buffer, 2);
-		if (dst_reg >= 8) {
-			bytes[0] = _rex_prefix(0, 0, (dst_reg >> 3), 1);
-			bytes[1] = 0x58 + (dst_reg & 0b111);
-		} else {
-			bytes[0] = 0x8f;
-			bytes[1] = _mod_rm_with_ext(0, dst_reg);
-		}
-		break;
-	default:
-		unreachable();
-	}
-}
-
 static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
 	if (offset == 0) {
 		return;
@@ -741,7 +690,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 			if (should_save_right) {
 				// NOTE: When saving the register, push/pop the whole 64-bit register
-				_emit_push_reg(buffer, right_loc.reg, 64);
+				encode(buffer,
+						MNEMONIC_PUSH,
+						operand_reg(right_loc.reg, 64),
+						operand_none());
 			}
 
 			encode(buffer,
@@ -751,7 +703,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 			if (should_save_right) {
 				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, bit_count);
-				_emit_pop_reg(buffer, right_loc.reg, 64);
+
+				encode(buffer,
+						MNEMONIC_POP,
+						operand_reg(right_loc.reg, 64),
+						operand_none());
 			}
 			break;
 		}
@@ -1017,7 +973,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		// Push saved registers
 		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
-			_emit_push_reg(buffer, saved_registers[i], 64);
+			encode(buffer,
+					MNEMONIC_PUSH,
+					operand_reg(saved_registers[i], 64),
+					operand_none());
 		}
 
 		if (args.count == 1) {
@@ -1049,10 +1008,14 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		// Pop saved registers in reverse order
 		for (size_t i = array_size(saved_registers); i > 0; i -= 1) {
+
 			X64Register reg = saved_registers[i - 1];
 			bool should_restore = instr_storage.reg != reg;
 			if (should_restore) {
-				_emit_pop_reg(buffer, reg, 64);
+				encode(buffer,
+						MNEMONIC_POP,
+						operand_reg(reg, 64),
+						operand_none());
 			} else {
 				_emit_add_rsp(buffer, 8);
 			}

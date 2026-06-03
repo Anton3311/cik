@@ -87,6 +87,9 @@ static Encoding s_encodings[] = {
 
 	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, OP_REG, 8,            OP_IMM, 8},
 	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, OP_REG, 16 | 32 | 64, OP_IMM, 16 | 32 | 64},
+
+	// shl
+	(Encoding) { MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, OP_REG | OP_MEM, 16 | 32 | 64, OP_IMM, 8 },
 };
 
 void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1) {

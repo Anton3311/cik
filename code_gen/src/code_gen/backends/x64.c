@@ -806,14 +806,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		_emit_mov_regs(buffer, operand_loc.reg, dst_loc.reg, 64);
 
-		uint8_t rex_prefix = _rex_prefix_src_dst(1, 0, dst_loc.reg);
-		uint8_t rm = _mod_rm_with_ext(4, dst_loc.reg & 0b111);
-
-		uint8_t* instr_bytes = code_buffer_append(buffer, 4);
-		instr_bytes[0] = rex_prefix;
-		instr_bytes[1] = 0xc1;
-		instr_bytes[2] = rm;
-		instr_bytes[3] = instr->logical_shift.shift_count;
+		encode(buffer,
+				MNEMONIC_SHL,
+				operand_reg(dst_loc.reg, 64),
+				operand_imm(instr->logical_shift.shift_count, 8));
 		return;
 	}
 

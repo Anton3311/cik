@@ -63,6 +63,8 @@ typedef enum {
 	MNEMONIC_SUB,
 
 	MNEMONIC_MOV,
+
+	MNEMONIC_SHL,
 } MnemonicKind;
 
 enum OperandKind {

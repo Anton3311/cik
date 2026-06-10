@@ -136,20 +136,40 @@ inline Operand operand_imm(uint64_t imm, uint8_t bit_count) {
 	return op;
 }
 
+typedef enum {
+	// Encode the instruction
+	ENC_OP_ENCODE,
+	// Compute the size of the encoding
+	ENC_OP_SIZE,
+} EncodingOperation;
+
 // Initialize look up tables need to accelerate encoding
 void encoding_init();
 
-// For instructoons that store a result, the first register is the destination
-void encode_n(CodeBuffer* code_buffer,
+// Runs an encoding operation defined above by the `EncodingOperation`.
+// There are two kinds of operations:
+// 1. ENC_OP_ENCODE - encodes the instruction, and writes the encoded bytes to the buffer.
+//                    The return value is irrelevant.
+// 2. ENC_OP_SIZE   - computes encoding size and returns it. `code_buffer` not used and can be null.
+size_t run_encoding_operation(CodeBuffer* code_buffer,
 		MnemonicKind mnemonic,
 		const Operand* operands,
-		uint8_t operand_count);
+		uint8_t operand_count,
+		EncodingOperation operation);
+
+// For instructions that store a result, the first register is the destination
+inline void encode_n(CodeBuffer* code_buffer,
+		MnemonicKind mnemonic,
+		const Operand* operands,
+		uint8_t operand_count) {
+	run_encoding_operation(code_buffer, mnemonic, operands, operand_count, ENC_OP_ENCODE);
+}
 
 inline void encode_1(CodeBuffer* code_buffer,
 		MnemonicKind mnemonic,
 		Operand op0) {
 	Operand operands[] = { op0 };
-	encode_n(code_buffer, mnemonic, operands, 1);
+	run_encoding_operation(code_buffer, mnemonic, operands, 1, ENC_OP_ENCODE);
 }
 
 inline void encode_2(CodeBuffer* code_buffer,
@@ -157,7 +177,23 @@ inline void encode_2(CodeBuffer* code_buffer,
 		Operand op0,
 		Operand op1) {
 	Operand operands[] = { op0, op1 };
-	encode_n(code_buffer, mnemonic, operands, 2);
+	run_encoding_operation(code_buffer, mnemonic, operands, 2, ENC_OP_ENCODE);
+}
+
+inline size_t compute_encoding_size(MnemonicKind mnemonic,
+		const Operand* operands,
+		uint8_t operand_count) {
+	return run_encoding_operation(NULL, mnemonic, operands, operand_count, ENC_OP_SIZE);
+}
+
+inline size_t compute_encoding_size_1(MnemonicKind mnemonic, Operand op0) {
+	Operand operands[] = { op0 };
+	return run_encoding_operation(NULL, mnemonic, operands, 1, ENC_OP_SIZE);
+}
+
+inline size_t compute_encoding_size_2(MnemonicKind mnemonic, Operand op0, Operand op1) {
+	Operand operands[] = { op0, op1 };
+	return run_encoding_operation(NULL, mnemonic, operands, 2, ENC_OP_SIZE);
 }
 
 #endif

@@ -292,10 +292,11 @@ static size_t _select_encoding(MnemonicKind mnemonic,
 	return selected_index;
 }
 
-void encode_n(CodeBuffer* code_buffer,
+size_t run_encoding_operation(CodeBuffer* code_buffer,
 		MnemonicKind mnemonic,
 		const Operand* operands,
-		uint8_t operand_count) {
+		uint8_t operand_count,
+		EncodingOperation operation) {
 
 	profile_scope_start(__func__);
 	assert(operand_count > 0);
@@ -355,48 +356,63 @@ void encode_n(CodeBuffer* code_buffer,
 
 	assert(encoding_size <= 16);
 
-	// now fill the bytes
-
-	uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
-	uint8_t* write_ptr = buffer;
-
-	// rex prefix
-	if (rex_prefix_bits) {
-		*write_ptr = 0b01000000 | rex_prefix_bits;
-		write_ptr += 1;
+	switch (operation) {
+	case ENC_OP_SIZE: {
+		// NOTE: don't forget to end the profiler scope
+		profile_scope_end();
+		return encoding_size;
 	}
+	case ENC_OP_ENCODE: {
+		assert(code_buffer != NULL);
+		// now fill the bytes
 
-	// 0f prefix
-	if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
-		*write_ptr = 0x0f;
-		write_ptr += 1;
-	}
+		uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
+		uint8_t* write_ptr = buffer;
 
-	// opcode byte
-	if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-		assert(operands[0].kind == OP_REG);
-		*write_ptr = encoding.opcode + (operands[0].reg & 0b111);
-	} else {
-		*write_ptr = encoding.opcode;
-	}
-
-	write_ptr += 1;
-
-	// morm byte
-	if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-		*write_ptr = ((fields.reg & 0b111)<< 3) | (fields.rm & 0b111) | fields.mod;
-		write_ptr += 1;
-	}
-
-	// write imm
-	for (size_t i = 0; i < operand_count; i += 1) {
-		if (operands[i].kind == OP_IMM) {
-			memcpy(write_ptr, &operands[i].imm, operands[i].bit_count / 8);
-			write_ptr += operands[i].bit_count / 8;
+		// rex prefix
+		if (rex_prefix_bits) {
+			*write_ptr = 0b01000000 | rex_prefix_bits;
+			write_ptr += 1;
 		}
+
+		// 0f prefix
+		if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
+			*write_ptr = 0x0f;
+			write_ptr += 1;
+		}
+
+		// opcode byte
+		if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+			assert(operands[0].kind == OP_REG);
+			*write_ptr = encoding.opcode + (operands[0].reg & 0b111);
+		} else {
+			*write_ptr = encoding.opcode;
+		}
+
+		write_ptr += 1;
+
+		// morm byte
+		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+			*write_ptr = ((fields.reg & 0b111)<< 3) | (fields.rm & 0b111) | fields.mod;
+			write_ptr += 1;
+		}
+
+		// write imm
+		for (size_t i = 0; i < operand_count; i += 1) {
+			if (operands[i].kind == OP_IMM) {
+				memcpy(write_ptr, &operands[i].imm, operands[i].bit_count / 8);
+				write_ptr += operands[i].bit_count / 8;
+			}
+		}
+
+		assert(write_ptr - buffer == encoding_size);
+
+		// NOTE: don't forget to end the profiler scope
+		profile_scope_end();
+		return 0;
+	}
 	}
 
-	assert(write_ptr - buffer == encoding_size);
-
-	profile_scope_end();
+	unreachable();
+	return 0;
 }

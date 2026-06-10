@@ -100,8 +100,8 @@ static Encoding s_encodings[] = {
 	// mov
 	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, OP_REG | OP_MEM, 8,            OP_REG,          8 },
 	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG,          16 | 32 | 64 },
-	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, OP_REG,          8,            OP_REG | OP_MEM, 8 },
-	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, OP_REG,          16 | 32 | 64, OP_REG | OP_MEM, 16 | 32 | 64 },
+	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x8a, 0x0, OP_REG,          8,            OP_REG | OP_MEM, 8 },
+	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x8b, 0x0, OP_REG,          16 | 32 | 64, OP_REG | OP_MEM, 16 | 32 | 64 },
 
 	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, OP_REG, 8,            OP_IMM, 8},
 	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, OP_REG, 16 | 32 | 64, OP_IMM, 16 | 32 | 64},

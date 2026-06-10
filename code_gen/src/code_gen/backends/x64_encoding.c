@@ -53,65 +53,83 @@ enum ModRM {
 typedef uint8_t ModRM;
 
 typedef struct {
+	OperandKind kind;
+	uint8_t sizes;
+} OperandEncoding;
+
+typedef struct {
 	MnemonicKind mnemonic;
 	EncodingFlags flags;
 	uint8_t opcode;
 	uint8_t mod_rm_ext;
 
-	OperandKind op0_kind;
-	uint8_t op0_sizes;
-	OperandKind op1_kind;
-	uint8_t op1_sizes;
+	OperandEncoding operands[4];
 } Encoding;
+
+#define OP_RM OP_REG | OP_MEM
 
 static Encoding s_encodings[] = {
 	// add
-	(Encoding) { MNEMONIC_ADD, ENC_NONE, 0x00, 0x0, OP_REG | OP_MEM, 8,            OP_REG,          8 },
-	(Encoding) { MNEMONIC_ADD, ENC_NONE, 0x01, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG,          16 | 32 | 64 },
-	(Encoding) { MNEMONIC_ADD, ENC_NONE, 0x02, 0x0, OP_REG,          8,            OP_REG | OP_MEM, 8 },
-	(Encoding) { MNEMONIC_ADD, ENC_NONE, 0x03, 0x0, OP_REG,          16 | 32 | 64, OP_REG | OP_MEM, 16 | 32 | 64 },
+	{ MNEMONIC_ADD, ENC_NONE, 0x00, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
+	{ MNEMONIC_ADD, ENC_NONE, 0x01, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
+	{ MNEMONIC_ADD, ENC_NONE, 0x02, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
+	{ MNEMONIC_ADD, ENC_NONE, 0x03, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
 
-	(Encoding) { MNEMONIC_ADD, ENC_NONE, 0x81, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_IMM, 16 | 32 },
+	{ MNEMONIC_ADD, ENC_NONE, 0x81, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } },
 
 	// sub
-	(Encoding) { MNEMONIC_SUB, ENC_NONE, 0x28, 0x0, OP_REG | OP_MEM, 8,            OP_REG,          8 },
-	(Encoding) { MNEMONIC_SUB, ENC_NONE, 0x29, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG,          16 | 32 | 64 },
-	(Encoding) { MNEMONIC_SUB, ENC_NONE, 0x2a, 0x0, OP_REG,          8,            OP_REG | OP_MEM, 8 },
-	(Encoding) { MNEMONIC_SUB, ENC_NONE, 0x2b, 0x0, OP_REG,          16 | 32 | 64, OP_REG | OP_MEM, 16 | 32 | 64 },
+	{ MNEMONIC_SUB, ENC_NONE, 0x28, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
+	{ MNEMONIC_SUB, ENC_NONE, 0x29, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
+	{ MNEMONIC_SUB, ENC_NONE, 0x2a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
+	{ MNEMONIC_SUB, ENC_NONE, 0x2b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
 
-	(Encoding) { MNEMONIC_SUB, ENC_NONE, 0x81, 0x5, OP_REG | OP_MEM, 16 | 32 | 64, OP_IMM, 16 | 32 },
+	{ MNEMONIC_SUB, ENC_NONE, 0x81, 0x5, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } },
 
 	// cmp
-	(Encoding) { MNEMONIC_CMP, ENC_NONE, 0x38, 0x0, OP_REG | OP_MEM, 8,            OP_REG,          8 },
-	(Encoding) { MNEMONIC_CMP, ENC_NONE, 0x39, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG,          16 | 32 | 64 },
-	(Encoding) { MNEMONIC_CMP, ENC_NONE, 0x3a, 0x0, OP_REG,          8,            OP_REG | OP_MEM, 8 },
-	(Encoding) { MNEMONIC_CMP, ENC_NONE, 0x3b, 0x0, OP_REG,          16 | 32 | 64, OP_REG | OP_MEM, 16 | 32 | 64 },
+	{ MNEMONIC_CMP, ENC_NONE, 0x38, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
+	{ MNEMONIC_CMP, ENC_NONE, 0x39, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
+	{ MNEMONIC_CMP, ENC_NONE, 0x3a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
+	{ MNEMONIC_CMP, ENC_NONE, 0x3b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
 
 	// push
-	(Encoding) { MNEMONIC_PUSH, ENC_ADD_REG_TO_OPCODE, 0x50, 0x0, OP_REG | OP_MEM, 16 | 64, 0, 0 },
+	{ MNEMONIC_PUSH, ENC_ADD_REG_TO_OPCODE, 0x50, 0x0, { { OP_RM, 16 | 64 } } },
 
 	// pop
-	(Encoding) { MNEMONIC_POP,  ENC_ADD_REG_TO_OPCODE, 0x58, 0x0, OP_REG | OP_MEM, 16 | 64, 0, 0 },
+	{ MNEMONIC_POP,  ENC_ADD_REG_TO_OPCODE, 0x58, 0x0, { { OP_RM, 16 | 64 } } },
 
 	// test
-	(Encoding) { MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, OP_REG | OP_MEM, 8,            OP_REG, 8 },
-	(Encoding) { MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG, 16 | 32 | 64 },
+	{ MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, { { OP_RM, 8 },            { OP_REG, 8 } } },
+	{ MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
+
+	// set[z,nz,be,nbe,s,ns,p,no,l,nl,nle]
+	{ MNEMONIC_SETZ,   ENC_HAS_0F_PREFIX, 0x94, 0x0, { { OP_RM, 8 } } }, 
+	{ MNEMONIC_SETNZ,  ENC_HAS_0F_PREFIX, 0x95, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETBE,  ENC_HAS_0F_PREFIX, 0x96, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETNBE, ENC_HAS_0F_PREFIX, 0x97, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETS,   ENC_HAS_0F_PREFIX, 0x98, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETNS,  ENC_HAS_0F_PREFIX, 0x99, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETP,   ENC_HAS_0F_PREFIX, 0x9a, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETNP,  ENC_HAS_0F_PREFIX, 0x9b, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETL,   ENC_HAS_0F_PREFIX, 0x9c, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETNL,  ENC_HAS_0F_PREFIX, 0x9d, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETLE,  ENC_HAS_0F_PREFIX, 0x9e, 0x0, { { OP_RM, 8 } } },
+	{ MNEMONIC_SETNLE, ENC_HAS_0F_PREFIX, 0x9f, 0x0, { { OP_RM, 8 } } },
 
 	// mov
-	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, OP_REG | OP_MEM, 8,            OP_REG,          8 },
-	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, OP_REG | OP_MEM, 16 | 32 | 64, OP_REG,          16 | 32 | 64 },
-	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x8a, 0x0, OP_REG,          8,            OP_REG | OP_MEM, 8 },
-	(Encoding) { MNEMONIC_MOV, ENC_NONE, 0x8b, 0x0, OP_REG,          16 | 32 | 64, OP_REG | OP_MEM, 16 | 32 | 64 },
+	{ MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
+	{ MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
+	{ MNEMONIC_MOV, ENC_NONE, 0x8a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
+	{ MNEMONIC_MOV, ENC_NONE, 0x8b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
 
-	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, OP_REG, 8,            OP_IMM, 8},
-	(Encoding) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, OP_REG, 16 | 32 | 64, OP_IMM, 16 | 32 | 64},
+	{ MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, { { OP_REG, 8 },            { OP_IMM, 8 } } },
+	{ MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_IMM, 16 | 32 | 64 } } },
 
 	// movzx
-	(Encoding) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, OP_REG | OP_MEM, 8,  OP_REG, 16 | 32 | 64 },
-	(Encoding) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, OP_REG | OP_MEM, 16, OP_REG, 16 | 32 | 64 },
+	{ MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } },
+	{ MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, { { OP_RM, 16 }, { OP_REG, 16 | 32 | 64 } } },
 
 	// shl
-	(Encoding) { MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, OP_REG | OP_MEM, 16 | 32 | 64, OP_IMM, 8 },
+	{ MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } },
 };
 
 typedef struct {
@@ -124,20 +142,22 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 	assert_msg(!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE),
 			"Instructions that encode a register in the opcode byte don't have a ModR/M byte");
 	
-	OperandKind operand_masks[2] = { encoding.op0_kind, encoding.op1_kind };
 	Operand operands[2] = { op0, op1 };
 
 	ModRMFields fields = {};
 	fields.mod = MOD_RM_RM;
 
 	for (size_t i = 0; i < 2; i += 1) {
+		OperandKind op_mask = encoding.operands[i].kind;
+		if (op_mask == OP_NONE) {
+			continue;
+		}
+
 		Operand op = operands[i];
 
 		if (op.kind == OP_MEM) {
 			fields.mod = MOD_RM_ADDRESS_RM;
 		}
-
-		OperandKind op_mask = operand_masks[i];
 
 		uint8_t reg = 0;
 		switch (op.kind) {
@@ -175,10 +195,10 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 		}
 
 		Encoding encoding = s_encodings[i];
-		bool supports_operands = has_flag(encoding.op0_kind, op0.kind)
-			&& has_flag(encoding.op1_kind, op1.kind);
-		bool supports_sizes = has_flag(encoding.op0_sizes, op0.bit_count)
-			&& has_flag(encoding.op1_sizes, op1.bit_count);
+		bool supports_operands = has_flag(encoding.operands[0].kind, op0.kind)
+			&& has_flag(encoding.operands[1].kind, op1.kind);
+		bool supports_sizes = has_flag(encoding.operands[0].sizes, op0.bit_count)
+			&& has_flag(encoding.operands[1].sizes, op1.bit_count);
 
 		if (!supports_operands || !supports_sizes) {
 			continue;

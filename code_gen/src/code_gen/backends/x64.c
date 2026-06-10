@@ -774,40 +774,31 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 				operand_reg(left_loc.reg, bit_count),
 				operand_reg(right_loc.reg, bit_count));
 
-		{
-			if (dst_loc.reg >> 3) {
-				// Why REX.B needs to be set instead of REX.R?
-				code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
-			}
-
-			uint8_t* instr_bytes = code_buffer_append(buffer, 3);
-			instr_bytes[0] = 0x0f;
-			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg & 0b111);
-
-			switch (instr->compare.kind) {
-			case INSTR_CMP_EQUAL:
-				instr_bytes[1] = 0x94; // setz
-				return;
-			case INSTR_CMP_NOT_EQUAL:
-				instr_bytes[1] = 0x95; // setne
-				return;
-			case INSTR_CMP_LESS:
-				instr_bytes[1] = 0x9c; // setl
-				return;
-			case INSTR_CMP_LESS_OR_EQUAL:
-				instr_bytes[1] = 0x9e; // setng
-				return;
-			case INSTR_CMP_GREATER:
-				instr_bytes[1] = 0x9f; // setg
-				return;
-			case INSTR_CMP_GREATER_OR_EQUAL:
-				instr_bytes[1] = 0x9d; // setge
-				return;
-			}
-
-			unreachable();
+		MnemonicKind mnemonic = 0;
+		switch (instr->compare.kind) {
+		case INSTR_CMP_EQUAL:
+			mnemonic = MNEMONIC_SETZ;
+			break;
+		case INSTR_CMP_NOT_EQUAL:
+			mnemonic = MNEMONIC_SETNZ;
+			break;
+		case INSTR_CMP_LESS:
+			mnemonic = MNEMONIC_SETL;
+			break;
+		case INSTR_CMP_LESS_OR_EQUAL:
+			mnemonic = MNEMONIC_SETLE;
+			break;
+		case INSTR_CMP_GREATER:
+			mnemonic = MNEMONIC_SETNLE;
+			break;
+		case INSTR_CMP_GREATER_OR_EQUAL:
+			mnemonic = MNEMONIC_SETNL;
+			break;
 		}
 
+		assert(mnemonic != 0);
+
+		encode(buffer, mnemonic, operand_reg(dst_loc.reg, 8), operand_none());
 		return;
 	}
 	

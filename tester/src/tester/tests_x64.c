@@ -794,7 +794,7 @@ void test_encode_mov_indirect_addr(TestContext* context) {
 	CodeBuffer buffer;
 	code_buffer_init(&buffer, context->arena);
 
-	encode(&buffer,
+	encode_2(&buffer,
 			MNEMONIC_MOV,
 			operand_reg(X64_REG_A, 64),
 			operand_mem(X64_REG_D, 64));

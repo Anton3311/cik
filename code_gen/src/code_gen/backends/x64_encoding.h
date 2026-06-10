@@ -87,6 +87,8 @@ typedef enum {
 	MNEMONIC_MOVZX,
 
 	MNEMONIC_SHL,
+
+	MNEMONIC_COUNT,
 } MnemonicKind;
 
 enum OperandKind {
@@ -133,6 +135,9 @@ inline Operand operand_imm(uint64_t imm, uint8_t bit_count) {
 	op.bit_count = bit_count;
 	return op;
 }
+
+// Initialize look up tables need to accelerate encoding
+void encoding_init();
 
 // For instructoons that store a result, the first register is the destination
 void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1);

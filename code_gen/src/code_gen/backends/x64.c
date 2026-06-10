@@ -1097,6 +1097,8 @@ static void _encode_control_instr(const Instr* instr,
 }
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
+	encoding_init();
+
 	bool validation_result = _x64_validate(gen);
 	assert(validation_result);
 

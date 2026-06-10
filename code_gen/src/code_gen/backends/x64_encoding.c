@@ -66,6 +66,11 @@ typedef struct {
 	OperandEncoding operands[4];
 } Encoding;
 
+typedef struct {
+	size_t start;
+	size_t end;
+} EncodingRange;
+
 #define OP_RM OP_REG | OP_MEM
 
 static Encoding s_encodings[] = {
@@ -84,6 +89,7 @@ static Encoding s_encodings[] = {
 	{ MNEMONIC_SUB, ENC_NONE, 0x2b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
 
 	{ MNEMONIC_SUB, ENC_NONE, 0x81, 0x5, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } },
+
 
 	// cmp
 	{ MNEMONIC_CMP, ENC_NONE, 0x38, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
@@ -131,6 +137,40 @@ static Encoding s_encodings[] = {
 	// shl
 	{ MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } },
 };
+
+static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
+static bool s_encoding_initialized = false;
+
+void encoding_init() {
+	if (s_encoding_initialized) {
+		return;
+	}
+
+	profile_scope_start(__func__);
+
+	MnemonicKind current_mnemonic = s_encodings[0].mnemonic;
+	s_encoding_ranges[current_mnemonic] = (EncodingRange) {};
+	for (size_t i = 1; i < array_size(s_encodings); i += 1) {
+		s_encoding_ranges[current_mnemonic].end = i;
+
+		if (s_encodings[i].mnemonic != current_mnemonic) {
+			current_mnemonic = s_encodings[i].mnemonic;
+			assert_msg(s_encoding_ranges[current_mnemonic].start == 0
+					&& s_encoding_ranges[current_mnemonic].end == 0,
+					"Different encodings for the same mnemonic must be grouped together and"
+					"appear as subseqeunt array elements");
+
+			s_encoding_ranges[current_mnemonic].start = i;
+			s_encoding_ranges[current_mnemonic].end = i;
+		}
+	}
+
+	s_encoding_ranges[current_mnemonic].end = array_size(s_encodings);
+
+	s_encoding_initialized = true;
+
+	profile_scope_end();
+}
 
 typedef struct {
 	ModRM mod;
@@ -185,15 +225,21 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 	return fields;
 }
 
-void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1) {
+static size_t _select_encoding(MnemonicKind mnemonic,
+		Operand op0,
+		Operand op1) {
 	profile_scope_start(__func__);
 
-	bool encoded = false;
-	for (size_t i = 0; i < array_size(s_encodings); i += 1) {
-		if (s_encodings[i].mnemonic != mnemonic) {
-			continue;
-		}
+	if (!s_encoding_initialized) {
+		encoding_init();
+	}
 
+	assert(mnemonic <= MNEMONIC_COUNT);
+
+	size_t selected_index = SIZE_MAX;
+
+	EncodingRange range = s_encoding_ranges[mnemonic];
+	for (size_t i = range.start; i < range.end; i += 1) {
 		Encoding encoding = s_encodings[i];
 		bool supports_operands = has_flag(encoding.operands[0].kind, op0.kind)
 			&& has_flag(encoding.operands[1].kind, op1.kind);
@@ -204,100 +250,112 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 			continue;
 		}
 
-		uint8_t rex_prefix_bits = 0;
-		Operand operands[2] = { op0, op1 };
-
-		ModRMFields fields = {};
-		if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-			assert(operands[0].kind == OP_REG);
-			rex_prefix_bits |= (op0.reg >> 3) << 2; // reg field
-		} else {
-			fields = _encode_mod_rm(encoding, op0, op1);
-
-			rex_prefix_bits |= ((fields.reg >> 3) << 2);
-			rex_prefix_bits |= ((fields.rm >> 3) << 0);
-		}
-
-		for (size_t i = 0; i < array_size(operands); i += 1) {
-			Operand op = operands[i];
-			if (op.bit_count == 64 && (op.kind == OP_REG || op.kind == OP_MEM)) {
-				rex_prefix_bits |= 0b1000;
-			}
-		}
-
-		size_t encoding_size = 0;
-		// rex prefix
-		encoding_size += (rex_prefix_bits == 0) ? 0 : 1;
-		// 0f prefix
-		encoding_size += has_flag(encoding.flags, ENC_HAS_0F_PREFIX) ? 1 : 0;
-		// opcode byte
-		encoding_size += 1;
-		// modrm byte
-		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-			encoding_size += 1;
-		}
-
-		// imm sizes
-		if (op0.kind == OP_IMM) {
-			encoding_size += op0.bit_count / 8;
-		}
-
-		if (op1.kind == OP_IMM) {
-			encoding_size += op1.bit_count / 8;
-		}
-
-		assert(encoding_size <= 16);
-
-		// now fill the bytes
-
-		uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
-		uint8_t* write_ptr = buffer;
-
-		// rex prefix
-		if (rex_prefix_bits) {
-			*write_ptr = 0b01000000 | rex_prefix_bits;
-			write_ptr += 1;
-		}
-
-		// 0f prefix
-		if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
-			*write_ptr = 0x0f;
-			write_ptr += 1;
-		}
-
-		// opcode byte
-		if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-			*write_ptr = encoding.opcode + (op0.reg & 0b111);
-		} else {
-			*write_ptr = encoding.opcode;
-		}
-
-		write_ptr += 1;
-
-		// morm byte
-		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-			*write_ptr = ((fields.reg & 0b111)<< 3) | (fields.rm & 0b111) | fields.mod;
-			write_ptr += 1;
-		}
-
-		// write imm
-		if (op0.kind == OP_IMM) {
-			memcpy(write_ptr, &op0.imm, op0.bit_count / 8);
-			write_ptr += op0.bit_count / 8;
-		}
-
-		if (op1.kind == OP_IMM) {
-			memcpy(write_ptr, &op1.imm, op1.bit_count / 8);
-			write_ptr += op1.bit_count / 8;
-		}
-
-		assert(write_ptr - buffer == encoding_size);
-		
-		encoded = true;
+		selected_index = i;
 		break;
 	}
 
-	assert_msg(encoded, "No encoding found");
+	profile_scope_end();
+	return selected_index;
+}
+
+void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1) {
+	profile_scope_start(__func__);
+
+	size_t encoding_index = _select_encoding(mnemonic, op0, op1);
+	if (encoding_index == SIZE_MAX) {
+		panic("No encoding found");
+	}
+
+	Encoding encoding = s_encodings[encoding_index];
+
+	uint8_t rex_prefix_bits = 0;
+	Operand operands[2] = { op0, op1 };
+
+	ModRMFields fields = {};
+	if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+		assert(operands[0].kind == OP_REG);
+		rex_prefix_bits |= (op0.reg >> 3) << 2; // reg field
+	} else {
+		fields = _encode_mod_rm(encoding, op0, op1);
+
+		rex_prefix_bits |= ((fields.reg >> 3) << 2);
+		rex_prefix_bits |= ((fields.rm >> 3) << 0);
+	}
+
+	for (size_t i = 0; i < array_size(operands); i += 1) {
+		Operand op = operands[i];
+		if (op.bit_count == 64 && (op.kind == OP_REG || op.kind == OP_MEM)) {
+			rex_prefix_bits |= 0b1000;
+		}
+	}
+
+	size_t encoding_size = 0;
+	// rex prefix
+	encoding_size += (rex_prefix_bits == 0) ? 0 : 1;
+	// 0f prefix
+	encoding_size += has_flag(encoding.flags, ENC_HAS_0F_PREFIX) ? 1 : 0;
+	// opcode byte
+	encoding_size += 1;
+	// modrm byte
+	if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+		encoding_size += 1;
+	}
+
+	// imm sizes
+	if (op0.kind == OP_IMM) {
+		encoding_size += op0.bit_count / 8;
+	}
+
+	if (op1.kind == OP_IMM) {
+		encoding_size += op1.bit_count / 8;
+	}
+
+	assert(encoding_size <= 16);
+
+	// now fill the bytes
+
+	uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
+	uint8_t* write_ptr = buffer;
+
+	// rex prefix
+	if (rex_prefix_bits) {
+		*write_ptr = 0b01000000 | rex_prefix_bits;
+		write_ptr += 1;
+	}
+
+	// 0f prefix
+	if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
+		*write_ptr = 0x0f;
+		write_ptr += 1;
+	}
+
+	// opcode byte
+	if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+		*write_ptr = encoding.opcode + (op0.reg & 0b111);
+	} else {
+		*write_ptr = encoding.opcode;
+	}
+
+	write_ptr += 1;
+
+	// morm byte
+	if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+		*write_ptr = ((fields.reg & 0b111)<< 3) | (fields.rm & 0b111) | fields.mod;
+		write_ptr += 1;
+	}
+
+	// write imm
+	if (op0.kind == OP_IMM) {
+		memcpy(write_ptr, &op0.imm, op0.bit_count / 8);
+		write_ptr += op0.bit_count / 8;
+	}
+
+	if (op1.kind == OP_IMM) {
+		memcpy(write_ptr, &op1.imm, op1.bit_count / 8);
+		write_ptr += op1.bit_count / 8;
+	}
+
+	assert(write_ptr - buffer == encoding_size);
 
 	profile_scope_end();
 }

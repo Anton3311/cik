@@ -787,3 +787,18 @@ void test_char_to_upper(TestContext* context) {
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
+
+void test_encode_mov_indirect_addr(TestContext* context) {
+	uint8_t expected[] = { 0x48, 0x8b, 0x02 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode(&buffer,
+			MNEMONIC_MOV,
+			operand_reg(X64_REG_A, 64),
+			operand_mem(X64_REG_D, 64));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov rax, [rdx]");
+}

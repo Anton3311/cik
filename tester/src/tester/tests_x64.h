@@ -38,4 +38,7 @@ void test_min(TestContext* context);
 void test_char_to_lower(TestContext* context);
 void test_char_to_upper(TestContext* context);
 
+// Encoding
+void test_encode_mov_indirect_addr(TestContext* context);
+
 #endif

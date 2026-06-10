@@ -121,28 +121,44 @@ typedef struct {
 } ModRMFields;
 
 static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
+	assert_msg(!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE),
+			"Instructions that encode a register in the opcode byte don't have a ModR/M byte");
+	
+	OperandKind operand_masks[2] = { encoding.op0_kind, encoding.op1_kind };
+	Operand operands[2] = { op0, op1 };
+
 	ModRMFields fields = {};
 	fields.mod = MOD_RM_RM;
 
-	if (op1.kind == OP_REG) {
-		fields.reg = op1.reg & 0b111;
-	} else if (op1.kind == OP_IMM) {
-		// the input is an imm, so set use the mod rm extension
-		fields.reg = encoding.mod_rm_ext;
-	} else if (op1.kind == OP_MEM) {
-		fields.mod = MOD_RM_ADDRESS_RM;
-		fields.reg = op1.reg & 0b111;
-	}
+	for (size_t i = 0; i < 2; i += 1) {
+		Operand op = operands[i];
 
-	if (op0.kind == OP_REG) {
-		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-			fields.rm = op0.reg & 0b111;
+		if (op.kind == OP_MEM) {
+			fields.mod = MOD_RM_ADDRESS_RM;
 		}
-	} else if (op0.kind == OP_MEM) {
-		fields.mod = MOD_RM_ADDRESS_RM;
 
-		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-			fields.rm = op0.reg & 0b111;
+		OperandKind op_mask = operand_masks[i];
+
+		uint8_t reg = 0;
+		switch (op.kind) {
+		case OP_REG:
+			reg = op.reg;
+			break;
+		case OP_MEM:
+			reg = op.reg;
+			break;
+		case OP_IMM:
+			break;
+		}
+
+		if (op_mask == (OP_REG | OP_MEM)) {
+			fields.rm = reg;
+		} else if (op_mask == OP_REG) {
+			fields.reg = reg;
+		} else if (op_mask == OP_IMM) {
+			fields.reg = encoding.mod_rm_ext;
+		} else {
+			unreachable();
 		}
 	}
 
@@ -168,18 +184,26 @@ void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand
 			continue;
 		}
 
-		ModRMFields fields = _encode_mod_rm(encoding, op0, op1);
 		uint8_t rex_prefix_bits = 0;
-		if (op0.bit_count == 64 && (op0.kind == OP_REG || op0.kind == OP_MEM)) {
-			rex_prefix_bits |= 0b1000;
+		Operand operands[2] = { op0, op1 };
+
+		ModRMFields fields = {};
+		if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+			assert(operands[0].kind == OP_REG);
+			rex_prefix_bits |= (op0.reg >> 3) << 2; // reg field
+		} else {
+			fields = _encode_mod_rm(encoding, op0, op1);
+
+			rex_prefix_bits |= ((fields.reg >> 3) << 2);
+			rex_prefix_bits |= ((fields.rm >> 3) << 0);
 		}
 
-		if (op1.bit_count == 64 && (op1.kind == OP_REG || op1.kind == OP_MEM)) {
-			rex_prefix_bits |= 0b1000;
+		for (size_t i = 0; i < array_size(operands); i += 1) {
+			Operand op = operands[i];
+			if (op.bit_count == 64 && (op.kind == OP_REG || op.kind == OP_MEM)) {
+				rex_prefix_bits |= 0b1000;
+			}
 		}
-
-		rex_prefix_bits |= ((fields.reg >> 3) << 2);
-		rex_prefix_bits |= ((fields.rm >> 3) << 0);
 
 		size_t encoding_size = 0;
 		// rex prefix

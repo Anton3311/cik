@@ -702,7 +702,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_PTR_LOAD_8:
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
-		unreachable();
 	case INSTR_PTR_LOAD_64: {
 		_x64_generate_code(gen, instr->ptr_load.ptr, buffer);
 
@@ -714,8 +713,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_LOAD_8);
 		encode(buffer,
 				MNEMONIC_MOV,
-				operand_mem(ptr_loc.reg, bit_count),
-				operand_reg(dst_loc.reg, bit_count));
+				operand_reg(dst_loc.reg, bit_count),
+				operand_mem(ptr_loc.reg, bit_count));
 		return;
 	}
 

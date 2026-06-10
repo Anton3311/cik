@@ -487,21 +487,21 @@ inline uint8_t _mod_rm_with_ext(uint8_t extension, uint8_t reg) {
 }
 
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
-	encode(buffer,
+	encode_2(buffer,
 			MNEMONIC_MOV,
 			operand_reg(reg, 64),
 			operand_imm(value, 64));
 }
 
 inline void _emit_load_const_32(CodeBuffer* buffer, X64Register reg, uint32_t value) {
-	encode(buffer,
+	encode_2(buffer,
 			MNEMONIC_MOV,
 			operand_reg(reg, 32),
 			operand_imm(value, 32));
 }
 
 inline void _emit_load_const_8(CodeBuffer* buffer, X64Register reg, uint8_t value) {
-	encode(buffer,
+	encode_2(buffer,
 			MNEMONIC_MOV,
 			operand_reg(reg, 8),
 			operand_imm(value, 8));
@@ -517,7 +517,7 @@ inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst,
 		return;
 	}
 
-	encode(buffer,
+	encode_2(buffer,
 			MNEMONIC_MOV,
 			operand_reg(dst, reg_bit_count),
 			operand_reg(src, reg_bit_count));
@@ -528,7 +528,7 @@ static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	encode(buffer,
+	encode_2(buffer,
 			MNEMONIC_SUB,
 			operand_reg(X64_REG_SP, 64),
 			operand_imm(offset, 32));
@@ -539,7 +539,7 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	encode(buffer,
+	encode_2(buffer,
 			MNEMONIC_ADD,
 			operand_reg(X64_REG_SP, 64),
 			operand_imm(offset, 32));
@@ -663,7 +663,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		switch (instr->bin_op.kind) {
 		case INSTR_BIN_ADD:
-			encode(buffer,
+			encode_2(buffer,
 					MNEMONIC_ADD,
 					operand_reg(left_reg, bit_count),
 					operand_reg(right_reg, bit_count));
@@ -673,13 +673,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 			if (should_save_right) {
 				// NOTE: When saving the register, push/pop the whole 64-bit register
-				encode(buffer,
+				encode_1(buffer,
 						MNEMONIC_PUSH,
-						operand_reg(right_loc.reg, 64),
-						operand_none());
+						operand_reg(right_loc.reg, 64));
 			}
 
-			encode(buffer,
+			encode_2(buffer,
 					MNEMONIC_SUB,
 					operand_reg(left_reg, bit_count),
 					operand_reg(right_reg, bit_count));
@@ -687,10 +686,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			if (should_save_right) {
 				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, bit_count);
 
-				encode(buffer,
+				encode_1(buffer,
 						MNEMONIC_POP,
-						operand_reg(right_loc.reg, 64),
-						operand_none());
+						operand_reg(right_loc.reg, 64));
 			}
 			break;
 		}
@@ -711,7 +709,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_LOAD_8);
-		encode(buffer,
+		encode_2(buffer,
 				MNEMONIC_MOV,
 				operand_reg(dst_loc.reg, bit_count),
 				operand_mem(ptr_loc.reg, bit_count));
@@ -742,7 +740,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		_emit_mov_regs(buffer, operand_loc.reg, dst_loc.reg, 64);
 
-		encode(buffer,
+		encode_2(buffer,
 				MNEMONIC_SHL,
 				operand_reg(dst_loc.reg, 64),
 				operand_imm(instr->logical_shift.shift_count, 8));
@@ -769,7 +767,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_COMPARE_8);
 
-		encode(buffer,
+		encode_2(buffer,
 				MNEMONIC_CMP,
 				operand_reg(left_loc.reg, bit_count),
 				operand_reg(right_loc.reg, bit_count));
@@ -798,7 +796,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		assert(mnemonic != 0);
 
-		encode(buffer, mnemonic, operand_reg(dst_loc.reg, 8), operand_none());
+		encode_1(buffer, mnemonic, operand_reg(dst_loc.reg, 8));
 		return;
 	}
 	
@@ -831,7 +829,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		if (output_size < operand_size) {
 			// NOTE: When casting to a smaller bit count, just copy the corresponding
 			//       lower half of an input register
-			encode(buffer,
+			encode_2(buffer,
 					MNEMONIC_MOV,
 					operand_reg(dst_loc.reg, output_size),
 					operand_reg(src_loc.reg, output_size));
@@ -839,7 +837,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		}
 
 		if (operand_size == 8) {
-			encode(buffer,
+			encode_2(buffer,
 					MNEMONIC_MOVZX,
 					operand_reg(src_loc.reg, operand_size),
 					operand_reg(dst_loc.reg, output_size));
@@ -847,7 +845,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			// NOTE: Moving writing to a 32-bit register zeros out the upper half of the corresponding 64-bit regiters.
 			//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
 
-			encode(buffer,
+			encode_2(buffer,
 					MNEMONIC_MOV,
 					operand_reg(dst_loc.reg, operand_size),
 					operand_reg(src_loc.reg, operand_size));
@@ -872,7 +870,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
 		assert(cond_loc.kind == INSTR_STORAGE_REG);
 
-		encode(buffer,
+		encode_2(buffer,
 				MNEMONIC_TEST,
 				operand_reg(cond_loc.reg, 64),
 				operand_reg(cond_loc.reg, 64));
@@ -944,10 +942,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		// Push saved registers
 		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
-			encode(buffer,
+			encode_1(buffer,
 					MNEMONIC_PUSH,
-					operand_reg(saved_registers[i], 64),
-					operand_none());
+					operand_reg(saved_registers[i], 64));
 		}
 
 		if (args.count == 1) {
@@ -983,10 +980,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			X64Register reg = saved_registers[i - 1];
 			bool should_restore = instr_storage.reg != reg;
 			if (should_restore) {
-				encode(buffer,
+				encode_1(buffer,
 						MNEMONIC_POP,
-						operand_reg(reg, 64),
-						operand_none());
+						operand_reg(reg, 64));
 			} else {
 				_emit_add_rsp(buffer, 8);
 			}

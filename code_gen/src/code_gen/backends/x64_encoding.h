@@ -140,6 +140,24 @@ inline Operand operand_imm(uint64_t imm, uint8_t bit_count) {
 void encoding_init();
 
 // For instructoons that store a result, the first register is the destination
-void encode(CodeBuffer* code_buffer, MnemonicKind mnemonic, Operand op0, Operand op1);
+void encode_n(CodeBuffer* code_buffer,
+		MnemonicKind mnemonic,
+		const Operand* operands,
+		uint8_t operand_count);
+
+inline void encode_1(CodeBuffer* code_buffer,
+		MnemonicKind mnemonic,
+		Operand op0) {
+	Operand operands[] = { op0 };
+	encode_n(code_buffer, mnemonic, operands, 1);
+}
+
+inline void encode_2(CodeBuffer* code_buffer,
+		MnemonicKind mnemonic,
+		Operand op0,
+		Operand op1) {
+	Operand operands[] = { op0, op1 };
+	encode_n(code_buffer, mnemonic, operands, 2);
+}
 
 #endif

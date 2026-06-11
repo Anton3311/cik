@@ -1045,6 +1045,7 @@ static void _encode_control_instr(const Instr* instr,
 	case INSTR_JUMP: {
 		uint16_t target_region_id = instr_region_id(instr_buffer, instr->jump.target_region);
 		size_t target_offset = code_block_offsets[target_region_id];
+		assert(target_offset <= INT64_MAX);
 
 		int64_t relative_offset = (int64_t)target_offset - ((int64_t)current_block_end_offset + 5);
 		assert(relative_offset >= INT32_MIN);
@@ -1060,15 +1061,19 @@ static void _encode_control_instr(const Instr* instr,
 
 		uint16_t true_region_id = instr_region_id(instr_buffer, instr->branch.true_region);
 		size_t true_offset = code_block_offsets[true_region_id];
+		assert(true_offset <= INT64_MAX);
 
-		uint32_t true_relative_offset = (uint32_t)true_offset - ((uint32_t)current_block_end_offset + 6);
-		assert(true_relative_offset <= UINT32_MAX);
+		int64_t true_relative_offset = (int64_t)true_offset - ((int64_t)current_block_end_offset + 6);
+		assert(true_relative_offset >= INT32_MIN);
+		assert(true_relative_offset <= INT32_MAX);
 
 		uint16_t false_region_id = instr_region_id(instr_buffer, instr->branch.false_region);
 		size_t false_offset = code_block_offsets[false_region_id];
+		assert(false_offset <= INT64_MAX);
 
-		uint32_t false_relative_offset = (uint32_t)false_offset - ((uint32_t)current_block_end_offset + 6 + 5);
-		assert(false_relative_offset <= UINT32_MAX);
+		int64_t false_relative_offset = (int64_t)false_offset - ((int64_t)current_block_end_offset + 6 + 5);
+		assert(false_relative_offset >= INT32_MIN);
+		assert(false_relative_offset <= INT32_MAX);
 
 		encode_1(buffer, MNEMONIC_JNZ, operand_rel32((int32_t)true_relative_offset));
 		encode_1(buffer, MNEMONIC_JMP, operand_rel32((int32_t)false_relative_offset));

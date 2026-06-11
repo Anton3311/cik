@@ -16,7 +16,16 @@ void code_buffer_init(CodeBuffer* buffer, Arena* allocator) {
 	buffer->buffer = arena_alloc_array(allocator, uint8_t, 0);
 }
 
+void code_buffer_wrap(CodeBuffer* buffer, uint8_t* backing_buffer, size_t backing_buffer_size) {
+	buffer->allocator = NULL;
+	buffer->size = 0;
+	buffer->capacity = backing_buffer_size;
+	buffer->buffer = backing_buffer;
+}
+
 void code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity) {
+	assert(buffer->allocator);
+
 	size_t capacity_delta = expected_capacity - buffer->capacity;
 	size_t allocation_size = (capacity_delta + CODE_BUFFER_ALLOCATION_STEP - 1) & ~CODE_BUFFER_ALLOCATION_STEP_MASK;
 
@@ -75,6 +84,7 @@ typedef struct {
 
 typedef struct {
 	uint8_t operand_count;
+	bool has_mod_rm;
 } EncodingExtra;
 
 #define OP_RM OP_REG | OP_MEM
@@ -107,6 +117,24 @@ static Encoding s_encodings[] = {
 
 	// pop
 	{ MNEMONIC_POP,  ENC_ADD_REG_TO_OPCODE, 0x58, 0x0, { { OP_RM, 16 | 64 } } },
+
+	// j[0,b,nb,z,nz,be,nbe,s,ns,p,np,l,nl,le,nle]
+	{ MNEMONIC_JO,   ENC_HAS_0F_PREFIX, 0x80, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNO,  ENC_HAS_0F_PREFIX, 0x81, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JB,   ENC_HAS_0F_PREFIX, 0x82, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNB,  ENC_HAS_0F_PREFIX, 0x83, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JZ,   ENC_HAS_0F_PREFIX, 0x84, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNZ,  ENC_HAS_0F_PREFIX, 0x85, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JBE,  ENC_HAS_0F_PREFIX, 0x86, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNBE, ENC_HAS_0F_PREFIX, 0x87, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JS,   ENC_HAS_0F_PREFIX, 0x88, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNS,  ENC_HAS_0F_PREFIX, 0x89, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JP,   ENC_HAS_0F_PREFIX, 0x8a, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNP,  ENC_HAS_0F_PREFIX, 0x8b, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JL,   ENC_HAS_0F_PREFIX, 0x8c, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNL,  ENC_HAS_0F_PREFIX, 0x8d, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JLE,  ENC_HAS_0F_PREFIX, 0x8e, 0x0, { { OP_REL, 16 | 32 } } },
+	{ MNEMONIC_JNLE, ENC_HAS_0F_PREFIX, 0x8f, 0x0, { { OP_REL, 16 | 32 } } },
 
 	// test
 	{ MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, { { OP_RM, 8 },            { OP_REG, 8 } } },
@@ -141,6 +169,9 @@ static Encoding s_encodings[] = {
 
 	// shl
 	{ MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } },
+
+	// jmp
+	{ MNEMONIC_JMP, ENC_NONE, 0xe9, 0x0, { { OP_REL, 16 | 32 } } },
 };
 
 static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
@@ -164,8 +195,8 @@ void encoding_init() {
 				current_mnemonic = s_encodings[i].mnemonic;
 				assert_msg(s_encoding_ranges[current_mnemonic].start == 0
 						&& s_encoding_ranges[current_mnemonic].end == 0,
-						"Different encodings for the same mnemonic must be grouped together and"
-						"appear as subseqeunt array elements");
+						"Different encodings for the same mnemonic must be grouped together and "
+						"appear as subsequent array elements");
 
 				s_encoding_ranges[current_mnemonic].start = i;
 				s_encoding_ranges[current_mnemonic].end = i;
@@ -180,13 +211,28 @@ void encoding_init() {
 			Encoding encoding = s_encodings[i];
 
 			size_t count = 0;
+			size_t reg_op_count = 0;
 			for (count = 0; count < MAX_OPERAND_COUNT; count += 1) {
 				if (encoding.operands[count].kind == OP_NONE) {
 					break;
+				} else if (has_any_flag(encoding.operands[count].kind, OP_RM)) {
+					reg_op_count += 1;
 				}
 			}
 
 			s_encoding_extra[i].operand_count = (uint8_t)count;
+
+			if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+				assert_msg(reg_op_count >= 1,
+						"Encoding requires adding the register index to the"
+						" opcode byte, however it has no operands of register or memory type");
+
+				reg_op_count -= 1;
+			}
+
+			if (reg_op_count > 0) {
+				s_encoding_extra[i].has_mod_rm = true;
+			}
 		}
 	}
 
@@ -311,21 +357,23 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 	uint8_t rex_prefix_bits = 0;
 
 	ModRMFields fields = {};
-	if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-		assert(operand_count >= 1);
-		assert(operands[0].kind == OP_REG);
-		rex_prefix_bits |= (operands[0].reg >> 3) << 2; // reg field
-	} else {
-		if (operand_count == 2) {
-			fields = _encode_mod_rm(encoding, operands[0], operands[1]);
-		} else if (operand_count == 1) {
+	if (s_encoding_extra[encoding_index].has_mod_rm) {
+		if (operand_count == 1) {
 			fields = _encode_mod_rm(encoding, operands[0], operand_none());
+		} else if (operand_count == 2) {
+			fields = _encode_mod_rm(encoding, operands[0], operands[1]);
 		} else {
 			unreachable();
 		}
 
 		rex_prefix_bits |= ((fields.reg >> 3) << 2);
 		rex_prefix_bits |= ((fields.rm >> 3) << 0);
+	} else {
+		assert(operand_count >= 1);
+		
+		if (operands[0].kind == OP_REG) {
+			rex_prefix_bits |= (operands[0].reg >> 3) << 2; // reg field
+		}
 	}
 
 	for (size_t i = 0; i < operand_count; i += 1) {
@@ -343,13 +391,15 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 	// opcode byte
 	encoding_size += 1;
 	// modrm byte
-	if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+	if (s_encoding_extra[encoding_index].has_mod_rm) {
 		encoding_size += 1;
 	}
 
 	// imm sizes
 	for (size_t i = 0; i < operand_count; i += 1) {
 		if (operands[i].kind == OP_IMM) {
+			encoding_size += operands[i].bit_count / 8;
+		} else if (operands[i].kind == OP_REL) {
 			encoding_size += operands[i].bit_count / 8;
 		}
 	}
@@ -392,7 +442,7 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		write_ptr += 1;
 
 		// morm byte
-		if (!has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+		if (s_encoding_extra[encoding_index].has_mod_rm) {
 			*write_ptr = ((fields.reg & 0b111)<< 3) | (fields.rm & 0b111) | fields.mod;
 			write_ptr += 1;
 		}
@@ -402,6 +452,9 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 			if (operands[i].kind == OP_IMM) {
 				memcpy(write_ptr, &operands[i].imm, operands[i].bit_count / 8);
 				write_ptr += operands[i].bit_count / 8;
+			} else if (operands[i].kind == OP_REL) {
+				memcpy(write_ptr, &operands[i].rel, sizeof(operands[i].rel));
+				write_ptr += sizeof(operands[i].rel);
 			}
 		}
 

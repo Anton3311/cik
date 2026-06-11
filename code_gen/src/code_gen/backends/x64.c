@@ -1020,7 +1020,7 @@ static size_t _compute_control_instr_encoding_size(const Instr* instr) {
 
 	switch (instr->kind) {
 	case INSTR_JUMP:
-		return jump_offset_size + 1;
+		return compute_encoding_size_1(MNEMONIC_JMP, operand_rel32(0));
 	case INSTR_BRANCH:
 		// A branch gets encoded as two jumps:
 		// 1. Jump to the true region if condition is true
@@ -1040,18 +1040,17 @@ static void _encode_control_instr(const Instr* instr,
 		const InstrBuffer* instr_buffer,
 		size_t current_block_end_offset,
 		const size_t* code_block_offsets,
-		uint8_t* out_encoding) {
+		CodeBuffer* buffer) {
 	switch (instr->kind) {
 	case INSTR_JUMP: {
 		uint16_t target_region_id = instr_region_id(instr_buffer, instr->jump.target_region);
 		size_t target_offset = code_block_offsets[target_region_id];
 
-		uint32_t relative_offset = (uint32_t)target_offset - ((uint32_t)current_block_end_offset + 5);
-		assert(relative_offset <= UINT32_MAX);
+		int64_t relative_offset = (int64_t)target_offset - ((int64_t)current_block_end_offset + 5);
+		assert(relative_offset >= INT32_MIN);
+		assert(relative_offset <= INT32_MAX);
 
-		// jmp
-		out_encoding[0] = 0xe9;
-		memcpy(out_encoding + 1, &relative_offset, sizeof(relative_offset));
+		encode_1(buffer, MNEMONIC_JMP, operand_rel32((int32_t)relative_offset));
 		break;
 	}
 	case INSTR_BRANCH: {
@@ -1071,19 +1070,13 @@ static void _encode_control_instr(const Instr* instr,
 		uint32_t false_relative_offset = (uint32_t)false_offset - ((uint32_t)current_block_end_offset + 6 + 5);
 		assert(false_relative_offset <= UINT32_MAX);
 
-		// jnz
-		out_encoding[0] = 0x0f;
-		out_encoding[1] = 0x85;
-		memcpy(out_encoding + 2, &true_relative_offset, sizeof(true_relative_offset));
-
-		// jmp
-		out_encoding[6] = 0xe9;
-		memcpy(out_encoding + 7, &false_relative_offset, sizeof(false_relative_offset));
+		encode_1(buffer, MNEMONIC_JNZ, operand_rel32((int32_t)true_relative_offset));
+		encode_1(buffer, MNEMONIC_JMP, operand_rel32((int32_t)false_relative_offset));
 		break;
 	}
 	case INSTR_RETURN_VALUE:
 	case INSTR_RET:
-		out_encoding[0] = 0xc3;
+		code_buffer_push_8(buffer, 0xc3); // ret
 		break;
 	default:
 		unreachable();
@@ -1121,6 +1114,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 	size_t final_code_size = 0;
 	size_t* code_block_offsets = arena_alloc_array(gen->temp_allocator, size_t, region_count);
+	size_t* control_instr_size = arena_alloc_array(gen->temp_allocator, size_t, region_count);
 	for (uint16_t i = 0; i < regions_in_dfs_order.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 
@@ -1129,10 +1123,11 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 		const CodeBuffer* code_buffer = &gen->per_region_code_buffer[region_id];
 		code_block_offsets[region_id] = final_code_size;
+		control_instr_size[region_id] = _compute_control_instr_encoding_size(
+				instr_buffer_at(instr_buffer, region_instr->region.last_instr));
 
 		final_code_size += code_buffer->size;
-		final_code_size += _compute_control_instr_encoding_size(
-				instr_buffer_at(instr_buffer, region_instr->region.last_instr));
+		final_code_size += control_instr_size[region_id];
 	}
 
 	void* executable_memory = allocate_executable(final_code_size);
@@ -1149,13 +1144,19 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 				gen->per_region_code_buffer[region_id].buffer,
 				block_size);
 
-		uint8_t* control_instr_encoding_buffer = (uint8_t*)executable_memory + block_offset + block_size;
+		CodeBuffer control_instr_buffer = {};
+		code_buffer_wrap(&control_instr_buffer,
+				(uint8_t*)executable_memory + block_offset + block_size,
+				control_instr_size[region_id]);
+
 		_encode_control_instr(
 				instr_buffer_at(instr_buffer, region_instr->region.last_instr),
 				instr_buffer,
 				block_offset + block_size,
 				code_block_offsets,
-				control_instr_encoding_buffer);
+				&control_instr_buffer);
+
+		assert(control_instr_buffer.size == control_instr_buffer.capacity);
 	}
 
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;

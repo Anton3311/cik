@@ -15,6 +15,7 @@ typedef struct {
 } CodeBuffer;
 
 void code_buffer_init(CodeBuffer* buffer, Arena* allocator);
+void code_buffer_wrap(CodeBuffer* buffer, uint8_t* backing_buffer, size_t backing_buffer_size);
 void code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity);
 
 inline uint8_t* code_buffer_append(CodeBuffer* buffer, size_t byte_count) {
@@ -67,6 +68,23 @@ typedef enum {
 	MNEMONIC_PUSH,
 	MNEMONIC_POP,
 
+	MNEMONIC_JO,
+	MNEMONIC_JNO,
+	MNEMONIC_JB,
+	MNEMONIC_JNB,
+	MNEMONIC_JZ,
+	MNEMONIC_JNZ,
+	MNEMONIC_JBE,
+	MNEMONIC_JNBE,
+	MNEMONIC_JS,
+	MNEMONIC_JNS,
+	MNEMONIC_JP,
+	MNEMONIC_JNP,
+	MNEMONIC_JL,
+	MNEMONIC_JNL,
+	MNEMONIC_JLE,
+	MNEMONIC_JNLE,
+
 	MNEMONIC_TEST,
 
 	MNEMONIC_SETZ,
@@ -88,6 +106,8 @@ typedef enum {
 
 	MNEMONIC_SHL,
 
+	MNEMONIC_JMP,
+
 	MNEMONIC_COUNT,
 } MnemonicKind;
 
@@ -96,6 +116,7 @@ enum OperandKind {
 	OP_REG   = 1 << 0,
 	OP_IMM   = 1 << 1,
 	OP_MEM   = 1 << 2,
+	OP_REL   = 1 << 3,
 };
 
 typedef uint8_t OperandKind;
@@ -107,6 +128,7 @@ struct Operand {
 	union {
 		uint8_t reg;
 		uint64_t imm;
+		int32_t rel;
 	};
 };
 
@@ -133,6 +155,14 @@ inline Operand operand_imm(uint64_t imm, uint8_t bit_count) {
 	op.kind = OP_IMM;
 	op.imm = imm;
 	op.bit_count = bit_count;
+	return op;
+}
+
+inline Operand operand_rel32(int32_t offset) {
+	Operand op = {};
+	op.kind = OP_REL;
+	op.rel = offset;
+	op.bit_count = 32;
 	return op;
 }
 

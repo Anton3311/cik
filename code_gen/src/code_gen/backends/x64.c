@@ -962,10 +962,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		// push shadow space
 		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
 
-		// call
-		uint8_t* instr_bytes = code_buffer_append(buffer, 2);
-		instr_bytes[0] = 0xff;
-		instr_bytes[1] = _mod_rm_with_ext(2, 0);
+		encode_1(buffer, MNEMONIC_CALL, operand_reg(X64_REG_A, 64));
 
 		// pop shadow space
 		_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);

@@ -108,6 +108,8 @@ typedef enum {
 
 	MNEMONIC_JMP,
 
+	MNEMONIC_CALL,
+
 	MNEMONIC_COUNT,
 } MnemonicKind;
 

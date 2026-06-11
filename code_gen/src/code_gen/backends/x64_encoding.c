@@ -84,6 +84,7 @@ typedef struct {
 
 typedef struct {
 	uint8_t operand_count;
+	uint8_t reg_operand_count;
 	bool has_mod_rm;
 } EncodingExtra;
 
@@ -172,6 +173,10 @@ static Encoding s_encodings[] = {
 
 	// jmp
 	{ MNEMONIC_JMP, ENC_NONE, 0xe9, 0x0, { { OP_REL, 16 | 32 } } },
+
+	// call
+	{ MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 16 | 32 } } },
+	{ MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 64 } } },
 };
 
 static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
@@ -221,6 +226,7 @@ void encoding_init() {
 			}
 
 			s_encoding_extra[i].operand_count = (uint8_t)count;
+			s_encoding_extra[i].reg_operand_count = (uint8_t)reg_op_count;
 
 			if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
 				assert_msg(reg_op_count >= 1,
@@ -285,7 +291,6 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 		} else if (op_mask == OP_REG) {
 			fields.reg = reg;
 		} else if (op_mask == OP_IMM) {
-			fields.reg = encoding.mod_rm_ext;
 		} else {
 			unreachable();
 		}
@@ -364,6 +369,10 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 			fields = _encode_mod_rm(encoding, operands[0], operands[1]);
 		} else {
 			unreachable();
+		}
+
+		if (s_encoding_extra[encoding_index].reg_operand_count == 1) {
+			fields.reg = encoding.mod_rm_ext;
 		}
 
 		rex_prefix_bits |= ((fields.reg >> 3) << 2);

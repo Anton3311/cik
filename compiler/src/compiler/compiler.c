@@ -61,6 +61,9 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Parse
 	return (TypeLayout) {};
 }
 
+static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr);
+static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr);
+
 static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const ParsedType* int_type,
 		const ParsedType* target_type,
@@ -83,6 +86,176 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 			instr_allocator,
 			value_instr,
 			result_layout.size * 8);
+}
+
+// Compiles a binary expression without casting compare operations to an interger
+static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	if (expr->binary.op == BIN_OP_ASSIGNMENT) {
+		ParsedExpr* target = expr->binary.left;
+
+		if (target->kind == EXPR_VARIABLE_REFERENCE) {
+			ParsedType value_type;
+			expr_get_type(expr->binary.right, &value_type);
+
+			InstrIndex value = _compile_expr(compiler, expr->binary.right);
+
+			const ParsedVariable* variable = target->variable_ref;
+
+			value = _compile_int_cast(compiler,
+					&value_type,
+					&variable->type,
+					value);
+			compiler->var_values[variable->id] = value;
+			return value;
+		} else if (target->kind == EXPR_FUNCTION_PARAM) {
+			ParsedType value_type;
+			expr_get_type(expr->binary.right, &value_type);
+
+			InstrIndex value = _compile_expr(compiler, expr->binary.right);
+
+			size_t arg_index = target->function_param.param_index;
+
+			value = _compile_int_cast(compiler,
+					&value_type,
+					&compiler->function->parameters[arg_index].type,
+					value);
+
+			compiler->arg_states[arg_index] = value;
+			return value;
+		} else {
+			panic("Assignment to this expression kind is not supported");
+		}
+	}
+
+	ParsedType left_type;
+	ParsedType right_type;
+
+	expr_get_type(expr->binary.left, &left_type);
+	expr_get_type(expr->binary.right, &right_type);
+
+	bool left_is_pointer_like = type_kind_is_pointer_like(left_type.kind);
+	bool right_is_pointer_like = type_kind_is_pointer_like(right_type.kind);
+
+	InstrIndex left = _compile_expr(compiler, expr->binary.left);
+	InstrIndex right = _compile_expr(compiler, expr->binary.right);
+
+	ParsedType result_type;
+	expr_get_type(expr, &result_type);
+
+	// TODO: Don't scale int constants during compare operations.
+
+	// NOTE: In case we are doing pointer arithmetics here,
+	//       and one of the operands is an interger, we need
+	//       to scale that integer by the byte size of base pointer type.
+	//
+	//       Since during pointer arithmetics those integer constants
+	//       encode an offset by a number of array elements and not bytes.
+	if (left_is_pointer_like && type_kind_is_int(right_type.kind)) {
+		ParsedType* base_type = type_extract_pointer_base_type(&left_type);
+		TypeLayout value_layout = _type_get_layout(compiler, base_type);
+
+		if (value_layout.size != compiler->pointer_type_layout.size) {
+			// promote the right operand to match the pointer size
+			right = instr_new_cast(instr_buffer,
+					instr_allocator,
+					right,
+					compiler->pointer_type_layout.size * 8);
+		}
+
+		size_t shift_count = count_trailing_zeros(value_layout.size);
+		right = instr_new_logical_shift_left_by(instr_buffer,
+				instr_allocator,
+				right,
+				(uint8_t)shift_count);
+	} else if (right_is_pointer_like && type_kind_is_int(left_type.kind)) {
+		ParsedType* base_type = type_extract_pointer_base_type(&right_type);
+		TypeLayout value_layout = _type_get_layout(compiler, base_type);
+
+		if (value_layout.size != compiler->pointer_type_layout.size) {
+			// promote the left operand to match the pointer size
+			left = instr_new_cast(instr_buffer,
+					instr_allocator,
+					left,
+					compiler->pointer_type_layout.size * 8);
+		}
+
+		size_t shift_count = count_trailing_zeros(value_layout.size);
+		left = instr_new_logical_shift_left_by(instr_buffer,
+				instr_allocator,
+				left,
+				(uint8_t)shift_count);
+	} else {
+		left = _compile_int_cast(compiler, &left_type, &result_type, left);
+		right = _compile_int_cast(compiler, &right_type, &result_type, right);
+	}
+
+	InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+	// 0 -> 8-bits
+	// 1 -> 16-bits
+	// 2 -> 32-bits
+	// 3 -> 64-bits
+	size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
+	switch (expr->binary.op) {
+	case BIN_OP_ADD:
+		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
+		instr->bin_op.kind = INSTR_BIN_ADD;
+		instr->bin_op.left = left;
+		instr->bin_op.right = right;
+		break;
+	case BIN_OP_SUB:
+		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
+		instr->bin_op.kind = INSTR_BIN_SUB;
+		instr->bin_op.left = left;
+		instr->bin_op.right = right;
+		break;
+	case BIN_OP_LOGICAL_EQUAL:
+		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		instr->compare.kind = INSTR_CMP_EQUAL;
+		instr->compare.left = left;
+		instr->compare.right = right;
+		break;
+	case BIN_OP_LOGICAL_NOT_EQUAL:
+		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		instr->compare.kind = INSTR_CMP_NOT_EQUAL;
+		instr->compare.left = left;
+		instr->compare.right = right;
+		break;
+	case BIN_OP_LOGICAL_LESS:
+		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		instr->compare.kind = INSTR_CMP_LESS;
+		instr->compare.left = left;
+		instr->compare.right = right;
+		break;
+	case BIN_OP_LOGICAL_LESS_OR_EQUAL:
+		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		instr->compare.kind = INSTR_CMP_LESS_OR_EQUAL;
+		instr->compare.left = left;
+		instr->compare.right = right;
+		break;
+	case BIN_OP_LOGICAL_GREATER:
+		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		instr->compare.kind = INSTR_CMP_GREATER;
+		instr->compare.left = left;
+		instr->compare.right = right;
+		break;
+	case BIN_OP_LOGICAL_GREATER_OR_EQUAL:
+		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		instr->compare.kind = INSTR_CMP_GREATER_OR_EQUAL;
+		instr->compare.left = left;
+		instr->compare.right = right;
+		break;
+	}
+
+	assert_msg(instr->kind != INSTR_NO_OP,
+			"Binary operation was not handled, "
+			"and thus haven't produced a valid instruction");
+
+	return instr_index;
 }
 
 static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
@@ -117,170 +290,16 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		return call_instr_index;
 	}
 	case EXPR_BINARY: {
-		if (expr->binary.op == BIN_OP_ASSIGNMENT) {
-			ParsedExpr* target = expr->binary.left;
-
-			if (target->kind == EXPR_VARIABLE_REFERENCE) {
-				ParsedType value_type;
-				expr_get_type(expr->binary.right, &value_type);
-
-				InstrIndex value = _compile_expr(compiler, expr->binary.right);
-
-				const ParsedVariable* variable = target->variable_ref;
-
-				value = _compile_int_cast(compiler,
-						&value_type,
-						&variable->type,
-						value);
-				compiler->var_values[variable->id] = value;
-				return value;
-			} else if (target->kind == EXPR_FUNCTION_PARAM) {
-				ParsedType value_type;
-				expr_get_type(expr->binary.right, &value_type);
-
-				InstrIndex value = _compile_expr(compiler, expr->binary.right);
-
-				size_t arg_index = target->function_param.param_index;
-
-				value = _compile_int_cast(compiler,
-						&value_type,
-						&compiler->function->parameters[arg_index].type,
-						value);
-
-				compiler->arg_states[arg_index] = value;
-				return value;
-			} else {
-				panic("Assignment to this expression kind is not supported");
-			}
-		}
-
-		ParsedType left_type;
-		ParsedType right_type;
-
-		expr_get_type(expr->binary.left, &left_type);
-		expr_get_type(expr->binary.right, &right_type);
-
-		bool left_is_pointer_like = type_kind_is_pointer_like(left_type.kind);
-		bool right_is_pointer_like = type_kind_is_pointer_like(right_type.kind);
-
-		InstrIndex left = _compile_expr(compiler, expr->binary.left);
-		InstrIndex right = _compile_expr(compiler, expr->binary.right);
-
-		ParsedType result_type;
+		ParsedType result_type = {};
 		expr_get_type(expr, &result_type);
 
-		// TODO: Don't scale int constants during compare operations.
-
-		// NOTE: In case we are doing pointer arithmetics here,
-		//       and one of the operands is an interger, we need
-		//       to scale that integer by the byte size of base pointer type.
-		//
-		//       Since during pointer arithmetics those integer constants
-		//       encode an offset by a number of array elements and not bytes.
-		if (left_is_pointer_like && type_kind_is_int(right_type.kind)) {
-			ParsedType* base_type = type_extract_pointer_base_type(&left_type);
-			TypeLayout value_layout = _type_get_layout(compiler, base_type);
-
-			if (value_layout.size != compiler->pointer_type_layout.size) {
-				// promote the right operand to match the pointer size
-				right = instr_new_cast(instr_buffer,
-						instr_allocator,
-						right,
-						compiler->pointer_type_layout.size * 8);
-			}
-
-			size_t shift_count = count_trailing_zeros(value_layout.size);
-			right = instr_new_logical_shift_left_by(instr_buffer,
-					instr_allocator,
-					right,
-					(uint8_t)shift_count);
-		} else if (right_is_pointer_like && type_kind_is_int(left_type.kind)) {
-			ParsedType* base_type = type_extract_pointer_base_type(&right_type);
-			TypeLayout value_layout = _type_get_layout(compiler, base_type);
-
-			if (value_layout.size != compiler->pointer_type_layout.size) {
-				// promote the left operand to match the pointer size
-				left = instr_new_cast(instr_buffer,
-						instr_allocator,
-						left,
-						compiler->pointer_type_layout.size * 8);
-			}
-
-			size_t shift_count = count_trailing_zeros(value_layout.size);
-			left = instr_new_logical_shift_left_by(instr_buffer,
-					instr_allocator,
-					left,
-					(uint8_t)shift_count);
-		} else {
-			left = _compile_int_cast(compiler, &left_type, &result_type, left);
-			right = _compile_int_cast(compiler, &right_type, &result_type, right);
-		}
-
-		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-
-		// 0 -> 8-bits
-		// 1 -> 16-bits
-		// 2 -> 32-bits
-		// 3 -> 64-bits
-		size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
-		switch (expr->binary.op) {
-		case BIN_OP_ADD:
-			instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
-			instr->bin_op.kind = INSTR_BIN_ADD;
-			instr->bin_op.left = left;
-			instr->bin_op.right = right;
-			break;
-		case BIN_OP_SUB:
-			instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
-			instr->bin_op.kind = INSTR_BIN_SUB;
-			instr->bin_op.left = left;
-			instr->bin_op.right = right;
-			break;
-		case BIN_OP_LOGICAL_EQUAL:
-			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
-			instr->compare.kind = INSTR_CMP_EQUAL;
-			instr->compare.left = left;
-			instr->compare.right = right;
-			break;
-		case BIN_OP_LOGICAL_NOT_EQUAL:
-			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
-			instr->compare.kind = INSTR_CMP_NOT_EQUAL;
-			instr->compare.left = left;
-			instr->compare.right = right;
-			break;
-		case BIN_OP_LOGICAL_LESS:
-			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
-			instr->compare.kind = INSTR_CMP_LESS;
-			instr->compare.left = left;
-			instr->compare.right = right;
-			break;
-		case BIN_OP_LOGICAL_LESS_OR_EQUAL:
-			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
-			instr->compare.kind = INSTR_CMP_LESS_OR_EQUAL;
-			instr->compare.left = left;
-			instr->compare.right = right;
-			break;
-		case BIN_OP_LOGICAL_GREATER:
-			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
-			instr->compare.kind = INSTR_CMP_GREATER;
-			instr->compare.left = left;
-			instr->compare.right = right;
-			break;
-		case BIN_OP_LOGICAL_GREATER_OR_EQUAL:
-			instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
-			instr->compare.kind = INSTR_CMP_GREATER_OR_EQUAL;
-			instr->compare.left = left;
-			instr->compare.right = right;
-			break;
-		}
-
-		assert_msg(instr->kind != INSTR_NO_OP,
-				"Binary operation was not handled, "
-				"and thus haven't produced a valid instruction");
+		InstrIndex instr_index = _compile_bin_expr(compiler, expr);
 
 		if (bin_op_is_compare(expr->binary.op)) {
-			return instr_new_cast(instr_buffer, instr_allocator, instr_index, _type_get_layout(compiler, &result_type).size * 8);
+			return instr_new_cast(instr_buffer,
+					instr_allocator,
+					instr_index,
+					_type_get_layout(compiler, &result_type).size * 8);
 		}
 
 		return instr_index;
@@ -479,7 +498,16 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 			instr->kind = INSTR_BRANCH;
-			instr->branch.condition = _compile_expr(compiler, &node->if_stmt.condition);
+			
+			{
+				ParsedExpr* condition = &node->if_stmt.condition;
+				if (condition->kind == EXPR_BINARY && bin_op_is_compare(condition->binary.op)) {
+					instr->branch.condition = _compile_bin_expr(compiler, condition);
+				} else {
+					instr->branch.condition = _compile_expr(compiler, condition);
+				}
+			}
+
 			instr->branch.io_state = compiler->io_state;
 
 			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);

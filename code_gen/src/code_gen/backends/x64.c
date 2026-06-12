@@ -507,10 +507,6 @@ inline void _emit_load_const_8(CodeBuffer* buffer, X64Register reg, uint8_t valu
 			operand_imm(value, 8));
 }
 
-inline void _emit_return(CodeBuffer* buffer) {
-	*code_buffer_append(buffer, 1) = 0xc3;
-}
-
 // NOTE: Not emitted when src and dst match. Don't use as a 32-bit movzx for that reason.
 inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst, uint8_t reg_bit_count) {
 	if (src == dst) {
@@ -940,11 +936,13 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 
-		_emit_return(buffer);
+		// NOTE: Don't need to generate a `ret` instruction, since it is done later when the
+		//       control instructions at the end of each code blocks are generated
 		return;
 	case INSTR_RET:
 		_x64_generate_code(gen, instr->ret.io_state, buffer);
-		_emit_return(buffer);
+		// NOTE: Don't need to generate a `ret` instruction, since it is done later when the
+		//       control instructions at the end of each code blocks are generated
 		return;
 	
 	case INSTR_IO_STATE:

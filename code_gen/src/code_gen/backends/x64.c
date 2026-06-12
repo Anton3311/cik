@@ -454,38 +454,6 @@ static bool _x64_validate(X64CodeGenerator* gen) {
 	return result;
 }
 
-inline uint8_t _rex_prefix(uint8_t w, uint8_t r, uint8_t x, uint8_t b) {
-	assert(w <= 1);
-	assert(r <= 1);
-	assert(x <= 1);
-	assert(b <= 1);
-	return 0b01000000 | (w << 3) | (r << 2) | (x << 1) | (b << 0);
-}
-
-inline uint8_t _rex_prefix_src_dst(uint8_t is_64_bit_reg, uint8_t src_reg, uint8_t dst_reg) {
-	return _rex_prefix(is_64_bit_reg, src_reg >> 3, 0, dst_reg >> 3);
-}
-
-typedef enum {
-	MOD_RM_ADDRESS_RM         = 0b00000000,
-	MOD_RM_ADDRESS_RM_DISP_8  = 0b00000000,
-	MOD_RM_ADDRESS_RM_DISP_32 = 0b00000000,
-	MOD_RM_RM                 = 0b11000000,
-} ModRMMod;
-
-inline uint8_t _mod_rm(ModRMMod mod, X64Register reg, uint8_t rm) {
-	assert(reg < 8);
-	assert(rm < 8);
-	assert((mod & 0b00111111) == 0);
-	return ((uint8_t)mod) | (reg << 3) | (rm);
-}
-
-inline uint8_t _mod_rm_with_ext(uint8_t extension, uint8_t reg) {
-	assert(extension < 8);
-	assert(reg < 8);
-	return 0b11000000 | (extension << 3) | (reg);
-}
-
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
 	encode_2(buffer,
 			MNEMONIC_MOV,
@@ -1050,8 +1018,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 }
 
 static size_t _compute_control_instr_encoding_size(const Instr* instr) {
-	size_t jump_offset_size = sizeof(uint32_t);
-
 	switch (instr->kind) {
 	case INSTR_JUMP:
 		return compute_encoding_size_1(MNEMONIC_JMP, operand_rel32(0));

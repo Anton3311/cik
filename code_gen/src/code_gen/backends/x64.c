@@ -34,6 +34,11 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_COMPARE_32]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_COMPARE_64]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 
+	[INSTR_NEGATE_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_NEGATE_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_NEGATE_32]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_NEGATE_64]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+
 	[INSTR_CAST_TO_8]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_CAST_TO_16]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
 	[INSTR_CAST_TO_32]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
@@ -786,6 +791,27 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64: {
 		_x64_generate_compare(gen, instr_index, buffer, true);
+		return;
+	}
+	
+	case INSTR_NEGATE_8:
+	case INSTR_NEGATE_16:
+	case INSTR_NEGATE_32:
+	case INSTR_NEGATE_64: {
+		assert(instr->kind != INSTR_NEGATE_16);
+
+		_x64_generate_code(gen, instr->negate.operand, buffer);
+
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_NEGATE_8);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation operand_loc = gen->instr_storage[instr->negate.operand.value];
+
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(operand_loc.kind == INSTR_STORAGE_REG);
+
+		_emit_mov_regs(buffer, operand_loc.reg, dst_loc.reg, bit_count);
+		encode_1(buffer, MNEMONIC_NEG, operand_reg(dst_loc.reg, bit_count));
 		return;
 	}
 	

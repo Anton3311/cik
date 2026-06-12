@@ -37,6 +37,11 @@ typedef enum {
 	INSTR_BIN_OP_32,
 	INSTR_BIN_OP_64,
 
+	INSTR_NEGATE_8,
+	INSTR_NEGATE_16,
+	INSTR_NEGATE_32,
+	INSTR_NEGATE_64,
+
 	INSTR_LOGICAL_SHIFT_LEFT_8,
 	INSTR_LOGICAL_SHIFT_LEFT_16,
 	INSTR_LOGICAL_SHIFT_LEFT_32,
@@ -159,6 +164,10 @@ struct Instr {
 			InstrIndex left;
 			InstrIndex right;
 		} bin_op;
+
+		struct {
+			InstrIndex operand;
+		} negate;
 
 		struct {
 			InstrIndex operand;

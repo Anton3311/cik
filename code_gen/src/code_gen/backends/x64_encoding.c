@@ -174,6 +174,10 @@ static Encoding s_encodings[] = {
 	// jmp
 	{ MNEMONIC_JMP, ENC_NONE, 0xe9, 0x0, { { OP_REL, 16 | 32 } } },
 
+	// neg
+	{ MNEMONIC_NEG, ENC_NONE, 0xf6, 0x3, { { OP_RM, 8 } } },
+	{ MNEMONIC_NEG, ENC_NONE, 0xf7, 0x3, { { OP_RM, 16 | 32 | 64 } } },
+
 	// call
 	{ MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 16 | 32 } } },
 	{ MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 64 } } },

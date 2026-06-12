@@ -110,6 +110,8 @@ typedef enum {
 
 	MNEMONIC_CALL,
 
+	MNEMONIC_NEG,
+
 	MNEMONIC_COUNT,
 } MnemonicKind;
 

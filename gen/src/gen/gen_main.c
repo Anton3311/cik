@@ -144,6 +144,8 @@ static String _instr_kind_to_corresponding_instr_field(const ParsedEnum* enum_de
 	String variant_name = enum_def->variants[variant_index].name.string;
 	if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
 		return STR_LIT("bin_op");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_NEGATE_"))) {
+		return STR_LIT("negate");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
 		return STR_LIT("ptr_load");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {

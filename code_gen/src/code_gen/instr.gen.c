@@ -16,6 +16,10 @@ static String s_instr_kind_to_string[] = {
     [INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
     [INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
     [INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
+    [INSTR_NEGATE_8] = STR_LIT("negate_8"),
+    [INSTR_NEGATE_16] = STR_LIT("negate_16"),
+    [INSTR_NEGATE_32] = STR_LIT("negate_32"),
+    [INSTR_NEGATE_64] = STR_LIT("negate_64"),
     [INSTR_LOGICAL_SHIFT_LEFT_8] = STR_LIT("logical_shift_left_8"),
     [INSTR_LOGICAL_SHIFT_LEFT_16] = STR_LIT("logical_shift_left_16"),
     [INSTR_LOGICAL_SHIFT_LEFT_32] = STR_LIT("logical_shift_left_32"),
@@ -100,6 +104,18 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
     case INSTR_BIN_OP_64:
         instr_stack_push(out_dependencies, instr->bin_op.left);
         instr_stack_push(out_dependencies, instr->bin_op.right);
+        break;
+    case INSTR_NEGATE_8:
+        instr_stack_push(out_dependencies, instr->negate.operand);
+        break;
+    case INSTR_NEGATE_16:
+        instr_stack_push(out_dependencies, instr->negate.operand);
+        break;
+    case INSTR_NEGATE_32:
+        instr_stack_push(out_dependencies, instr->negate.operand);
+        break;
+    case INSTR_NEGATE_64:
+        instr_stack_push(out_dependencies, instr->negate.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
         instr_stack_push(out_dependencies, instr->logical_shift.operand);
@@ -238,6 +254,18 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_BIN_OP_64:
         printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_NEGATE_8:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        break;
+    case INSTR_NEGATE_16:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        break;
+    case INSTR_NEGATE_32:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        break;
+    case INSTR_NEGATE_64:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
         printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);

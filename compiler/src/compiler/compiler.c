@@ -354,12 +354,12 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		return compiler->arg_states[arg_index];
 	}
 	case EXPR_UNARY:
+		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+		ParsedType operand_type;
+		expr_get_type(expr->unary.operand, &operand_type);
+
 		switch (expr->unary.op) {
 		case UNARY_OP_DEREFERENCE: {
-			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-			ParsedType operand_type;
-			expr_get_type(expr->unary.operand, &operand_type);
-
 			const ParsedType* base_type = NULL;
 			if (operand_type.kind == PARSED_TYPE_POINTER) {
 				base_type = operand_type.pointer_base_type;
@@ -394,6 +394,34 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 
 			return instr_index;
 		}
+		case UNARY_OP_NEGATE: {
+			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+			instr->negate.operand = operand_instr;
+
+			TypeLayout layout = _type_get_layout(compiler, &operand_type);
+			switch (layout.size) {
+			case 1:
+				instr->kind = INSTR_NEGATE_8;
+				break;
+			case 2:
+				instr->kind = INSTR_NEGATE_16;
+				break;
+			case 4:
+				instr->kind = INSTR_NEGATE_32;
+				break;
+			case 8:
+				instr->kind = INSTR_NEGATE_64;
+				break;
+			default:
+				panic("Only up to 8 byte sizes are supported for dereferencing");
+			}
+
+			return instr_index;
+		}
+		case UNARY_OP_PLUS:
+			// Nothing to do here
+			return operand_instr;
 		}
 		break;
 	case EXPR_CHAR_LITERAL: {

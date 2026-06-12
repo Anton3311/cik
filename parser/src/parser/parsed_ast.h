@@ -30,6 +30,7 @@ typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
 typedef struct ParsedReturnStmt ParsedReturnStmt;
 typedef struct ParsedDeclSpec ParsedDeclSpec;
 typedef struct ParsedIfStmt ParsedIfStmt;
+typedef struct ParsedArrayIndex ParsedArrayIndex;
 
 //
 // AST
@@ -297,6 +298,11 @@ struct ParsedIntegerLiteral {
 	uint64_t value;
 };
 
+struct ParsedArrayIndex {
+	ParsedExpr* array;
+	ParsedExpr* index;
+};
+
 typedef enum {
 	EXPR_CALL,
 	EXPR_BINARY,
@@ -308,6 +314,7 @@ typedef enum {
 	EXPR_CHAR_LITERAL,
 	EXPR_ENUM_CONSTANT,
 	EXPR_FUNCTION_PARAM,
+	EXPR_ARRAY_INDEX,
 } ExprKind;
 
 struct ParsedExpr {
@@ -322,6 +329,7 @@ struct ParsedExpr {
 		ParsedIntegerLiteral int_literal;
 		ParsedStringLiteral string_literal;
 		ParsedCharLiteral char_literal;
+		ParsedArrayIndex array_index;
 		
 		struct {
 			const ParsedEnum* enum_def;

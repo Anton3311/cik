@@ -68,8 +68,8 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const ParsedType* int_type,
 		const ParsedType* target_type,
 		InstrIndex value_instr) {
-	assert(type_kind_is_int(int_type->kind));
-	assert(type_kind_is_int(target_type->kind));
+	assert(type_kind_is_int(int_type->kind) || int_type->kind == PARSED_TYPE_POINTER);
+	assert(type_kind_is_int(target_type->kind) || target_type->kind == PARSED_TYPE_POINTER);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -433,6 +433,67 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		instr->kind = INSTR_CONST_8;
 		instr->const_8.u = (uint8_t)expr->char_literal.value;
 		return instr_index;
+	}
+	case EXPR_ARRAY_INDEX: {
+		ParsedType array_type;
+		ParsedType index_type;
+
+		expr_get_type(expr->array_index.array, &array_type);
+		expr_get_type(expr->array_index.index, &index_type);
+
+		InstrIndex array = _compile_expr(compiler, expr->array_index.array);
+		InstrIndex index = _compile_expr(compiler, expr->array_index.index);
+
+		if (_type_get_layout(compiler, &index_type).size != compiler->pointer_type_layout.size) {
+			index = instr_new_cast(instr_buffer,
+					instr_allocator,
+					index,
+					compiler->pointer_type_layout.size * 8);
+		}
+
+		ParsedType* element_type = type_extract_pointer_base_type(&array_type);
+		TypeLayout element_layout = _type_get_layout(compiler, element_type);
+
+		assert(element_layout.size > 0);
+		assert(is_power_of_2(element_layout.size));
+
+		size_t shift_count = count_trailing_zeros(element_layout.size);
+		InstrIndex scaled_index = instr_new_logical_shift_left_by(instr_buffer,
+				instr_allocator,
+				index,
+				(uint8_t)shift_count);
+
+		InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
+		add_instr->bin_op.left = array;
+		add_instr->bin_op.right = scaled_index;
+
+		InstrIndex load_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* load_instr = instr_buffer_at(instr_buffer, load_instr_index);
+		load_instr->ptr_load.ptr = add_instr_index;
+
+		switch (element_layout.size) {
+		case 1:
+			add_instr->kind = INSTR_BIN_OP_8;
+			load_instr->kind = INSTR_PTR_LOAD_8;
+			break;
+		case 2:
+			add_instr->kind = INSTR_BIN_OP_16;
+			load_instr->kind = INSTR_PTR_LOAD_16;
+			break;
+		case 4:
+			add_instr->kind = INSTR_BIN_OP_32;
+			load_instr->kind = INSTR_PTR_LOAD_32;
+			break;
+		case 8:
+			add_instr->kind = INSTR_BIN_OP_64;
+			load_instr->kind = INSTR_PTR_LOAD_64;
+			break;
+		default:
+			panic("Unsupported element size");
+		}
+
+		return load_instr_index;
 	}
 	}
 
@@ -858,4 +919,5 @@ static int _internal_print_string(const char* string) {
 void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
 	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
+	func_ref_table_resolve_ref_to(table, STR_LIT("printf"), printf);
 }

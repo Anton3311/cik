@@ -286,7 +286,10 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
-void bin_expr_select_result_type(const ParsedType* left_type, const ParsedType* right_type, ParsedType* out_type) {
+void bin_expr_select_result_type(const ParsedType* left_type,
+		const ParsedType* right_type,
+		ParsedType* out_type) {
+
 	if (left_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(right_type->kind)) {
 		*out_type = *left_type;
 		return;
@@ -304,6 +307,12 @@ void bin_expr_select_result_type(const ParsedType* left_type, const ParsedType* 
 
 	if (right_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
 		type_array_to_pointer(right_type, out_type);
+		return;
+	}
+
+	if (left_type->kind == PARSED_TYPE_POINTER && right_type->kind == PARSED_TYPE_POINTER) {
+		assert(type_equal(left_type, right_type));
+		*out_type = *left_type;
 		return;
 	}
 
@@ -429,6 +438,14 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 		const ParsedFunction* func = expr->function_param.function_def;
 		assert(expr->function_param.param_index < func->parameter_count);
 		*out_type = func->parameters[expr->function_param.param_index].type;
+		return;
+	}
+	case EXPR_ARRAY_INDEX: {
+		ParsedType array_type;
+		expr_get_type(expr->array_index.array, &array_type);
+
+		ParsedType* element_type = type_extract_pointer_base_type(&array_type);
+		*out_type = *element_type;
 		return;
 	}
 	}
@@ -643,6 +660,15 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		printer_begin_struct(printer, "function_param");
 		printer_string_field(printer, "func_name", func_def->name.string);
 		printer_string_field(printer, "param_name", func_def->parameters[expr->function_param.param_index].name.string);
+		printer_end_struct(printer);
+		break;
+	}
+	case EXPR_ARRAY_INDEX: {
+		printer_begin_struct(printer, "array_index");
+		printer_field(printer, "array");
+		print_expr(printer, expr->array_index.array);
+		printer_field(printer, "index");
+		print_expr(printer, expr->array_index.index);
 		printer_end_struct(printer);
 		break;
 	}

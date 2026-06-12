@@ -1698,6 +1698,31 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Parsed
 			out_expr->kind = EXPR_CALL;
 			out_expr->call.callable = callable;
 			out_expr->call.args = args;
+		} else if (operator_token.kind == TOKEN_LEFT_BRACKET) {
+			preprocessor_next_token(parser->preprocessor);
+
+			ParsedExpr* array = arena_alloc(parser->ast_allocator, ParsedExpr);
+			memcpy(array, out_expr, sizeof(*out_expr));
+
+			ParsedExpr* index = arena_alloc(parser->ast_allocator, ParsedExpr);
+			ExprParseResult result = _parser_try_parse_expr(parser, index);
+			if (result != EXPR_PARSE_OK) {
+				return result;
+			}
+
+			out_expr->kind = EXPR_ARRAY_INDEX;
+			out_expr->array_index.array = array;
+			out_expr->array_index.index = index;
+
+			Token closing_bracket = preprocessor_next_token(parser->preprocessor);
+			if (closing_bracket.kind != TOKEN_RIGHT_BRACKET) {
+				TokenKind expected_tokens[] = { TOKEN_RIGHT_BRACKET };
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						closing_bracket,
+						expected_tokens,
+						array_size(expected_tokens));
+				return EXPR_PARSE_ERROR;
+			}
 		} else {
 			break;
 		}

@@ -32,6 +32,8 @@ typedef enum {
 	INSTR_CONST_32,
 	INSTR_CONST_64,
 
+	INSTR_CONST_STRING,
+
 	INSTR_BIN_OP_8,
 	INSTR_BIN_OP_16,
 	INSTR_BIN_OP_32,
@@ -157,6 +159,10 @@ struct Instr {
 			int64_t i;
 			double f;
 		} const_64;
+
+		struct {
+			uint32_t string_id;
+		} const_string;
 
 		// The same for all INSTR_BIN_OP_*
 		struct {

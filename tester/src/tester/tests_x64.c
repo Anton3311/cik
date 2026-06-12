@@ -68,6 +68,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 
 			Arena input_instr_array_allocator = arena_alloc_sub_arena(context->arena, 4096);
 			Arena symbol_arena = arena_alloc_sub_arena(context->arena, 1024);
+			Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
 
 			FunctionCompiler c = {};
 			c.function = node->function_def;
@@ -77,6 +78,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			c.input_instr_array_allocator = &input_instr_array_allocator;
 			c.pointer_type_layout = type_layout_new(8, 8);
 			c.func_ref_table.allocator = arena_allocator_new(&symbol_arena);
+			c.str_storage.allocator = arena_allocator_new(&strings_arena);
 
 			CompiledFunction func = function_compiler_compile(&c);
 			compiler_resolve_default_func_refs(&func.func_ref_table);
@@ -105,6 +107,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func.func_ref_table;
 
+			x64_merge_all_string_consts(&gen, str_storage_to_array(&c.str_storage));
 			x64_alloc_registers(&gen, allowed_registers);
 			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 			return machine_code;
@@ -784,6 +787,23 @@ void test_char_to_upper(TestContext* context) {
 
 		assert(a == toupper(input));
 	}
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_return_file_path(TestContext* context) {
+	String source_code = STR_LIT(
+			"const char* main() {\n"
+			"	return __FILE__;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef const char*(*Function)();
+	Function executable_function = (Function)machine_code.code;
+
+	const char* file_path = executable_function();
+	assert(strcmp(file_path, DEFAULT_SOURCE_FILE_PATH) == 0);
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }

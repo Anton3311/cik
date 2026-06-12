@@ -14,6 +14,29 @@ inline TypeLayout type_layout_new(size_t size, size_t alignment) {
 	return (TypeLayout) { .size = size, .alignment = alignment };
 }
 
+//
+// StringStorage
+//
+
+typedef struct {
+	Allocator allocator;
+
+	String* strings;
+	uint32_t count;
+	uint32_t capacity;
+} StringStorage;
+
+uint32_t str_storage_append(StringStorage* storage, String string);
+void str_storage_release(StringStorage* storage);
+
+inline StringArray str_storage_to_array(StringStorage* storage) {
+	return (StringArray) { .values = storage->strings, .count = storage->count };
+}
+
+//
+// FunctionCompiler
+//
+
 typedef struct {
 	const ParsedFunction* function;
 
@@ -36,6 +59,7 @@ typedef struct {
 
 	TypeLayout pointer_type_layout;
 
+	StringStorage str_storage;
 	FunctionRefTable func_ref_table;
 } FunctionCompiler;
 
@@ -45,6 +69,8 @@ typedef struct {
 	InstrUsageRange* usage_ranges;
 
 	FunctionRefTable func_ref_table;
+
+	StringArray string_consts;
 } CompiledFunction;
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);

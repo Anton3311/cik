@@ -75,6 +75,9 @@ typedef struct {
 	// A per region array of phi instructions that select a variant from that region.
 	// Size of the array is in `phi_variant_counts_per_region`
 	InstrIndex** phi_node_of_variant;
+
+	size_t* string_offsets;
+	char* all_strings_buffer;
 } X64CodeGenerator;
 
 typedef struct {
@@ -82,6 +85,7 @@ typedef struct {
 	size_t size_in_bytes;
 } MachineCodeBuffer;
 
+void x64_merge_all_string_consts(X64CodeGenerator* gen, StringArray strings);
 void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers);
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
 

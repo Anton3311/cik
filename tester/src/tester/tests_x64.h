@@ -37,6 +37,7 @@ void test_phi_placement_during_conditional_function_arg_assignment(TestContext* 
 void test_min(TestContext* context);
 void test_char_to_lower(TestContext* context);
 void test_char_to_upper(TestContext* context);
+void test_return_file_path(TestContext* context);
 
 // Encoding
 void test_encode_mov_indirect_addr(TestContext* context);

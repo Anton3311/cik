@@ -14,6 +14,8 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_CONST_32]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_CONST_64]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
+	[INSTR_CONST_STRING]           = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
 	[INSTR_BIN_OP_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_BIN_OP_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
 	[INSTR_BIN_OP_32]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
@@ -647,6 +649,15 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_emit_load_const_64(buffer, instr_storage.reg, instr->const_64.u);
 		return;
 
+	case INSTR_CONST_STRING: {
+		assert(instr_storage.kind == INSTR_STORAGE_REG);
+
+		uint32_t str_id = instr->const_string.string_id;
+		const char* string = gen->all_strings_buffer + gen->string_offsets[str_id];
+		_emit_load_const_64(buffer, instr_storage.reg, (uint64_t)string);
+		return;
+	}
+
 	case INSTR_BIN_OP_8:
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
@@ -1149,6 +1160,22 @@ static void _encode_control_instr(const Instr* instr,
 	}
 
 	return;
+}
+
+void x64_merge_all_string_consts(X64CodeGenerator* gen, StringArray strings) {
+	gen->string_offsets = arena_alloc_array(gen->allocator, size_t, strings.count);
+	gen->all_strings_buffer = arena_alloc_array(gen->allocator, char, 0);
+
+	for (size_t i = 0; i < strings.count; i += 1) {
+		size_t string_length = strings.values[i].length;
+
+		// +1 for null-terminator
+		char* string = arena_alloc_array(gen->allocator, char, string_length + 1);
+		memcpy(string, strings.values[i].v, string_length);
+		string[string_length] = 0;
+
+		gen->string_offsets[i] = string - gen->all_strings_buffer;
+	}
 }
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {

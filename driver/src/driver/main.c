@@ -172,6 +172,7 @@ int main(int argc, char *argv[]) {
 				c.temp_allocator = &temp_arena;
 				c.pointer_type_layout = type_layout_new(8, 8);
 				c.func_ref_table.allocator = heap_allocator_new();
+				c.str_storage.allocator = heap_allocator_new();
 
 				CompiledFunction func = function_compiler_compile(&c);
 				compiler_resolve_default_func_refs(&func.func_ref_table);
@@ -201,11 +202,14 @@ int main(int argc, char *argv[]) {
 				gen.temp_allocator = &temp_arena;
 				gen.ref_table = &func.func_ref_table;
 
+				x64_merge_all_string_consts(&gen, str_storage_to_array(&c.str_storage));
 				x64_alloc_registers(&gen, allowed_registers);
 				MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 
 				// Free function symbol table
 				func_ref_table_release(&func.func_ref_table);
+				// Free string storage
+				str_storage_release(&c.str_storage);
 
 				typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
 				ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;

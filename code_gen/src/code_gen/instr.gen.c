@@ -12,6 +12,7 @@ static String s_instr_kind_to_string[] = {
     [INSTR_CONST_16] = STR_LIT("const_16"),
     [INSTR_CONST_32] = STR_LIT("const_32"),
     [INSTR_CONST_64] = STR_LIT("const_64"),
+    [INSTR_CONST_STRING] = STR_LIT("const_string"),
     [INSTR_BIN_OP_8] = STR_LIT("bin_op_8"),
     [INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
     [INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
@@ -88,6 +89,8 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
     case INSTR_CONST_32:
         break;
     case INSTR_CONST_64:
+        break;
+    case INSTR_CONST_STRING:
         break;
     case INSTR_BIN_OP_8:
         instr_stack_push(out_dependencies, instr->bin_op.left);
@@ -242,6 +245,9 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_CONST_64:
         printf("u: %llu i: %lld f: %f ", instr->const_64.u, instr->const_64.i, instr->const_64.f);
+        break;
+    case INSTR_CONST_STRING:
+        printf("string_id: %u ", (uint32_t)instr->const_string.string_id);
         break;
     case INSTR_BIN_OP_8:
         printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);

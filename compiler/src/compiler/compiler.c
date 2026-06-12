@@ -1,5 +1,44 @@
 #include "compiler.h"
 
+//
+// StringStorage
+//
+
+uint32_t str_storage_append(StringStorage* storage, String string) {
+	if (storage->count == storage->capacity) {
+		uint32_t new_capacity = max(4, storage->capacity + storage->capacity / 2);
+		String* new_array = allocator_alloc_array(storage->allocator, String, new_capacity);
+
+		if (storage->count > 0) {
+			assert(storage->strings);
+			array_copy(new_array, storage->strings, storage->count);
+			allocator_release(storage->allocator, storage->strings);
+		} else {
+			assert(storage->strings == NULL);
+		}
+
+		storage->strings = new_array;
+		storage->capacity = new_capacity;
+	}
+
+	uint32_t index = storage->count;
+	storage->strings[storage->count] = string;
+	storage->count += 1;
+	return index;
+}
+
+void str_storage_release(StringStorage* storage) {
+	if (storage->strings) {
+		allocator_release(storage->allocator, storage->strings);
+	}
+
+	*storage = (StringStorage) {};
+}
+
+//
+// FunctionCompiler
+//
+
 static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const ParsedType* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_VOID:
@@ -346,8 +385,16 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 
 		return instr_index;
 	}
-	case EXPR_STRING_LITERAL:
-		break;
+	case EXPR_STRING_LITERAL: {
+		String string = expr->string_literal.full_string;
+		uint32_t string_id = str_storage_append(&compiler->str_storage, string);
+
+		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+		instr->kind = INSTR_CONST_STRING;
+		instr->const_string.string_id = string_id;
+		return instr_index;
+	}
 	case EXPR_FUNCTION_PARAM: {
 		size_t arg_index = expr->function_param.param_index;
 		assert(arg_index < compiler->function->parameter_count);

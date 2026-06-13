@@ -1440,7 +1440,16 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 		parse_escaped_string(&builder, str_content, source_file, parser->diagnostics);
 	}
 
+	Expr* size_expr = arena_alloc(parser->ast_allocator, Expr);
+	size_expr->kind = EXPR_INTEGER_LITERAL;
+	size_expr->int_literal.format = INT_LIT_FMT_DECIMAL;
+	size_expr->int_literal.integer_type = TYPE_SIZE_T;
+	// size including null-terminator
+	size_expr->int_literal.value = builder.string.length + 1;
+
 	out_literal->full_string = builder.string;
+	out_literal->array_size_expr = size_expr;
+
 }
 
 static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(Parser* parser, Expr* out_expr) {

@@ -283,6 +283,20 @@ struct Call {
 
 struct StringLiteral {
 	String full_string;
+
+	// A string literal is just a fixed size array of chars.
+	// This expression store the array size which matches the size of `full_string`.
+	// Why not just store the size as an int (or even completely avoid, as it is already packed
+	// in the above string).
+	//
+	// The string literal must also work with `expr_get_type`, which returns a result type of
+	// an expr. For a string literal it must be an array type of fixed size.
+	//
+	// In the `Type` struct array size is kept as an expr.
+	// So inside `expr_get_type` for a string literal, we need to return an array type that points
+	// to size expr, however the `expr_get_type` is not allowed to allocate anything, so the only
+	// way to this is to store a size expr in `StringLiteral` and make the array type point here.
+	Expr* array_size_expr;
 };
 
 // TODO: When implmenenting wide char support,

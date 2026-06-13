@@ -375,6 +375,7 @@ void parsed_node_list_append(NodeList* list, AstNode* node) {
 }
 
 static Type s_char_type = (Type) { .kind = TYPE_CHAR };
+static Type s_const_char_type = (Type) { .kind = TYPE_CHAR, .qualifiers = TYPE_QUALIFIER_CONST };
 
 void expr_get_type(Expr* expr, Type* out_type) {
 	switch (expr->kind) {
@@ -431,8 +432,8 @@ void expr_get_type(Expr* expr, Type* out_type) {
 	}
 	case EXPR_STRING_LITERAL:
 		out_type->kind = TYPE_POINTER;
-		out_type->qualifiers = TYPE_QUALIFIER_CONST;
-		out_type->pointer_base_type = &s_char_type;
+		out_type->array.element_type = &s_const_char_type;
+		out_type->array.size = expr->string_literal.array_size_expr;
 		return;
 	case EXPR_CHAR_LITERAL:
 		out_type->kind = TYPE_CHAR;

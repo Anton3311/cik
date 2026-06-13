@@ -1562,73 +1562,69 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 
 		unreachable();
 	} else if (token.kind == TOKEN_STRING) {
-		if (token.string.v[0] == '\'') {
-			// we have a char literal
+		// we have a string literal
+		_parser_parse_string_literal(parser, &out_expr->string_literal);
+		out_expr->kind = EXPR_STRING_LITERAL;
+		return EXPR_PARSE_OK;
+	} else if (token.kind == TOKEN_CHAR) {
+		// we have a char literal
 
-			assert(token.string.length >= 2);
-			size_t char_literal_length = token.string.length - 2; // the token includes quotes
+		assert(token.string.length >= 2);
+		size_t char_literal_length = token.string.length - 2; // the token includes quotes
 
-			String char_literal = sub_str(token.string, 1, token.string.length - 2);
-			if (char_literal_length == 0) {
-				diagnostics_report_error(parser->diagnostics,
-						token.source_range,
-						STR_LIT("Empty character constant"),
-						NULL);
+		String char_literal = sub_str(token.string, 1, token.string.length - 2);
+		if (char_literal_length == 0) {
+			diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					STR_LIT("Empty character constant"),
+					NULL);
 
-				preprocessor_next_token(parser->preprocessor);
-				return EXPR_PARSE_ERROR;
-			}
+			preprocessor_next_token(parser->preprocessor);
+			return EXPR_PARSE_ERROR;
+		}
 
-			enum {
-				CHAR_STATE_NONE,
-				CHAR_STATE_OK,
-				CHAR_STATE_TOO_LONG,
-			} char_state = CHAR_STATE_NONE;
+		enum {
+			CHAR_STATE_NONE,
+			CHAR_STATE_OK,
+			CHAR_STATE_TOO_LONG,
+		} char_state = CHAR_STATE_NONE;
 
-			if (char_literal.length == 1) {
-				char_state = CHAR_STATE_OK;
-			} else {
-				if (char_literal.v[0] == '\\') {
-					EscapedChar escaped_char = parse_escaped_char(char_literal,
-							token.source_range.source_file,
-							parser->diagnostics);
+		if (char_literal.length == 1) {
+			char_state = CHAR_STATE_OK;
+		} else {
+			if (char_literal.v[0] == '\\') {
+				EscapedChar escaped_char = parse_escaped_char(char_literal,
+						token.source_range.source_file,
+						parser->diagnostics);
 
-					if (escaped_char.escape_sequence_length == char_literal.length) {
-						char_state = CHAR_STATE_OK;
-					} else if (escaped_char.escape_sequence_length <= char_literal.length) {
-						char_state = CHAR_STATE_TOO_LONG;
-					} else {
-						unreachable();
-					}
-				} else {
+				if (escaped_char.escape_sequence_length == char_literal.length) {
+					char_state = CHAR_STATE_OK;
+				} else if (escaped_char.escape_sequence_length <= char_literal.length) {
 					char_state = CHAR_STATE_TOO_LONG;
+				} else {
+					unreachable();
 				}
+			} else {
+				char_state = CHAR_STATE_TOO_LONG;
 			}
+		}
 
-			switch (char_state) {
-			case CHAR_STATE_NONE:
-				unreachable();
-			case CHAR_STATE_OK:
-				out_expr->kind = EXPR_CHAR_LITERAL;
-				out_expr->char_literal.value = (uint32_t)token.string.v[1];
-				preprocessor_next_token(parser->preprocessor);
-				return EXPR_PARSE_OK;
-			case CHAR_STATE_TOO_LONG:
-				diagnostics_report_error(parser->diagnostics,
-						token.source_range,
-						STR_LIT("Character constant is too long"),
-						NULL);
-
-				preprocessor_next_token(parser->preprocessor);
-				return EXPR_PARSE_ERROR;
-			}
-
+		switch (char_state) {
+		case CHAR_STATE_NONE:
 			unreachable();
-		} else if (token.string.v[0] == '"') {
-			// we have a string literal
-			_parser_parse_string_literal(parser, &out_expr->string_literal);
-			out_expr->kind = EXPR_STRING_LITERAL;
+		case CHAR_STATE_OK:
+			out_expr->kind = EXPR_CHAR_LITERAL;
+			out_expr->char_literal.value = (uint32_t)token.string.v[1];
+			preprocessor_next_token(parser->preprocessor);
 			return EXPR_PARSE_OK;
+		case CHAR_STATE_TOO_LONG:
+			diagnostics_report_error(parser->diagnostics,
+					token.source_range,
+					STR_LIT("Character constant is too long"),
+					NULL);
+
+			preprocessor_next_token(parser->preprocessor);
+			return EXPR_PARSE_ERROR;
 		}
 
 		unreachable();

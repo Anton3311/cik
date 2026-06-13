@@ -78,6 +78,9 @@ RandomTokenStream _generate_random_tokens(TestContext* context, size_t token_cou
 		case TOKEN_STRING:
 			token_string = STR_LIT("\"hello world\"");
 			break;
+		case TOKEN_CHAR:
+			token_string = STR_LIT("\'h\'");
+			break;
 		default:
 			token_string = token_kind_to_string(token_kind);
 			if (token_string.length >= 2) {

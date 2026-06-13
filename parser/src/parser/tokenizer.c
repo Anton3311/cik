@@ -7,6 +7,7 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 
 	[TOKEN_IDENT] = STR_LIT("<identifier>"),
 	[TOKEN_STRING] = STR_LIT("<string>"),
+	[TOKEN_CHAR] = STR_LIT("<char>"),
 
 	[TOKEN_HASH] = STR_LIT("#"),
 	[TOKEN_DOUBLE_HASH] = STR_LIT("##"),
@@ -677,10 +678,11 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return string_token;
 	}
 	case '\'': {
-		Token string_token = {};
-		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '\'', '\'', &string_token);
+		Token char_token = {};
+		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '\'', '\'', &char_token);
 		assert(result == STR_TOKEN_RESULT_NONE);
-		return string_token;
+		char_token.kind = TOKEN_CHAR;
+		return char_token;
 	}
 	}
 

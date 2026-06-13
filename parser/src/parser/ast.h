@@ -89,49 +89,49 @@ typedef enum {
 } TypeKindFlags;
 
 typedef enum {
-	PARSED_TYPE_VOID               = 0,
+	TYPE_VOID               = 0,
 
-	PARSED_TYPE_CHAR               = 1,
-	PARSED_TYPE_INT                = 2,
-	PARSED_TYPE_SHORT              = 3,
-	PARSED_TYPE_LONG               = 4,
-	PARSED_TYPE_LONG_LONG          = 5,
-	PARSED_TYPE_INT8               = 6,
-	PARSED_TYPE_INT16              = 7,
-	PARSED_TYPE_INT32              = 8,
-	PARSED_TYPE_INT64              = 9,
+	TYPE_CHAR               = 1,
+	TYPE_INT                = 2,
+	TYPE_SHORT              = 3,
+	TYPE_LONG               = 4,
+	TYPE_LONG_LONG          = 5,
+	TYPE_INT8               = 6,
+	TYPE_INT16              = 7,
+	TYPE_INT32              = 8,
+	TYPE_INT64              = 9,
 
-	PARSED_TYPE_SIGNED_CHAR        = 1 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_INT         = 2 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_SHORT       = 3 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_LONG        = 4 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_LONG_LONG   = 5 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_INT8        = 6 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_INT16       = 7 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_INT32       = 8 | TYPE_FLAG_SIGNED,
-	PARSED_TYPE_SIGNED_INT64       = 9 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_CHAR        = 1 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_INT         = 2 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_SHORT       = 3 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_LONG        = 4 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_LONG_LONG   = 5 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_INT8        = 6 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_INT16       = 7 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_INT32       = 8 | TYPE_FLAG_SIGNED,
+	TYPE_SIGNED_INT64       = 9 | TYPE_FLAG_SIGNED,
 
-	PARSED_TYPE_UNSIGNED_CHAR      = 1 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_INT       = 2 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_SHORT     = 3 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_LONG      = 4 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_LONG_LONG = 5 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_INT8      = 6 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_INT16     = 7 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_INT32     = 8 | TYPE_FLAG_UNSIGNED,
-	PARSED_TYPE_UNSIGNED_INT64     = 9 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_CHAR      = 1 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_INT       = 2 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_SHORT     = 3 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_LONG      = 4 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_LONG_LONG = 5 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_INT8      = 6 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_INT16     = 7 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_INT32     = 8 | TYPE_FLAG_UNSIGNED,
+	TYPE_UNSIGNED_INT64     = 9 | TYPE_FLAG_UNSIGNED,
 	
-	PARSED_TYPE_SIZE_T             = 10,
+	TYPE_SIZE_T             = 10,
 
-	PARSED_TYPE_FLOAT              = 11,
-	PARSED_TYPE_DOUBLE             = 12,
+	TYPE_FLOAT              = 11,
+	TYPE_DOUBLE             = 12,
 
-	PARSED_TYPE_STRUCT             = 13,
-	PARSED_TYPE_UNION              = 14,
-	PARSED_TYPE_ENUM               = 15,
+	TYPE_STRUCT             = 13,
+	TYPE_UNION              = 14,
+	TYPE_ENUM               = 15,
 
-	PARSED_TYPE_POINTER            = 16,
-	PARSED_TYPE_ARRAY              = 17,
+	TYPE_POINTER            = 16,
+	TYPE_ARRAY              = 17,
 } TypeKind;
 
 struct Type {
@@ -158,22 +158,22 @@ void type_array_to_pointer(const Type* type, Type* out_type);
 
 inline bool type_kind_is_int(TypeKind kind) {
 	TypeKind kind_without_sign_flags = kind & ~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED);
-	return (kind_without_sign_flags >= PARSED_TYPE_CHAR
-		&& kind_without_sign_flags <= PARSED_TYPE_INT64)
-		|| kind == PARSED_TYPE_SIZE_T;
+	return (kind_without_sign_flags >= TYPE_CHAR
+		&& kind_without_sign_flags <= TYPE_INT64)
+		|| kind == TYPE_SIZE_T;
 }
 
 uint32_t type_get_int_convertion_rank(const Type* type);
 
 inline bool type_kind_is_pointer_like(TypeKind kind) {
-	return kind == PARSED_TYPE_POINTER || kind == PARSED_TYPE_ARRAY;
+	return kind == TYPE_POINTER || kind == TYPE_ARRAY;
 }
 
 inline Type* type_extract_pointer_base_type(Type* type) {
 	switch (type->kind) {
-	case PARSED_TYPE_POINTER:
+	case TYPE_POINTER:
 		return type->pointer_base_type;
-	case PARSED_TYPE_ARRAY:
+	case TYPE_ARRAY:
 		return type->array.element_type;
 	default:
 		break;

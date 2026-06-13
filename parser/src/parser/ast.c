@@ -3,7 +3,7 @@
 bool type_is_struct(const Type* type, const Struct* struct_def) {
 	assert(struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT);
 
-	if (type->kind != PARSED_TYPE_STRUCT) {
+	if (type->kind != TYPE_STRUCT) {
 		return false;
 	}
 
@@ -11,7 +11,7 @@ bool type_is_struct(const Type* type, const Struct* struct_def) {
 }
 
 bool type_is_enum(const Type* type, const Enum* enum_def) {
-	if (type->kind != PARSED_TYPE_ENUM) {
+	if (type->kind != TYPE_ENUM) {
 		return false;
 	}
 
@@ -31,56 +31,56 @@ bool type_equal(const Type* a, const Type* b) {
 	}
 
 	switch (a->kind) {
-	case PARSED_TYPE_STRUCT:
+	case TYPE_STRUCT:
 		return a->struct_def == b->struct_def;
-	case PARSED_TYPE_UNION:
+	case TYPE_UNION:
 		return a->union_def == b->union_def;
-	case PARSED_TYPE_ENUM:
+	case TYPE_ENUM:
 		return a->enum_def == b->enum_def;
-	case PARSED_TYPE_VOID:
-	case PARSED_TYPE_SIZE_T:
+	case TYPE_VOID:
+	case TYPE_SIZE_T:
 
-	case PARSED_TYPE_CHAR:
-	case PARSED_TYPE_INT:
-	case PARSED_TYPE_SHORT:
-	case PARSED_TYPE_LONG:
-	case PARSED_TYPE_LONG_LONG:
-	case PARSED_TYPE_INT8:
-	case PARSED_TYPE_INT16:
-	case PARSED_TYPE_INT32:
-	case PARSED_TYPE_INT64:
+	case TYPE_CHAR:
+	case TYPE_INT:
+	case TYPE_SHORT:
+	case TYPE_LONG:
+	case TYPE_LONG_LONG:
+	case TYPE_INT8:
+	case TYPE_INT16:
+	case TYPE_INT32:
+	case TYPE_INT64:
 
-	case PARSED_TYPE_SIGNED_CHAR:
-	case PARSED_TYPE_SIGNED_INT:
-	case PARSED_TYPE_SIGNED_SHORT:
-	case PARSED_TYPE_SIGNED_LONG:
-	case PARSED_TYPE_SIGNED_LONG_LONG:
-	case PARSED_TYPE_SIGNED_INT8:
-	case PARSED_TYPE_SIGNED_INT16:
-	case PARSED_TYPE_SIGNED_INT32:
-	case PARSED_TYPE_SIGNED_INT64:
+	case TYPE_SIGNED_CHAR:
+	case TYPE_SIGNED_INT:
+	case TYPE_SIGNED_SHORT:
+	case TYPE_SIGNED_LONG:
+	case TYPE_SIGNED_LONG_LONG:
+	case TYPE_SIGNED_INT8:
+	case TYPE_SIGNED_INT16:
+	case TYPE_SIGNED_INT32:
+	case TYPE_SIGNED_INT64:
 
 
-	case PARSED_TYPE_UNSIGNED_CHAR:
-	case PARSED_TYPE_UNSIGNED_INT:
-	case PARSED_TYPE_UNSIGNED_SHORT:
-	case PARSED_TYPE_UNSIGNED_LONG:
-	case PARSED_TYPE_UNSIGNED_LONG_LONG:
-	case PARSED_TYPE_UNSIGNED_INT8:
-	case PARSED_TYPE_UNSIGNED_INT16:
-	case PARSED_TYPE_UNSIGNED_INT32:
-	case PARSED_TYPE_UNSIGNED_INT64:
+	case TYPE_UNSIGNED_CHAR:
+	case TYPE_UNSIGNED_INT:
+	case TYPE_UNSIGNED_SHORT:
+	case TYPE_UNSIGNED_LONG:
+	case TYPE_UNSIGNED_LONG_LONG:
+	case TYPE_UNSIGNED_INT8:
+	case TYPE_UNSIGNED_INT16:
+	case TYPE_UNSIGNED_INT32:
+	case TYPE_UNSIGNED_INT64:
 
-	case PARSED_TYPE_FLOAT:
-	case PARSED_TYPE_DOUBLE:
+	case TYPE_FLOAT:
+	case TYPE_DOUBLE:
 		return true;
 	
-	case PARSED_TYPE_POINTER:
+	case TYPE_POINTER:
 		assert(a->pointer_base_type != NULL);
 		assert(b->pointer_base_type != NULL);
 		return type_equal(a->pointer_base_type, b->pointer_base_type);
 	
-	case PARSED_TYPE_ARRAY:
+	case TYPE_ARRAY:
 		assert(a->array.size == NULL);
 		assert(b->array.size == NULL);
 		return type_equal(a->array.element_type, a->array.element_type);
@@ -91,68 +91,68 @@ bool type_equal(const Type* a, const Type* b) {
 }
 
 void type_array_to_pointer(const Type* type, Type* out_type) {
-	assert(type->kind == PARSED_TYPE_ARRAY);
+	assert(type->kind == TYPE_ARRAY);
 
 	Type* element_type = type->array.element_type;
 
-	out_type->kind = PARSED_TYPE_POINTER;
+	out_type->kind = TYPE_POINTER;
 	out_type->pointer_base_type = element_type;
 }
 
 uint32_t type_get_int_convertion_rank(const Type* type) {
 	switch (type->kind) {
-	case PARSED_TYPE_VOID:
+	case TYPE_VOID:
 		unreachable();
 
-	case PARSED_TYPE_CHAR:
-	case PARSED_TYPE_SIGNED_CHAR:
-	case PARSED_TYPE_UNSIGNED_CHAR:
-	case PARSED_TYPE_INT8:
-	case PARSED_TYPE_SIGNED_INT8:
-	case PARSED_TYPE_UNSIGNED_INT8:
+	case TYPE_CHAR:
+	case TYPE_SIGNED_CHAR:
+	case TYPE_UNSIGNED_CHAR:
+	case TYPE_INT8:
+	case TYPE_SIGNED_INT8:
+	case TYPE_UNSIGNED_INT8:
 		return 1;
 
-	case PARSED_TYPE_SHORT:
-	case PARSED_TYPE_SIGNED_SHORT:
-	case PARSED_TYPE_UNSIGNED_SHORT:
-	case PARSED_TYPE_INT16:
-	case PARSED_TYPE_SIGNED_INT16:
-	case PARSED_TYPE_UNSIGNED_INT16:
+	case TYPE_SHORT:
+	case TYPE_SIGNED_SHORT:
+	case TYPE_UNSIGNED_SHORT:
+	case TYPE_INT16:
+	case TYPE_SIGNED_INT16:
+	case TYPE_UNSIGNED_INT16:
 		return 2;
 
-	case PARSED_TYPE_INT:
-	case PARSED_TYPE_SIGNED_INT:
-	case PARSED_TYPE_UNSIGNED_INT:
-	case PARSED_TYPE_LONG:
-	case PARSED_TYPE_SIGNED_LONG:
-	case PARSED_TYPE_UNSIGNED_LONG:
-	case PARSED_TYPE_INT32:
-	case PARSED_TYPE_SIGNED_INT32:
-	case PARSED_TYPE_UNSIGNED_INT32:
+	case TYPE_INT:
+	case TYPE_SIGNED_INT:
+	case TYPE_UNSIGNED_INT:
+	case TYPE_LONG:
+	case TYPE_SIGNED_LONG:
+	case TYPE_UNSIGNED_LONG:
+	case TYPE_INT32:
+	case TYPE_SIGNED_INT32:
+	case TYPE_UNSIGNED_INT32:
 		return 3;
 
-	case PARSED_TYPE_LONG_LONG:
-	case PARSED_TYPE_SIGNED_LONG_LONG:
-	case PARSED_TYPE_UNSIGNED_LONG_LONG:
-	case PARSED_TYPE_INT64:
-	case PARSED_TYPE_SIGNED_INT64:
-	case PARSED_TYPE_UNSIGNED_INT64:
+	case TYPE_LONG_LONG:
+	case TYPE_SIGNED_LONG_LONG:
+	case TYPE_UNSIGNED_LONG_LONG:
+	case TYPE_INT64:
+	case TYPE_SIGNED_INT64:
+	case TYPE_UNSIGNED_INT64:
 		return 4;
 	
-	case PARSED_TYPE_SIZE_T:
+	case TYPE_SIZE_T:
 		return 5;
 
-	case PARSED_TYPE_FLOAT:
-	case PARSED_TYPE_DOUBLE:
+	case TYPE_FLOAT:
+	case TYPE_DOUBLE:
 		break;
 
-	case PARSED_TYPE_STRUCT:
-	case PARSED_TYPE_UNION:
-	case PARSED_TYPE_ENUM:
+	case TYPE_STRUCT:
+	case TYPE_UNION:
+	case TYPE_ENUM:
 		break;
 
-	case PARSED_TYPE_POINTER:
-	case PARSED_TYPE_ARRAY:
+	case TYPE_POINTER:
+	case TYPE_ARRAY:
 		break;
 	}
 
@@ -290,27 +290,27 @@ void bin_expr_select_result_type(const Type* left_type,
 		const Type* right_type,
 		Type* out_type) {
 
-	if (left_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(right_type->kind)) {
+	if (left_type->kind == TYPE_POINTER && type_kind_is_int(right_type->kind)) {
 		*out_type = *left_type;
 		return;
 	}
 
-	if (left_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
+	if (left_type->kind == TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
 		type_array_to_pointer(left_type, out_type);
 		return;
 	}
 
-	if (right_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(left_type->kind)) {
+	if (right_type->kind == TYPE_POINTER && type_kind_is_int(left_type->kind)) {
 		*out_type = *right_type;
 		return;
 	}
 
-	if (right_type->kind == PARSED_TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
+	if (right_type->kind == TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
 		type_array_to_pointer(right_type, out_type);
 		return;
 	}
 
-	if (left_type->kind == PARSED_TYPE_POINTER && right_type->kind == PARSED_TYPE_POINTER) {
+	if (left_type->kind == TYPE_POINTER && right_type->kind == TYPE_POINTER) {
 		assert(type_equal(left_type, right_type));
 		*out_type = *left_type;
 		return;
@@ -322,8 +322,8 @@ void bin_expr_select_result_type(const Type* left_type,
 	uint32_t left_convertion_rank = type_get_int_convertion_rank(left_type);
 	uint32_t right_convertion_rank = type_get_int_convertion_rank(right_type);
 	if (left_convertion_rank == right_convertion_rank) {
-		if (left_type->kind == PARSED_TYPE_SIZE_T || right_type->kind == PARSED_TYPE_SIZE_T) {
-			out_type->kind = PARSED_TYPE_SIZE_T;
+		if (left_type->kind == TYPE_SIZE_T || right_type->kind == TYPE_SIZE_T) {
+			out_type->kind = TYPE_SIZE_T;
 		} else if (has_flag(left_type->kind, TYPE_FLAG_UNSIGNED)) {
 			*out_type = *left_type;
 		} else if (has_flag(right_type->kind, TYPE_FLAG_UNSIGNED)) {
@@ -374,7 +374,7 @@ void parsed_node_list_append(NodeList* list, AstNode* node) {
 	}
 }
 
-static Type s_char_type = (Type) { .kind = PARSED_TYPE_CHAR };
+static Type s_char_type = (Type) { .kind = TYPE_CHAR };
 
 void expr_get_type(Expr* expr, Type* out_type) {
 	switch (expr->kind) {
@@ -430,12 +430,12 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		return;
 	}
 	case EXPR_STRING_LITERAL:
-		out_type->kind = PARSED_TYPE_POINTER;
+		out_type->kind = TYPE_POINTER;
 		out_type->qualifiers = TYPE_QUALIFIER_CONST;
 		out_type->pointer_base_type = &s_char_type;
 		return;
 	case EXPR_CHAR_LITERAL:
-		out_type->kind = PARSED_TYPE_CHAR;
+		out_type->kind = TYPE_CHAR;
 		return;
 	case EXPR_ENUM_CONSTANT:
 		break;
@@ -745,52 +745,52 @@ void print_type(PrinterState* printer, const Type* type) {
 	}
 
 	switch (type->kind) {
-	case PARSED_TYPE_STRUCT:
+	case TYPE_STRUCT:
 		print_struct_def(printer, type->struct_def);
 		break;
-	case PARSED_TYPE_UNION:
+	case TYPE_UNION:
 		print_struct_def(printer, type->union_def);
 		break;
-	case PARSED_TYPE_ENUM:
+	case TYPE_ENUM:
 		print_enum_def(printer, type->enum_def);
 		break;
-	case PARSED_TYPE_VOID:
+	case TYPE_VOID:
 		printf("void\n");
 		break;
 
-	case PARSED_TYPE_SIZE_T:
+	case TYPE_SIZE_T:
 		printf("size_t\n");
 		break;
 
-	case PARSED_TYPE_CHAR:
-	case PARSED_TYPE_INT:
-	case PARSED_TYPE_SHORT:
-	case PARSED_TYPE_LONG:
-	case PARSED_TYPE_LONG_LONG:
-	case PARSED_TYPE_INT8:
-	case PARSED_TYPE_INT16:
-	case PARSED_TYPE_INT32:
-	case PARSED_TYPE_INT64:
+	case TYPE_CHAR:
+	case TYPE_INT:
+	case TYPE_SHORT:
+	case TYPE_LONG:
+	case TYPE_LONG_LONG:
+	case TYPE_INT8:
+	case TYPE_INT16:
+	case TYPE_INT32:
+	case TYPE_INT64:
 
-	case PARSED_TYPE_SIGNED_CHAR:
-	case PARSED_TYPE_SIGNED_INT:
-	case PARSED_TYPE_SIGNED_SHORT:
-	case PARSED_TYPE_SIGNED_LONG:
-	case PARSED_TYPE_SIGNED_LONG_LONG:
-	case PARSED_TYPE_SIGNED_INT8:
-	case PARSED_TYPE_SIGNED_INT16:
-	case PARSED_TYPE_SIGNED_INT32:
-	case PARSED_TYPE_SIGNED_INT64:
+	case TYPE_SIGNED_CHAR:
+	case TYPE_SIGNED_INT:
+	case TYPE_SIGNED_SHORT:
+	case TYPE_SIGNED_LONG:
+	case TYPE_SIGNED_LONG_LONG:
+	case TYPE_SIGNED_INT8:
+	case TYPE_SIGNED_INT16:
+	case TYPE_SIGNED_INT32:
+	case TYPE_SIGNED_INT64:
 
-	case PARSED_TYPE_UNSIGNED_CHAR:
-	case PARSED_TYPE_UNSIGNED_INT:
-	case PARSED_TYPE_UNSIGNED_SHORT:
-	case PARSED_TYPE_UNSIGNED_LONG:
-	case PARSED_TYPE_UNSIGNED_LONG_LONG:
-	case PARSED_TYPE_UNSIGNED_INT8:
-	case PARSED_TYPE_UNSIGNED_INT16:
-	case PARSED_TYPE_UNSIGNED_INT32:
-	case PARSED_TYPE_UNSIGNED_INT64: {
+	case TYPE_UNSIGNED_CHAR:
+	case TYPE_UNSIGNED_INT:
+	case TYPE_UNSIGNED_SHORT:
+	case TYPE_UNSIGNED_LONG:
+	case TYPE_UNSIGNED_LONG_LONG:
+	case TYPE_UNSIGNED_INT8:
+	case TYPE_UNSIGNED_INT16:
+	case TYPE_UNSIGNED_INT32:
+	case TYPE_UNSIGNED_INT64: {
 		TypeKind base_kind = type->kind & (~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
 		const char* prefix = "";
 		const char* base_type_name = "";
@@ -802,31 +802,31 @@ void print_type(PrinterState* printer, const Type* type) {
 		}
 
 		switch (base_kind) {
-		case PARSED_TYPE_CHAR:
+		case TYPE_CHAR:
 			base_type_name = "char";
 			break;
-		case PARSED_TYPE_INT:
+		case TYPE_INT:
 			base_type_name = "int";
 			break;
-		case PARSED_TYPE_SHORT:
+		case TYPE_SHORT:
 			base_type_name = "short";
 			break;
-		case PARSED_TYPE_LONG:
+		case TYPE_LONG:
 			base_type_name = "long";
 			break;
-		case PARSED_TYPE_LONG_LONG:
+		case TYPE_LONG_LONG:
 			base_type_name = "long long";
 			break;
-		case PARSED_TYPE_INT8:
+		case TYPE_INT8:
 			base_type_name = "__int8";
 			break;
-		case PARSED_TYPE_INT16:
+		case TYPE_INT16:
 			base_type_name = "__int16";
 			break;
-		case PARSED_TYPE_INT32:
+		case TYPE_INT32:
 			base_type_name = "__int32";
 			break;
-		case PARSED_TYPE_INT64:
+		case TYPE_INT64:
 			base_type_name = "__int64";
 			break;
 		default:
@@ -837,19 +837,19 @@ void print_type(PrinterState* printer, const Type* type) {
 		break;
 	}
 
-	case PARSED_TYPE_FLOAT:
+	case TYPE_FLOAT:
 		printf("float\n");
 		break;
-	case PARSED_TYPE_DOUBLE:
+	case TYPE_DOUBLE:
 		printf("double\n");
 		break;
-	case PARSED_TYPE_POINTER:
+	case TYPE_POINTER:
 		printer_begin_struct(printer, "pointer_type");
 		printer_field(printer, "base_type");
 		print_type(printer, type->pointer_base_type);
 		printer_end_struct(printer);
 		break;
-	case PARSED_TYPE_ARRAY:
+	case TYPE_ARRAY:
 		printer_begin_struct(printer, "array_type");
 		printer_field(printer, "element_type");
 		print_type(printer, type->array.element_type);

@@ -41,58 +41,58 @@ void str_storage_release(StringStorage* storage) {
 
 static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Type* type) {
 	switch (type->kind) {
-	case PARSED_TYPE_VOID:
+	case TYPE_VOID:
 		return type_layout_new(0, 0);
 
-	case PARSED_TYPE_CHAR:
-	case PARSED_TYPE_SIGNED_CHAR:
-	case PARSED_TYPE_UNSIGNED_CHAR:
-	case PARSED_TYPE_INT8:
-	case PARSED_TYPE_SIGNED_INT8:
-	case PARSED_TYPE_UNSIGNED_INT8:
+	case TYPE_CHAR:
+	case TYPE_SIGNED_CHAR:
+	case TYPE_UNSIGNED_CHAR:
+	case TYPE_INT8:
+	case TYPE_SIGNED_INT8:
+	case TYPE_UNSIGNED_INT8:
 		return type_layout_new(1, 1);
-	case PARSED_TYPE_SHORT:
-	case PARSED_TYPE_SIGNED_SHORT:
-	case PARSED_TYPE_UNSIGNED_SHORT:
-	case PARSED_TYPE_INT16:
-	case PARSED_TYPE_SIGNED_INT16:
-	case PARSED_TYPE_UNSIGNED_INT16:
+	case TYPE_SHORT:
+	case TYPE_SIGNED_SHORT:
+	case TYPE_UNSIGNED_SHORT:
+	case TYPE_INT16:
+	case TYPE_SIGNED_INT16:
+	case TYPE_UNSIGNED_INT16:
 		return type_layout_new(2, 2);
-	case PARSED_TYPE_INT:
-	case PARSED_TYPE_SIGNED_INT:
-	case PARSED_TYPE_UNSIGNED_INT:
-	case PARSED_TYPE_LONG:
-	case PARSED_TYPE_SIGNED_LONG:
-	case PARSED_TYPE_UNSIGNED_LONG:
-	case PARSED_TYPE_INT32:
-	case PARSED_TYPE_SIGNED_INT32:
-	case PARSED_TYPE_UNSIGNED_INT32:
+	case TYPE_INT:
+	case TYPE_SIGNED_INT:
+	case TYPE_UNSIGNED_INT:
+	case TYPE_LONG:
+	case TYPE_SIGNED_LONG:
+	case TYPE_UNSIGNED_LONG:
+	case TYPE_INT32:
+	case TYPE_SIGNED_INT32:
+	case TYPE_UNSIGNED_INT32:
 		return type_layout_new(4, 4);
-	case PARSED_TYPE_LONG_LONG:
-	case PARSED_TYPE_SIGNED_LONG_LONG:
-	case PARSED_TYPE_UNSIGNED_LONG_LONG:
-	case PARSED_TYPE_INT64:
-	case PARSED_TYPE_SIGNED_INT64:
-	case PARSED_TYPE_UNSIGNED_INT64:
+	case TYPE_LONG_LONG:
+	case TYPE_SIGNED_LONG_LONG:
+	case TYPE_UNSIGNED_LONG_LONG:
+	case TYPE_INT64:
+	case TYPE_SIGNED_INT64:
+	case TYPE_UNSIGNED_INT64:
 		return type_layout_new(8, 8);
 
-	case PARSED_TYPE_SIZE_T:
-	case PARSED_TYPE_POINTER:
+	case TYPE_SIZE_T:
+	case TYPE_POINTER:
 		return compiler->pointer_type_layout;
 
-	case PARSED_TYPE_FLOAT:
+	case TYPE_FLOAT:
 		return type_layout_new(4, 4);
-	case PARSED_TYPE_DOUBLE:
+	case TYPE_DOUBLE:
 		return type_layout_new(8, 8);
 
-	case PARSED_TYPE_STRUCT:
+	case TYPE_STRUCT:
 		break;
-	case PARSED_TYPE_UNION:
+	case TYPE_UNION:
 		break;
-	case PARSED_TYPE_ENUM:
+	case TYPE_ENUM:
 		break;
 
-	case PARSED_TYPE_ARRAY:
+	case TYPE_ARRAY:
 		break;
 	}
 
@@ -107,8 +107,8 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const Type* int_type,
 		const Type* target_type,
 		InstrIndex value_instr) {
-	assert(type_kind_is_int(int_type->kind) || int_type->kind == PARSED_TYPE_POINTER);
-	assert(type_kind_is_int(target_type->kind) || target_type->kind == PARSED_TYPE_POINTER);
+	assert(type_kind_is_int(int_type->kind) || int_type->kind == TYPE_POINTER);
+	assert(type_kind_is_int(target_type->kind) || target_type->kind == TYPE_POINTER);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -408,9 +408,9 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		switch (expr->unary.op) {
 		case UNARY_OP_DEREFERENCE: {
 			const Type* base_type = NULL;
-			if (operand_type.kind == PARSED_TYPE_POINTER) {
+			if (operand_type.kind == TYPE_POINTER) {
 				base_type = operand_type.pointer_base_type;
-			} else if (operand_type.kind == PARSED_TYPE_ARRAY) {
+			} else if (operand_type.kind == TYPE_ARRAY) {
 				base_type = operand_type.array.element_type;
 			} else {
 				panic("todo: report error");
@@ -829,7 +829,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			break;
 		}
 		case AST_NODE_RETURN: {
-			bool should_return_value = compiler->function->return_type.kind != PARSED_TYPE_VOID;
+			bool should_return_value = compiler->function->return_type.kind != TYPE_VOID;
 
 			if (should_return_value) {
 				assert(node->return_stmt.value != NULL);
@@ -909,7 +909,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
 	InstrIndex region = body_block.initial_region;
 
-	if (compiler->function->return_type.kind == PARSED_TYPE_VOID) {
+	if (compiler->function->return_type.kind == TYPE_VOID) {
 		if (!instr_region_finished(instr_buffer, region)) {
 			Instr* region_instr = instr_buffer_at(instr_buffer, region);
 			assert(region_instr->region.last_instr.value == INVALID_INSTR_INDEX.value);

@@ -508,10 +508,10 @@ static void _parser_gather_named_field_locations_of_anonymous_type_defs(const St
 	for (size_t i = 0; i < struct_def->field_count; i += 1) {
 		const StructField* field = &struct_def->fields[i];
 		if (field->name.string.length == 0) {
-			if (field->type.kind == PARSED_TYPE_STRUCT) {
+			if (field->type.kind == TYPE_STRUCT) {
 				const Struct* inner_def = field->type.struct_def;
 				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
-			} else if (field->type.kind == PARSED_TYPE_UNION) {
+			} else if (field->type.kind == TYPE_UNION) {
 				const Struct* inner_def = field->type.union_def;
 				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
 			}
@@ -970,8 +970,8 @@ TypeQualifiers _parser_parse_type_qualifiers(Parser* parser) {
 
 typedef enum {
 	TYPE_OR_EXPR_ERROR,
-	TYPE_OR_EXPR_PARSED_TYPE,
-	TYPE_OR_EXPR_PARSED_EXPR,
+	TYPE_OR_EXPR_TYPE,
+	TYPE_OR_EXPR_EXPR,
 } ParseTypeOrExprResult;
 
 typedef enum {
@@ -988,22 +988,22 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 	if (str_equal(token.string, STR_LIT("void"))) {
 		preprocessor_next_token(parser->preprocessor);
 
-		out_type->kind = PARSED_TYPE_VOID;
+		out_type->kind = TYPE_VOID;
 		return PARSE_TYPE_PARSED;
 	} else if (str_equal(token.string, STR_LIT("float"))) {
 		preprocessor_next_token(parser->preprocessor);
 
-		out_type->kind = PARSED_TYPE_FLOAT;
+		out_type->kind = TYPE_FLOAT;
 		return PARSE_TYPE_PARSED;
 	} else if (str_equal(token.string, STR_LIT("double"))) {
 		preprocessor_next_token(parser->preprocessor);
 
-		out_type->kind = PARSED_TYPE_DOUBLE;
+		out_type->kind = TYPE_DOUBLE;
 		return PARSE_TYPE_PARSED;
 	} else if (str_equal(token.string, STR_LIT("size_t"))) {
 		preprocessor_next_token(parser->preprocessor);
 
-		out_type->kind = PARSED_TYPE_SIZE_T;
+		out_type->kind = TYPE_SIZE_T;
 		return PARSE_TYPE_PARSED;
 	} else {
 		TypeKindFlags type_flags = TYPE_FLAG_NONE;
@@ -1023,34 +1023,34 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 
 		if (str_equal(token.string, STR_LIT("char"))) {
 			preprocessor_next_token(parser->preprocessor);
-			type_kind = PARSED_TYPE_CHAR;
+			type_kind = TYPE_CHAR;
 		} else if (str_equal(token.string, STR_LIT("int"))) {
 			preprocessor_next_token(parser->preprocessor);
-			type_kind = PARSED_TYPE_INT;
+			type_kind = TYPE_INT;
 		} else if (str_equal(token.string, STR_LIT("short"))) {
 			preprocessor_next_token(parser->preprocessor);
-			type_kind = PARSED_TYPE_SHORT;
+			type_kind = TYPE_SHORT;
 		} else if (str_equal(token.string, STR_LIT("__int8"))) {
 			preprocessor_next_token(parser->preprocessor);
-			type_kind = PARSED_TYPE_INT8;
+			type_kind = TYPE_INT8;
 		} else if (str_equal(token.string, STR_LIT("__int16"))) {
 			preprocessor_next_token(parser->preprocessor);
-			type_kind = PARSED_TYPE_INT16;
+			type_kind = TYPE_INT16;
 		} else if (str_equal(token.string, STR_LIT("__int32"))) {
 			preprocessor_next_token(parser->preprocessor);
-			type_kind = PARSED_TYPE_INT32;
+			type_kind = TYPE_INT32;
 		} else if (str_equal(token.string, STR_LIT("__int64"))) {
 			preprocessor_next_token(parser->preprocessor);
-			type_kind = PARSED_TYPE_INT64;
+			type_kind = TYPE_INT64;
 		} else if (str_equal(token.string, STR_LIT("long"))) {
 			preprocessor_next_token(parser->preprocessor);
 
 			Token next_token = preprocessor_view_next(parser->preprocessor);
 			if (next_token.kind == TOKEN_IDENT && str_equal(next_token.string, STR_LIT("long"))) {
 				preprocessor_next_token(parser->preprocessor);
-				type_kind = PARSED_TYPE_LONG_LONG;
+				type_kind = TYPE_LONG_LONG;
 			} else {
-				type_kind = PARSED_TYPE_LONG;
+				type_kind = TYPE_LONG;
 			}
 		}
 
@@ -1133,10 +1133,10 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 
 
 		if (struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT) {
-			out_type->kind = PARSED_TYPE_STRUCT;
+			out_type->kind = TYPE_STRUCT;
 			out_type->struct_def = struct_def;
 		} else {
-			out_type->kind = PARSED_TYPE_UNION;
+			out_type->kind = TYPE_UNION;
 			out_type->union_def = struct_def;
 		}
 
@@ -1147,7 +1147,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 			return PARSE_TYPE_ERROR;
 		}
 
-		out_type->kind = PARSED_TYPE_ENUM;
+		out_type->kind = TYPE_ENUM;
 		out_type->enum_def = enum_def;
 		return PARSE_TYPE_PARSED;
 	} else {
@@ -1469,21 +1469,21 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				return EXPR_PARSE_ERROR;
 			}
 
-			TypeKind int_type = PARSED_TYPE_VOID;
+			TypeKind int_type = TYPE_VOID;
 			if (literal.has_sufix) {
 				switch (literal.sufix_kind) {
 				case INT_SUFIX_NONE: {
 					assert(literal.sufix_bit_count > 0);
 					uint8_t bit_count_index = count_trailing_zeros(literal.sufix_bit_count / 8);
-					int_type = PARSED_TYPE_INT8 + bit_count_index;
+					int_type = TYPE_INT8 + bit_count_index;
 					break;
 				}
 				case INT_SUFIX_U: {
 					if (literal.sufix_bit_count > 0) {
 						uint8_t bit_count_index = count_trailing_zeros(literal.sufix_bit_count / 8);
-						int_type = PARSED_TYPE_INT8 + bit_count_index;
+						int_type = TYPE_INT8 + bit_count_index;
 					} else {
-						int_type = PARSED_TYPE_INT;
+						int_type = TYPE_INT;
 					}
 
 					int_type |= TYPE_FLAG_UNSIGNED;
@@ -1491,23 +1491,23 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				}
 				case INT_SUFIX_L:
 					assert(literal.sufix_bit_count == 0);
-					int_type = PARSED_TYPE_LONG;
+					int_type = TYPE_LONG;
 					break;
 				case INT_SUFIX_UL:
 					assert(literal.sufix_bit_count == 0);
-					int_type = PARSED_TYPE_UNSIGNED_LONG;
+					int_type = TYPE_UNSIGNED_LONG;
 					break;
 				case INT_SUFIX_LL:
 					assert(literal.sufix_bit_count == 0);
-					int_type = PARSED_TYPE_LONG_LONG;
+					int_type = TYPE_LONG_LONG;
 					break;
 				case INT_SUFIX_ULL:
 					assert(literal.sufix_bit_count == 0);
-					int_type = PARSED_TYPE_UNSIGNED_LONG_LONG;
+					int_type = TYPE_UNSIGNED_LONG_LONG;
 					break;
 				}
 			} else {
-				int_type = PARSED_TYPE_INT;
+				int_type = TYPE_INT;
 			}
 
 			out_expr->kind = EXPR_INTEGER_LITERAL;
@@ -1856,7 +1856,7 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 			*inner_type = *base_type;
 
 			*out_type = (Type) {
-				.kind = PARSED_TYPE_POINTER,
+				.kind = TYPE_POINTER,
 				.pointer_base_type = inner_type,
 				.qualifiers = qualifiers,
 			};
@@ -1915,7 +1915,7 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 			*inner_type = *base_type;
 
 			*out_type = (Type) {
-				.kind = PARSED_TYPE_ARRAY,
+				.kind = TYPE_ARRAY,
 				.array = {
 					.element_type = inner_type,
 					.size = size_expr,

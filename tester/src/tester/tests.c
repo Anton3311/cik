@@ -838,7 +838,7 @@ void test_parse_type_def_of_primitive_type(TestContext* context) {
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
 	TypeDef* type_def = first->type_def;
-	assert(type_def->aliased_type.kind == PARSED_TYPE_INT);
+	assert(type_def->aliased_type.kind == TYPE_INT);
 	assert(str_equal(type_def->new_name.string, STR_LIT("int32")));
 }
 
@@ -855,7 +855,7 @@ void test_parse_type_def_of_struct_def(TestContext* context) {
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
 	TypeDef* type_def = first->type_def;
-	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
+	assert(type_def->aliased_type.kind == TYPE_STRUCT);
 
 	Struct* struct_def = type_def->aliased_type.struct_def;
 	assert(str_equal(struct_def->name.string, STR_LIT("Hello")));
@@ -881,7 +881,7 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
 	TypeDef* type_def = first->type_def;
-	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
+	assert(type_def->aliased_type.kind == TYPE_STRUCT);
 	assert(str_equal(type_def->new_name.string, STR_LIT("World")));
 
 	Struct* hello_struct_def = type_def->aliased_type.struct_def;
@@ -892,20 +892,20 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	StructField* float_value_field = &hello_struct_def->fields[1];
 	StructField* inner_field = &hello_struct_def->fields[2];
 	
-	assert(int_value_field->type.kind == PARSED_TYPE_INT);
+	assert(int_value_field->type.kind == TYPE_INT);
 	assert(str_equal(int_value_field->name.string, STR_LIT("int_value")));
 
-	assert(float_value_field->type.kind == PARSED_TYPE_FLOAT);
+	assert(float_value_field->type.kind == TYPE_FLOAT);
 	assert(str_equal(float_value_field->name.string, STR_LIT("float_value")));
 
 	// Check InnerStruct
-	assert(inner_field->type.kind == PARSED_TYPE_STRUCT);
+	assert(inner_field->type.kind == TYPE_STRUCT);
 
 	Struct* inner_struct_def = inner_field->type.struct_def;
 	assert(str_equal(inner_struct_def->name.string, STR_LIT("InnerStruct")));
 
 	StructField* inner_value_field = inner_struct_def->fields;
-	assert(inner_value_field->type.kind == PARSED_TYPE_INT);
+	assert(inner_value_field->type.kind == TYPE_INT);
 	assert(str_equal(inner_value_field->name.string, STR_LIT("inner_value")));
 }
 
@@ -973,17 +973,17 @@ void test_parse_function_def(TestContext* context) {
 	assert(str_equal(function_def->name.string, STR_LIT("func")));
 
 	Type* return_type = &function_def->return_type;
-	assert(return_type->kind == PARSED_TYPE_VOID);
+	assert(return_type->kind == TYPE_VOID);
 
 	assert(function_def->parameter_count == 2);
 	const FunctionParam* first_param = &function_def->parameters[0];
 	const FunctionParam* second_param = &function_def->parameters[1];
 
 	assert(str_equal(first_param->name.string, STR_LIT("a")));
-	assert(first_param->type.kind == PARSED_TYPE_INT);
+	assert(first_param->type.kind == TYPE_INT);
 
 	assert(str_equal(second_param->name.string, STR_LIT("b")));
-	assert(second_param->type.kind == PARSED_TYPE_INT);
+	assert(second_param->type.kind == TYPE_INT);
 }
 
 void test_parse_forward_declared_struct(TestContext* context) {
@@ -1132,11 +1132,11 @@ void test_parse_primitive_integer_types(TestContext* context) {
 	StringBuilder builder = { .arena = context->temp_arena };
 
 	TypeKind type_kinds[] = {
-		PARSED_TYPE_CHAR,
-		PARSED_TYPE_INT,
-		PARSED_TYPE_SHORT,
-		PARSED_TYPE_LONG,
-		PARSED_TYPE_LONG_LONG
+		TYPE_CHAR,
+		TYPE_INT,
+		TYPE_SHORT,
+		TYPE_LONG,
+		TYPE_LONG_LONG
 	};
 
 	String type_kind_names[] = {
@@ -1222,7 +1222,7 @@ void test_parse_variable_declaration(TestContext* context) {
 	Variable* variable = &first_def->variable;
 	assert(str_equal(variable->name.string, STR_LIT("a")));
 	assert(variable->value == NULL);
-	assert(variable->type.kind == PARSED_TYPE_INT);
+	assert(variable->type.kind == TYPE_INT);
 }
 
 void test_parse_simple_bin_expr(TestContext* context) {
@@ -1244,12 +1244,12 @@ void test_parse_simple_bin_expr(TestContext* context) {
 	Expr* right = expr->binary.right;
 
 	assert(left->kind == EXPR_INTEGER_LITERAL);
-	assert(left->int_literal.integer_type == PARSED_TYPE_INT);
+	assert(left->int_literal.integer_type == TYPE_INT);
 	assert(left->int_literal.format == INT_LIT_FMT_HEX);
 	assert(left->int_literal.value == 255);
 
 	assert(right ->kind == EXPR_INTEGER_LITERAL);
-	assert(right->int_literal.integer_type == PARSED_TYPE_INT);
+	assert(right->int_literal.integer_type == TYPE_INT);
 	assert(right->int_literal.format == INT_LIT_FMT_DECIMAL);
 	assert(right->int_literal.value == 10);
 }
@@ -2017,21 +2017,21 @@ void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
 	};
 
 	TypeKind expected_types[] = {
-		PARSED_TYPE_INT8,
-		PARSED_TYPE_INT16,
-		PARSED_TYPE_INT32,
-		PARSED_TYPE_INT64,
+		TYPE_INT8,
+		TYPE_INT16,
+		TYPE_INT32,
+		TYPE_INT64,
 
-		PARSED_TYPE_UNSIGNED_INT8,
-		PARSED_TYPE_UNSIGNED_INT16,
-		PARSED_TYPE_UNSIGNED_INT32,
-		PARSED_TYPE_UNSIGNED_INT64,
+		TYPE_UNSIGNED_INT8,
+		TYPE_UNSIGNED_INT16,
+		TYPE_UNSIGNED_INT32,
+		TYPE_UNSIGNED_INT64,
 
-		PARSED_TYPE_UNSIGNED_INT,
-		PARSED_TYPE_LONG,
-		PARSED_TYPE_UNSIGNED_LONG,
-		PARSED_TYPE_LONG_LONG,
-		PARSED_TYPE_UNSIGNED_LONG_LONG,
+		TYPE_UNSIGNED_INT,
+		TYPE_LONG,
+		TYPE_UNSIGNED_LONG,
+		TYPE_LONG_LONG,
+		TYPE_UNSIGNED_LONG_LONG,
 	};
 
 	static_assert(array_size(sub_tests) == array_size(expected_types),

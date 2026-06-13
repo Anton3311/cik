@@ -1,4 +1,4 @@
-#include "parsed_ast.h"
+#include "ast.h"
 
 bool type_is_struct(const Type* type, const Struct* struct_def) {
 	assert(struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT);

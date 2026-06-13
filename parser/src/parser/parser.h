@@ -2,7 +2,7 @@
 #define PARSER_H
 
 #include "core/core.h"
-#include "parser/parsed_ast.h"
+#include "parser/ast.h"
 
 // A bit unnecessary, a forward declaration would've been enough
 #include "parser/tokenizer.h"

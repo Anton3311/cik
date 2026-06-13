@@ -1,7 +1,7 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
-#include "parser/parsed_ast.h"
+#include "parser/ast.h"
 #include "code_gen/instr.h"
 #include "code_gen/code_gen.h"
 

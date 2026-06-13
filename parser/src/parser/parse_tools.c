@@ -323,17 +323,6 @@ bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_re
 			&out_result->value);
 }
 
-typedef enum {
-	ESCAPED_CHAR_VALID,
-	ESCAPED_CHAR_INVALID,
-} EscapedCharResult;
-
-typedef struct {
-	EscapedCharResult result;
-	uint32_t char_value;
-	uint32_t escape_sequence_length;
-} EscapedChar;
-
 static void _report_escape_sequence_error(String string,
 		const SourceFile* file,
 		Diagnostics* diagnostics,
@@ -350,7 +339,7 @@ static void _report_escape_sequence_error(String string,
 			NULL);
 }
 
-static EscapedChar _parse_escaped_char(String string,
+EscapedChar parse_escaped_char(String string,
 		const SourceFile* file,
 		Diagnostics* diagnostics) {
 	assert(string.length >= 2);
@@ -480,7 +469,7 @@ void parse_escaped_string(StringBuilder* builder,
 
 			assert(string.length >= 2);
 
-			EscapedChar escaped_char = _parse_escaped_char(string, file, diagnostics);
+			EscapedChar escaped_char = parse_escaped_char(string, file, diagnostics);
 			if (escaped_char.result == ESCAPED_CHAR_INVALID) {
 				string.v += 1;
 				string.length -= 1;

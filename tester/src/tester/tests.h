@@ -102,4 +102,8 @@ void test_out_of_range_octal_sequence(TestContext* context);
 void test_out_of_range_hex_sequence(TestContext* context);
 void test_hex_escape_sequence_without_following_digits_fails(TestContext* context);
 
+void test_parse_empty_char_fails(TestContext* context);
+void test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long(TestContext* context);
+void test_parse_char_const_with_multiple_chars_is_tool_long(TestContext* context);
+
 #endif

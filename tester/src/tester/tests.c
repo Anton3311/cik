@@ -2210,3 +2210,47 @@ void test_hex_escape_sequence_without_following_digits_fails(TestContext* contex
 			STR_LIT("\\x"),
 			STR_LIT("Used without the following hex digits"));
 }
+
+void test_parse_empty_char_fails(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = '';"), &ast);
+
+	assert(diagnostics.first != NULL);
+	assert(str_equal(diagnostics.first->message, STR_LIT("Empty character constant")));
+}
+
+void test_parse_char_with_escape_sequence(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = '\\n';"), &ast);
+
+
+	ParsedNode* var_node = ast.root_nodes.first;
+	assert(var_node->kind == AST_NODE_VARIABLE);
+	ParsedExpr* value = var_node->variable.value;
+	assert(value->kind == EXPR_CHAR_LITERAL);
+	assert(value->char_literal.value == '\n');
+}
+
+void test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = '\\nh';"), &ast);
+
+	assert(diagnostics.first != NULL);
+	assert(str_equal(diagnostics.first->message, STR_LIT("Character constant is too long")));
+}
+
+void test_parse_char_const_with_multiple_chars_is_tool_long(TestContext* context) {
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	ParsedAST ast;
+	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = 'hello world';"), &ast);
+
+	assert(diagnostics.first != NULL);
+	assert(str_equal(diagnostics.first->message, STR_LIT("Character constant is too long")));
+}

@@ -91,6 +91,9 @@ static TestCase parser_tests[] = {
 	test(test_out_of_range_octal_sequence),
 	test(test_out_of_range_hex_sequence),
 	test(test_hex_escape_sequence_without_following_digits_fails),
+	test(test_parse_empty_char_fails),
+	test(test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long),
+	test(test_parse_char_const_with_multiple_chars_is_tool_long),
 };
 
 static TestCase compiler_tests[] = {

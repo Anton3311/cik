@@ -340,7 +340,7 @@ static void _report_escape_sequence_error(String string,
 		String message) {
 
 	SourceRange sequence_start_range = source_string_to_range((SourceString) {
-		.string = sub_str(string, 0, 2),
+		.string = string,
 		.source_file = file,
 	});
 
@@ -382,6 +382,7 @@ static EscapedChar _parse_escaped_char(String string,
 	case 'x': {
 		size_t length = 0;
 		uint32_t value = 0;
+
 		for (size_t i = 2; i < string.length; i += 1) {
 			char c = string.v[i];
 			if (c >= '0' && c <= '9') {
@@ -399,17 +400,22 @@ static EscapedChar _parse_escaped_char(String string,
 			} else {
 				break;
 			}
-
-			if (length == 4) {
-				break;
-			}
 		}
 
 		if (length == 0) {
-			_report_escape_sequence_error(string,
+			_report_escape_sequence_error(sub_str(string, 0, 2),
 					file,
 					diagnostics,
 					STR_LIT("Used without the following hex digits"));
+
+			return (EscapedChar) { ESCAPED_CHAR_INVALID };
+		}
+
+		if (value > UINT8_MAX || length > 2) {
+			_report_escape_sequence_error(sub_str(string, 0, length + 2),
+					file,
+					diagnostics,
+					STR_LIT("Hex escape sequence is out of range"));
 
 			return (EscapedChar) { ESCAPED_CHAR_INVALID };
 		}
@@ -437,11 +443,13 @@ static EscapedChar _parse_escaped_char(String string,
 			}
 		}
 
-		if (length == 0) {
-			_report_escape_sequence_error(string,
+		assert(length >= 1);
+
+		if (value > UINT8_MAX) {
+			_report_escape_sequence_error(sub_str(string, 0, length + 1),
 					file,
 					diagnostics,
-					STR_LIT("Used without the following cotal digits"));
+					STR_LIT("Octal escape sequence is out of range"));
 
 			return (EscapedChar) { ESCAPED_CHAR_INVALID };
 		}
@@ -450,7 +458,7 @@ static EscapedChar _parse_escaped_char(String string,
 	}
 	}
 
-	_report_escape_sequence_error(string,
+	_report_escape_sequence_error(sub_str(string, 0, 2),
 			file,
 			diagnostics,
 			STR_LIT("Unknown escape sequence"));

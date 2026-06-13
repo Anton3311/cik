@@ -86,6 +86,11 @@ static TestCase parser_tests[] = {
 	test(test_parse_type_of_int_literal_with_sufix),
 	test(test_simple_escape_sequences),
 	test(test_invalid_escape_sequences),
+	test(test_octal_escape_sequence),
+	test(test_hex_escape_sequence),
+	test(test_out_of_range_octal_sequence),
+	test(test_out_of_range_hex_sequence),
+	test(test_hex_escape_sequence_without_following_digits_fails),
 };
 
 static TestCase compiler_tests[] = {

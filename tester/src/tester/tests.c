@@ -2072,7 +2072,7 @@ void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
 	}
 }
 
-static void _test_parse_escape_string(Arena* allocator, String string, String expected) {
+static void _test_escape_string(Arena* allocator, String string, String expected) {
 	ArenaRegion temp = arena_begin_temp(allocator);
 
 	StringBuilder builder = { .arena = allocator };
@@ -2084,17 +2084,17 @@ static void _test_parse_escape_string(Arena* allocator, String string, String ex
 }
 
 void test_simple_escape_sequences(TestContext* context) {
-	_test_parse_escape_string(context->arena, STR_LIT("\\'"), STR_LIT("\'"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\\""), STR_LIT("\""));
-	_test_parse_escape_string(context->arena, STR_LIT("\\\\"), STR_LIT("\\"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\?"), STR_LIT("?"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\a"), STR_LIT("\a"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\b"), STR_LIT("\b"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\f"), STR_LIT("\f"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\n"), STR_LIT("\n"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\r"), STR_LIT("\r"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\t"), STR_LIT("\t"));
-	_test_parse_escape_string(context->arena, STR_LIT("\\v"), STR_LIT("\v"));
+	_test_escape_string(context->arena, STR_LIT("\\'"), STR_LIT("\'"));
+	_test_escape_string(context->arena, STR_LIT("\\\""), STR_LIT("\""));
+	_test_escape_string(context->arena, STR_LIT("\\\\"), STR_LIT("\\"));
+	_test_escape_string(context->arena, STR_LIT("\\?"), STR_LIT("?"));
+	_test_escape_string(context->arena, STR_LIT("\\a"), STR_LIT("\a"));
+	_test_escape_string(context->arena, STR_LIT("\\b"), STR_LIT("\b"));
+	_test_escape_string(context->arena, STR_LIT("\\f"), STR_LIT("\f"));
+	_test_escape_string(context->arena, STR_LIT("\\n"), STR_LIT("\n"));
+	_test_escape_string(context->arena, STR_LIT("\\r"), STR_LIT("\r"));
+	_test_escape_string(context->arena, STR_LIT("\\t"), STR_LIT("\t"));
+	_test_escape_string(context->arena, STR_LIT("\\v"), STR_LIT("\v"));
 }
 
 void test_invalid_escape_sequences(TestContext* context) {
@@ -2150,4 +2150,63 @@ void test_invalid_escape_sequences(TestContext* context) {
 
 		arena_end_temp(temp);
 	}
+}
+
+void test_octal_escape_sequence(TestContext* context) {
+	_test_escape_string(context->arena, STR_LIT("\\0"), STR_LIT("\0"));
+	_test_escape_string(context->arena, STR_LIT("\\7"), STR_LIT("\7"));
+	_test_escape_string(context->arena, STR_LIT("\\77"), STR_LIT("\77"));
+	_test_escape_string(context->arena, STR_LIT("\\377"), STR_LIT("\377"));
+	_test_escape_string(context->arena, STR_LIT("\\3777"), STR_LIT("\3777"));
+}
+
+void test_hex_escape_sequence(TestContext* context) {
+	_test_escape_string(context->arena, STR_LIT("\\x0"), STR_LIT("\x0"));
+	_test_escape_string(context->arena, STR_LIT("\\xf"), STR_LIT("\xf"));
+	_test_escape_string(context->arena, STR_LIT("\\xff"), STR_LIT("\xff"));
+}
+
+void _test_escape_string_fail(Arena* allocator, String string, String expected_error_message) {
+	ArenaRegion temp = arena_begin_temp(allocator);
+	Diagnostics diagnostics = { .allocator = allocator };
+
+	SourceFile source_file = (SourceFile) {
+		.path = STR_LIT(DEFAULT_SOURCE_PATH),
+		.source_code = string,
+		.line_info = line_info_from_source(allocator, string),
+	};
+
+	StringBuilder builder = { .arena = allocator };
+	parse_escaped_string(&builder, string, &source_file, &diagnostics);
+
+	assert(diagnostics.first != NULL);
+	assert(str_equal(diagnostics.first->message, expected_error_message));
+	SourceRange range = diagnostics.first->highlighted_ranges[0];
+	
+	assert(range.start == 0);
+	assert(range.end == string.length);
+
+	arena_end_temp(temp);
+}
+
+void test_out_of_range_octal_sequence(TestContext* context) {
+	_test_escape_string_fail(context->arena,
+			STR_LIT("\\777"),
+			STR_LIT("Octal escape sequence is out of range"));
+}
+
+void test_out_of_range_hex_sequence(TestContext* context) {
+	_test_escape_string_fail(context->arena,
+			STR_LIT("\\xfff"),
+			STR_LIT("Hex escape sequence is out of range"));
+
+	_test_escape_string_fail(context->arena,
+			STR_LIT("\\xffffffffa"),
+			STR_LIT("Hex escape sequence is out of range"));
+}
+
+void test_hex_escape_sequence_without_following_digits_fails(TestContext* context) {
+	_test_escape_string_fail(context->arena,
+			STR_LIT("\\x"),
+			STR_LIT("Used without the following hex digits"));
 }

@@ -96,5 +96,10 @@ void test_parse_type_of_int_literal_with_sufix(TestContext* context);
 
 void test_simple_escape_sequences(TestContext* context);
 void test_invalid_escape_sequences(TestContext* context);
+void test_octal_escape_sequence(TestContext* context);
+void test_hex_escape_sequence(TestContext* context);
+void test_out_of_range_octal_sequence(TestContext* context);
+void test_out_of_range_hex_sequence(TestContext* context);
+void test_hex_escape_sequence_without_following_digits_fails(TestContext* context);
 
 #endif

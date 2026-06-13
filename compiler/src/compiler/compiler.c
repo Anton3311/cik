@@ -39,7 +39,7 @@ void str_storage_release(StringStorage* storage) {
 // FunctionCompiler
 //
 
-static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const ParsedType* type) {
+static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Type* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_VOID:
 		return type_layout_new(0, 0);
@@ -100,12 +100,12 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Parse
 	return (TypeLayout) {};
 }
 
-static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr);
-static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr);
+static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr);
+static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr);
 
 static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
-		const ParsedType* int_type,
-		const ParsedType* target_type,
+		const Type* int_type,
+		const Type* target_type,
 		InstrIndex value_instr) {
 	assert(type_kind_is_int(int_type->kind) || int_type->kind == PARSED_TYPE_POINTER);
 	assert(type_kind_is_int(target_type->kind) || target_type->kind == PARSED_TYPE_POINTER);
@@ -128,20 +128,20 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 }
 
 // Compiles a binary expression without casting compare operations to an interger
-static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
+static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
 	if (expr->binary.op == BIN_OP_ASSIGNMENT) {
-		ParsedExpr* target = expr->binary.left;
+		Expr* target = expr->binary.left;
 
 		if (target->kind == EXPR_VARIABLE_REFERENCE) {
-			ParsedType value_type;
+			Type value_type;
 			expr_get_type(expr->binary.right, &value_type);
 
 			InstrIndex value = _compile_expr(compiler, expr->binary.right);
 
-			const ParsedVariable* variable = target->variable_ref;
+			const Variable* variable = target->variable_ref;
 
 			value = _compile_int_cast(compiler,
 					&value_type,
@@ -150,7 +150,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr
 			compiler->var_values[variable->id] = value;
 			return value;
 		} else if (target->kind == EXPR_FUNCTION_PARAM) {
-			ParsedType value_type;
+			Type value_type;
 			expr_get_type(expr->binary.right, &value_type);
 
 			InstrIndex value = _compile_expr(compiler, expr->binary.right);
@@ -169,8 +169,8 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr
 		}
 	}
 
-	ParsedType left_type;
-	ParsedType right_type;
+	Type left_type;
+	Type right_type;
 
 	expr_get_type(expr->binary.left, &left_type);
 	expr_get_type(expr->binary.right, &right_type);
@@ -181,7 +181,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr
 	InstrIndex left = _compile_expr(compiler, expr->binary.left);
 	InstrIndex right = _compile_expr(compiler, expr->binary.right);
 
-	ParsedType result_type;
+	Type result_type;
 	expr_get_type(expr, &result_type);
 
 	// TODO: Don't scale int constants during compare operations.
@@ -193,7 +193,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr
 	//       Since during pointer arithmetics those integer constants
 	//       encode an offset by a number of array elements and not bytes.
 	if (left_is_pointer_like && type_kind_is_int(right_type.kind)) {
-		ParsedType* base_type = type_extract_pointer_base_type(&left_type);
+		Type* base_type = type_extract_pointer_base_type(&left_type);
 		TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
 		if (value_layout.size != compiler->pointer_type_layout.size) {
@@ -210,7 +210,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr
 				right,
 				(uint8_t)shift_count);
 	} else if (right_is_pointer_like && type_kind_is_int(left_type.kind)) {
-		ParsedType* base_type = type_extract_pointer_base_type(&right_type);
+		Type* base_type = type_extract_pointer_base_type(&right_type);
 		TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
 		if (value_layout.size != compiler->pointer_type_layout.size) {
@@ -297,12 +297,12 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, ParsedExpr* expr
 	return instr_index;
 }
 
-static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
+static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 	switch (expr->kind) {
 	case EXPR_CALL: {
-		const ParsedExpr* callable = expr->call.callable;
+		const Expr* callable = expr->call.callable;
 		assert(callable->kind == EXPR_FUNCTION_REFERENCE);
 
 		assert(expr->call.args.count <= UINT16_MAX);
@@ -312,7 +312,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 				compiler->input_instr_array_allocator);
 
 		for (uint16_t i = 0; i < arg_inputs.count; i += 1) {
-			ParsedExpr* arg = expr->call.args.exprs[i];
+			Expr* arg = expr->call.args.exprs[i];
 			instr_buffer->inputs_buffer[arg_inputs.start + i] = _compile_expr(compiler, arg);
 		}
 
@@ -329,7 +329,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		return call_instr_index;
 	}
 	case EXPR_BINARY: {
-		ParsedType result_type = {};
+		Type result_type = {};
 		expr_get_type(expr, &result_type);
 
 		InstrIndex instr_index = _compile_bin_expr(compiler, expr);
@@ -356,7 +356,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 
 		assert(type_kind_is_int(expr->int_literal.integer_type));
 
-		ParsedType int_type = { .kind = expr->int_literal.integer_type };
+		Type int_type = { .kind = expr->int_literal.integer_type };
 		size_t int_size = _type_get_layout(compiler, &int_type).size;
 		switch (int_size) {
 		case 1:
@@ -402,12 +402,12 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 	}
 	case EXPR_UNARY:
 		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-		ParsedType operand_type;
+		Type operand_type;
 		expr_get_type(expr->unary.operand, &operand_type);
 
 		switch (expr->unary.op) {
 		case UNARY_OP_DEREFERENCE: {
-			const ParsedType* base_type = NULL;
+			const Type* base_type = NULL;
 			if (operand_type.kind == PARSED_TYPE_POINTER) {
 				base_type = operand_type.pointer_base_type;
 			} else if (operand_type.kind == PARSED_TYPE_ARRAY) {
@@ -482,8 +482,8 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 		return instr_index;
 	}
 	case EXPR_ARRAY_INDEX: {
-		ParsedType array_type;
-		ParsedType index_type;
+		Type array_type;
+		Type index_type;
 
 		expr_get_type(expr->array_index.array, &array_type);
 		expr_get_type(expr->array_index.index, &index_type);
@@ -498,7 +498,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, ParsedExpr* expr) {
 					compiler->pointer_type_layout.size * 8);
 		}
 
-		ParsedType* element_type = type_extract_pointer_base_type(&array_type);
+		Type* element_type = type_extract_pointer_base_type(&array_type);
 		TypeLayout element_layout = _type_get_layout(compiler, element_type);
 
 		assert(element_layout.size > 0);
@@ -588,14 +588,14 @@ typedef struct {
 	InstrIndex final_region;
 } CompiledBlockRegions;
 
-static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, ParsedNode* first_node) {
+static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, AstNode* first_node) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
 	InstrIndex initial_region = instr_new_region(instr_buffer, instr_allocator);
 	InstrIndex region_instr_index = initial_region;
 
-	for (ParsedNode* node = first_node; node != NULL; node = node->next) {
+	for (AstNode* node = first_node; node != NULL; node = node->next) {
 		Instr* region_instr = instr_buffer_at(instr_buffer, region_instr_index);
 
 		switch (node->kind) {
@@ -606,7 +606,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			compiler->var_parent_scopes[node->variable.id] = node->parent_scope;
 
 			if (node->variable.value) {
-				ParsedType value_type;
+				Type value_type;
 				expr_get_type(node->variable.value, &value_type);
 
 				InstrIndex value = _compile_expr(compiler, node->variable.value);
@@ -636,7 +636,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			instr->kind = INSTR_BRANCH;
 			
 			{
-				ParsedExpr* condition = &node->if_stmt.condition;
+				Expr* condition = &node->if_stmt.condition;
 				if (condition->kind == EXPR_BINARY && bin_op_is_compare(condition->binary.op)) {
 					instr->branch.condition = _compile_bin_expr(compiler, condition);
 				} else {
@@ -731,13 +731,13 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 				}
 
-				const ParsedScope* if_parent_scope = node->parent_scope;
+				const Scope* if_parent_scope = node->parent_scope;
 				for (size_t i = 0; i < compiler->var_count; i += 1) {
 					if (compiler->vars[i] == NULL) {
 						continue;
 					}
 
-					const ParsedScope* var_parent_scope = compiler->var_parent_scopes[i];
+					const Scope* var_parent_scope = compiler->var_parent_scopes[i];
 					if (var_parent_scope->id > if_parent_scope->id) {
 						// The variable is defined deeper down the scopes hierarachy,
 						// so it must have been defined in one of the if statement
@@ -867,14 +867,14 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 }
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
-	const ParsedScope* body = compiler->function->body;
+	const Scope* body = compiler->function->body;
 	assert(body);
 
 	// Allocate var states buffer
 	compiler->var_count = compiler->function->var_count;
-	compiler->vars = arena_alloc_array_zeroed(compiler->allocator, const ParsedVariable*, compiler->var_count);
+	compiler->vars = arena_alloc_array_zeroed(compiler->allocator, const Variable*, compiler->var_count);
 	compiler->var_values = arena_alloc_array(compiler->allocator, InstrIndex, compiler->var_count);
-	compiler->var_parent_scopes = arena_alloc_array_zeroed(compiler->allocator, const ParsedScope*, compiler->var_count);
+	compiler->var_parent_scopes = arena_alloc_array_zeroed(compiler->allocator, const Scope*, compiler->var_count);
 
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		compiler->var_values[i] = INVALID_INSTR_INDEX;

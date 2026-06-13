@@ -24,7 +24,7 @@ typedef struct {
 bool _parse(GenContext* context,
 		String file_path,
 		StringArray include_dirs,
-		ParsedAST* out_ast,
+		AST* out_ast,
 		IdentifierStorage* out_ident_storage) {
 
 	// Initialize all the required stages
@@ -105,7 +105,7 @@ void _emit_include(StringBuilder* builder, String include_path) {
 void _emit_enum_to_string_mapping(GenContext* context,
 		StringBuilder* builder,
 		String mapping_name,
-		const ParsedEnum* enum_def,
+		const Enum* enum_def,
 		bool skip_last,
 		size_t prefix_length) {
 
@@ -136,7 +136,7 @@ void _emit_enum_to_string_mapping(GenContext* context,
 // There are specifal cases, because such instruction kinds like `INSTR_BIN_OP_*`
 // are defined for different bit counts, are however implemented by the same union
 // variant in the `Instr` struct.
-static String _instr_kind_to_corresponding_instr_field(const ParsedEnum* enum_def,
+static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 		size_t variant_index,
 		Arena* temp_allocator) {
 
@@ -169,7 +169,7 @@ static void* _find_type(IdentifierStorage* ident_storage, IdentifierEntryKind ki
 	assert(kind == IDENT_STRUCT || kind == IDENT_ENUM || kind == IDENT_UNION);
 	assert(name.length > 0);
 
-	ParsedTypeKind type_kind = 0;
+	TypeKind type_kind = 0;
 	switch (kind) {
 	case IDENT_STRUCT:
 		type_kind = PARSED_TYPE_STRUCT;
@@ -190,7 +190,7 @@ static void* _find_type(IdentifierStorage* ident_storage, IdentifierEntryKind ki
 			name);
 
 	if (alias_entry) {
-		ParsedType* aliased_type = &alias_entry->type_def->aliased_type;
+		Type* aliased_type = &alias_entry->type_def->aliased_type;
 		assert_msg(aliased_type->kind == type_kind,
 				"Given type name ('%.*s') is of a different type, that it was expected",
 				STR_FMT(name));
@@ -235,7 +235,7 @@ bool _generate_instr(GenContext* context) {
 		STR_LIT("stdx"),
 	};
 
-	ParsedAST ast;
+	AST ast;
 	IdentifierStorage ident_storage;
 	if (!_parse(context,
 				STR_LIT("code_gen/src/code_gen/inst.h"),
@@ -245,25 +245,25 @@ bool _generate_instr(GenContext* context) {
 		return false;
 	}
 
-	const ParsedStruct* instr_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* instr_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("Instr"));
-	const ParsedStruct* instr_index_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* instr_index_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("InstrIndex"));
-	const ParsedEnum* instr_kind_enum = (const ParsedEnum*)_find_type(&ident_storage,
+	const Enum* instr_kind_enum = (const Enum*)_find_type(&ident_storage,
 			IDENT_ENUM,
 			STR_LIT("InstrKind"));
-	const ParsedEnum* instr_bin_op_enum = (const ParsedEnum*)_find_type(&ident_storage,
+	const Enum* instr_bin_op_enum = (const Enum*)_find_type(&ident_storage,
 			IDENT_ENUM,
 			STR_LIT("InstrBinOp"));
-	const ParsedEnum* compare_kind_enum = (const ParsedEnum*)_find_type(&ident_storage,
+	const Enum* compare_kind_enum = (const Enum*)_find_type(&ident_storage,
 			IDENT_ENUM,
 			STR_LIT("InstrCompareKind"));
-	const ParsedStruct* string_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* string_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("String"));
-	const ParsedStruct* instr_inputs_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* instr_inputs_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("InstrInputs"));
 
@@ -327,12 +327,12 @@ bool _generate_instr(GenContext* context) {
 		str_builder_append(&builder, instr_kind_enum->variants[i].name.string);
 		str_builder_append(&builder, STR_LIT(":\n"));
 
-		const ParsedStructField* field = struct_find_field(instr_struct, instr_struct_name);
+		const StructField* field = struct_find_field(instr_struct, instr_struct_name);
 		if (field) {
 			switch (field->type.kind) {
 			case PARSED_TYPE_STRUCT:
 			case PARSED_TYPE_UNION: {
-				const ParsedStruct* instr_struct = field->type.struct_def;
+				const Struct* instr_struct = field->type.struct_def;
 				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
 					if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
 						str_builder_append(&builder, STR_LIT("        instr_stack_push(out_dependencies, instr->"));
@@ -404,12 +404,12 @@ bool _generate_instr(GenContext* context) {
 		str_builder_append(&builder, variant_name);
 		str_builder_append(&builder, STR_LIT(":\n"));
 
-		const ParsedStructField* field = struct_find_field(instr_struct, instr_struct_name);
+		const StructField* field = struct_find_field(instr_struct, instr_struct_name);
 		if (field) {
 			switch (field->type.kind) {
 			case PARSED_TYPE_STRUCT:
 			case PARSED_TYPE_UNION: {
-				const ParsedStruct* instr_struct = field->type.struct_def;
+				const Struct* instr_struct = field->type.struct_def;
 				str_builder_append(&builder, STR_LIT("        printf(\""));
 
 				// First generate the format string

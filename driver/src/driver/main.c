@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
 		Parser parser = {};
 		parser_init(&parser, &ast_arena, &temp_arena, &ident_storage, &preprocessor, &diagnostics);
 
-		ParsedAST parsed_ast = {};
+		AST parsed_ast = {};
 		{
 			profile_scope_start("parse");
 			parser_parse(&parser, &parsed_ast);
@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
 			return EXIT_FAILURE;
 		}
 
-		for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+		for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 			if (node->kind == AST_NODE_FUNCTION) {
 				if (node->function_def->body == NULL) {
 					continue;

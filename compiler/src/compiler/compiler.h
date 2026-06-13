@@ -38,7 +38,7 @@ inline StringArray str_storage_to_array(StringStorage* storage) {
 //
 
 typedef struct {
-	const ParsedFunction* function;
+	const Function* function;
 
 	Arena* allocator;
 
@@ -52,8 +52,8 @@ typedef struct {
 	InstrIndex io_state;
 
 	size_t var_count;
-	const ParsedVariable** vars;
-	const ParsedScope** var_parent_scopes;
+	const Variable** vars;
+	const Scope** var_parent_scopes;
 	InstrIndex* var_values;
 	InstrIndex* arg_states;
 

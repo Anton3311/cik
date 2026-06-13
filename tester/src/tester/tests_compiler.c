@@ -44,7 +44,7 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 	Parser parser = {};
 	parser_init(&parser, &ast_arena, context->arena, &ident_storage, &preprocessor, &diagnostics);
 
-	ParsedAST parsed_ast = {};
+	AST parsed_ast = {};
 	parser_parse(&parser, &parsed_ast);
 
 	if (diagnostics.first) {
@@ -52,7 +52,7 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 		panic("Failed to parse");
 	}
 
-	for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind == AST_NODE_FUNCTION) {
 			if (node->function_def->body == NULL) {
 				continue;

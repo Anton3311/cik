@@ -774,7 +774,7 @@ void run_parser_test_2(TestContext* context,
 		Diagnostics* out_diagnostics,
 		SourceStorage* out_source_storage,
 		String source_code,
-		ParsedAST* out_ast,
+		AST* out_ast,
 		IdentifierStorage** out_ident_storage) {
 
 	source_storage_init(out_source_storage, (StringArray) {}, context->arena);
@@ -814,7 +814,7 @@ void run_parser_test(TestContext* context,
 		Diagnostics* out_diagnostics,
 		SourceStorage* out_source_storage,
 		String source_code,
-		ParsedAST* out_ast) {
+		AST* out_ast) {
 	IdentifierStorage* ident_storage;
 	run_parser_test_2(context,
 			out_diagnostics,
@@ -827,17 +827,17 @@ void run_parser_test(TestContext* context,
 void test_parse_type_def_of_primitive_type(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("typedef int int32;"), &ast);
 
 	assert(diagnostics.first == NULL);
 
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first = ast.root_nodes.first;
+	AstNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
-	ParsedTypeDef* type_def = first->type_def;
+	TypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == PARSED_TYPE_INT);
 	assert(str_equal(type_def->new_name.string, STR_LIT("int32")));
 }
@@ -845,19 +845,19 @@ void test_parse_type_def_of_primitive_type(TestContext* context) {
 void test_parse_type_def_of_struct_def(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("typedef struct Hello World;"), &ast);
 
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first = ast.root_nodes.first;
+	AstNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
-	ParsedTypeDef* type_def = first->type_def;
+	TypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
 
-	ParsedStruct* struct_def = type_def->aliased_type.struct_def;
+	Struct* struct_def = type_def->aliased_type.struct_def;
 	assert(str_equal(struct_def->name.string, STR_LIT("Hello")));
 	assert(struct_def->field_count == 0);
 
@@ -867,7 +867,7 @@ void test_parse_type_def_of_struct_def(TestContext* context) {
 void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("typedef struct Hello {\n"
 				"	int int_value;\n"
 				"	float float_value;\n"
@@ -877,20 +877,20 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first = ast.root_nodes.first;
+	AstNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_TYPE_DEF);
 
-	ParsedTypeDef* type_def = first->type_def;
+	TypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == PARSED_TYPE_STRUCT);
 	assert(str_equal(type_def->new_name.string, STR_LIT("World")));
 
-	ParsedStruct* hello_struct_def = type_def->aliased_type.struct_def;
+	Struct* hello_struct_def = type_def->aliased_type.struct_def;
 	assert(str_equal(hello_struct_def->name.string, STR_LIT("Hello")));
 	assert(hello_struct_def->field_count == 3);
 
-	ParsedStructField* int_value_field = &hello_struct_def->fields[0];
-	ParsedStructField* float_value_field = &hello_struct_def->fields[1];
-	ParsedStructField* inner_field = &hello_struct_def->fields[2];
+	StructField* int_value_field = &hello_struct_def->fields[0];
+	StructField* float_value_field = &hello_struct_def->fields[1];
+	StructField* inner_field = &hello_struct_def->fields[2];
 	
 	assert(int_value_field->type.kind == PARSED_TYPE_INT);
 	assert(str_equal(int_value_field->name.string, STR_LIT("int_value")));
@@ -901,10 +901,10 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	// Check InnerStruct
 	assert(inner_field->type.kind == PARSED_TYPE_STRUCT);
 
-	ParsedStruct* inner_struct_def = inner_field->type.struct_def;
+	Struct* inner_struct_def = inner_field->type.struct_def;
 	assert(str_equal(inner_struct_def->name.string, STR_LIT("InnerStruct")));
 
-	ParsedStructField* inner_value_field = inner_struct_def->fields;
+	StructField* inner_value_field = inner_struct_def->fields;
 	assert(inner_value_field->type.kind == PARSED_TYPE_INT);
 	assert(str_equal(inner_value_field->name.string, STR_LIT("inner_value")));
 }
@@ -912,15 +912,15 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 void test_aliased_type_resolution(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("typedef int int32;\n"
 				"int32 number;"), &ast);
 
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* type_def_node = ast.root_nodes.first;
-	ParsedNode* var_node = type_def_node->next;
+	AstNode* type_def_node = ast.root_nodes.first;
+	AstNode* var_node = type_def_node->next;
 
 	assert(type_def_node->kind == AST_NODE_TYPE_DEF);
 	assert(var_node->kind == AST_NODE_VARIABLE);
@@ -931,7 +931,7 @@ void test_aliased_type_resolution(TestContext* context) {
 void test_parse_enum_def(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("enum Type {\n"
 				"	TYPE_INT,\n"
 				"	TYPE_FLOAT\n"
@@ -941,16 +941,16 @@ void test_parse_enum_def(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first = ast.root_nodes.first;
+	AstNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_ENUM);
 
-	ParsedEnum* enum_def = first->enum_def;
+	Enum* enum_def = first->enum_def;
 	assert(enum_def != NULL);
 	assert(str_equal(enum_def->name.string, STR_LIT("Type")));
 	assert(enum_def->variant_count == 2);
 
-	ParsedEnumVariant* first_variant = &enum_def->variants[0];
-	ParsedEnumVariant* second_variant = &enum_def->variants[1];
+	EnumVariant* first_variant = &enum_def->variants[0];
+	EnumVariant* second_variant = &enum_def->variants[1];
 
 	assert(str_equal(first_variant->name.string, STR_LIT("TYPE_INT")));
 	assert(str_equal(second_variant->name.string, STR_LIT("TYPE_FLOAT")));
@@ -959,25 +959,25 @@ void test_parse_enum_def(TestContext* context) {
 void test_parse_function_def(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("void func(int a, int b);"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first = ast.root_nodes.first;
+	AstNode* first = ast.root_nodes.first;
 	assert(first->kind == AST_NODE_FUNCTION);
 
-	ParsedFunction* function_def = first->function_def;
+	Function* function_def = first->function_def;
 	assert(str_equal(function_def->name.string, STR_LIT("func")));
 
-	ParsedType* return_type = &function_def->return_type;
+	Type* return_type = &function_def->return_type;
 	assert(return_type->kind == PARSED_TYPE_VOID);
 
 	assert(function_def->parameter_count == 2);
-	const ParsedFunctionParam* first_param = &function_def->parameters[0];
-	const ParsedFunctionParam* second_param = &function_def->parameters[1];
+	const FunctionParam* first_param = &function_def->parameters[0];
+	const FunctionParam* second_param = &function_def->parameters[1];
 
 	assert(str_equal(first_param->name.string, STR_LIT("a")));
 	assert(first_param->type.kind == PARSED_TYPE_INT);
@@ -989,14 +989,14 @@ void test_parse_function_def(TestContext* context) {
 void test_parse_forward_declared_struct(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("struct Hello;"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_STRUCT);
 
 	assert(first_def->struct_def->is_forward_declared);
@@ -1005,18 +1005,18 @@ void test_parse_forward_declared_struct(TestContext* context) {
 void test_parse_forward_declared_struct_followed_by_definition(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("struct Hello; struct Hello {};"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_STRUCT);
 	assert(first_def->next != NULL);
 
-	ParsedNode* second_def = first_def->next;
+	AstNode* second_def = first_def->next;
 	assert(second_def->kind == AST_NODE_STRUCT);
 
 	assert(!first_def->struct_def->is_forward_declared);
@@ -1026,14 +1026,14 @@ void test_parse_forward_declared_struct_followed_by_definition(TestContext* cont
 void test_parse_forward_declared_enum(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("enum Hello;"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_ENUM);
 
 	assert(first_def->enum_def->is_forward_declared);
@@ -1042,18 +1042,18 @@ void test_parse_forward_declared_enum(TestContext* context) {
 void test_parse_forward_declared_enum_followed_by_definition(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("enum Hello; enum Hello {};"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_ENUM);
 	assert(first_def->next != NULL);
 
-	ParsedNode* second_def = first_def->next;
+	AstNode* second_def = first_def->next;
 	assert(second_def->kind == AST_NODE_ENUM);
 
 	assert(!first_def->enum_def->is_forward_declared);
@@ -1063,14 +1063,14 @@ void test_parse_forward_declared_enum_followed_by_definition(TestContext* contex
 void test_parse_forward_declared_function(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("int add(int a, int b);"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_FUNCTION);
 	assert(first_def->function_def->is_forward_declared);
 	assert(first_def->function_def->body == NULL);
@@ -1079,7 +1079,7 @@ void test_parse_forward_declared_function(TestContext* context) {
 void test_parse_forward_declared_function_followed_by_definition(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context,
 			&diagnostics,
 			&source_storage,
@@ -1092,11 +1092,11 @@ void test_parse_forward_declared_function_followed_by_definition(TestContext* co
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_FUNCTION);
 	assert(first_def->next != NULL);
 
-	ParsedNode* second_def = first_def->next;
+	AstNode* second_def = first_def->next;
 	assert(second_def->kind == AST_NODE_FUNCTION);
 
 	assert(!first_def->function_def->is_forward_declared);
@@ -1107,7 +1107,7 @@ void test_parse_forward_declared_function_followed_by_definition(TestContext* co
 void test_parse_function_ref_expr(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage,
 			STR_LIT(
 				"void add(int a, int b);"
@@ -1117,12 +1117,12 @@ void test_parse_function_ref_expr(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_FUNCTION);
 	assert(first_def->function_def->body != NULL);
 	assert(first_def->function_def->body->nodes.count == 1);
 
-	ParsedNode* body_node = first_def->function_def->body->nodes.first;
+	AstNode* body_node = first_def->function_def->body->nodes.first;
 	assert(body_node->kind == AST_NODE_EXPR);
 	assert(body_node->expr.kind == EXPR_FUNCTION_REFERENCE);
 	assert(body_node->expr.function_ref == first_def->function_def);
@@ -1131,7 +1131,7 @@ void test_parse_function_ref_expr(TestContext* context) {
 void test_parse_primitive_integer_types(TestContext* context) {
 	StringBuilder builder = { .arena = context->temp_arena };
 
-	ParsedTypeKind type_kinds[] = {
+	TypeKind type_kinds[] = {
 		PARSED_TYPE_CHAR,
 		PARSED_TYPE_INT,
 		PARSED_TYPE_SHORT,
@@ -1147,7 +1147,7 @@ void test_parse_primitive_integer_types(TestContext* context) {
 		STR_LIT("long long"),
 	};
 
-	ParsedTypeKindFlags type_flags[] = {
+	TypeKindFlags type_flags[] = {
 		TYPE_FLAG_NONE,
 		TYPE_FLAG_SIGNED,
 		TYPE_FLAG_UNSIGNED,
@@ -1182,21 +1182,21 @@ void test_parse_primitive_integer_types(TestContext* context) {
 
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, builder.string, &ast);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_STRUCT);
 
-	ParsedStruct* struct_def = first_def->struct_def;
+	Struct* struct_def = first_def->struct_def;
 	assert(struct_def->field_count == field_index);
 
 	{
 		size_t field_index = 0;
 		for (size_t flag_index = 0; flag_index < array_size(type_flags); flag_index += 1) {
 			for (size_t type_index = 0; type_index < array_size(type_kinds); type_index += 1) {
-				const ParsedStructField* field = &struct_def->fields[field_index];
-				ParsedTypeKind type_kind = type_kinds[type_index] | type_flags[flag_index];
+				const StructField* field = &struct_def->fields[field_index];
+				TypeKind type_kind = type_kinds[type_index] | type_flags[flag_index];
 
 				assert(field->type.kind == type_kind);
 
@@ -1209,17 +1209,17 @@ void test_parse_primitive_integer_types(TestContext* context) {
 void test_parse_variable_declaration(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("int a;"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* first_def = ast.root_nodes.first;
+	AstNode* first_def = ast.root_nodes.first;
 	assert(first_def->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* variable = &first_def->variable;
+	Variable* variable = &first_def->variable;
 	assert(str_equal(variable->name.string, STR_LIT("a")));
 	assert(variable->value == NULL);
 	assert(variable->type.kind == PARSED_TYPE_INT);
@@ -1228,7 +1228,7 @@ void test_parse_variable_declaration(TestContext* context) {
 void test_parse_simple_bin_expr(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("0xff + 10;"), &ast);
 
 	diagnostics_print(&diagnostics);
@@ -1236,12 +1236,12 @@ void test_parse_simple_bin_expr(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 
 	assert(ast.root_nodes.first->kind == AST_NODE_EXPR);
-	ParsedExpr* expr = &ast.root_nodes.first->expr;
+	Expr* expr = &ast.root_nodes.first->expr;
 	assert(expr->kind == EXPR_BINARY);
 	assert(expr->binary.op == BIN_OP_ADD);
 
-	ParsedExpr* left = expr->binary.left;
-	ParsedExpr* right = expr->binary.right;
+	Expr* left = expr->binary.left;
+	Expr* right = expr->binary.right;
 
 	assert(left->kind == EXPR_INTEGER_LITERAL);
 	assert(left->int_literal.integer_type == PARSED_TYPE_INT);
@@ -1257,7 +1257,7 @@ void test_parse_simple_bin_expr(TestContext* context) {
 void test_bin_op_precedence(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("0xff + 10 * 99 + 02;"), &ast);
 
 	diagnostics_print(&diagnostics);
@@ -1266,7 +1266,7 @@ void test_bin_op_precedence(TestContext* context) {
 
 	assert(ast.root_nodes.first->kind == AST_NODE_EXPR);
 
-	ParsedExpr* expr = &ast.root_nodes.first->expr;
+	Expr* expr = &ast.root_nodes.first->expr;
 	assert(expr->kind == EXPR_BINARY);
 
 	assert(expr->binary.left->kind == EXPR_INTEGER_LITERAL);
@@ -1274,12 +1274,12 @@ void test_bin_op_precedence(TestContext* context) {
 
 	assert(expr->binary.right->kind == EXPR_BINARY);
 
-	ParsedExpr* inner_expr = expr->binary.right;
+	Expr* inner_expr = expr->binary.right;
 	assert(inner_expr->kind == EXPR_BINARY);
 	assert(inner_expr->binary.right->kind == EXPR_INTEGER_LITERAL);
 	assert(inner_expr->binary.right->int_literal.value == 2);
 
-	ParsedExpr* product_expr = inner_expr->binary.left;
+	Expr* product_expr = inner_expr->binary.left;
 	assert(product_expr->binary.left->kind == EXPR_INTEGER_LITERAL);
 	assert(product_expr->binary.right->kind == EXPR_INTEGER_LITERAL);
 }
@@ -1287,22 +1287,22 @@ void test_bin_op_precedence(TestContext* context) {
 void test_parse_variable_ref_expr(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("int a; a + a;"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* first_node = ast.root_nodes.first;
-	ParsedNode* second_node = first_node->next;
+	AstNode* first_node = ast.root_nodes.first;
+	AstNode* second_node = first_node->next;
 
 	assert(first_node->kind == AST_NODE_VARIABLE);
 	assert(second_node->kind == AST_NODE_EXPR);
 
-	ParsedVariable* variable = &first_node->variable;
+	Variable* variable = &first_node->variable;
 
-	ParsedExpr* expr = &second_node->expr;
+	Expr* expr = &second_node->expr;
 	assert(expr->kind == EXPR_BINARY);
 
 	assert(expr->binary.left->kind == EXPR_VARIABLE_REFERENCE);
@@ -1314,20 +1314,20 @@ void test_parse_variable_ref_expr(TestContext* context) {
 void test_parse_return_stmt(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("int main() { return 0; }"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_FUNCTION);
 
-	ParsedFunction* function = node->function_def;
-	ParsedScope* body = function->body;
+	Function* function = node->function_def;
+	Scope* body = function->body;
 	assert(body->nodes.count == 1);
 
-	ParsedNode* return_node = body->nodes.first;
+	AstNode* return_node = body->nodes.first;
 	assert(return_node->kind == AST_NODE_RETURN);
 	assert(return_node->return_stmt.value);
 }
@@ -1335,20 +1335,20 @@ void test_parse_return_stmt(TestContext* context) {
 void test_parse_return_stmt_without_value(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("void main() { return; }"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_FUNCTION);
 
-	ParsedFunction* function = node->function_def;
-	ParsedScope* body = function->body;
+	Function* function = node->function_def;
+	Scope* body = function->body;
 	assert(body->nodes.count == 1);
 
-	ParsedNode* return_node = body->nodes.first;
+	AstNode* return_node = body->nodes.first;
 	assert(return_node->kind == AST_NODE_RETURN);
 	assert(return_node->return_stmt.value == NULL);
 }
@@ -1356,16 +1356,16 @@ void test_parse_return_stmt_without_value(TestContext* context) {
 void test_multi_part_string_merging(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("const char* s = \"hello\" \"world\";"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var = &node->variable;
+	Variable* var = &node->variable;
 	assert(var->value != NULL);
 	assert(var->value->kind == EXPR_STRING_LITERAL);
 	assert(str_equal(var->value->string_literal.full_string, STR_LIT("helloworld")));
@@ -1374,20 +1374,20 @@ void test_multi_part_string_merging(TestContext* context) {
 void test_parse_expr_inside_parens(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("int a = ((10) + 1);"), &ast);
 
 	diagnostics_print(&diagnostics);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var = &node->variable;
+	Variable* var = &node->variable;
 	assert(var->value != NULL);
 	assert(var->value->kind == EXPR_BINARY);
 
-	ParsedExpr* bin_expr = var->value;
+	Expr* bin_expr = var->value;
 	assert(bin_expr->binary.left->kind == EXPR_INTEGER_LITERAL);
 	assert(bin_expr->binary.left->int_literal.value == 10);
 
@@ -1398,7 +1398,7 @@ void test_parse_expr_inside_parens(TestContext* context) {
 void test_allow_variable_shadowing_in_nested_blocks(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT(
 				"int a = 1;"
 				"{"
@@ -1410,21 +1410,21 @@ void test_allow_variable_shadowing_in_nested_blocks(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var = &node->variable;
+	Variable* var = &node->variable;
 	assert(var->value != NULL);
 	assert(var->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var->value->int_literal.value == 1);
 
-	ParsedNode* block_node = node->next;
+	AstNode* block_node = node->next;
 	assert(block_node->block.nodes.count == 1);
 
-	ParsedNode* var2_node = block_node->block.nodes.first;
+	AstNode* var2_node = block_node->block.nodes.first;
 	assert(var2_node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var2 = &var2_node->variable;
+	Variable* var2 = &var2_node->variable;
 	assert(var2->value != NULL);
 	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var2->value->int_literal.value == 10);
@@ -1433,7 +1433,7 @@ void test_allow_variable_shadowing_in_nested_blocks(TestContext* context) {
 void test_allow_variable_shadowing_in_if_statements(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT(
 				"int a = 1;"
 				"if (1)"
@@ -1444,22 +1444,22 @@ void test_allow_variable_shadowing_in_if_statements(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var = &node->variable;
+	Variable* var = &node->variable;
 	assert(var->value != NULL);
 	assert(var->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var->value->int_literal.value == 1);
 
-	ParsedNode* if_stmt_node = node->next;
+	AstNode* if_stmt_node = node->next;
 	assert(if_stmt_node->kind == AST_NODE_IF);
 	assert(if_stmt_node->if_stmt.true_node != NULL);
 
-	ParsedNode* var2_node = if_stmt_node->if_stmt.true_node;
+	AstNode* var2_node = if_stmt_node->if_stmt.true_node;
 	assert(var2_node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var2 = &var2_node->variable;
+	Variable* var2 = &var2_node->variable;
 	assert(var2->value != NULL);
 	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var2->value->int_literal.value == 10);
@@ -1468,7 +1468,7 @@ void test_allow_variable_shadowing_in_if_statements(TestContext* context) {
 void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT(
 				"int a = 1;"
 				"if (1) {}"
@@ -1480,22 +1480,22 @@ void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* con
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 2);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var = &node->variable;
+	Variable* var = &node->variable;
 	assert(var->value != NULL);
 	assert(var->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var->value->int_literal.value == 1);
 
-	ParsedNode* if_stmt_node = node->next;
+	AstNode* if_stmt_node = node->next;
 	assert(if_stmt_node->kind == AST_NODE_IF);
 	assert(if_stmt_node->if_stmt.true_node != NULL);
 
-	ParsedNode* var2_node = if_stmt_node->if_stmt.false_node;
+	AstNode* var2_node = if_stmt_node->if_stmt.false_node;
 	assert(var2_node->kind == AST_NODE_VARIABLE);
 
-	ParsedVariable* var2 = &var2_node->variable;
+	Variable* var2 = &var2_node->variable;
 	assert(var2->value != NULL);
 	assert(var2->value->kind == EXPR_INTEGER_LITERAL);
 	assert(var2->value->int_literal.value == 10);
@@ -1504,7 +1504,7 @@ void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* con
 void test_parse_recursive_function(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context,
 			&diagnostics,
 			&source_storage,
@@ -1515,18 +1515,18 @@ void test_parse_recursive_function(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_FUNCTION);
 
 	assert(node->function_def->body);
-	const ParsedFunction* func = node->function_def;
+	const Function* func = node->function_def;
 	
 	assert(func->body->nodes.count == 1);
-	const ParsedNode* call = func->body->nodes.first;
+	const AstNode* call = func->body->nodes.first;
 	assert(call->kind == AST_NODE_EXPR);
 	assert(call->expr.kind == EXPR_CALL);
 
-	const ParsedExpr* callable = call->expr.call.callable;
+	const Expr* callable = call->expr.call.callable;
 	assert(callable->kind == EXPR_FUNCTION_REFERENCE);
 	assert(callable->function_ref == func);
 }
@@ -1534,7 +1534,7 @@ void test_parse_recursive_function(TestContext* context) {
 void test_parse_function_param_in_expr(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context,
 			&diagnostics,
 			&source_storage,
@@ -1545,14 +1545,14 @@ void test_parse_function_param_in_expr(TestContext* context) {
 	assert(diagnostics.first == NULL);
 	assert(ast.root_nodes.count == 1);
 
-	ParsedNode* node = ast.root_nodes.first;
+	AstNode* node = ast.root_nodes.first;
 	assert(node->kind == AST_NODE_FUNCTION);
 
 	assert(node->function_def->body);
-	const ParsedFunction* func = node->function_def;
+	const Function* func = node->function_def;
 	
 	assert(func->body->nodes.count == 1);
-	const ParsedNode* expr = func->body->nodes.first;
+	const AstNode* expr = func->body->nodes.first;
 	assert(expr->kind == AST_NODE_EXPR);
 	assert(expr->expr.kind == EXPR_FUNCTION_PARAM);
 
@@ -1563,7 +1563,7 @@ void test_parse_function_param_in_expr(TestContext* context) {
 void test_register_unnamed_function_param(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context,
 			&diagnostics,
 			&source_storage,
@@ -1608,7 +1608,7 @@ static void _run_anonymous_type_declaration_sub_test(TestContext* context, Strin
 	Parser parser = {};
 	parser_init(&parser, &ast_arena, context->temp_arena, &ident_storage, &preprocessor, &diagnostics);
 
-	ParsedAST ast;
+	AST ast;
 	parser_parse(&parser, &ast);
 
 	// WARN: Work's under the assuption that the root scope of `ident_storage`
@@ -1641,7 +1641,7 @@ void test_map_current_struct_fields(TestContext* context) {
 
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	IdentifierStorage* ident_storage;
 	run_parser_test_2(context,
 			&diagnostics,
@@ -1661,10 +1661,10 @@ void test_map_current_struct_fields(TestContext* context) {
 
 	assert(entry != NULL);
 
-	const ParsedStruct* struct_def = entry->struct_def;
+	const Struct* struct_def = entry->struct_def;
 	assert(entry != NULL);
 
-	const ParsedStructFieldNamespace* fields = struct_def->field_namespace;
+	const StructFieldNamespace* fields = struct_def->field_namespace;
 	assert(fields != NULL);
 	assert(fields->size == 3);
 
@@ -1699,7 +1699,7 @@ void test_map_current_and_inner_anonymous_struct_fields(TestContext* context) {
 
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	IdentifierStorage* ident_storage;
 	run_parser_test_2(context,
 			&diagnostics,
@@ -1719,10 +1719,10 @@ void test_map_current_and_inner_anonymous_struct_fields(TestContext* context) {
 
 	assert(entry != NULL);
 
-	const ParsedStruct* struct_def = entry->struct_def;
+	const Struct* struct_def = entry->struct_def;
 	assert(entry != NULL);
 
-	const ParsedStructFieldNamespace* fields = struct_def->field_namespace;
+	const StructFieldNamespace* fields = struct_def->field_namespace;
 	assert(fields != NULL);
 	assert(fields->size == 5);
 
@@ -1756,7 +1756,7 @@ void test_fields_not_mapped_for_struct_defined_inline_with_the_named_field(TestC
 
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	IdentifierStorage* ident_storage;
 	run_parser_test_2(context,
 			&diagnostics,
@@ -1776,10 +1776,10 @@ void test_fields_not_mapped_for_struct_defined_inline_with_the_named_field(TestC
 
 	assert(entry != NULL);
 
-	const ParsedStruct* struct_def = entry->struct_def;
+	const Struct* struct_def = entry->struct_def;
 	assert(entry != NULL);
 
-	const ParsedStructFieldNamespace* fields = struct_def->field_namespace;
+	const StructFieldNamespace* fields = struct_def->field_namespace;
 	assert(fields != NULL);
 	assert(fields->size == 5);
 
@@ -1811,7 +1811,7 @@ void test_parse_union_def(TestContext* context) {
 
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	IdentifierStorage* ident_storage;
 	run_parser_test_2(context,
 			&diagnostics,
@@ -1833,7 +1833,7 @@ void test_parse_union_def(TestContext* context) {
 
 	assert(entry->kind == IDENT_UNION);
 
-	const ParsedStruct* union_def = entry->union_def;
+	const Struct* union_def = entry->union_def;
 	assert(union_def->layout_kind == STRUCT_LAYOUT_KIND_UNION);
 }
 
@@ -2016,7 +2016,7 @@ void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
 		STR_LIT("ull;"),
 	};
 
-	ParsedTypeKind expected_types[] = {
+	TypeKind expected_types[] = {
 		PARSED_TYPE_INT8,
 		PARSED_TYPE_INT16,
 		PARSED_TYPE_INT32,
@@ -2054,16 +2054,16 @@ void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
 
 			Diagnostics diagnostics;
 			SourceStorage source_storage;
-			ParsedAST ast;
+			AST ast;
 
 			run_parser_test(context, &diagnostics, &source_storage, builder.string, &ast);
 			assert(diagnostics.first == NULL);
 
 			assert(ast.root_nodes.count == 1);
-			ParsedNode* first = ast.root_nodes.first;
+			AstNode* first = ast.root_nodes.first;
 			assert(first->kind == AST_NODE_EXPR);
 
-			ParsedExpr* expr = &first->expr;
+			Expr* expr = &first->expr;
 			assert(expr->kind == EXPR_INTEGER_LITERAL);
 			assert(expr->int_literal.format == INT_LIT_FMT_DECIMAL);
 			assert(expr->int_literal.integer_type == expected_types[i]);
@@ -2217,7 +2217,7 @@ void test_hex_escape_sequence_without_following_digits_fails(TestContext* contex
 void test_parse_empty_char_fails(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = '';"), &ast);
 
 	assert(diagnostics.first != NULL);
@@ -2227,13 +2227,13 @@ void test_parse_empty_char_fails(TestContext* context) {
 void test_parse_char_with_escape_sequence(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = '\\n';"), &ast);
 
 
-	ParsedNode* var_node = ast.root_nodes.first;
+	AstNode* var_node = ast.root_nodes.first;
 	assert(var_node->kind == AST_NODE_VARIABLE);
-	ParsedExpr* value = var_node->variable.value;
+	Expr* value = var_node->variable.value;
 	assert(value->kind == EXPR_CHAR_LITERAL);
 	assert(value->char_literal.value == '\n');
 }
@@ -2241,7 +2241,7 @@ void test_parse_char_with_escape_sequence(TestContext* context) {
 void test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = '\\nh';"), &ast);
 
 	assert(diagnostics.first != NULL);
@@ -2251,7 +2251,7 @@ void test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_lon
 void test_parse_char_const_with_multiple_chars_is_tool_long(TestContext* context) {
 	SourceStorage source_storage;
 	Diagnostics diagnostics;
-	ParsedAST ast;
+	AST ast;
 	run_parser_test(context, &diagnostics, &source_storage, STR_LIT("char a = 'hello world';"), &ast);
 
 	assert(diagnostics.first != NULL);

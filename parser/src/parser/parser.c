@@ -356,19 +356,19 @@ void ident_storage_end_scope(IdentifierStorage* storage) {
 // Parser
 //
 
-bool _parser_parse_type(Parser* parser, ParsedType* out_type, bool is_anonymous);
-bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope);
+bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous);
+bool _parser_parse_scope(Parser* parser, Scope* out_scope);
 bool _parser_parse_pre_declaration_modifiers(Parser* parser,
-		ParsedType* base_type,
-		ParsedType* out_type,
+		Type* base_type,
+		Type* out_type,
 		bool duplicate_base_type);
 
 bool _parser_parse_post_declaration_modifiers(Parser* parser,
-		ParsedType* base_type,
-		ParsedType* out_type,
+		Type* base_type,
+		Type* out_type,
 		bool duplicate_base_type);
 
-static ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token);
+static AstNode* _parser_parse_single_node(Parser* parser, Token initial_token);
 
 typedef enum {
 	EXPR_PARSE_OK,
@@ -376,8 +376,8 @@ typedef enum {
 	EXPR_PARSE_ERROR,
 } ExprParseResult;
 
-static ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr);
-static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr);
+static ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr);
+static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* out_expr);
 
 //
 // Parser Implementation
@@ -420,7 +420,7 @@ bool _parser_expect_semicolon(Parser* parser, String error_message) {
 
 // TODO: Don't reset `ast_allocator` because, during testing that same `ast_allocator`
 //       is used for diagnostics and reseting it corrupts diagnostics state
-static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count, ParsedStructField** out_fields) {
+static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count, StructField** out_fields) {
 	assert(out_field_count != NULL);
 	assert(out_fields != NULL);
 
@@ -430,7 +430,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 	ArenaRegion ast_temp = arena_begin_temp(parser->ast_allocator);
 	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
 
-	ParsedStructField* fields = arena_alloc_array(parser->temp_allocator, ParsedStructField, 0);
+	StructField* fields = arena_alloc_array(parser->temp_allocator, StructField, 0);
 	size_t field_count = 0;
 
 	while (true) {
@@ -442,7 +442,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 			}
 		}
 
-		ParsedStructField* field = arena_alloc_zeroed(parser->temp_allocator, ParsedStructField);
+		StructField* field = arena_alloc_zeroed(parser->temp_allocator, StructField);
 		field_count += 1;
 
 		if (!_parser_parse_type(parser, &field->type, true)) {
@@ -483,7 +483,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 	if (field_count == 0) {
 		*out_fields = NULL;
 	} else {
-		*out_fields = arena_alloc_array(parser->ast_allocator, ParsedStructField, field_count);
+		*out_fields = arena_alloc_array(parser->ast_allocator, StructField, field_count);
 		array_copy(*out_fields, fields, field_count);
 	}
 
@@ -492,7 +492,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 }
 
 typedef struct {
-	const ParsedStruct* struct_def;
+	const Struct* struct_def;
 	size_t field_index;
 } NamedFieldLocation;
 
@@ -502,17 +502,17 @@ typedef struct {
 	Arena* allocator;
 } NamedFieldLocationArray;
 
-static void _parser_gather_named_field_locations_of_anonymous_type_defs(const ParsedStruct* struct_def,
+static void _parser_gather_named_field_locations_of_anonymous_type_defs(const Struct* struct_def,
 		NamedFieldLocationArray* out_field_locations) {
 
 	for (size_t i = 0; i < struct_def->field_count; i += 1) {
-		const ParsedStructField* field = &struct_def->fields[i];
+		const StructField* field = &struct_def->fields[i];
 		if (field->name.string.length == 0) {
 			if (field->type.kind == PARSED_TYPE_STRUCT) {
-				const ParsedStruct* inner_def = field->type.struct_def;
+				const Struct* inner_def = field->type.struct_def;
 				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
 			} else if (field->type.kind == PARSED_TYPE_UNION) {
-				const ParsedStruct* inner_def = field->type.union_def;
+				const Struct* inner_def = field->type.union_def;
 				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
 			}
 		} else {
@@ -526,7 +526,7 @@ static void _parser_gather_named_field_locations_of_anonymous_type_defs(const Pa
 	}
 }
 
-static void _parser_initialize_struct_fields_namespace(ParsedStruct* struct_def,
+static void _parser_initialize_struct_fields_namespace(Struct* struct_def,
 		Arena* allocator,
 		Arena* temp_allocator) {
 
@@ -542,7 +542,7 @@ static void _parser_initialize_struct_fields_namespace(ParsedStruct* struct_def,
 			struct_def,
 			&named_field_locations);
 
-	ParsedStructFieldNamespace* field_namespace = arena_alloc_zeroed(allocator, ParsedStructFieldNamespace);
+	StructFieldNamespace* field_namespace = arena_alloc_zeroed(allocator, StructFieldNamespace);
 	field_namespace->size = 0;
 	field_namespace->capacity = named_field_locations.count * 2;
 	field_namespace->keys = arena_alloc_array_zeroed(allocator,
@@ -550,19 +550,19 @@ static void _parser_initialize_struct_fields_namespace(ParsedStruct* struct_def,
 			field_namespace->capacity);
 
 	field_namespace->entries = arena_alloc_array_zeroed(allocator,
-			ParsedStructFieldNamespaceEntry,
+			StructFieldNamespaceEntry,
 			field_namespace->capacity);
 
 	for (size_t i = 0; i < named_field_locations.count; i += 1) {
 		NamedFieldLocation loc = named_field_locations.locations[i];
-		const ParsedStructField* field = &loc.struct_def->fields[loc.field_index];
+		const StructField* field = &loc.struct_def->fields[loc.field_index];
 		size_t index = hash_string(field->name.string) % field_namespace->capacity;
 
 		while (true) {
 			String key = field_namespace->keys[index];
 			if (key.v == NULL) {
 				field_namespace->keys[index] = field->name.string;
-				field_namespace->entries[index] = (ParsedStructFieldNamespaceEntry) {
+				field_namespace->entries[index] = (StructFieldNamespaceEntry) {
 					.struct_def = loc.struct_def,
 					.field_index = loc.field_index,
 				};
@@ -584,7 +584,7 @@ static void _parser_initialize_struct_fields_namespace(ParsedStruct* struct_def,
 	profile_scope_end();
 }
 
-bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, bool is_anonymous) {
+bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_anonymous) {
 	assert(out_struct_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -599,7 +599,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 		: IDENT_UNION;
 
 	SourceString struct_name = {};
-	ParsedStructField* fields = NULL;
+	StructField* fields = NULL;
 	size_t field_count = 0;
 	bool is_forward_declared = true;
 
@@ -619,9 +619,9 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 	}
 
 	bool struct_def_initialized = false;
-	ParsedStruct* struct_def = NULL;
+	Struct* struct_def = NULL;
 	if (struct_name.string.length == 0) {
-		struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
+		struct_def = arena_alloc_zeroed(parser->ast_allocator, Struct);
 		struct_def_initialized = false;
 	} else if (!is_anonymous) {
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
@@ -671,7 +671,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 			}
 		} else {
 			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, ident_kind, struct_name);
-			struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
+			struct_def = arena_alloc_zeroed(parser->ast_allocator, Struct);
 
 			if (is_struct) {
 				entry->struct_def = struct_def;
@@ -680,7 +680,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 			}
 		}
 	} else {
-		struct_def = arena_alloc_zeroed(parser->ast_allocator, ParsedStruct);
+		struct_def = arena_alloc_zeroed(parser->ast_allocator, Struct);
 		struct_def_initialized = false;
 	}
 
@@ -709,7 +709,7 @@ bool _parser_parse_struct_def(Parser* parser, ParsedStruct** out_struct_def, boo
 	return true;
 }
 
-bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, ParsedEnumVariant** out_variants) {
+bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, EnumVariant** out_variants) {
 	assert(out_variant_count != NULL);
 	assert(out_variants != NULL);
 
@@ -722,7 +722,7 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 
 	bool result = true;
 	size_t variant_count = 0;
-	ParsedEnumVariant* variants = arena_alloc_array(parser->temp_allocator, ParsedEnumVariant, 0);
+	EnumVariant* variants = arena_alloc_array(parser->temp_allocator, EnumVariant, 0);
 
 	while (true) {
 		{
@@ -744,7 +744,7 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 			break;
 		}
 
-		ParsedEnumVariant* variant = arena_alloc_zeroed(parser->temp_allocator, ParsedEnumVariant);
+		EnumVariant* variant = arena_alloc_zeroed(parser->temp_allocator, EnumVariant);
 		variant->name = source_string_from_token(name_token);
 		variant_count += 1;
 
@@ -753,7 +753,7 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 		if (equal_token.kind == TOKEN_EQUAL) {
 			preprocessor_next_token(parser->preprocessor);
 
-			ParsedExpr* value = arena_alloc(parser->ast_allocator, ParsedExpr);
+			Expr* value = arena_alloc(parser->ast_allocator, Expr);
 			switch (_parser_try_parse_expr(parser, value)) {
 			case EXPR_PARSE_OK:
 				variant->value = value;
@@ -795,7 +795,7 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 
 	if (variant_count > 0) {
 		*out_variant_count = variant_count;
-		*out_variants = arena_alloc_array(parser->ast_allocator, ParsedEnumVariant, variant_count);
+		*out_variants = arena_alloc_array(parser->ast_allocator, EnumVariant, variant_count);
 		array_copy(*out_variants, variants, variant_count);
 	} else {
 		*out_variant_count = 0;
@@ -806,9 +806,9 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Pars
 	return true;
 }
 
-void _parser_register_enum_variants(Parser* parser, ParsedEnum* enum_def) {
+void _parser_register_enum_variants(Parser* parser, Enum* enum_def) {
 	for (size_t i = 0; i < enum_def->variant_count; i += 1) {
-		ParsedEnumVariant variant = enum_def->variants[i];
+		EnumVariant variant = enum_def->variants[i];
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				IDENT_FIND_DEFAULT,
@@ -841,14 +841,14 @@ void _parser_register_enum_variants(Parser* parser, ParsedEnum* enum_def) {
 	}
 }
 
-bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def, bool is_anonymous) {
+bool _parser_parse_enum_def(Parser* parser, Enum** out_enum_def, bool is_anonymous) {
 	assert(out_enum_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
 	assert(keyword_token.kind == TOKEN_KEYWORD_ENUM);
 
 	SourceString enum_name = {};
-	ParsedEnumVariant* variants = NULL;
+	EnumVariant* variants = NULL;
 	size_t variant_count = 0;
 	bool is_forward_declared = true;
 
@@ -871,7 +871,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def, bool is_a
 		assert(variant_count > 0);
 	}
 
-	ParsedEnum* enum_def = NULL;
+	Enum* enum_def = NULL;
 	if (enum_name.string.length > 0 && !is_anonymous) {
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_TAGGED,
@@ -920,7 +920,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def, bool is_a
 		} else {
 			entry = ident_storage_insert(parser->ident_storage, IDENT_NAMESPACE_TAGGED, IDENT_ENUM, enum_name);
 
-			enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
+			enum_def = arena_alloc(parser->ast_allocator, Enum);
 			memset(enum_def, 0, sizeof(*enum_def));
 			
 			enum_def->name = enum_name;
@@ -929,7 +929,7 @@ bool _parser_parse_enum_def(Parser* parser, ParsedEnum** out_enum_def, bool is_a
 			entry->enum_def = enum_def;
 		}
 	} else {
-		enum_def = arena_alloc(parser->ast_allocator, ParsedEnum);
+		enum_def = arena_alloc(parser->ast_allocator, Enum);
 		memset(enum_def, 0, sizeof(*enum_def));
 
 		enum_def->name = enum_name;
@@ -980,7 +980,7 @@ typedef enum {
 	PARSE_TYPE_ERROR,
 } ParseTypeResult;
 
-ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out_type) {
+ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type) {
 	assert(out_type != NULL);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
@@ -1006,7 +1006,7 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out
 		out_type->kind = PARSED_TYPE_SIZE_T;
 		return PARSE_TYPE_PARSED;
 	} else {
-		ParsedTypeKindFlags type_flags = TYPE_FLAG_NONE;
+		TypeKindFlags type_flags = TYPE_FLAG_NONE;
 		if (str_equal(token.string, STR_LIT("signed"))) {
 			preprocessor_next_token(parser->preprocessor);
 
@@ -1019,7 +1019,7 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out
 			token = preprocessor_view_next(parser->preprocessor);
 		}
 
-		ParsedTypeKind type_kind = INT32_MAX;
+		TypeKind type_kind = INT32_MAX;
 
 		if (str_equal(token.string, STR_LIT("char"))) {
 			preprocessor_next_token(parser->preprocessor);
@@ -1069,7 +1069,7 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, ParsedType* out
 	return PARSE_TYPE_NOT_PARSED;
 }
 
-ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out_type, bool is_anonymous) {
+ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
@@ -1126,7 +1126,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 
 		unreachable();
 	} else if (token.kind == TOKEN_KEYWORD_STRUCT || token.kind == TOKEN_KEYWORD_UNION) {
-		ParsedStruct* struct_def = {};
+		Struct* struct_def = {};
 		if (!_parser_parse_struct_def(parser, &struct_def, is_anonymous)) {
 			return PARSE_TYPE_ERROR;
 		}
@@ -1142,7 +1142,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 
 		return PARSE_TYPE_PARSED;
 	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
-		ParsedEnum* enum_def = {};
+		Enum* enum_def = {};
 		if (!_parser_parse_enum_def(parser, &enum_def, is_anonymous)) {
 			return PARSE_TYPE_ERROR;
 		}
@@ -1172,7 +1172,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, ParsedType* out
 	return PARSE_TYPE_ERROR;
 }
 
-bool _parser_parse_type(Parser* parser, ParsedType* out_type, bool is_anonymous) {
+bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
 	// First parse qualifiers
@@ -1191,11 +1191,11 @@ bool _parser_parse_type(Parser* parser, ParsedType* out_type, bool is_anonymous)
 	return false;
 }
 
-ParsedNode* _parser_parse_type_def(Parser* parser) {
+AstNode* _parser_parse_type_def(Parser* parser) {
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
 	assert(keyword_token.kind == TOKEN_KEYWORD_TYPEDEF);
 
-	ParsedType aliased_type = {};
+	Type aliased_type = {};
 	if (!_parser_parse_type(parser, &aliased_type, false)) {
 		return NULL;
 	}
@@ -1230,7 +1230,7 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 		return NULL;
 	}
 
-	ParsedTypeDef* type_def = arena_alloc(parser->ast_allocator, ParsedTypeDef);
+	TypeDef* type_def = arena_alloc(parser->ast_allocator, TypeDef);
 	memset(type_def, 0, sizeof(*type_def));
 	
 	type_def->new_name = source_string_from_token(new_name);
@@ -1249,14 +1249,14 @@ ParsedNode* _parser_parse_type_def(Parser* parser) {
 
 	entry->type_def = type_def;
 
-	ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	node->kind = AST_NODE_TYPE_DEF;
 	node->type_def = type_def;
 	return node;
 }
 
 static bool _parser_parse_function_params(Parser* parser,
-		ParsedFunctionParam** out_params,
+		FunctionParam** out_params,
 		size_t* out_param_count,
 		bool* out_has_va_args) {
 
@@ -1266,7 +1266,7 @@ static bool _parser_parse_function_params(Parser* parser,
 	ArenaRegion ast_temp = arena_begin_temp(parser->ast_allocator);
 	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
 
-	ParsedFunctionParam* params = arena_alloc_array(parser->temp_allocator, ParsedFunctionParam, 0);
+	FunctionParam* params = arena_alloc_array(parser->temp_allocator, FunctionParam, 0);
 	size_t param_count = 0;
 	bool has_va_args = false;
 
@@ -1297,7 +1297,7 @@ static bool _parser_parse_function_params(Parser* parser,
 			}
 		}
 
-		ParsedFunctionParam* param = arena_alloc_zeroed(parser->temp_allocator, ParsedFunctionParam);
+		FunctionParam* param = arena_alloc_zeroed(parser->temp_allocator, FunctionParam);
 		param_count += 1;
 
 		if (!_parser_parse_type(parser, &param->type, true)) {
@@ -1338,7 +1338,7 @@ static bool _parser_parse_function_params(Parser* parser,
 	if (param_count == 0) {
 		*out_params = NULL;
 	} else {
-		*out_params = arena_alloc_array(parser->ast_allocator, ParsedFunctionParam, param_count);
+		*out_params = arena_alloc_array(parser->ast_allocator, FunctionParam, param_count);
 		array_copy(*out_params, params, param_count);
 	}
 
@@ -1424,7 +1424,7 @@ bool _token_kind_to_unary_pre_op(TokenKind kind, UnaryOpKind* out_op) {
 	return false;
 }
 
-void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* out_literal) {
+void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 	StringBuilder builder = { .arena = parser->ast_allocator };
 
 	while (true) {
@@ -1443,7 +1443,7 @@ void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* out_liter
 	out_literal->full_string = builder.string;
 }
 
-static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(Parser* parser, ParsedExpr* out_expr) {
+static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(Parser* parser, Expr* out_expr) {
 	Token token = preprocessor_view_next(parser->preprocessor);
 
 	UnaryOpKind unary_op;
@@ -1451,7 +1451,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		preprocessor_next_token(parser->preprocessor);
 
 		out_expr->kind = EXPR_UNARY;
-		out_expr->unary.operand = arena_alloc(parser->ast_allocator, ParsedExpr);
+		out_expr->unary.operand = arena_alloc(parser->ast_allocator, Expr);
 		out_expr->unary.op = unary_op;
 
 		return _parser_try_parse_bin_expr_operand(parser, out_expr->unary.operand);
@@ -1469,7 +1469,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				return EXPR_PARSE_ERROR;
 			}
 
-			ParsedTypeKind int_type = PARSED_TYPE_VOID;
+			TypeKind int_type = PARSED_TYPE_VOID;
 			if (literal.has_sufix) {
 				switch (literal.sufix_kind) {
 				case INT_SUFIX_NONE: {
@@ -1511,7 +1511,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			}
 
 			out_expr->kind = EXPR_INTEGER_LITERAL;
-			out_expr->int_literal = (ParsedIntegerLiteral) {
+			out_expr->int_literal = (IntegerLiteral) {
 				.format = literal.format,
 				.integer_type = int_type,
 				.value = literal.value,
@@ -1653,15 +1653,15 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 	return EXPR_PARSE_NOT_PARSED;
 }
 
-static ExprParseResult _parser_parse_arg_list(Parser* parser, ParsedExprArray* out_expr_array) {
+static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_expr_array) {
 	Token left_paren = preprocessor_next_token(parser->preprocessor);
 	assert(left_paren.kind == TOKEN_LEFT_PAREN);
 
 	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
 
-	ParsedExprArray args = {};
+	ExprArray args = {};
 	args.count = 0;
-	args.exprs = arena_alloc_array(parser->temp_allocator, ParsedExpr*, 0);
+	args.exprs = arena_alloc_array(parser->temp_allocator, Expr*, 0);
 
 	while (true) {
 		Token maybe_right_paren = preprocessor_view_next(parser->preprocessor);
@@ -1670,14 +1670,14 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ParsedExprArray* o
 			break;
 		}
 
-		ParsedExpr* arg = arena_alloc(parser->ast_allocator, ParsedExpr);
+		Expr* arg = arena_alloc(parser->ast_allocator, Expr);
 		ExprParseResult result = _parser_try_parse_expr(parser, arg);
 		if (result != EXPR_PARSE_OK) {
 			arena_end_temp(temp);
 			return result;
 		}
 
-		arena_alloc(parser->temp_allocator, ParsedExpr);
+		arena_alloc(parser->temp_allocator, Expr);
 		args.exprs[args.count] = arg;
 		args.count += 1;
 
@@ -1699,7 +1699,7 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ParsedExprArray* o
 	}
 
 	out_expr_array->count = args.count;
-	out_expr_array->exprs = arena_alloc_array(parser->ast_allocator, ParsedExpr*, args.count);
+	out_expr_array->exprs = arena_alloc_array(parser->ast_allocator, Expr*, args.count);
 	memcpy(out_expr_array->exprs, args.exprs, sizeof(*args.exprs) * args.count);
 
 	arena_end_temp(temp);
@@ -1708,7 +1708,7 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ParsedExprArray* o
 
 // Tries to parse an expression operand + any post fix operators,
 // like increment, decrement, array access, member access or a call
-static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, ParsedExpr* out_expr) {
+static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* out_expr) {
 	ExprParseResult result = _parser_try_parse_expr_operand_without_post_fix_operator(parser, out_expr);
 	if (result != EXPR_PARSE_OK) {
 		return result;
@@ -1719,13 +1719,13 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Parsed
 		if (operator_token.kind == TOKEN_LEFT_PAREN) {
 			// We've got a function call
 			
-			ParsedExprArray args;
+			ExprArray args;
 			ExprParseResult result = _parser_parse_arg_list(parser, &args);
 			if (result != EXPR_PARSE_OK) {
 				return result;
 			}
 
-			ParsedExpr* callable = arena_alloc(parser->ast_allocator, ParsedExpr);
+			Expr* callable = arena_alloc(parser->ast_allocator, Expr);
 			memcpy(callable, out_expr, sizeof(*out_expr));
 
 			out_expr->kind = EXPR_CALL;
@@ -1734,10 +1734,10 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Parsed
 		} else if (operator_token.kind == TOKEN_LEFT_BRACKET) {
 			preprocessor_next_token(parser->preprocessor);
 
-			ParsedExpr* array = arena_alloc(parser->ast_allocator, ParsedExpr);
+			Expr* array = arena_alloc(parser->ast_allocator, Expr);
 			memcpy(array, out_expr, sizeof(*out_expr));
 
-			ParsedExpr* index = arena_alloc(parser->ast_allocator, ParsedExpr);
+			Expr* index = arena_alloc(parser->ast_allocator, Expr);
 			ExprParseResult result = _parser_try_parse_expr(parser, index);
 			if (result != EXPR_PARSE_OK) {
 				return result;
@@ -1764,13 +1764,13 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Parsed
 	return EXPR_PARSE_OK;
 }
 
-ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
+ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 	ExprParseResult left_operand_result = _parser_try_parse_bin_expr_operand(parser, out_expr);
 	if (left_operand_result != EXPR_PARSE_OK) {
 		return left_operand_result;
 	}
 
-	ParsedExpr* current_expr = out_expr;
+	Expr* current_expr = out_expr;
 
 	while (true) {
 		Token op_token = preprocessor_view_next(parser->preprocessor);
@@ -1779,7 +1779,7 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 		if (_token_kind_to_bin_op(op_token.kind, &current_bin_op)) {
 			preprocessor_next_token(parser->preprocessor);
 				
-			ParsedExpr* right_operand = arena_alloc(parser->ast_allocator, ParsedExpr);
+			Expr* right_operand = arena_alloc(parser->ast_allocator, Expr);
 
 			Token first_operand_token = preprocessor_view_next(parser->preprocessor);
 			if (_parser_try_parse_bin_expr_operand(parser, right_operand) != EXPR_PARSE_OK) {
@@ -1790,7 +1790,7 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 				return EXPR_PARSE_ERROR;
 			}
 
-			ParsedExpr* left_operand = arena_alloc(parser->ast_allocator, ParsedExpr);
+			Expr* left_operand = arena_alloc(parser->ast_allocator, Expr);
 
 			uint32_t current_op_precedence = bin_op_precedence(current_bin_op);
 			uint32_t next_op_precedence = UINT32_MAX;
@@ -1805,17 +1805,17 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 
 			*left_operand = *current_expr;
 
-			ParsedType left_type;
-			ParsedType right_type;
+			Type left_type;
+			Type right_type;
 			expr_get_type(left_operand, &left_type);
 			expr_get_type(right_operand, &right_type);
 
-			ParsedType result_type;
+			Type result_type;
 			bin_expr_select_result_type(&left_type, &right_type, &result_type);
 
-			*current_expr = (ParsedExpr) {
+			*current_expr = (Expr) {
 				.kind = EXPR_BINARY,
-				.binary = (ParsedBinExpr) {
+				.binary = (BinExpr) {
 					.op = current_bin_op,
 					.result_type_kind = result_type.kind,
 					.pointer_base_type = result_type.pointer_base_type,
@@ -1836,8 +1836,8 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, ParsedExpr* out_expr) {
 }
 
 bool _parser_parse_pre_declaration_modifiers(Parser* parser,
-		ParsedType* base_type,
-		ParsedType* out_type,
+		Type* base_type,
+		Type* out_type,
 		bool duplicate_base_type) {
 	if (base_type == out_type) {
 		assert(duplicate_base_type);
@@ -1852,10 +1852,10 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 
 			assert(duplicate_base_type);
 
-			ParsedType* inner_type = arena_alloc(parser->ast_allocator, ParsedType);
+			Type* inner_type = arena_alloc(parser->ast_allocator, Type);
 			*inner_type = *base_type;
 
-			*out_type = (ParsedType) {
+			*out_type = (Type) {
 				.kind = PARSED_TYPE_POINTER,
 				.pointer_base_type = inner_type,
 				.qualifiers = qualifiers,
@@ -1871,8 +1871,8 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 }
 
 bool _parser_parse_post_declaration_modifiers(Parser* parser,
-		ParsedType* base_type,
-		ParsedType* out_type,
+		Type* base_type,
+		Type* out_type,
 		bool duplicate_base_type) {
 	if (base_type == out_type) {
 		assert(duplicate_base_type);
@@ -1888,9 +1888,9 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 			Token next_token = preprocessor_view_next(parser->preprocessor);
 			bool has_size_expr = next_token.kind != TOKEN_RIGHT_BRACKET;
 
-			ParsedExpr* size_expr = NULL;
+			Expr* size_expr = NULL;
 			if (has_size_expr) {
-				size_expr = arena_alloc(parser->ast_allocator, ParsedExpr);
+				size_expr = arena_alloc(parser->ast_allocator, Expr);
 
 				if (_parser_try_parse_expr(parser, size_expr) != EXPR_PARSE_OK) {
 					diagnostics_report_error(parser->diagnostics,
@@ -1911,10 +1911,10 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 				return false;
 			}
 
-			ParsedType* inner_type = arena_alloc(parser->ast_allocator, ParsedType);
+			Type* inner_type = arena_alloc(parser->ast_allocator, Type);
 			*inner_type = *base_type;
 
-			*out_type = (ParsedType) {
+			*out_type = (Type) {
 				.kind = PARSED_TYPE_ARRAY,
 				.array = {
 					.element_type = inner_type,
@@ -1956,11 +1956,11 @@ bool _check_for_var_redefinition(Parser* parser, SourceString var_name) {
 	return true;
 }
 
-static void _parser_register_function_param_identifiers(Parser* parser, ParsedFunction* function_def) {
+static void _parser_register_function_param_identifiers(Parser* parser, Function* function_def) {
 	assert(!function_def->is_forward_declared);
 
 	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
-		const ParsedFunctionParam* param = &function_def->parameters[i];
+		const FunctionParam* param = &function_def->parameters[i];
 		if (param->name.string.length == 0) {
 			continue;
 		}
@@ -1997,16 +1997,16 @@ static void _parser_register_function_param_identifiers(Parser* parser, ParsedFu
 	}
 }
 
-static ParsedNode* _parser_parse_function_declaration(Parser* parser,
+static AstNode* _parser_parse_function_declaration(Parser* parser,
 		SourceString name,
-		ParsedType* return_type,
-		ParsedDeclSpec* decl_spec,
+		Type* return_type,
+		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier,
 		FunctionCallingConvention call_conv) {
 	Token token = preprocessor_view_next(parser->preprocessor);
 	assert(token.kind == TOKEN_LEFT_PAREN);
 
-	ParsedFunctionParam* params = NULL;
+	FunctionParam* params = NULL;
 	size_t param_count = 0;
 	bool has_va_args = false;
 	if (!_parser_parse_function_params(parser, &params, &param_count, &has_va_args)) {
@@ -2014,7 +2014,7 @@ static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 	}
 
 	// Register the declaration
-	ParsedFunction* function_def = NULL;
+	Function* function_def = NULL;
 	IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 			IDENT_NAMESPACE_DEFAULT,
 			IDENT_FIND_DEFAULT,
@@ -2054,8 +2054,8 @@ static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 					error);
 			return NULL;
 		} else {
-			ParsedFunctionParam* prev_def_param = function_def->parameters;
-			ParsedFunctionParam* new_def_param = params;
+			FunctionParam* prev_def_param = function_def->parameters;
+			FunctionParam* new_def_param = params;
 
 			for (size_t i = 0; i < param_count; i += 1) {
 				bool param_types_are_equal = type_equal(&prev_def_param->type, &new_def_param->type);
@@ -2083,7 +2083,7 @@ static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 				IDENT_FUNCTION,
 				name);
 
-		function_def = arena_alloc_zeroed(parser->ast_allocator, ParsedFunction); 
+		function_def = arena_alloc_zeroed(parser->ast_allocator, Function); 
 		
 		function_def->name = name;
 		function_def->return_type = *return_type;
@@ -2143,7 +2143,7 @@ static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 		assert(function_def->is_forward_declared);
 		function_def->is_forward_declared = false;
 
-		ParsedScope* body = arena_alloc(parser->ast_allocator, ParsedScope);
+		Scope* body = arena_alloc(parser->ast_allocator, Scope);
 		memset(body, 0, sizeof(*body));
 
 		ident_storage_begin_scope(parser->ident_storage);
@@ -2166,15 +2166,15 @@ static ParsedNode* _parser_parse_function_declaration(Parser* parser,
 		function_def->var_count = var_count;
 	}
 
-	ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	node->kind = AST_NODE_FUNCTION;
 	node->function_def = function_def;
 	return node;
 }
 
-ParsedNode* _parser_parse_type_declaration(Parser* parser,
-		ParsedType* type,
-		ParsedDeclSpec* decl_spec,
+AstNode* _parser_parse_type_declaration(Parser* parser,
+		Type* type,
+		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier) {
 
 	assert(type != NULL);
@@ -2235,7 +2235,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 
 		assert(decl_spec == NULL);
 
-		ParsedExpr* value = arena_alloc(parser->ast_allocator, ParsedExpr);
+		Expr* value = arena_alloc(parser->ast_allocator, Expr);
 		switch (_parser_try_parse_expr(parser, value)) {
 		case EXPR_PARSE_OK:
 			break;
@@ -2257,7 +2257,7 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_VARIABLE;
 		node->variable.name = name;
 		node->variable.type = *type;
@@ -2284,9 +2284,9 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 		}
 
 		// A variable declaration
-		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_VARIABLE;
-		node->variable = (ParsedVariable) {
+		node->variable = (Variable) {
 			.name = name,
 			.type = *type,
 			.value = NULL,
@@ -2322,13 +2322,13 @@ ParsedNode* _parser_parse_type_declaration(Parser* parser,
 	return NULL;
 }
 
-ParsedNode* _parser_parse_variable_or_function_def(Parser* parser,
-		ParsedDeclSpec* decl_spec,
+AstNode* _parser_parse_variable_or_function_def(Parser* parser,
+		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier) {
 
 	bool has_type = false;
 	TypeQualifiers type_qualifiers = _parser_parse_type_qualifiers(parser);
-	ParsedType type = { .qualifiers = type_qualifiers };
+	Type type = { .qualifiers = type_qualifiers };
 
 	Token maybe_type_specifier_token = preprocessor_view_next(parser->preprocessor);
 
@@ -2365,14 +2365,14 @@ ParsedNode* _parser_parse_variable_or_function_def(Parser* parser,
 			debug_log_info("storage specifier skipped before expression");
 		}
 
-		ParsedExpr expr;
+		Expr expr;
 		ExprParseResult result = _parser_try_parse_expr(parser, &expr);
 		if (result == EXPR_PARSE_OK) {
 			if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
 				return NULL;
 			}
 
-			ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+			AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 			node->kind = AST_NODE_EXPR;
 			node->expr = expr;
 
@@ -2386,7 +2386,7 @@ ParsedNode* _parser_parse_variable_or_function_def(Parser* parser,
 	return NULL;
 }
 
-static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
+static DeclSpec* _parser_parse_decl_spec(Parser* parser) {
 	Token decl_spec_token = preprocessor_view_next(parser->preprocessor);
 	if (decl_spec_token.kind != TOKEN_DECLSPEC) {
 		return NULL;
@@ -2429,7 +2429,7 @@ static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 		return NULL;
 	}
 
-	ParsedStringLiteral deprecation_text;
+	StringLiteral deprecation_text;
 
 	if (kind == DECL_SPEC_DEPRECATED) {
 		Token left_paren = preprocessor_next_token(parser->preprocessor);
@@ -2465,7 +2465,7 @@ static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 		return NULL;
 	}
 
-	ParsedDeclSpec* decl_spec = arena_alloc(parser->ast_allocator, ParsedDeclSpec);
+	DeclSpec* decl_spec = arena_alloc(parser->ast_allocator, DeclSpec);
 	decl_spec->kind = kind;
 
 	if (kind == DECL_SPEC_DEPRECATED) {
@@ -2475,7 +2475,7 @@ static ParsedDeclSpec* _parser_parse_decl_spec(Parser* parser) {
 	return decl_spec;
 }
 
-static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
+static AstNode* _parser_parse_if_stmt(Parser* parser) {
 	Token if_token = preprocessor_next_token(parser->preprocessor);
 	assert(if_token.kind == TOKEN_KEYWORD_IF);
 
@@ -2489,7 +2489,7 @@ static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
 		return NULL;
 	}
 
-	ParsedExpr condition = {};
+	Expr condition = {};
 	if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
 		return NULL;
 	}
@@ -2504,8 +2504,8 @@ static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
 		return NULL;
 	}
 
-	ParsedNode* true_node = NULL;
-	ParsedNode* false_node = NULL;
+	AstNode* true_node = NULL;
+	AstNode* false_node = NULL;
 
 	Token true_node_token = preprocessor_view_next(parser->preprocessor);
 
@@ -2544,7 +2544,7 @@ static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
 		}
 	}
 
-	ParsedNode* if_stmt_node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+	AstNode* if_stmt_node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	if_stmt_node->kind = AST_NODE_IF;
 	if_stmt_node->if_stmt.condition = condition;
 	if_stmt_node->if_stmt.true_node = true_node;
@@ -2552,15 +2552,15 @@ static ParsedNode* _parser_parse_if_stmt(Parser* parser) {
 	return if_stmt_node;
 }
 
-ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
+AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
 	case TOKEN_LEFT_BRACE: {
-		ParsedScope scope = {};
+		Scope scope = {};
 		if (!_parser_parse_scope(parser, &scope)) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_BLOCK;
 		node->block = scope;
 		return node;
@@ -2569,7 +2569,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		return _parser_parse_type_def(parser);
 	}
 	case TOKEN_KEYWORD_STRUCT: {
-		ParsedStruct* struct_def = NULL;
+		Struct* struct_def = NULL;
 		if (!_parser_parse_struct_def(parser, &struct_def, false)) {
 			return NULL;
 		}
@@ -2580,14 +2580,14 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 
 		node->kind = AST_NODE_STRUCT;
 		node->struct_def = struct_def;
 		return node;
 	}
 	case TOKEN_KEYWORD_UNION: {
-		ParsedStruct* union_def = NULL;
+		Struct* union_def = NULL;
 		if (!_parser_parse_struct_def(parser, &union_def, false)) {
 			return NULL;
 		}
@@ -2598,14 +2598,14 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 
 		node->kind = AST_NODE_STRUCT;
 		node->union_def = union_def;
 		return node;
 	}
 	case TOKEN_KEYWORD_ENUM: {
-		ParsedEnum* enum_def = NULL;
+		Enum* enum_def = NULL;
 
 		if (!_parser_parse_enum_def(parser, &enum_def, false)) {
 			return NULL;
@@ -2615,7 +2615,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		memset(node, 0, sizeof(*node));
 
 		node->kind = AST_NODE_ENUM;
@@ -2631,9 +2631,9 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			has_value = false;
 		}
 		
-		ParsedExpr* return_value = NULL;
+		Expr* return_value = NULL;
 		if (has_value) {
-			return_value = arena_alloc(parser->ast_allocator, ParsedExpr);
+			return_value = arena_alloc(parser->ast_allocator, Expr);
 
 			if (_parser_try_parse_expr(parser, return_value) != EXPR_PARSE_OK) {
 				return NULL;
@@ -2644,7 +2644,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return NULL;
 		}
 
-		ParsedNode* node = arena_alloc_zeroed(parser->ast_allocator, ParsedNode);
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		memset(node, 0, sizeof(*node));
 
 		node->kind = AST_NODE_RETURN;
@@ -2655,7 +2655,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		return _parser_parse_if_stmt(parser);
 	}
 	default: {
-		ParsedDeclSpec* decl_spec = _parser_parse_decl_spec(parser);
+		DeclSpec* decl_spec = _parser_parse_decl_spec(parser);
 		StorageSpecifier storage_specifier = STORAGE_SPEC_NONE;
 
 		Token maybe_storage_specifier = preprocessor_view_next(parser->preprocessor);
@@ -2675,7 +2675,7 @@ ParsedNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	return NULL;
 }
 
-bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
+bool _parser_parse_scope(Parser* parser, Scope* out_scope) {
 	ident_storage_begin_scope(parser->ident_storage);
 	out_scope->id = parser->ident_storage->current_scope->id;
 
@@ -2700,7 +2700,7 @@ bool _parser_parse_scope(Parser* parser, ParsedScope* out_scope) {
 			continue;
 		}
 
-		ParsedNode* node = _parser_parse_single_node(parser, token);
+		AstNode* node = _parser_parse_single_node(parser, token);
 		if (node) {
 			parsed_node_list_append(&out_scope->nodes, node);
 			node->parent_scope = out_scope;
@@ -2725,8 +2725,8 @@ void parser_init(Parser* parser,
 	parser->ident_storage = ident_storage;
 }
 
-void parser_parse(Parser* parser, ParsedAST* ast) {
-	ast->root_nodes = (ParsedNodeList) {};
+void parser_parse(Parser* parser, AST* ast) {
+	ast->root_nodes = (NodeList) {};
 
 	bool run = true;
 	while (run) {
@@ -2739,7 +2739,7 @@ void parser_parse(Parser* parser, ParsedAST* ast) {
 			continue;
 		}
 
-		ParsedNode* node = _parser_parse_single_node(parser, token);
+		AstNode* node = _parser_parse_single_node(parser, token);
 		if (node) {
 			parsed_node_list_append(&ast->root_nodes, node);
 

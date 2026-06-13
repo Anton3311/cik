@@ -5,32 +5,32 @@
 #include "parser/source_info.h"
 #include "parser/parse_tools.h"
 
-typedef struct ParsedNode ParsedNode;
-typedef struct ParsedBlock ParsedBlock;
-typedef struct ParsedType ParsedType;
-typedef struct ParsedStruct ParsedStruct;
-typedef struct ParsedStructField ParsedStructField;
-typedef struct ParsedStructFieldNamespace ParsedStructFieldNamespace;
-typedef struct ParsedStructFieldNamespaceEntry ParsedStructFieldNamespaceEntry;
-typedef struct ParsedEnum ParsedEnum;
-typedef struct ParsedEnumVariant ParsedEnumVariant;
-typedef struct ParsedTypeDef ParsedTypeDef;
-typedef struct ParsedFunction ParsedFunction;
-typedef struct ParsedFunctionParam ParsedFunctionParam;
-typedef struct ParsedVariable ParsedVariable;
-typedef struct ParsedScope ParsedScope;
-typedef struct ParsedCall ParsedCall;
-typedef struct ParsedStringLiteral ParsedStringLiteral;
-typedef struct ParsedCharLiteral ParsedCharLiteral;
-typedef struct ParsedExpr ParsedExpr;
-typedef struct ParsedExprArray ParsedExprArray;
-typedef struct ParsedBinExpr ParsedBinExpr;
-typedef struct ParsedUnaryExpr ParsedUnaryExpr;
-typedef struct ParsedIntegerLiteral ParsedIntegerLiteral;
-typedef struct ParsedReturnStmt ParsedReturnStmt;
-typedef struct ParsedDeclSpec ParsedDeclSpec;
-typedef struct ParsedIfStmt ParsedIfStmt;
-typedef struct ParsedArrayIndex ParsedArrayIndex;
+typedef struct AstNode AstNode;
+typedef struct Block Block;
+typedef struct Type Type;
+typedef struct Struct Struct;
+typedef struct StructField StructField;
+typedef struct StructFieldNamespace StructFieldNamespace;
+typedef struct StructFieldNamespaceEntry StructFieldNamespaceEntry;
+typedef struct Enum Enum;
+typedef struct EnumVariant EnumVariant;
+typedef struct TypeDef TypeDef;
+typedef struct Function Function;
+typedef struct FunctionParam FunctionParam;
+typedef struct Variable Variable;
+typedef struct Scope Scope;
+typedef struct Call Call;
+typedef struct StringLiteral StringLiteral;
+typedef struct CharLiteral CharLiteral;
+typedef struct Expr Expr;
+typedef struct ExprArray ExprArray;
+typedef struct BinExpr BinExpr;
+typedef struct UnaryExpr UnaryExpr;
+typedef struct IntegerLiteral IntegerLiteral;
+typedef struct ReturnStmt ReturnStmt;
+typedef struct DeclSpec DeclSpec;
+typedef struct IfStmt IfStmt;
+typedef struct ArrayIndex ArrayIndex;
 
 //
 // AST
@@ -56,25 +56,25 @@ typedef enum {
 } StorageSpecifier;
 
 typedef struct {
-	ParsedNode* first;
-	ParsedNode* last;
+	AstNode* first;
+	AstNode* last;
 	size_t count;
-} ParsedNodeList;
+} NodeList;
 
-struct ParsedScope {
+struct Scope {
 	uint64_t id;
-	ParsedNodeList nodes;
+	NodeList nodes;
 };
 
-struct ParsedExprArray {
-	ParsedExpr** exprs;
+struct ExprArray {
+	Expr** exprs;
 	size_t count;
 };
 
-void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node);
+void parsed_node_list_append(NodeList* list, AstNode* node);
 
-struct ParsedBlock {
-	ParsedNodeList nodes;
+struct Block {
+	NodeList nodes;
 };
 
 typedef enum {
@@ -86,7 +86,7 @@ typedef enum {
 	TYPE_FLAG_NONE     = 0,
 	TYPE_FLAG_SIGNED   = 1 << 8,
 	TYPE_FLAG_UNSIGNED = 2 << 8,
-} ParsedTypeKindFlags;
+} TypeKindFlags;
 
 typedef enum {
 	PARSED_TYPE_VOID               = 0,
@@ -132,44 +132,44 @@ typedef enum {
 
 	PARSED_TYPE_POINTER            = 16,
 	PARSED_TYPE_ARRAY              = 17,
-} ParsedTypeKind;
+} TypeKind;
 
-struct ParsedType {
-	ParsedTypeKind kind;
+struct Type {
+	TypeKind kind;
 
 	TypeQualifiers qualifiers;
-	ParsedTypeDef* alias_definition;
+	TypeDef* alias_definition;
 
 	union {
-		ParsedStruct* struct_def;
-		ParsedStruct* union_def;
-		ParsedEnum* enum_def;
-		ParsedType* pointer_base_type;
+		Struct* struct_def;
+		Struct* union_def;
+		Enum* enum_def;
+		Type* pointer_base_type;
 
 		struct {
-			ParsedType* element_type;
-			ParsedExpr* size;
+			Type* element_type;
+			Expr* size;
 		} array;
 	};
 };
 
-bool type_equal(const ParsedType* a, const ParsedType* b);
-void type_array_to_pointer(const ParsedType* type, ParsedType* out_type);
+bool type_equal(const Type* a, const Type* b);
+void type_array_to_pointer(const Type* type, Type* out_type);
 
-inline bool type_kind_is_int(ParsedTypeKind kind) {
-	ParsedTypeKind kind_without_sign_flags = kind & ~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED);
+inline bool type_kind_is_int(TypeKind kind) {
+	TypeKind kind_without_sign_flags = kind & ~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED);
 	return (kind_without_sign_flags >= PARSED_TYPE_CHAR
 		&& kind_without_sign_flags <= PARSED_TYPE_INT64)
 		|| kind == PARSED_TYPE_SIZE_T;
 }
 
-uint32_t type_get_int_convertion_rank(const ParsedType* type);
+uint32_t type_get_int_convertion_rank(const Type* type);
 
-inline bool type_kind_is_pointer_like(ParsedTypeKind kind) {
+inline bool type_kind_is_pointer_like(TypeKind kind) {
 	return kind == PARSED_TYPE_POINTER || kind == PARSED_TYPE_ARRAY;
 }
 
-inline ParsedType* type_extract_pointer_base_type(ParsedType* type) {
+inline Type* type_extract_pointer_base_type(Type* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_POINTER:
 		return type->pointer_base_type;
@@ -183,8 +183,8 @@ inline ParsedType* type_extract_pointer_base_type(ParsedType* type) {
 	return NULL;
 }
 
-bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def);
-bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def);
+bool type_is_struct(const Type* type, const Struct* struct_def);
+bool type_is_enum(const Type* type, const Enum* enum_def);
 
 //
 // Expr
@@ -253,54 +253,54 @@ String bin_op_kind_to_string(BinOpKind op);
 String unary_op_kind_to_string(UnaryOpKind op);
 uint32_t bin_op_precedence(BinOpKind op);
 
-struct ParsedBinExpr {
+struct BinExpr {
 	BinOpKind op;
 
-	// `ParsedTypeKind` and `pointer_base_type` is enough to
+	// `TypeKind` and `pointer_base_type` is enough to
 	// represent all possible arithmetic types, since binary
 	// operations are only supported by arithmetic types 
-	ParsedTypeKind result_type_kind;
-	ParsedType* pointer_base_type;
+	TypeKind result_type_kind;
+	Type* pointer_base_type;
 
-	ParsedExpr* left;
-	ParsedExpr* right;
+	Expr* left;
+	Expr* right;
 };
 
 void bin_expr_select_result_type(
-		const ParsedType* left_type,
-		const ParsedType* right_type,
-		ParsedType* out_type);
+		const Type* left_type,
+		const Type* right_type,
+		Type* out_type);
 
-struct ParsedUnaryExpr {
+struct UnaryExpr {
 	UnaryOpKind op;
-	ParsedExpr* operand;
+	Expr* operand;
 };
 
-struct ParsedCall {
-	ParsedExpr* callable;
-	ParsedExprArray args;
+struct Call {
+	Expr* callable;
+	ExprArray args;
 };
 
-struct ParsedStringLiteral {
+struct StringLiteral {
 	String full_string;
 };
 
 // TODO: When implmenenting wide char support,
 //       can just add a EXPR_WIDE_CHAR_LITERAL,
 //       instead of adding a flag here.
-struct ParsedCharLiteral {
+struct CharLiteral {
 	uint32_t value;
 };
 
-struct ParsedIntegerLiteral {
+struct IntegerLiteral {
 	IntergerLiteralFormat format;
-	ParsedTypeKind integer_type;
+	TypeKind integer_type;
 	uint64_t value;
 };
 
-struct ParsedArrayIndex {
-	ParsedExpr* array;
-	ParsedExpr* index;
+struct ArrayIndex {
+	Expr* array;
+	Expr* index;
 };
 
 typedef enum {
@@ -317,33 +317,33 @@ typedef enum {
 	EXPR_ARRAY_INDEX,
 } ExprKind;
 
-struct ParsedExpr {
+struct Expr {
 	ExprKind kind;
 
 	union {
-		ParsedCall call;
-		ParsedFunction* function_ref;
-		ParsedVariable* variable_ref;
-		ParsedBinExpr binary;
-		ParsedUnaryExpr unary;
-		ParsedIntegerLiteral int_literal;
-		ParsedStringLiteral string_literal;
-		ParsedCharLiteral char_literal;
-		ParsedArrayIndex array_index;
+		Call call;
+		Function* function_ref;
+		Variable* variable_ref;
+		BinExpr binary;
+		UnaryExpr unary;
+		IntegerLiteral int_literal;
+		StringLiteral string_literal;
+		CharLiteral char_literal;
+		ArrayIndex array_index;
 		
 		struct {
-			const ParsedEnum* enum_def;
+			const Enum* enum_def;
 			size_t variant_index;
 		} enum_constant;
 
 		struct {
-			const ParsedFunction* function_def;
+			const Function* function_def;
 			size_t param_index;
 		} function_param;
 	};
 };
 
-void expr_get_type(ParsedExpr* expr, ParsedType* out_type);
+void expr_get_type(Expr* expr, Type* out_type);
 
 //
 // Struct
@@ -375,24 +375,24 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type);
 // 1. text             -> Nested.text
 // 2. a                -> Nested.Inner1.a
 // 3. inner_most_value -> Nested.Inner1.Inner2.inner_most_value
-struct ParsedStructFieldNamespaceEntry {
-	const ParsedStruct* struct_def;
+struct StructFieldNamespaceEntry {
+	const Struct* struct_def;
 	size_t field_index;
 };
 
-struct ParsedStructFieldNamespace {
+struct StructFieldNamespace {
 	String* keys;
-	ParsedStructFieldNamespaceEntry* entries;
+	StructFieldNamespaceEntry* entries;
 	size_t size;
 	size_t capacity;
 };
 
 // Performs a lookup in the hashmap and returns the index of the found entry, or SIZE_MAX if not found
-size_t struct_field_namespace_index_of(const ParsedStructFieldNamespace* struct_namespace, String name);
+size_t struct_field_namespace_index_of(const StructFieldNamespace* struct_namespace, String name);
 
-struct ParsedStructField {
+struct StructField {
 	SourceString name;
-	ParsedType type;
+	Type type;
 };
 
 typedef enum {
@@ -400,26 +400,26 @@ typedef enum {
 	STRUCT_LAYOUT_KIND_UNION,
 } StructLayoutKind;
 
-struct ParsedStruct {
+struct Struct {
 	SourceString name;
 	StructLayoutKind layout_kind;
 
 	bool is_forward_declared;
 
-	ParsedStructField* fields;
+	StructField* fields;
 	size_t field_count;
 
-	ParsedStructFieldNamespace* field_namespace;
+	StructFieldNamespace* field_namespace;
 };
 
-inline const ParsedStructField* struct_find_field(const ParsedStruct* struct_def, String field_name) {
+inline const StructField* struct_find_field(const Struct* struct_def, String field_name) {
 	assert(struct_def->field_namespace);
 	size_t entry_index = struct_field_namespace_index_of(struct_def->field_namespace, field_name);
 	if (entry_index == SIZE_MAX) {
 		return NULL;
 	}
 
-	const ParsedStructFieldNamespaceEntry entry = struct_def->field_namespace->entries[entry_index];
+	const StructFieldNamespaceEntry entry = struct_def->field_namespace->entries[entry_index];
 	return &entry.struct_def->fields[entry.field_index];
 }
 
@@ -427,17 +427,17 @@ inline const ParsedStructField* struct_find_field(const ParsedStruct* struct_def
 // Enum
 //
 
-struct ParsedEnumVariant {
+struct EnumVariant {
 	SourceString name;
-	ParsedExpr* value;
+	Expr* value;
 };
 
-struct ParsedEnum {
+struct Enum {
 	SourceString name;
 
 	bool is_forward_declared;
 
-	ParsedEnumVariant* variants;
+	EnumVariant* variants;
 	size_t variant_count;
 };
 
@@ -445,8 +445,8 @@ struct ParsedEnum {
 // TypeDef
 //
 
-struct ParsedTypeDef {
-	ParsedType aliased_type;
+struct TypeDef {
+	Type aliased_type;
 	SourceString new_name;
 };
 
@@ -463,14 +463,14 @@ typedef enum {
 	DECL_SPEC_RESTRICT,
 } DeclSpecKind;
 
-struct ParsedDeclSpec {
+struct DeclSpec {
 	DeclSpecKind kind;
 
 	union {
-		ParsedStringLiteral deprecation_text;
+		StringLiteral deprecation_text;
 	};
 
-	ParsedDeclSpec* next;
+	DeclSpec* next;
 };
 
 //
@@ -484,13 +484,13 @@ typedef enum {
 
 String function_calling_convetion_to_string(FunctionCallingConvention conv);
 
-struct ParsedFunctionParam {
-	ParsedType type;
+struct FunctionParam {
+	Type type;
 	SourceString name;
 };
 
-struct ParsedFunction {
-	ParsedType return_type;
+struct Function {
+	Type return_type;
 	SourceString name;
 
 	bool is_inline;
@@ -498,9 +498,9 @@ struct ParsedFunction {
 	bool has_va_args;
 	FunctionCallingConvention calling_convention;
 	size_t parameter_count;
-	ParsedFunctionParam* parameters;
-	ParsedScope* body;
-	ParsedDeclSpec* decl_spec;
+	FunctionParam* parameters;
+	Scope* body;
+	DeclSpec* decl_spec;
 	StorageSpecifier storage_specifier;
 	uint32_t var_count;
 };
@@ -509,10 +509,10 @@ struct ParsedFunction {
 // Variable
 //
 
-struct ParsedVariable {
+struct Variable {
 	SourceString name;
-	ParsedType type;
-	ParsedExpr* value;
+	Type type;
+	Expr* value;
 	StorageSpecifier storage_specifier;
 	uint32_t id;
 };
@@ -521,43 +521,43 @@ struct ParsedVariable {
 // ReturnStmt
 //
 
-struct ParsedReturnStmt {
-	ParsedExpr* value;
+struct ReturnStmt {
+	Expr* value;
 };
 
 //
 // IfStmt
 //
 
-struct ParsedIfStmt {
-	ParsedExpr condition;
-	ParsedNode* true_node;
+struct IfStmt {
+	Expr condition;
+	AstNode* true_node;
 
 	// This one is optional
-	ParsedNode* false_node;
+	AstNode* false_node;
 };
 
 //
 // Node
 //
 
-struct ParsedNode {
+struct AstNode {
 	AstNodeKind kind;
-	ParsedNode* next;
+	AstNode* next;
 
-	ParsedScope* parent_scope;
+	Scope* parent_scope;
 
 	union {
-		ParsedStruct* struct_def;
-		ParsedStruct* union_def;
-		ParsedEnum* enum_def;
-		ParsedTypeDef* type_def;
-		ParsedFunction* function_def;
-		ParsedExpr expr;
-		ParsedVariable variable;
-		ParsedReturnStmt return_stmt;
-		ParsedScope block;
-		ParsedIfStmt if_stmt;
+		Struct* struct_def;
+		Struct* union_def;
+		Enum* enum_def;
+		TypeDef* type_def;
+		Function* function_def;
+		Expr expr;
+		Variable variable;
+		ReturnStmt return_stmt;
+		Scope block;
+		IfStmt if_stmt;
 	};
 };
 
@@ -566,9 +566,9 @@ struct ParsedNode {
 //
 
 typedef struct {
-	ParsedNodeList root_nodes;
-} ParsedAST;
+	NodeList root_nodes;
+} AST;
 
-void print_parsed_node(const ParsedNode* node);
+void print_parsed_node(const AstNode* node);
 
 #endif

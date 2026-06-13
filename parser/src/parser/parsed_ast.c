@@ -1,6 +1,6 @@
 #include "parsed_ast.h"
 
-bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def) {
+bool type_is_struct(const Type* type, const Struct* struct_def) {
 	assert(struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT);
 
 	if (type->kind != PARSED_TYPE_STRUCT) {
@@ -10,7 +10,7 @@ bool type_is_struct(const ParsedType* type, const ParsedStruct* struct_def) {
 	return type->struct_def == struct_def;
 }
 
-bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def) {
+bool type_is_enum(const Type* type, const Enum* enum_def) {
 	if (type->kind != PARSED_TYPE_ENUM) {
 		return false;
 	}
@@ -18,9 +18,9 @@ bool type_is_enum(const ParsedType* type, const ParsedEnum* enum_def) {
 	return type->enum_def == enum_def;
 }
 
-bool type_equal(const ParsedType* a, const ParsedType* b) {
-	ParsedTypeKind a_without_signed = a->kind & (~TYPE_FLAG_SIGNED);
-	ParsedTypeKind b_without_signed = b->kind & (~TYPE_FLAG_SIGNED);
+bool type_equal(const Type* a, const Type* b) {
+	TypeKind a_without_signed = a->kind & (~TYPE_FLAG_SIGNED);
+	TypeKind b_without_signed = b->kind & (~TYPE_FLAG_SIGNED);
 
 	if (a_without_signed != b_without_signed) {
 		return false;
@@ -90,16 +90,16 @@ bool type_equal(const ParsedType* a, const ParsedType* b) {
 	return false;
 }
 
-void type_array_to_pointer(const ParsedType* type, ParsedType* out_type) {
+void type_array_to_pointer(const Type* type, Type* out_type) {
 	assert(type->kind == PARSED_TYPE_ARRAY);
 
-	ParsedType* element_type = type->array.element_type;
+	Type* element_type = type->array.element_type;
 
 	out_type->kind = PARSED_TYPE_POINTER;
 	out_type->pointer_base_type = element_type;
 }
 
-uint32_t type_get_int_convertion_rank(const ParsedType* type) {
+uint32_t type_get_int_convertion_rank(const Type* type) {
 	switch (type->kind) {
 	case PARSED_TYPE_VOID:
 		unreachable();
@@ -286,9 +286,9 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
-void bin_expr_select_result_type(const ParsedType* left_type,
-		const ParsedType* right_type,
-		ParsedType* out_type) {
+void bin_expr_select_result_type(const Type* left_type,
+		const Type* right_type,
+		Type* out_type) {
 
 	if (left_type->kind == PARSED_TYPE_POINTER && type_kind_is_int(right_type->kind)) {
 		*out_type = *left_type;
@@ -354,7 +354,7 @@ String function_calling_convetion_to_string(FunctionCallingConvention conv) {
 // AST
 //
 
-void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node) {
+void parsed_node_list_append(NodeList* list, AstNode* node) {
 	assert(list != NULL);
 	assert(node != NULL);
 	assert(node->next == NULL);
@@ -374,12 +374,12 @@ void parsed_node_list_append(ParsedNodeList* list, ParsedNode* node) {
 	}
 }
 
-static ParsedType s_char_type = (ParsedType) { .kind = PARSED_TYPE_CHAR };
+static Type s_char_type = (Type) { .kind = PARSED_TYPE_CHAR };
 
-void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
+void expr_get_type(Expr* expr, Type* out_type) {
 	switch (expr->kind) {
 	case EXPR_CALL: {
-		ParsedExpr* callable = expr->call.callable;
+		Expr* callable = expr->call.callable;
 		assert_msg(callable->kind == EXPR_FUNCTION_REFERENCE, "A callable expression is not function");
 
 		*out_type = callable->function_ref->return_type;
@@ -406,13 +406,13 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 			expr_get_type(expr->unary.operand, out_type);
 			break;
 		case UNARY_OP_DEREFERENCE: {
-			ParsedType operand_type;
+			Type operand_type;
 			expr_get_type(expr->unary.operand, &operand_type);
 
 			assert_msg(type_kind_is_pointer_like(operand_type.kind),
 					"Dereferencing a non-pointer like type is not allowed");
 
-			const ParsedType* base_type = type_extract_pointer_base_type(&operand_type);
+			const Type* base_type = type_extract_pointer_base_type(&operand_type);
 			*out_type = *base_type;
 			break;
 		}
@@ -440,16 +440,16 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 	case EXPR_ENUM_CONSTANT:
 		break;
 	case EXPR_FUNCTION_PARAM: {
-		const ParsedFunction* func = expr->function_param.function_def;
+		const Function* func = expr->function_param.function_def;
 		assert(expr->function_param.param_index < func->parameter_count);
 		*out_type = func->parameters[expr->function_param.param_index].type;
 		return;
 	}
 	case EXPR_ARRAY_INDEX: {
-		ParsedType array_type;
+		Type array_type;
 		expr_get_type(expr->array_index.array, &array_type);
 
-		ParsedType* element_type = type_extract_pointer_base_type(&array_type);
+		Type* element_type = type_extract_pointer_base_type(&array_type);
 		*out_type = *element_type;
 		return;
 	}
@@ -459,7 +459,7 @@ void expr_get_type(ParsedExpr* expr, ParsedType* out_type) {
 	return;
 }
 
-size_t struct_field_namespace_index_of(const ParsedStructFieldNamespace* struct_namespace, String name) {
+size_t struct_field_namespace_index_of(const StructFieldNamespace* struct_namespace, String name) {
 	size_t index = hash_string(name) % struct_namespace->capacity;
 	
 	while (true) {
@@ -539,9 +539,9 @@ void printer_bool_field(PrinterState* printer, const char* name, bool value) {
 // AST Printing
 //
 
-void print_type(PrinterState* printer, const ParsedType* type);
-void print_single_node(PrinterState* printer, const ParsedNode* node);
-void print_decl_spec(PrinterState* printer, const ParsedDeclSpec* decl_spec) {
+void print_type(PrinterState* printer, const Type* type);
+void print_single_node(PrinterState* printer, const AstNode* node);
+void print_decl_spec(PrinterState* printer, const DeclSpec* decl_spec) {
 	String decl_spec_name = {};
 
 	switch (decl_spec->kind) {
@@ -575,7 +575,7 @@ void print_decl_spec(PrinterState* printer, const ParsedDeclSpec* decl_spec) {
 	printer_end_struct(printer);
 }
 
-void print_expr(PrinterState* printer, const ParsedExpr* expr) {
+void print_expr(PrinterState* printer, const Expr* expr) {
 	assert(expr != NULL);
 
 	switch (expr->kind) {
@@ -590,7 +590,7 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		printer_end_struct(printer);
 		break;
 	case EXPR_BINARY: {
-		ParsedType result_type = {
+		Type result_type = {
 			.kind = expr->binary.result_type_kind,
 			.pointer_base_type = expr->binary.pointer_base_type
 		};
@@ -618,7 +618,7 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		printer_string_field(printer, "format", int_literal_format_to_string(expr->int_literal.format));
 		printer_field(printer, "type");
 
-		ParsedType type = { .kind = expr->int_literal.integer_type };
+		Type type = { .kind = expr->int_literal.integer_type };
 		print_type(printer, &type);
 		printer_field(printer, "value");
 		printf("%llu\n", expr->int_literal.value);
@@ -653,7 +653,7 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		break;
 	}
 	case EXPR_ENUM_CONSTANT: {
-		const ParsedEnum* enum_def = expr->enum_constant.enum_def;
+		const Enum* enum_def = expr->enum_constant.enum_def;
 		printer_begin_struct(printer, "enum_constant");
 		printer_string_field(printer, "enum_name", enum_def->name.string);
 		printer_string_field(printer, "variant_name", enum_def->variants[expr->enum_constant.variant_index].name.string);
@@ -661,7 +661,7 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 		break;
 	}
 	case EXPR_FUNCTION_PARAM: {
-		const ParsedFunction* func_def = expr->function_param.function_def;
+		const Function* func_def = expr->function_param.function_def;
 		printer_begin_struct(printer, "function_param");
 		printer_string_field(printer, "func_name", func_def->name.string);
 		printer_string_field(printer, "param_name", func_def->parameters[expr->function_param.param_index].name.string);
@@ -680,7 +680,7 @@ void print_expr(PrinterState* printer, const ParsedExpr* expr) {
 	}
 }
 
-void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
+void print_struct_def(PrinterState* printer, const Struct* struct_def) {
 	assert(struct_def != NULL);
 
 	printer_begin_struct(printer, struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT
@@ -695,7 +695,7 @@ void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 		printer_begin_array(printer);
 
 		for (size_t i = 0; i < struct_def->field_count; i += 1) {
-			const ParsedStructField* field = &struct_def->fields[i];
+			const StructField* field = &struct_def->fields[i];
 			printer_array_element(printer, i);
 			printer_begin_struct(printer, "field");
 			printer_string_field(printer, "name", field->name.string);
@@ -710,7 +710,7 @@ void print_struct_def(PrinterState* printer, const ParsedStruct* struct_def) {
 	printer_end_struct(printer);
 }
 
-void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
+void print_enum_def(PrinterState* printer, const Enum* enum_def) {
 	assert(enum_def != NULL);
 
 	printer_begin_struct(printer, "enum");
@@ -721,7 +721,7 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 	printer_begin_array(printer);
 
 	for (size_t i = 0; i < enum_def->variant_count; i += 1) {
-		const ParsedEnumVariant* variant = &enum_def->variants[i];
+		const EnumVariant* variant = &enum_def->variants[i];
 		printer_array_element(printer, i);
 
 		printer_begin_struct(printer, "variant");
@@ -739,7 +739,7 @@ void print_enum_def(PrinterState* printer, const ParsedEnum* enum_def) {
 	printer_end_struct(printer);
 }
 
-void print_type(PrinterState* printer, const ParsedType* type) {
+void print_type(PrinterState* printer, const Type* type) {
 	if (has_flag(type->qualifiers, TYPE_QUALIFIER_CONST)) {
 		printf("const ");
 	}
@@ -791,7 +791,7 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 	case PARSED_TYPE_UNSIGNED_INT16:
 	case PARSED_TYPE_UNSIGNED_INT32:
 	case PARSED_TYPE_UNSIGNED_INT64: {
-		ParsedTypeKind base_kind = type->kind & (~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
+		TypeKind base_kind = type->kind & (~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
 		const char* prefix = "";
 		const char* base_type_name = "";
 
@@ -864,7 +864,7 @@ void print_type(PrinterState* printer, const ParsedType* type) {
 	}
 }
 
-void print_type_def(PrinterState* printer, const ParsedTypeDef* type_def) {
+void print_type_def(PrinterState* printer, const TypeDef* type_def) {
 	printer_begin_struct(printer, "typedef");
 
 	printer_field(printer, "type");
@@ -874,12 +874,12 @@ void print_type_def(PrinterState* printer, const ParsedTypeDef* type_def) {
 	printer_end_struct(printer);
 }
 
-void print_scope(PrinterState* printer, const ParsedScope* scope) {
+void print_scope(PrinterState* printer, const Scope* scope) {
 	printer_begin_array(printer);
 	printer_field(printer, "id");
 	printf("%llu\n", scope->id);
 
-	ParsedNode* node = scope->nodes.first;
+	AstNode* node = scope->nodes.first;
 	size_t node_index = 0;
 
 	while (node) {
@@ -892,7 +892,7 @@ void print_scope(PrinterState* printer, const ParsedScope* scope) {
 	printer_end_array(printer);
 }
 
-void print_function_def(PrinterState* printer, const ParsedFunction* function_def) {
+void print_function_def(PrinterState* printer, const Function* function_def) {
 	printer_begin_struct(printer, "function");
 
 	if (function_def->decl_spec) {
@@ -925,7 +925,7 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	printer_begin_array(printer);
 
 	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
-		const ParsedFunctionParam* param = &function_def->parameters[i];
+		const FunctionParam* param = &function_def->parameters[i];
 
 		printer_array_element(printer, i);
 		printer_begin_struct(printer, "param");
@@ -956,7 +956,7 @@ void print_function_def(PrinterState* printer, const ParsedFunction* function_de
 	printer_end_struct(printer);
 }
 
-void print_variable(PrinterState* printer, const ParsedVariable* variable) {
+void print_variable(PrinterState* printer, const Variable* variable) {
 	printer_begin_struct(printer, "variable");
 	printer_string_field(printer, "name", variable->name.string);
 	printer_field(printer, "type");
@@ -970,7 +970,7 @@ void print_variable(PrinterState* printer, const ParsedVariable* variable) {
 	printer_end_struct(printer);
 }
 
-void print_return_stmt(PrinterState* printer, const ParsedReturnStmt* return_stmt) {
+void print_return_stmt(PrinterState* printer, const ReturnStmt* return_stmt) {
 	printer_begin_struct(printer, "return");
 
 	if (return_stmt->value) {
@@ -981,7 +981,7 @@ void print_return_stmt(PrinterState* printer, const ParsedReturnStmt* return_stm
 	printer_end_struct(printer);
 }
 
-void print_single_node(PrinterState* printer, const ParsedNode* node) {
+void print_single_node(PrinterState* printer, const AstNode* node) {
 	switch (node->kind) {
 	case AST_NODE_TYPE_DEF:
 		print_type_def(printer, node->type_def);
@@ -1032,7 +1032,7 @@ void print_single_node(PrinterState* printer, const ParsedNode* node) {
 	}
 }
 
-void print_parsed_node(const ParsedNode* node) {
+void print_parsed_node(const AstNode* node) {
 	PrinterState printer = {};
 
 	while (node != NULL) {

@@ -84,6 +84,8 @@ static TestCase parser_tests[] = {
 	test(test_parse_int_literal_sufixes_with_bit_count),
 	test(test_invalid_int_literal_sufixes),
 	test(test_parse_type_of_int_literal_with_sufix),
+	test(test_simple_escape_sequences),
+	test(test_invalid_escape_sequences),
 };
 
 static TestCase compiler_tests[] = {

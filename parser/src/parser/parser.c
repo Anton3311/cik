@@ -1424,7 +1424,7 @@ bool _token_kind_to_unary_pre_op(TokenKind kind, UnaryOpKind* out_op) {
 	return false;
 }
 
-static void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* out_literal) {
+void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* out_literal) {
 	StringBuilder builder = { .arena = parser->ast_allocator };
 
 	while (true) {
@@ -1434,7 +1434,10 @@ static void _parser_parse_string_literal(Parser* parser, ParsedStringLiteral* ou
 		}
 
 		preprocessor_next_token(parser->preprocessor);
-		str_builder_append(&builder, sub_str(string_token.string, 1, string_token.string.length - 2));
+
+		const SourceFile* source_file = string_token.source_range.source_file;
+		String str_content = sub_str(string_token.string, 1, string_token.string.length - 2);
+		parse_escaped_string(&builder, str_content, source_file, parser->diagnostics);
 	}
 
 	out_literal->full_string = builder.string;

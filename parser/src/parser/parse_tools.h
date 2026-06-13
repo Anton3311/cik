@@ -44,4 +44,9 @@ typedef struct {
 
 bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_result);
 
+void parse_escaped_string(StringBuilder* builder,
+		String string,
+		const SourceFile* file,
+		Diagnostics* diagnostics);
+
 #endif

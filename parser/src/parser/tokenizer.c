@@ -232,20 +232,6 @@ StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
 				return STR_TOKEN_RESULT_EOF_REACHED;
 			}
 
-			char32_t escaped_char = tokenizer_get_char(tokenizer);
-			switch (escaped_char) {
-			case '\'':
-			case '\"':
-			case '\\':
-			case 'n':
-			case 'r':
-			case 't':
-			case '0':
-				break;
-			default:
-				return STR_TOKEN_RESULT_INVALID_ESCAPE_CHAR;
-			}
-
 			// consume escaped char
 			tokenizer->read_position += 1;
 			continue;

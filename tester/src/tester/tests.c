@@ -2071,3 +2071,83 @@ void test_parse_type_of_int_literal_with_sufix(TestContext* context) {
 		}
 	}
 }
+
+static void _test_parse_escape_string(Arena* allocator, String string, String expected) {
+	ArenaRegion temp = arena_begin_temp(allocator);
+
+	StringBuilder builder = { .arena = allocator };
+	parse_escaped_string(&builder, string, NULL, NULL);
+
+	assert(str_equal(builder.string, expected));
+
+	arena_end_temp(temp);
+}
+
+void test_simple_escape_sequences(TestContext* context) {
+	_test_parse_escape_string(context->arena, STR_LIT("\\'"), STR_LIT("\'"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\\""), STR_LIT("\""));
+	_test_parse_escape_string(context->arena, STR_LIT("\\\\"), STR_LIT("\\"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\?"), STR_LIT("?"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\a"), STR_LIT("\a"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\b"), STR_LIT("\b"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\f"), STR_LIT("\f"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\n"), STR_LIT("\n"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\r"), STR_LIT("\r"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\t"), STR_LIT("\t"));
+	_test_parse_escape_string(context->arena, STR_LIT("\\v"), STR_LIT("\v"));
+}
+
+void test_invalid_escape_sequences(TestContext* context) {
+	for (uint32_t i = 0; i < 256; i += 1) {
+		bool skip = false;
+		switch (i) {
+		case 0:
+		case '\\':
+		case '\'':
+		case '"':
+		case '?':
+		case 'a':
+		case 'b':
+		case 'f':
+		case 'n':
+		case 'r':
+		case 't':
+		case 'v':
+		case 'x':
+			skip = true;
+			break;
+		default:
+			if (i >= '0' && i <= '7') {
+				skip = true;
+			}
+		}
+
+		if (skip) {
+			continue;
+		}
+
+		const char source_buffer[2] = { '\\', (char)i };
+		String target_string = (String) { .v = source_buffer, .length = 2 };
+
+		ArenaRegion temp = arena_begin_temp(context->arena);
+		Diagnostics diagnostics = { .allocator = context->arena };
+
+		SourceFile source_file = (SourceFile) {
+			.path = STR_LIT(DEFAULT_SOURCE_PATH),
+			.source_code = target_string,
+			.line_info = line_info_from_source(context->arena, target_string),
+		};
+
+		StringBuilder builder = { .arena = context->arena };
+		parse_escaped_string(&builder, target_string, &source_file, &diagnostics);
+
+		assert(diagnostics.first != NULL);
+		assert(str_equal(diagnostics.first->message, STR_LIT("Unknown escape sequence")));
+		SourceRange range = diagnostics.first->highlighted_ranges[0];
+		
+		assert(range.start == 0);
+		assert(range.end == 2);
+
+		arena_end_temp(temp);
+	}
+}

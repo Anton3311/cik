@@ -87,6 +87,24 @@ static String s_token_kind_to_string[TOKEN_COUNT] = {
 	[TOKEN_KEYWORD_IF] = STR_LIT("if"),
 	[TOKEN_KEYWORD_ELSE] = STR_LIT("else"),
 
+	[TOKEN_KEYWORD_VOID] = STR_LIT("void"),
+	[TOKEN_KEYWORD_SIZE_T] = STR_LIT("size_t"),
+
+	[TOKEN_KEYWORD_FLOAT] = STR_LIT("float"),
+	[TOKEN_KEYWORD_DOUBLE] = STR_LIT("double"),
+
+	[TOKEN_KEYWORD_CHAR] = STR_LIT("char"),
+	[TOKEN_KEYWORD_SHORT] = STR_LIT("short"),
+	[TOKEN_KEYWORD_INT] = STR_LIT("int"),
+	[TOKEN_KEYWORD_LONG] = STR_LIT("long"),
+	[TOKEN_KEYWORD_SIGNED] = STR_LIT("signed"),
+	[TOKEN_KEYWORD_UNSIGNED] = STR_LIT("unsigned"),
+
+	[TOKEN_KEYWORD_INT8] = STR_LIT("__int8"),
+	[TOKEN_KEYWORD_INT16] = STR_LIT("__int16"),
+	[TOKEN_KEYWORD_INT32] = STR_LIT("__int32"),
+	[TOKEN_KEYWORD_INT64] = STR_LIT("__int64"),
+
 	[TOKEN_DECLSPEC] = STR_LIT("__declspec"),
 };
 
@@ -174,6 +192,34 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_IF;
 	} else if (str_equal(token_string, STR_LIT("else"))) {
 		token_kind = TOKEN_KEYWORD_ELSE;
+	} else if (str_equal(token_string, STR_LIT("void"))) {
+		token_kind = TOKEN_KEYWORD_VOID;
+	} else if (str_equal(token_string, STR_LIT("size_t"))) {
+		token_kind = TOKEN_KEYWORD_SIZE_T;
+	} else if (str_equal(token_string, STR_LIT("float"))) {
+		token_kind = TOKEN_KEYWORD_FLOAT;
+	} else if (str_equal(token_string, STR_LIT("double"))) {
+		token_kind = TOKEN_KEYWORD_DOUBLE;
+	} else if (str_equal(token_string, STR_LIT("char"))) {
+		token_kind = TOKEN_KEYWORD_CHAR;
+	} else if (str_equal(token_string, STR_LIT("short"))) {
+		token_kind = TOKEN_KEYWORD_SHORT;
+	} else if (str_equal(token_string, STR_LIT("int"))) {
+		token_kind = TOKEN_KEYWORD_INT;
+	} else if (str_equal(token_string, STR_LIT("long"))) {
+		token_kind = TOKEN_KEYWORD_LONG;
+	} else if (str_equal(token_string, STR_LIT("signed"))) {
+		token_kind = TOKEN_KEYWORD_SIGNED;
+	} else if (str_equal(token_string, STR_LIT("unsigned"))) {
+		token_kind = TOKEN_KEYWORD_UNSIGNED;
+	} else if (str_equal(token_string, STR_LIT("__int8"))) {
+		token_kind = TOKEN_KEYWORD_INT8;
+	} else if (str_equal(token_string, STR_LIT("__int16"))) {
+		token_kind = TOKEN_KEYWORD_INT16;
+	} else if (str_equal(token_string, STR_LIT("__int32"))) {
+		token_kind = TOKEN_KEYWORD_INT32;
+	} else if (str_equal(token_string, STR_LIT("__int64"))) {
+		token_kind = TOKEN_KEYWORD_INT64;
 	}
 
 	*out_token = (Token) {

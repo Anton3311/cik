@@ -984,86 +984,76 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 	assert(out_type != NULL);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
-
-	if (str_equal(token.string, STR_LIT("void"))) {
+	if (token.kind == TOKEN_KEYWORD_VOID) {
 		preprocessor_next_token(parser->preprocessor);
-
 		out_type->kind = TYPE_VOID;
 		return PARSE_TYPE_PARSED;
-	} else if (str_equal(token.string, STR_LIT("float"))) {
+	} else if (token.kind == TOKEN_KEYWORD_FLOAT) {
 		preprocessor_next_token(parser->preprocessor);
-
 		out_type->kind = TYPE_FLOAT;
 		return PARSE_TYPE_PARSED;
-	} else if (str_equal(token.string, STR_LIT("double"))) {
+	} else if (token.kind == TOKEN_KEYWORD_DOUBLE) {
 		preprocessor_next_token(parser->preprocessor);
-
 		out_type->kind = TYPE_DOUBLE;
 		return PARSE_TYPE_PARSED;
-	} else if (str_equal(token.string, STR_LIT("size_t"))) {
+	} else if (token.kind == TOKEN_KEYWORD_SIZE_T) {
 		preprocessor_next_token(parser->preprocessor);
-
 		out_type->kind = TYPE_SIZE_T;
 		return PARSE_TYPE_PARSED;
-	} else {
-		TypeKindFlags type_flags = TYPE_FLAG_NONE;
-		if (str_equal(token.string, STR_LIT("signed"))) {
-			preprocessor_next_token(parser->preprocessor);
+	}
 
-			type_flags |= TYPE_FLAG_SIGNED;
-			token = preprocessor_view_next(parser->preprocessor);
-		} else if (str_equal(token.string, STR_LIT("unsigned"))) {
-			preprocessor_next_token(parser->preprocessor);
+	TypeKind type_kind = TYPE_VOID;
+	TypeKindFlags type_flags = TYPE_FLAG_NONE;
+	if (token.kind == TOKEN_KEYWORD_SIGNED) {
+		preprocessor_next_token(parser->preprocessor);
 
-			type_flags |= TYPE_FLAG_UNSIGNED;
-			token = preprocessor_view_next(parser->preprocessor);
+		type_kind = TYPE_INT;
+		type_flags |= TYPE_FLAG_SIGNED;
+		token = preprocessor_view_next(parser->preprocessor);
+	} else if (token.kind == TOKEN_KEYWORD_UNSIGNED) {
+		preprocessor_next_token(parser->preprocessor);
+
+		type_kind = TYPE_INT;
+		type_flags |= TYPE_FLAG_UNSIGNED;
+		token = preprocessor_view_next(parser->preprocessor);
+	}
+
+	if (token.kind == TOKEN_KEYWORD_CHAR) {
+		preprocessor_next_token(parser->preprocessor);
+		type_kind = TYPE_CHAR;
+	} else if (token.kind == TOKEN_KEYWORD_INT) {
+		preprocessor_next_token(parser->preprocessor);
+		type_kind = TYPE_INT;
+	} else if (token.kind == TOKEN_KEYWORD_SHORT) {
+		preprocessor_next_token(parser->preprocessor);
+		type_kind = TYPE_SHORT;
+	} else if (token.kind == TOKEN_KEYWORD_INT8) {
+		preprocessor_next_token(parser->preprocessor);
+		type_kind = TYPE_INT8;
+	} else if (token.kind == TOKEN_KEYWORD_INT16) {
+		preprocessor_next_token(parser->preprocessor);
+		type_kind = TYPE_INT16;
+	} else if (token.kind == TOKEN_KEYWORD_INT32) {
+		preprocessor_next_token(parser->preprocessor);
+		type_kind = TYPE_INT32;
+	} else if (token.kind == TOKEN_KEYWORD_INT64) {
+		preprocessor_next_token(parser->preprocessor);
+		type_kind = TYPE_INT64;
+	} else if (token.kind == TOKEN_KEYWORD_LONG) {
+		preprocessor_next_token(parser->preprocessor);
+
+		Token next_token = preprocessor_view_next(parser->preprocessor);
+		if (next_token.kind == TOKEN_KEYWORD_LONG) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = TYPE_LONG_LONG;
+		} else {
+			type_kind = TYPE_LONG;
 		}
+	}
 
-		TypeKind type_kind = INT32_MAX;
-
-		if (str_equal(token.string, STR_LIT("char"))) {
-			preprocessor_next_token(parser->preprocessor);
-			type_kind = TYPE_CHAR;
-		} else if (str_equal(token.string, STR_LIT("int"))) {
-			preprocessor_next_token(parser->preprocessor);
-			type_kind = TYPE_INT;
-		} else if (str_equal(token.string, STR_LIT("short"))) {
-			preprocessor_next_token(parser->preprocessor);
-			type_kind = TYPE_SHORT;
-		} else if (str_equal(token.string, STR_LIT("__int8"))) {
-			preprocessor_next_token(parser->preprocessor);
-			type_kind = TYPE_INT8;
-		} else if (str_equal(token.string, STR_LIT("__int16"))) {
-			preprocessor_next_token(parser->preprocessor);
-			type_kind = TYPE_INT16;
-		} else if (str_equal(token.string, STR_LIT("__int32"))) {
-			preprocessor_next_token(parser->preprocessor);
-			type_kind = TYPE_INT32;
-		} else if (str_equal(token.string, STR_LIT("__int64"))) {
-			preprocessor_next_token(parser->preprocessor);
-			type_kind = TYPE_INT64;
-		} else if (str_equal(token.string, STR_LIT("long"))) {
-			preprocessor_next_token(parser->preprocessor);
-
-			Token next_token = preprocessor_view_next(parser->preprocessor);
-			if (next_token.kind == TOKEN_IDENT && str_equal(next_token.string, STR_LIT("long"))) {
-				preprocessor_next_token(parser->preprocessor);
-				type_kind = TYPE_LONG_LONG;
-			} else {
-				type_kind = TYPE_LONG;
-			}
-		}
-
-		if (type_kind != INT32_MAX) {
-			out_type->kind = type_kind | type_flags;
-			return PARSE_TYPE_PARSED;
-		}
-
-		if (type_kind == INT32_MAX && type_flags != TYPE_FLAG_NONE) {
-			TokenKind expected_tokens[] = { TOKEN_IDENT };
-			diagnostics_report_unexpected_token(parser->diagnostics, token, expected_tokens, array_size(expected_tokens));
-			return PARSE_TYPE_ERROR;
-		}
+	if (type_kind != TYPE_VOID) {
+		out_type->kind = type_kind | type_flags;
+		return PARSE_TYPE_PARSED;
 	}
 
 	return PARSE_TYPE_NOT_PARSED;
@@ -1072,19 +1062,19 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
+	ParseTypeResult primitive_parse_result = _parser_try_parse_primitive_type(parser, out_type);
+	switch (primitive_parse_result) {
+	case PARSE_TYPE_ERROR:
+	case PARSE_TYPE_PARSED:
+		return primitive_parse_result;
+	case PARSE_TYPE_NOT_PARSED:
+		break;
+	}
+
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_IDENT) {
 		if (is_digit(token.string.v[0])) {
 			return PARSE_TYPE_NOT_PARSED;
-		}
-
-		ParseTypeResult primitive_parse_result = _parser_try_parse_primitive_type(parser, out_type);
-		switch (primitive_parse_result) {
-		case PARSE_TYPE_ERROR:
-		case PARSE_TYPE_PARSED:
-			return primitive_parse_result;
-		case PARSE_TYPE_NOT_PARSED:
-			break;
 		}
 
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
@@ -1093,13 +1083,6 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 				token.string);
 		if (entry == NULL) {
 			return PARSE_TYPE_NOT_PARSED;
-
-			// TODO: Generate error? In some cases it is needed
-			diagnostics_report_error(parser->diagnostics,
-					token.source_range,
-					STR_LIT("Use of undeclared identifier"),
-					NULL);
-			return PARSE_TYPE_ERROR;
 		}
 
 		// NOTE: Here we since we only do search in the alias namespace,
@@ -1150,29 +1133,12 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 		out_type->kind = TYPE_ENUM;
 		out_type->enum_def = enum_def;
 		return PARSE_TYPE_PARSED;
-	} else {
-		preprocessor_next_token(parser->preprocessor);
-
-		TokenKind expected_tokens[] = {
-			TOKEN_IDENT,
-			TOKEN_KEYWORD_CONST,
-			TOKEN_KEYWORD_STRUCT,
-			TOKEN_KEYWORD_UNION,
-			TOKEN_KEYWORD_ENUM,
-		};
-
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				token,
-				expected_tokens,
-				array_size(expected_tokens));
-		return PARSE_TYPE_ERROR;
 	}
 
-	unreachable();
-	return PARSE_TYPE_ERROR;
+	return PARSE_TYPE_NOT_PARSED;
 }
 
-bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
+static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
 	// First parse qualifiers
@@ -2721,6 +2687,8 @@ bool _parser_parse_scope(Parser* parser, Scope* out_scope) {
 		if (node) {
 			parsed_node_list_append(&out_scope->nodes, node);
 			node->parent_scope = out_scope;
+		} else {
+			preprocessor_next_token(parser->preprocessor);
 		}
 	}
 
@@ -2762,6 +2730,8 @@ void parser_parse(Parser* parser, AST* ast) {
 
 			// NOTE: We don't a root scope, it is a just a list of nodes,
 			//       thus we can't assign a parent scope for each node
+		} else {
+			preprocessor_next_token(parser->preprocessor);
 		}
 	}
 }

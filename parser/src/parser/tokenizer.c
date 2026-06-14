@@ -132,7 +132,8 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		if ((current_char >= 'a' && current_char <= 'z')
 				|| (current_char >= 'A' && current_char <= 'Z')
 				|| (current_char >= '0' && current_char <= '9')
-				|| current_char == '_') {
+				|| current_char == '_'
+				|| current_char == '$') {
 			tokenizer->read_position += 1;
 		} else {
 			break;

@@ -622,7 +622,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 			}
 
 			switch (token.kind) {
-			case TOKEN_IDENT:
+			case TOKEN_IDENT: {
 				tokenizer_reset_to_token(state->tokenizer, token);
 
 				if (macro->style != MACRO_STYLE_FUNCTION) {
@@ -661,6 +661,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				}
 
 				break;
+			}
 			case TOKEN_HASH: {
 				// Consume TOKEN_HASH, so that we can get the next identifier token,
 				// without tokenizing TOKEN_HASH twice (since `tokenizer_view_next` was used).
@@ -715,9 +716,30 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 				unreachable();
 				break;
 			}
-			default:
+			default: {
+				bool is_insert_operator = false;
+				if (next_token_is_part_of_insert_operator) {
+					is_insert_operator = true;
+					next_token_is_part_of_insert_operator = false;
+				}
+
 				tokenizer_reset_to_token(state->tokenizer, token);
+
+				Token maybe_token_insert_operator = tokenizer_view_next(state->tokenizer);
+				if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
+					tokenizer_reset_to_token(state->tokenizer, maybe_token_insert_operator);
+					is_insert_operator = true;
+					next_token_is_part_of_insert_operator = true;
+				}
+
+				if (is_insert_operator) {
+					assert(token_hint.kind == MACRO_TOKEN_HINT_NONE || token_hint.kind == MACRO_TOKEN_HINT_PARAMETER);
+					token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
+					token_hint.token_insert_op.param_index = SIZE_MAX; // here an invalid param index is allowed
+				}
+
 				break;
+			}
 			}
 
 			if (macro->style != MACRO_STYLE_FUNCTION) {

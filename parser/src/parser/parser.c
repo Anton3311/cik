@@ -1819,6 +1819,14 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 			expr_get_type(left_operand, &left_type);
 			expr_get_type(right_operand, &right_type);
 
+			if (left_type.kind == TYPE_ENUM) {
+				left_type.kind = TYPE_INT;
+			}
+
+			if (right_type.kind == TYPE_ENUM) {
+				right_type.kind = TYPE_INT;
+			}
+
 			Type result_type;
 			bin_expr_select_result_type(&left_type, &right_type, &result_type);
 

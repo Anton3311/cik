@@ -524,6 +524,13 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		return load_instr_index;
 	}
+	case EXPR_ENUM_CONSTANT: {
+		assert(expr->enum_constant.variant_index < INT32_MAX);
+		return instr_new_int_const(instr_buffer,
+				instr_allocator,
+				expr->enum_constant.variant_index,
+				4);
+	}
 	}
 
 	unreachable();

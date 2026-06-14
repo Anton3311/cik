@@ -558,8 +558,57 @@ static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) 
 	if (expr_is_bool(expr)) {
 		return _compile_bin_expr(compiler, expr);
 	} else {
-		unreachable();
+		InstrIndex expr_value = _compile_expr(compiler, expr);
+
+		Type result_type;
+		expr_get_type(expr, &result_type);
+
+		TypeLayout result_layout = _type_get_layout(compiler, &result_type);
+
+		size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
+		if (type_kind_is_int(result_type.kind)
+				|| result_type.kind == TYPE_POINTER
+				|| result_type.kind == TYPE_ARRAY) {
+			InstrBuffer* instr_buffer = &compiler->instr_buffer;
+			Arena* instr_allocator = compiler->instr_allocator;
+
+			InstrIndex zero_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* zero = instr_buffer_at(instr_buffer, zero_index);
+			switch (result_layout.size) {
+			case 1:
+				zero->kind = INSTR_CONST_8;
+				zero->const_8.u = 0;
+				break;
+			case 2:
+				zero->kind = INSTR_CONST_16;
+				zero->const_16.u = 0;
+				break;
+			case 4:
+				zero->kind = INSTR_CONST_32;
+				zero->const_32.u = 0;
+				break;
+			case 8:
+				zero->kind = INSTR_CONST_64;
+				zero->const_64.u = 0;
+				break;
+			default:
+				unreachable();
+			}
+
+			InstrIndex compare_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* compare = instr_buffer_at(instr_buffer, compare_index);
+			compare->kind = INSTR_COMPARE_8 + result_bit_size_index;
+			compare->compare.left = expr_value;
+			compare->compare.right = zero_index;
+			compare->compare.kind = INSTR_CMP_GREATER;
+			return compare_index;
+		} else {
+			unreachable();
+		}
 	}
+
+	unreachable();
+	return INVALID_INSTR_INDEX;
 }
 
 static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
@@ -648,12 +697,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 			instr->kind = INSTR_BRANCH;
-			
-			{
-				Expr* condition = &node->if_stmt.condition;
-				instr->branch.condition = _compile_expr_to_bool(compiler, condition);
-			}
-
+			instr->branch.condition = _compile_expr_to_bool(compiler, &node->if_stmt.condition);
 			instr->branch.io_state = compiler->io_state;
 
 			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
@@ -973,8 +1017,13 @@ static int _internal_print_string(const char* string) {
 	return 0;
 }
 
+static void _internal_panic(const char* message) {
+	panic(message);
+}
+
 void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
 	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
 	func_ref_table_resolve_ref_to(table, STR_LIT("printf"), printf);
+	func_ref_table_resolve_ref_to(table, STR_LIT("panic"), _internal_panic);
 }

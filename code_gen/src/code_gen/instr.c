@@ -78,6 +78,41 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_REGION] = INSTR_FEATURE_CONTROL,
 };
 
+InstrIndex instr_new_int_const(InstrBuffer* buffer,
+		Arena* allocator,
+		uint64_t value,
+		size_t int_size) {
+	InstrIndex instr_index = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, instr_index);
+
+	switch (int_size) {
+	case 1:
+		assert(value <= 0xff);
+		instr->kind = INSTR_CONST_8;
+		instr->const_8.u = (uint8_t)value;
+		break;
+	case 2:
+		assert(value <= 0xffff);
+		instr->kind = INSTR_CONST_16;
+		instr->const_16.u = (uint16_t)value;
+		break;
+	case 4:
+		assert(value <= 0xffffffff);
+		instr->kind = INSTR_CONST_32;
+		instr->const_32.u = (uint32_t)value;
+		break;
+	case 8:
+		assert(value <= 0xffffffffffffffff);
+		instr->kind = INSTR_CONST_64;
+		instr->const_64.u = value;
+		break;
+	default:
+		unreachable();
+	}
+
+	return instr_index;
+}
+
 InstrIndex instr_new_cast(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex value,

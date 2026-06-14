@@ -392,6 +392,11 @@ inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 
 #define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[index.value]
 
+InstrIndex instr_new_int_const(InstrBuffer* buffer,
+		Arena* allocator,
+		uint64_t value,
+		size_t int_size);
+
 inline InstrIndex instr_new_region(InstrBuffer* buffer, Arena* allocator) {
 	InstrIndex i = instr_buffer_append(buffer, allocator);
 	Instr* instr = instr_buffer_at(buffer, i);

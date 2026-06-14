@@ -357,39 +357,15 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		return var_value;
 	}
 	case EXPR_INTEGER_LITERAL: {
-		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-
 		assert(type_kind_is_int(expr->int_literal.integer_type));
 
 		Type int_type = { .kind = expr->int_literal.integer_type };
 		size_t int_size = _type_get_layout(compiler, &int_type).size;
-		switch (int_size) {
-		case 1:
-			assert(expr->int_literal.value <= 0xff);
-			instr->kind = INSTR_CONST_8;
-			instr->const_8.u = (uint8_t)expr->int_literal.value;
-			break;
-		case 2:
-			assert(expr->int_literal.value <= 0xffff);
-			instr->kind = INSTR_CONST_16;
-			instr->const_16.u = (uint16_t)expr->int_literal.value;
-			break;
-		case 4:
-			assert(expr->int_literal.value <= 0xffffffff);
-			instr->kind = INSTR_CONST_32;
-			instr->const_32.u = (uint32_t)expr->int_literal.value;
-			break;
-		case 8:
-			assert(expr->int_literal.value <= 0xffffffffffffffff);
-			instr->kind = INSTR_CONST_64;
-			instr->const_64.u = expr->int_literal.value;
-			break;
-		default:
-			unreachable();
-		}
-
-		return instr_index;
+		
+		return instr_new_int_const(instr_buffer,
+				instr_allocator,
+				expr->int_literal.value,
+				int_size);
 	}
 	case EXPR_STRING_LITERAL: {
 		String string = expr->string_literal.full_string;
@@ -572,34 +548,16 @@ static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) 
 			InstrBuffer* instr_buffer = &compiler->instr_buffer;
 			Arena* instr_allocator = compiler->instr_allocator;
 
-			InstrIndex zero_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* zero = instr_buffer_at(instr_buffer, zero_index);
-			switch (result_layout.size) {
-			case 1:
-				zero->kind = INSTR_CONST_8;
-				zero->const_8.u = 0;
-				break;
-			case 2:
-				zero->kind = INSTR_CONST_16;
-				zero->const_16.u = 0;
-				break;
-			case 4:
-				zero->kind = INSTR_CONST_32;
-				zero->const_32.u = 0;
-				break;
-			case 8:
-				zero->kind = INSTR_CONST_64;
-				zero->const_64.u = 0;
-				break;
-			default:
-				unreachable();
-			}
+			InstrIndex zero = instr_new_int_const(instr_buffer,
+					instr_allocator,
+					0,
+					result_layout.size);
 
 			InstrIndex compare_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* compare = instr_buffer_at(instr_buffer, compare_index);
 			compare->kind = INSTR_COMPARE_8 + result_bit_size_index;
 			compare->compare.left = expr_value;
-			compare->compare.right = zero_index;
+			compare->compare.right = zero;
 			compare->compare.kind = INSTR_CMP_GREATER;
 			return compare_index;
 		} else {

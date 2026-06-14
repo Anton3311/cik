@@ -214,6 +214,11 @@ static void init_preprocessor_test(TestContext* context,
 	Arena* generated_tokens_arena = arena_alloc(context->arena, Arena);
 	*generated_tokens_arena = arena_alloc_sub_arena(context->arena, 2 * 4096);
 
+	Arena* macros_allocator = arena_alloc(context->arena, Arena);
+	*macros_allocator = arena_alloc_sub_arena(
+			context->arena,
+			sizeof(MacroDefinition) * MACRO_TABLE_INITIAL_CAPACITY);
+
 	*out_diagnostics = (Diagnostics) {
 		.allocator = context->arena,
 	};
@@ -222,6 +227,7 @@ static void init_preprocessor_test(TestContext* context,
 			source_storage,
 			source_file,
 			out_diagnostics,
+			arena_allocator_new(macros_allocator),
 			context->arena,
 			context->temp_arena,
 			generated_tokens_arena);
@@ -791,6 +797,7 @@ void run_parser_test_2(TestContext* context,
 			out_source_storage,
 			source_file,
 			out_diagnostics,
+			heap_allocator_new(),
 			context->arena,
 			context->temp_arena,
 			&generated_tokens_arena);
@@ -808,6 +815,8 @@ void run_parser_test_2(TestContext* context,
 	parser_init(&parser, &ast_arena, context->temp_arena, *out_ident_storage, &preprocessor, out_diagnostics);
 
 	parser_parse(&parser, out_ast);
+
+	preprocessor_release(&preprocessor);
 }
 
 void run_parser_test(TestContext* context,
@@ -1592,6 +1601,7 @@ static void _run_anonymous_type_declaration_sub_test(TestContext* context, Strin
 			&source_storage,
 			source_file,
 			&diagnostics,
+			heap_allocator_new(),
 			context->arena,
 			context->temp_arena,
 			&generated_tokens_arena);
@@ -1610,6 +1620,8 @@ static void _run_anonymous_type_declaration_sub_test(TestContext* context, Strin
 
 	AST ast;
 	parser_parse(&parser, &ast);
+
+	preprocessor_release(&preprocessor);
 
 	// WARN: Work's under the assuption that the root scope of `ident_storage`
 	//       isn't cleared after finishing the parshing.

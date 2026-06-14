@@ -47,6 +47,7 @@ bool _parse(GenContext* context,
 			source_storage,
 			source_file,
 			&diagnostics,
+			heap_allocator_new(),
 			context->allocator,
 			context->temp_allocator,
 			context->generated_tokens_allocator);

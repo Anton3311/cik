@@ -39,6 +39,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			&source_storage,
 			source_file,
 			&diagnostics,
+			heap_allocator_new(),
 			context->arena,
 			context->temp_arena,
 			&generated_tokens_arena);
@@ -51,6 +52,8 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 
 	Parser parser = {};
 	parser_init(&parser, &ast_arena, context->arena, &ident_storage, &preprocessor, &diagnostics);
+
+	preprocessor_release(&preprocessor);
 
 	AST parsed_ast = {};
 	parser_parse(&parser, &parsed_ast);

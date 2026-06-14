@@ -4,18 +4,70 @@
 
 #include "parser/parse_tools.h"
 
-void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
-	assert(table->count < table->capacity);
+#define REMOVED_MACRO_FLAG (void*)0x1
 
-	table->macros[table->count] = *macro;
+static size_t _macro_table_find_empty_slot(MacroTable* table, String key) {
+	size_t hash = hash_string(key);
+	for (size_t i = 0; i < table->capacity; i += 1) {
+		size_t index = (hash + i) % table->capacity;
+		String macro_name = table->macros[index].name.string;
+
+		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
+			return index;
+		}
+	}
+
+	return SIZE_MAX;
+}
+
+static void _macro_table_grow(MacroTable* table) {
+	size_t new_capacity = max(MACRO_TABLE_INITIAL_CAPACITY, table->capacity * 2);
+
+	MacroDefinition* old_macros = table->macros;
+	size_t old_capactiy = table->capacity;
+
+	table->macros = allocator_alloc_array(table->allocator,
+			MacroDefinition,
+			new_capacity);
+	table->capacity = new_capacity;
+
+	memset(table->macros, 0, new_capacity * sizeof(*table->macros));
+
+	for (size_t i = 0; i < old_capactiy; i += 1) {
+		String key = old_macros[i].name.string;
+		if (key.v == NULL || key.v == REMOVED_MACRO_FLAG ) {
+			continue;
+		}
+
+		size_t empty_slot = _macro_table_find_empty_slot(table, key);
+		assert(empty_slot != SIZE_MAX);
+
+		table->macros[empty_slot] = old_macros[i];
+	}
+}
+
+void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
+	if (table->count * 2 >= table->capacity) {
+		_macro_table_grow(table);
+	}
+
+	size_t slot = _macro_table_find_empty_slot(table, macro->name.string);
+	assert(slot != SIZE_MAX);
+
+	table->macros[slot] = *macro;
 	table->count += 1;
 }
 
 bool macro_table_remove(MacroTable* table, String name) {
-	for (size_t i = 0; i < table->count; i += 1) {
-		if (str_equal(table->macros[i].name.string, name)) {
-			table->macros[i] = table->macros[table->count - 1];
-			table->count -= 1;
+	size_t hash = hash_string(name);
+	for (size_t i = 0; i < table->capacity; i += 1) {
+		size_t index = (hash + i) % table->capacity;
+		String macro_name = table->macros[index].name.string;
+
+		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
+			return false;
+		} else if (str_equal(macro_name, name)) {
+			table->macros[index].name.string.v = REMOVED_MACRO_FLAG;
 			return true;
 		}
 	}
@@ -24,9 +76,15 @@ bool macro_table_remove(MacroTable* table, String name) {
 }
 
 const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
-	for (size_t i = 0; i < table->count; i += 1) {
-		if (str_equal(table->macros[i].name.string, name)) {
-			return &table->macros[i];
+	size_t hash = hash_string(name);
+	for (size_t i = 0; i < table->capacity; i += 1) {
+		size_t index = (hash + i) % table->capacity;
+		String macro_name = table->macros[index].name.string;
+
+		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
+			return NULL;
+		} else if (str_equal(macro_name, name)) {
+			return &table->macros[index];
 		}
 	}
 
@@ -136,6 +194,7 @@ void preprocessor_init(Preprocessor* state,
 		SourceStorage* source_storage,
 		const SourceFile* source_file,
 		Diagnostics* diagnostics,
+		Allocator gpa,
 		Arena* allocator,
 		Arena* temp_allocator,
 		Arena* generated_tokens_allocator) {
@@ -149,12 +208,7 @@ void preprocessor_init(Preprocessor* state,
 	state->diagnostics = diagnostics;
 	state->initial_file = source_file;
 
-	state->macro_table = (MacroTable) {
-		.capacity = 2048,
-		.count = 0,
-	};
-
-	state->macro_table.macros = arena_alloc_array(state->allocator, MacroDefinition, state->macro_table.capacity);
+	state->macro_table.allocator = gpa;
 
 	state->include_stack.depth = 0;
 	state->include_stack.capacity = 32;
@@ -218,6 +272,16 @@ void preprocessor_init(Preprocessor* state,
 		.capacity = call_stack_capacity,
 		.frames = arena_alloc_array(state->allocator, MacroCall, call_stack_capacity),
 	};
+}
+
+void preprocessor_release(Preprocessor* state) {
+	MacroTable* table = &state->macro_table;
+	if (table->count > 0) {
+		assert(table->macros);
+		allocator_release(table->allocator, table->macros);
+	} else {
+		assert(table->macros == NULL);
+	}
 }
 
 bool _preprocessor_push_file(Preprocessor* state, const SourceFile* source_file) {
@@ -998,7 +1062,8 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state,
 				return NULL;
 			}
 
-			assert_msg(!literal.has_sufix, "todo: handle int literals with sufixes");
+			// NOTE: The int sufix is ignored
+			// assert_msg(!literal.has_sufix, "todo: handle int literals with sufixes");
 
 			Expr* expr = arena_alloc(allocator, Expr);
 			expr->kind = EXPR_INT_LITERAL;

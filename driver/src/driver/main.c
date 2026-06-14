@@ -125,6 +125,7 @@ int main(int argc, char *argv[]) {
 				&source_storage,
 				source_file,
 				&diagnostics,
+				heap_allocator_new(),
 				&arena,
 				&temp_arena,
 				&generated_tokens_arena);
@@ -144,6 +145,8 @@ int main(int argc, char *argv[]) {
 			parser_parse(&parser, &parsed_ast);
 			profile_scope_end();
 		}
+
+		preprocessor_release(&preprocessor);
 
 		if (has_flag(flags, C_FLAG_PRINT_AST)) {
 			if (parsed_ast.root_nodes.first) {

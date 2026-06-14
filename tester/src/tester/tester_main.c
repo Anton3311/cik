@@ -190,6 +190,7 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 			&source_storage,
 			source_file,
 			&diagnostics,
+			heap_allocator_new(),
 			arena,
 			temp_arena,
 			&generated_tokens_arena);
@@ -207,6 +208,8 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 			has_token = true;
 		}
 	}
+
+	preprocessor_release(&preprocessor);
 
 	assert_msg(has_token, "Preprocessor hasn't generated any tokens");
 	assert(first_token.kind == TOKEN_IDENT);

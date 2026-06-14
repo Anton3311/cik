@@ -439,7 +439,8 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		out_type->kind = TYPE_CHAR;
 		return;
 	case EXPR_ENUM_CONSTANT:
-		break;
+		out_type->kind = TYPE_INT;
+		return;
 	case EXPR_FUNCTION_PARAM: {
 		const Function* func = expr->function_param.function_def;
 		assert(expr->function_param.param_index < func->parameter_count);

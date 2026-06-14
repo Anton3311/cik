@@ -132,6 +132,26 @@ Allocator heap_allocator_new() {
 }
 
 //
+// Panic Allocator
+//
+
+static void* _panic_allocator_procedure(void* allocator_data,
+		void* ptr,
+		size_t size,
+		size_t alignment,
+		AllocatorOperation op) {
+	panic("Panic allocator called");
+	return NULL;
+}
+
+Allocator panic_allocator_new() {
+	Allocator allocator = {};
+	allocator.allocator_data = NULL;
+	allocator.procedure = _panic_allocator_procedure;
+	return allocator;
+}
+
+//
 // Arena
 //
 

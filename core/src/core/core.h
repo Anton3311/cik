@@ -134,6 +134,12 @@ inline void heap_release(void* ptr) {
 Allocator heap_allocator_new();
 
 //
+// Panic Allocator
+//
+
+Allocator panic_allocator_new();
+
+//
 // Arena
 //
 

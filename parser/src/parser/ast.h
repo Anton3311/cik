@@ -358,6 +358,7 @@ struct Expr {
 };
 
 void expr_get_type(Expr* expr, Type* out_type);
+bool expr_is_bool(Expr* expr);
 
 //
 // Struct

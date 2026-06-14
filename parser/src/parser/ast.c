@@ -460,6 +460,14 @@ void expr_get_type(Expr* expr, Type* out_type) {
 	return;
 }
 
+bool expr_is_bool(Expr* expr) {
+	if (expr->kind == EXPR_BINARY) {
+		return bin_op_is_compare(expr->binary.op);
+	}
+
+	return false;
+}
+
 size_t struct_field_namespace_index_of(const StructFieldNamespace* struct_namespace, String name) {
 	size_t index = hash_string(name) % struct_namespace->capacity;
 	

@@ -102,6 +102,7 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Type*
 
 static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr);
 static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr);
+static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr);
 
 static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const Type* int_type,
@@ -335,9 +336,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		InstrIndex instr_index = _compile_bin_expr(compiler, expr);
 
 		if (bin_op_is_compare(expr->binary.op)) {
+			InstrIndex convert_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* convert = instr_buffer_at(instr_buffer, convert_index);
+			convert->kind = INSTR_BOOL_TO_INT;
+			convert->bool_to_int.operand = instr_index;
+
 			return instr_new_cast(instr_buffer,
 					instr_allocator,
-					instr_index,
+					convert_index,
 					_type_get_layout(compiler, &result_type).size * 8);
 		}
 
@@ -548,6 +554,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 	return (InstrIndex) {};
 }
 
+static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) {
+	if (expr_is_bool(expr)) {
+		return _compile_bin_expr(compiler, expr);
+	} else {
+		unreachable();
+	}
+}
+
 static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 		InstrIndex variant_a,
 		InstrIndex region_a,
@@ -637,11 +651,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			
 			{
 				Expr* condition = &node->if_stmt.condition;
-				if (condition->kind == EXPR_BINARY && bin_op_is_compare(condition->binary.op)) {
-					instr->branch.condition = _compile_bin_expr(compiler, condition);
-				} else {
-					instr->branch.condition = _compile_expr(compiler, condition);
-				}
+				instr->branch.condition = _compile_expr_to_bool(compiler, condition);
 			}
 
 			instr->branch.io_state = compiler->io_state;

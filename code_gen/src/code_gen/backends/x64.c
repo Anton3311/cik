@@ -31,10 +31,12 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_LOGICAL_SHIFT_RIGHT_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_LOGICAL_SHIFT_RIGHT_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_COMPARE_8]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_16]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_32]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_64]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_8]              = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_COMPARE_16]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_COMPARE_32]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_COMPARE_64]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+
+	[INSTR_BOOL_TO_INT]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 
 	[INSTR_NEGATE_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_NEGATE_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
@@ -553,75 +555,6 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 	}
 }
 
-static void _x64_generate_compare(X64CodeGenerator* gen,
-		InstrIndex instr_index,
-		CodeBuffer* buffer,
-		uint8_t store_result_in_reg) {
-	assert(instr_index.value < gen->instr_buffer.count);
-
-	const Instr* instr = &gen->instr_buffer.instr[instr_index.value];
-	const InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
-
-	switch (instr->kind) {
-	case INSTR_COMPARE_8:
-	case INSTR_COMPARE_16:
-	case INSTR_COMPARE_32:
-	case INSTR_COMPARE_64: {
-		if (instr->kind == INSTR_COMPARE_16) {
-			unreachable();
-		}
-
-		_x64_generate_code(gen, instr->compare.left, buffer);
-		_x64_generate_code(gen, instr->compare.right, buffer);
-
-		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
-		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
-		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
-		assert(dst_loc.kind == INSTR_STORAGE_REG);
-		assert(left_loc.kind == INSTR_STORAGE_REG);
-		assert(right_loc.kind == INSTR_STORAGE_REG);
-
-		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_COMPARE_8);
-
-		encode_2(buffer,
-				MNEMONIC_CMP,
-				operand_reg(left_loc.reg, bit_count),
-				operand_reg(right_loc.reg, bit_count));
-
-		if (store_result_in_reg) {
-			MnemonicKind mnemonic = 0;
-			switch (instr->compare.kind) {
-			case INSTR_CMP_EQUAL:
-				mnemonic = MNEMONIC_SETZ;
-				break;
-			case INSTR_CMP_NOT_EQUAL:
-				mnemonic = MNEMONIC_SETNZ;
-				break;
-			case INSTR_CMP_LESS:
-				mnemonic = MNEMONIC_SETL;
-				break;
-			case INSTR_CMP_LESS_OR_EQUAL:
-				mnemonic = MNEMONIC_SETLE;
-				break;
-			case INSTR_CMP_GREATER:
-				mnemonic = MNEMONIC_SETNLE;
-				break;
-			case INSTR_CMP_GREATER_OR_EQUAL:
-				mnemonic = MNEMONIC_SETNL;
-				break;
-			}
-
-			assert(mnemonic != 0);
-
-			encode_1(buffer, mnemonic, operand_reg(dst_loc.reg, 8));
-		}
-		break;
-	}
-	default:
-		unreachable();
-	}
-}
-
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
@@ -801,8 +734,63 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_COMPARE_16:
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64: {
-		_x64_generate_compare(gen, instr_index, buffer, true);
+		if (instr->kind == INSTR_COMPARE_16) {
+			unreachable();
+		}
+
+		_x64_generate_code(gen, instr->compare.left, buffer);
+		_x64_generate_code(gen, instr->compare.right, buffer);
+
+		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
+		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
+		assert(left_loc.kind == INSTR_STORAGE_REG);
+		assert(right_loc.kind == INSTR_STORAGE_REG);
+
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_COMPARE_8);
+
+		encode_2(buffer,
+				MNEMONIC_CMP,
+				operand_reg(left_loc.reg, bit_count),
+				operand_reg(right_loc.reg, bit_count));
 		return;
+	}
+	case INSTR_BOOL_TO_INT: {
+		_x64_generate_code(gen, instr->bool_to_int.operand, buffer);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+
+		Instr* operand_instr = instr_buffer_at(instr_buffer, instr->bool_to_int.operand);
+		assert(operand_instr->kind >= INSTR_COMPARE_8);
+		assert(operand_instr->kind <= INSTR_COMPARE_64);
+
+		InstrCompareKind compare_kind = operand_instr->compare.kind;
+		MnemonicKind mnemonic = 0;
+		switch (compare_kind) {
+		case INSTR_CMP_EQUAL:
+			mnemonic = MNEMONIC_SETZ;
+			break;
+		case INSTR_CMP_NOT_EQUAL:
+			mnemonic = MNEMONIC_SETNZ;
+			break;
+		case INSTR_CMP_LESS:
+			mnemonic = MNEMONIC_SETL;
+			break;
+		case INSTR_CMP_LESS_OR_EQUAL:
+			mnemonic = MNEMONIC_SETLE;
+			break;
+		case INSTR_CMP_GREATER:
+			mnemonic = MNEMONIC_SETNLE;
+			break;
+		case INSTR_CMP_GREATER_OR_EQUAL:
+			mnemonic = MNEMONIC_SETNL;
+			break;
+		}
+
+		assert(mnemonic != 0);
+
+		encode_1(buffer, mnemonic, operand_reg(dst_loc.reg, 8));
+		return;							
 	}
 	
 	case INSTR_NEGATE_8:
@@ -886,8 +874,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_x64_generate_code(gen, instr->branch.io_state, buffer);
 
 		const Instr* condition_instr = instr_buffer_at(instr_buffer, instr->branch.condition);
-		const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
-		assert(cond_loc.kind == INSTR_STORAGE_REG);
 
 		// HACK: Need to store somewhere the currently processed region
 		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
@@ -899,9 +885,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		case INSTR_COMPARE_16:
 		case INSTR_COMPARE_32:
 		case INSTR_COMPARE_64:
-			_x64_generate_compare(gen, instr->branch.condition, buffer, false);
+			_x64_generate_code(gen, instr->branch.condition, buffer);
 			break;
 		default:
+			const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
+			assert(cond_loc.kind == INSTR_STORAGE_REG);
+
 			_x64_generate_code(gen, instr->branch.condition, buffer);
 
 			assert(has_flag(INSTR_FEATURES[condition_instr->kind], INSTR_FEATURE_REG_STORAGE));

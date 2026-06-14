@@ -33,6 +33,7 @@ static String s_instr_kind_to_string[] = {
     [INSTR_COMPARE_16] = STR_LIT("compare_16"),
     [INSTR_COMPARE_32] = STR_LIT("compare_32"),
     [INSTR_COMPARE_64] = STR_LIT("compare_64"),
+    [INSTR_BOOL_TO_INT] = STR_LIT("bool_to_int"),
     [INSTR_CAST_TO_8] = STR_LIT("cast_to_8"),
     [INSTR_CAST_TO_16] = STR_LIT("cast_to_16"),
     [INSTR_CAST_TO_32] = STR_LIT("cast_to_32"),
@@ -159,6 +160,9 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
     case INSTR_COMPARE_64:
         instr_stack_push(out_dependencies, instr->compare.left);
         instr_stack_push(out_dependencies, instr->compare.right);
+        break;
+    case INSTR_BOOL_TO_INT:
+        instr_stack_push(out_dependencies, instr->bool_to_int.operand);
         break;
     case INSTR_CAST_TO_8:
         instr_stack_push(out_dependencies, instr->cast.value);
@@ -308,6 +312,9 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_COMPARE_64:
         printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        break;
+    case INSTR_BOOL_TO_INT:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->bool_to_int.operand.value);
         break;
     case INSTR_CAST_TO_8:
         printf("value: \033[33;1m%u\033[0m ", (uint32_t)instr->cast.value.value);

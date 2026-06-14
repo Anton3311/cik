@@ -59,6 +59,8 @@ typedef enum {
 	INSTR_COMPARE_32,
 	INSTR_COMPARE_64,
 
+	INSTR_BOOL_TO_INT,
+
 	INSTR_CAST_TO_8,
 	INSTR_CAST_TO_16,
 	INSTR_CAST_TO_32,
@@ -185,6 +187,10 @@ struct Instr {
 			InstrIndex left;
 			InstrIndex right;
 		} compare;
+
+		struct {
+			InstrIndex operand;
+		} bool_to_int;
 
 		struct {
 			InstrIndex value;

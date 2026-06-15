@@ -27,7 +27,21 @@ It preprocesses, parses and compiles C source into x64 machine code.
 > [!NOTE]
 > The project is Windows only and can only be built using Clang.
 
-To build the project, first you need to compile the build tool by running the next script:
+There are two ways to build the project:
+1. Using an auto-generated batch script
+2. Using a build tool located in `builder/src`
+
+### Build using batch script
+
+Just run the following script to compile everything using clang:
+
+```
+scripts/build_all.bat
+```
+
+### Build using the build tool
+
+To build the project using the build tool, first you need to compile the build tool by running the next script:
 
 ```
 scripts/build_bb.bat
@@ -38,18 +52,10 @@ After successful compilation run:
 bin/bb.exe build
 ```
 
-Running the build tool will produce multiple executables:
+The build process produces multiple executables:
 - `bin/c.exe` - the compiler
 - `bin/test_runner.exe` - a test runner
 - `bin/tester.exe` - an exe that actually runs the tests. **Not meant for manual use**. It is only lauched by `test_runner.exe` and it's main purpose is to isolate the tests so that in case of a crash the `test_runner` can keep on running other tests.
-
----
-
-There is also an auto-generated batch script to compile everything (without using the above mentioned build tool):
-
-```
-scripts/build_all.bat
-```
 
 # Running a compiler
 

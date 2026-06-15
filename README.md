@@ -114,7 +114,7 @@ bin/test_runner.exe
 
 1. Binary and unary expressions
 2. Functions (forward declarations and definitions)
-3. `struct`, `union` and `typedef`
+3. `struct`, `union`, `enum` and `typedef` (both forward declarations and definitions)
 4. If/else statements
 5. Returns statements
 

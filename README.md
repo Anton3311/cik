@@ -28,8 +28,14 @@ It preprocesses, parses and compiles C source into x64 machine code.
 > The project is Windows only and can only be built using Clang.
 
 There are two ways to build the project:
-1. Using an auto-generated batch script
-2. Using a build tool located in `builder/src`
+1. [Using an auto-generated batch script](#building-using-batch-script)
+2. [Using a build tool](#building-using-the-build-tool)
+
+The build process produces multiple executables:
+- `bin/c.exe` - the compiler
+- `bin/test_runner.exe` - a test runner
+- `bin/tester.exe` - an exe that actually runs the tests. **Not meant for manual use**. It is only lauched by `test_runner.exe` and it's main purpose is to isolate the tests so that in case of a crash the `test_runner` can keep on running other tests.
+- `bin/gen.exe` - source code generator, currently only used to generate `code_gen/src/code_gen/instr.gen.c`.
 
 ### Build using batch script
 
@@ -51,11 +57,6 @@ After successful compilation run:
 ```
 bin/bb.exe build
 ```
-
-The build process produces multiple executables:
-- `bin/c.exe` - the compiler
-- `bin/test_runner.exe` - a test runner
-- `bin/tester.exe` - an exe that actually runs the tests. **Not meant for manual use**. It is only lauched by `test_runner.exe` and it's main purpose is to isolate the tests so that in case of a crash the `test_runner` can keep on running other tests.
 
 # Running a compiler
 
@@ -79,7 +80,7 @@ Backend flags:
 
 # Running tests
 
-Running all the tests:
+Use `bin/test_runner.exe` to run the tests:
 
 ```
 bin/test_runner.exe
@@ -98,6 +99,8 @@ bin/test_runner.exe
 9. `stdx/src` - some simplified versions of standard library headers, that are sometimes used to work around the limitations of the preprocessor.
 10. `tester/src` - test runner and unit tests
 11. `tests/src` - preprocessor and compiler tests (every test is defined in it's own file. This directory is scanned by the `test_runner`, and adding new tests doesn't require compilation, like for the unit tests)
+
+There are more detailed explanations for parts of the project. These are located in `docs/`.
 
 # Features
 

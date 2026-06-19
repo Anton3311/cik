@@ -118,7 +118,3 @@ The `MACRO_CALL_TOKEN` is the default state where either the current token gets 
 `MACRO_CALL_ARGUMENT_EXPANSION` returns the tokens of the corresponding argument one by one.
 
 `MACRO_CALL_VA_ARGS_EXPANSION` same as the above, returns tokens of the `__VA_ARGS__`.
-
-# Parser
-
-Well, there isn't much to talk about the parser, it is just a recursive-descent parser.

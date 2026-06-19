@@ -4,7 +4,7 @@ Register allocator is an integral part of any compiler that compiles source code
 
 The reason register allocators even exist, is that CPUs have a limited number of general purpose registers (x86_64 has 16 general purpose registers).
 
-Allowing the program to store its state only in registers, would imply a serious limitation on the number of possible variable a program is allowed to use. Furthermore, that limitation would cover not just variables, but also constants and interpediate results of expressions, leaving the programmer with even less number of usable variables. In case of x86_64 it would be a total of 16 possible variables, constants and interemediate exression results together.
+Allowing the program to store its state only in registers, would imply a serious limitation on the number of possible variables a program is allowed to use. Furthermore, that limitation would cover not just variables, but also constants and interpediate results of expressions, leaving the programmer with even less number of usable variables. In case of x86_64 it would be a total of 16 possible variables, constants and interemediate expression results together.
 
 Therefore such a limitation is not a feasible solution. We need to store some important values in the registers for quick access, and other less important on the stack.
 

@@ -99,8 +99,8 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func.func_ref_table;
+			gen.string_consts = str_storage_to_array(&c.str_storage);
 
-			x64_merge_all_string_consts(&gen, str_storage_to_array(&c.str_storage));
 			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 			return machine_code;
 		}

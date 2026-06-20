@@ -5,16 +5,6 @@
 #include "code_gen/code_gen.h"
 #include "code_gen/backends/x64_encoding.h"
 
-#define REG_INDEX_MASK_BIT_COUNT (4)
-#define REG_INDEX_MASK ((1 << REG_INDEX_MASK_BIT_COUNT) - 1)
-
-typedef enum {
-	REG_FLAG_8_BIT       = (1 << 0) << REG_INDEX_MASK_BIT_COUNT,
-	REG_FLAG_16_BIT      = (1 << 1) << REG_INDEX_MASK_BIT_COUNT,
-	REG_FLAG_32_BIT      = (1 << 2) << REG_INDEX_MASK_BIT_COUNT,
-	REG_FLAG_64_BIT      = (1 << 3) << REG_INDEX_MASK_BIT_COUNT,
-} X64RegisterFlag;
-
 typedef enum {
 	X64_REG_A,
 	X64_REG_C,
@@ -35,9 +25,6 @@ typedef enum {
 	X64_REG_14,
 	X64_REG_15,
 } X64Register;
-
-// `size_index` - one of [0, 1, 2, 3]
-#define make_reg_id(base_reg_name, size_index) ((base_reg_name) | ((1 << size_index) << REG_INDEX_MASK_BIT_COUNT))
 
 typedef enum {
 	INSTR_STORAGE_NONE,
@@ -76,8 +63,15 @@ typedef struct {
 	// Size of the array is in `phi_variant_counts_per_region`
 	InstrIndex** phi_node_of_variant;
 
+	StringArray string_consts;
+
+	// Used to map from string constant id to an offset in the `merged_strings_buffer`.
+	// Allocated using the `temp_allocator`, thus not usable after code generation finishes.
 	size_t* string_offsets;
-	char* all_strings_buffer;
+
+	// All the string constants used in the source code, are turned into null-terminated strings
+	// and then stored sequentionally in this buffer.
+	char* merged_strings_buffer;
 } X64CodeGenerator;
 
 typedef struct {
@@ -85,7 +79,6 @@ typedef struct {
 	size_t size_in_bytes;
 } MachineCodeBuffer;
 
-void x64_merge_all_string_consts(X64CodeGenerator* gen, StringArray strings);
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
 
 #endif

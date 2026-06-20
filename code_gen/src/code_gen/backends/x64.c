@@ -404,7 +404,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
 
 		uint32_t str_id = instr->const_string.string_id;
-		const char* string = gen->all_strings_buffer + gen->string_offsets[str_id];
+		const char* string = gen->merged_strings_buffer + gen->string_offsets[str_id];
 		_emit_load_const_64(buffer, instr_storage.reg, (uint64_t)string);
 		return;
 	}
@@ -969,9 +969,13 @@ static void _encode_control_instr(const Instr* instr,
 	return;
 }
 
-void x64_merge_all_string_consts(X64CodeGenerator* gen, StringArray strings) {
-	gen->string_offsets = arena_alloc_array(gen->allocator, size_t, strings.count);
-	gen->all_strings_buffer = arena_alloc_array(gen->allocator, char, 0);
+static void _merge_string_consts(X64CodeGenerator* gen) {
+	profile_scope_start(__func__);
+
+	StringArray strings = gen->string_consts;
+
+	gen->string_offsets = arena_alloc_array(gen->temp_allocator, size_t, strings.count);
+	gen->merged_strings_buffer = arena_alloc_array(gen->allocator, char, 0);
 
 	for (size_t i = 0; i < strings.count; i += 1) {
 		size_t string_length = strings.values[i].length;
@@ -981,21 +985,25 @@ void x64_merge_all_string_consts(X64CodeGenerator* gen, StringArray strings) {
 		memcpy(string, strings.values[i].v, string_length);
 		string[string_length] = 0;
 
-		gen->string_offsets[i] = string - gen->all_strings_buffer;
+		gen->string_offsets[i] = string - gen->merged_strings_buffer;
 	}
+
+	profile_scope_end();
 }
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
+	profile_scope_start(__func__);
+
 	encoding_init();
+	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
 	bool validation_result = _x64_validate(gen);
 	assert(validation_result);
 
+	_merge_string_consts(gen);
 	_gather_phis(gen);
 	_run_reg_allocator(gen);
 	
-	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
-
 	InstrIndexArray regions_in_dfs_order = _instr_gather_regions_in_dfs_order(gen->instr_buffer,
 			gen->allocator,
 			gen->temp_allocator,
@@ -1071,5 +1079,6 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	machine_code.size_in_bytes = final_code_size;
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return machine_code;
 }

@@ -194,9 +194,8 @@ int main(int argc, char *argv[]) {
 				gen.allocator = &arena;
 				gen.temp_allocator = &temp_arena;
 				gen.ref_table = &func.func_ref_table;
+				gen.string_consts = str_storage_to_array(&c.str_storage);
 
-				x64_merge_all_string_consts(&gen, str_storage_to_array(&c.str_storage));
-				x64_alloc_registers(&gen, allowed_registers);
 				MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 
 				// Free function symbol table

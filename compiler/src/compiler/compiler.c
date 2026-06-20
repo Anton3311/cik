@@ -531,6 +531,13 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 				expr->enum_constant.variant_index,
 				4);
 	}
+	case EXPR_CAST: {
+		Type value_type;
+		expr_get_type(expr->cast.expr, &value_type);
+
+		InstrIndex value = _compile_expr(compiler, expr->cast.expr);
+		return _compile_int_cast(compiler, &value_type, expr->cast.target_type, value);
+	}
 	}
 
 	unreachable();

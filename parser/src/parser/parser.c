@@ -1138,6 +1138,41 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 	return PARSE_TYPE_NOT_PARSED;
 }
 
+static ParseTypeResult _parser_try_parse_type_name(Parser* parser, Type* out_type) {
+	TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
+	
+	switch (_parser_try_parse_primitive_type(parser, out_type)) {
+	case PARSE_TYPE_NOT_PARSED:
+		if (qualifiers != TYPE_QUALIFIER_NONE) {
+			return PARSE_TYPE_ERROR;
+		}
+
+		return PARSE_TYPE_NOT_PARSED;
+	case PARSE_TYPE_ERROR:
+		return PARSE_TYPE_ERROR;
+	case PARSE_TYPE_PARSED:
+		break;
+	}
+
+	Token maybe_asterisk = preprocessor_view_next(parser->preprocessor);
+	if (maybe_asterisk.kind == TOKEN_ASTERISK) {
+		preprocessor_next_token(parser->preprocessor);
+
+		TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
+
+		Type* inner_type = arena_alloc(parser->ast_allocator, Type);
+		*inner_type = *out_type;
+
+		*out_type = (Type) {
+			.kind = TYPE_POINTER,
+			.pointer_base_type = inner_type,
+			.qualifiers = qualifiers,
+		};
+	}
+
+	return PARSE_TYPE_PARSED;
+}
+
 static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
@@ -1605,6 +1640,39 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		unreachable();
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
+
+		Type cast_target_type;
+		ParseTypeResult type_result = _parser_try_parse_type_name(parser, &cast_target_type);
+		switch (type_result) {
+		case PARSE_TYPE_PARSED: {
+			Token right_paren = preprocessor_next_token(parser->preprocessor);
+			if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						right_paren,
+						expected_tokens,
+						array_size(expected_tokens));
+				return EXPR_PARSE_ERROR;
+			}
+
+			out_expr->kind = EXPR_CAST;
+			out_expr->cast.target_type = arena_alloc(parser->ast_allocator, Type);
+			out_expr->cast.expr = arena_alloc(parser->ast_allocator, Expr);
+
+			*out_expr->cast.target_type = cast_target_type;
+
+			ExprParseResult expr_result = _parser_try_parse_expr_operand_without_post_fix_operator(
+					parser,
+					out_expr->cast.expr);
+
+			return expr_result;
+		}
+		case PARSE_TYPE_NOT_PARSED:
+			break;
+		case PARSE_TYPE_ERROR:
+			return EXPR_PARSE_ERROR;
+		}
 
 		ExprParseResult result = _parser_try_parse_expr(parser, out_expr);
 		if (result != EXPR_PARSE_OK) {

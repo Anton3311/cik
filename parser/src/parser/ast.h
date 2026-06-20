@@ -329,6 +329,7 @@ typedef enum {
 	EXPR_ENUM_CONSTANT,
 	EXPR_FUNCTION_PARAM,
 	EXPR_ARRAY_INDEX,
+	EXPR_CAST,
 } ExprKind;
 
 struct Expr {
@@ -354,6 +355,11 @@ struct Expr {
 			const Function* function_def;
 			size_t param_index;
 		} function_param;
+
+		struct {
+			Type* target_type;
+			Expr* expr;
+		} cast;
 	};
 };
 

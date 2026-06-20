@@ -311,7 +311,6 @@ void bin_expr_select_result_type(const Type* left_type,
 	}
 
 	if (left_type->kind == TYPE_POINTER && right_type->kind == TYPE_POINTER) {
-		assert(type_equal(left_type, right_type));
 		*out_type = *left_type;
 		return;
 	}
@@ -453,6 +452,10 @@ void expr_get_type(Expr* expr, Type* out_type) {
 
 		Type* element_type = type_extract_pointer_base_type(&array_type);
 		*out_type = *element_type;
+		return;
+	}
+	case EXPR_CAST: {
+		*out_type = *expr->cast.target_type;
 		return;
 	}
 	}
@@ -684,6 +687,15 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		print_expr(printer, expr->array_index.array);
 		printer_field(printer, "index");
 		print_expr(printer, expr->array_index.index);
+		printer_end_struct(printer);
+		break;
+	}
+	case EXPR_CAST: {
+		printer_begin_struct(printer, "cast");
+		printer_field(printer, "target_type");
+		print_type(printer, expr->cast.target_type);
+		printer_field(printer, "expr");
+		print_expr(printer, expr->cast.expr);
 		printer_end_struct(printer);
 		break;
 	}

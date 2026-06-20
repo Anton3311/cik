@@ -721,9 +721,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		}
 
 		_x64_generate_phi_copies(gen, current_region_id, buffer);
-
-		_x64_generate_code(gen, instr->branch.true_region, NULL);
-		_x64_generate_code(gen, instr->branch.false_region, NULL);
 		return;
 	}
 	case INSTR_JUMP: {
@@ -735,8 +732,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_x64_generate_phi_variants(gen, current_region_id, buffer);
 
 		_x64_generate_phi_copies(gen, current_region_id, buffer);
-
-		_x64_generate_code(gen, instr->jump.target_region, NULL);
 		return;
 	}
 
@@ -837,12 +832,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 
-	case INSTR_REGION: {
-		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
-		code_buffer_init(code_buffer, gen->allocator);
-		_x64_generate_code(gen, instr->region.last_instr, code_buffer);
-		return;
-	}
+	case INSTR_REGION:
+		panic("`INSTR_REGION` are handled outside of this functions. If this `panic` has been"
+				" reached, it means this function was accidentally called for a region");
 	case INSTR_PHI:
 		// Nothing to do here, everything is already handled during code gen of `INSTR_REGION`
 
@@ -1014,7 +1006,14 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 			CodeBuffer,
 			region_count);
 
-	_x64_generate_code(gen, root_region, NULL);
+	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+
+		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
+		code_buffer_init(code_buffer, gen->temp_allocator);
+		_x64_generate_code(gen, instr->region.last_instr, code_buffer);
+	}
 
 	uint16_t* blocks_in_dfs_order = arena_alloc_array(gen->allocator, uint16_t, regions_in_dfs_order.count);
 	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {

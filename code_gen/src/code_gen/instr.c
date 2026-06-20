@@ -151,12 +151,12 @@ bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index) {
 	return has_flag(INSTR_FEATURES[last_instr_kind], INSTR_FEATURE_CONTROL);
 }
 
-void instr_push_input_dependeices(const InstrBuffer* buffer,
+void instr_push_input_dependencies(const InstrBuffer* buffer,
 		InstrInputs inputs,
-		InstrStack* out_dependencies) {
+		InstrQueue* out_dependencies) {
 
 	for (uint16_t i = 0; i < inputs.count; i += 1) {
-		instr_stack_push(out_dependencies, buffer->inputs_buffer[inputs.start + i]);
+		instr_queue_push_back(out_dependencies, buffer->inputs_buffer[inputs.start + i]);
 	}
 }
 
@@ -170,16 +170,16 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 	InstrUsageRange* usage_ranges = arena_alloc_array(allocator, InstrUsageRange, buffer.count);
 	memset(usage_ranges, 0xff, sizeof(*usage_ranges) * buffer.count);
 
-	InstrStack stack;
-	instr_stack_alloc(&stack, temp_allocator, buffer.count);
+	InstrQueue stack;
+	instr_queue_alloc(&stack, temp_allocator, buffer.count);
 
 	BitArray visited_instr = bit_array_alloc(temp_allocator, buffer.count);
 	bit_array_clear(&visited_instr);
 
-	instr_stack_push(&stack, root_instr);
+	instr_queue_push_back(&stack, root_instr);
 
 	while (stack.count) {
-		InstrIndex instr_index = instr_stack_pop(&stack);
+		InstrIndex instr_index = instr_queue_pop_back(&stack);
 		if (instr_index.value == UINT16_MAX) {
 			continue;
 		}
@@ -200,7 +200,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		}
 
 		size_t first_dep_index = stack.count;
-		instr_enumerate_dependencies(buffer, instr_index, &stack);
+		instr_enumerate_uses(&buffer, instr_index, &stack);
 
 		// NOTE: The loop after this check is used to extend the usage range of this instruction dependencies.
 		//       In this way data dependencies get defined for the later register allocation step.
@@ -213,7 +213,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		}
 
 		for (size_t i = first_dep_index; i < stack.count; i += 1) {
-			InstrIndex dep_index = stack.instr[i];
+			InstrIndex dep_index = stack.buffer[i];
 			if (dep_index.value >= buffer.count) {
 				continue;
 			}

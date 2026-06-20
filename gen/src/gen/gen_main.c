@@ -309,16 +309,16 @@ bool _generate_instr(GenContext* context) {
 				"	return s_instr_compare_kind_to_string[kind];\n"
 				"}\n"));
 
-	// `instr_enumerate_dependencies` is reponsible for pushing every dependency
+	// `instr_enumerate_uses` is reponsible for pushing every use (input) 
 	// of the current instruction onto the stack,
 	// All the fields of type `InstrIndex` store a dependency, so the generator
 	// needs to go over all of them, and for each generate a piece of code that
 	// pushes dependency stored in that field onto the stack
 	str_builder_append(&builder, STR_LIT(
-				"void instr_enumerate_dependencies(const InstrBuffer buffer,\n"
-				"                                  InstrIndex instr_index,\n"
-				"                                  InstrStack* out_dependencies) {\n"
-				"    const Instr* instr = &buffer.instr[instr_index.value];\n"
+				"void instr_enumerate_uses(const InstrBuffer* buffer,\n"
+				"                                InstrIndex instr_index,\n"
+				"                                InstrQueue* out_dependencies) {\n"
+				"    const Instr* instr = &buffer->instr[instr_index.value];\n"
 				"    switch (instr->kind) {\n"));
 
 	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
@@ -336,13 +336,13 @@ bool _generate_instr(GenContext* context) {
 				const Struct* instr_struct = field->type.struct_def;
 				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
 					if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
-						str_builder_append(&builder, STR_LIT("        instr_stack_push(out_dependencies, instr->"));
+						str_builder_append(&builder, STR_LIT("        instr_queue_push_back(out_dependencies, instr->"));
 						str_builder_append(&builder, instr_struct_name);
 						str_builder_append_char(&builder, '.');
 						str_builder_append(&builder, instr_struct->fields[j].name.string);
 						str_builder_append(&builder, STR_LIT(");\n"));
 					} else if (type_is_struct(&instr_struct->fields[j].type, instr_inputs_struct)) {
-						str_builder_append(&builder, STR_LIT("        instr_push_input_dependeices(&buffer, instr->"));
+						str_builder_append(&builder, STR_LIT("        instr_push_input_dependencies(buffer, instr->"));
 						str_builder_append(&builder, instr_struct_name);
 						str_builder_append_char(&builder, '.');
 						str_builder_append(&builder, instr_struct->fields[j].name.string);
@@ -360,7 +360,7 @@ bool _generate_instr(GenContext* context) {
 		str_builder_append(&builder, STR_LIT("        break;\n"));
 	}
 
-	// End of `instr_enumerate_dependencies`
+	// End of `instr_enumerate_uses`
 	str_builder_append(&builder, STR_LIT(
 				"    case INSTR_COUNT:\n"
 				"        unreachable();\n"

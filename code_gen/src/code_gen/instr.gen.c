@@ -76,10 +76,10 @@ String instr_bin_op_name(InstrBinOp op_kind) {
 String instr_compare_kind_name(InstrCompareKind kind) {
 	return s_instr_compare_kind_to_string[kind];
 }
-void instr_enumerate_dependencies(const InstrBuffer buffer,
-                                  InstrIndex instr_index,
-                                  InstrStack* out_dependencies) {
-    const Instr* instr = &buffer.instr[instr_index.value];
+void instr_enumerate_uses(const InstrBuffer* buffer,
+                                InstrIndex instr_index,
+                                InstrQueue* out_dependencies) {
+    const Instr* instr = &buffer->instr[instr_index.value];
     switch (instr->kind) {
     case INSTR_NO_OP:
         break;
@@ -94,135 +94,135 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
     case INSTR_CONST_STRING:
         break;
     case INSTR_BIN_OP_8:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
         break;
     case INSTR_BIN_OP_16:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
         break;
     case INSTR_BIN_OP_32:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
         break;
     case INSTR_BIN_OP_64:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
         break;
     case INSTR_NEGATE_8:
-        instr_stack_push(out_dependencies, instr->negate.operand);
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
         break;
     case INSTR_NEGATE_16:
-        instr_stack_push(out_dependencies, instr->negate.operand);
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
         break;
     case INSTR_NEGATE_32:
-        instr_stack_push(out_dependencies, instr->negate.operand);
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
         break;
     case INSTR_NEGATE_64:
-        instr_stack_push(out_dependencies, instr->negate.operand);
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_16:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_32:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_64:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_8:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_16:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_32:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_64:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_COMPARE_8:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
         break;
     case INSTR_COMPARE_16:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
         break;
     case INSTR_COMPARE_32:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
         break;
     case INSTR_COMPARE_64:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
         break;
     case INSTR_BOOL_TO_INT:
-        instr_stack_push(out_dependencies, instr->bool_to_int.operand);
+        instr_queue_push_back(out_dependencies, instr->bool_to_int.operand);
         break;
     case INSTR_CAST_TO_8:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_CAST_TO_16:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_CAST_TO_32:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_CAST_TO_64:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_PTR_LOAD_8:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_PTR_LOAD_16:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_PTR_LOAD_32:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_PTR_LOAD_64:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_LOAD_ARG:
         break;
     case INSTR_BRANCH:
-        instr_stack_push(out_dependencies, instr->branch.condition);
-        instr_stack_push(out_dependencies, instr->branch.true_region);
-        instr_stack_push(out_dependencies, instr->branch.false_region);
-        instr_stack_push(out_dependencies, instr->branch.io_state);
+        instr_queue_push_back(out_dependencies, instr->branch.condition);
+        instr_queue_push_back(out_dependencies, instr->branch.true_region);
+        instr_queue_push_back(out_dependencies, instr->branch.false_region);
+        instr_queue_push_back(out_dependencies, instr->branch.io_state);
         break;
     case INSTR_JUMP:
-        instr_stack_push(out_dependencies, instr->jump.target_region);
-        instr_stack_push(out_dependencies, instr->jump.io_state);
+        instr_queue_push_back(out_dependencies, instr->jump.target_region);
+        instr_queue_push_back(out_dependencies, instr->jump.io_state);
         break;
     case INSTR_RET:
-        instr_stack_push(out_dependencies, instr->ret.io_state);
+        instr_queue_push_back(out_dependencies, instr->ret.io_state);
         break;
     case INSTR_RETURN_VALUE:
-        instr_stack_push(out_dependencies, instr->return_value.value);
-        instr_stack_push(out_dependencies, instr->return_value.io_state);
+        instr_queue_push_back(out_dependencies, instr->return_value.value);
+        instr_queue_push_back(out_dependencies, instr->return_value.io_state);
         break;
     case INSTR_IO_STATE:
-        instr_stack_push(out_dependencies, instr->io_state.producer);
+        instr_queue_push_back(out_dependencies, instr->io_state.producer);
         break;
     case INSTR_REGION:
-        instr_stack_push(out_dependencies, instr->region.last_instr);
+        instr_queue_push_back(out_dependencies, instr->region.last_instr);
         break;
     case INSTR_PHI:
-        instr_push_input_dependeices(&buffer, instr->phi.variants, out_dependencies);
+        instr_push_input_dependencies(buffer, instr->phi.variants, out_dependencies);
         break;
     case INSTR_SELECT:
-        instr_stack_push(out_dependencies, instr->select.value);
-        instr_stack_push(out_dependencies, instr->select.region);
+        instr_queue_push_back(out_dependencies, instr->select.value);
+        instr_queue_push_back(out_dependencies, instr->select.region);
         break;
     case INSTR_CALL_INTERNAL:
-        instr_push_input_dependeices(&buffer, instr->call_internal.args, out_dependencies);
-        instr_stack_push(out_dependencies, instr->call_internal.io_state);
+        instr_push_input_dependencies(buffer, instr->call_internal.args, out_dependencies);
+        instr_queue_push_back(out_dependencies, instr->call_internal.io_state);
         break;
     case INSTR_COUNT:
         unreachable();

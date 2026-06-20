@@ -93,16 +93,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
 			instr_print_all(func.instr_buffer, context->temp_arena);
 
-			uint16_t allowed_registers = UINT16_MAX;
-			allowed_registers &= ~(1 << X64_REG_SP);
-			allowed_registers &= ~(1 << X64_REG_BP);
-
-			// HACK: Some times the register allocator might allocate the whole register
-			//       to some instruction and also it's high part to the other, thus any
-			//       writes by any of the two instructions will be reflected in two places.
-			allowed_registers &= ~(1 << X64_REG_SI);
-			allowed_registers &= ~(1 << X64_REG_DI);
-
 			X64CodeGenerator gen = {};
 			gen.instr_buffer = func.instr_buffer;
 			gen.usage_ranges = func.usage_ranges;
@@ -111,7 +101,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			gen.ref_table = &func.func_ref_table;
 
 			x64_merge_all_string_consts(&gen, str_storage_to_array(&c.str_storage));
-			x64_alloc_registers(&gen, allowed_registers);
 			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 			return machine_code;
 		}

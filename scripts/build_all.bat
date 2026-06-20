@@ -17,7 +17,8 @@ clang.exe -c code_gen/src/code_gen/instr.c -m64 -g -Wall -o bin/obj/instr.o "-Ic
 clang.exe -c code_gen/src/code_gen/instr.gen.c -m64 -g -Wall -o bin/obj/instr.gen.o "-Icore/src" "-Iparser/src" "-Icompiler/src" "-Icode_gen/src"
 clang.exe -c code_gen/src/code_gen/backends/x64.c -m64 -g -Wall -o bin/obj/x64.o "-Icore/src" "-Iparser/src" "-Icompiler/src" "-Icode_gen/src"
 clang.exe -c code_gen/src/code_gen/backends/x64_encoding.c -m64 -g -Wall -o bin/obj/x64_encoding.o "-Icore/src" "-Iparser/src" "-Icompiler/src" "-Icode_gen/src"
-llvm-lib.exe /OUT:bin/code_gen.lib bin/obj/code_gen.o bin/obj/instr.o bin/obj/instr.gen.o bin/obj/x64.o bin/obj/x64_encoding.o bin/core.lib
+clang.exe -c code_gen/src/code_gen/backends/x64_reg_alloc.c -m64 -g -Wall -o bin/obj/x64_reg_alloc.o "-Icore/src" "-Iparser/src" "-Icompiler/src" "-Icode_gen/src"
+llvm-lib.exe /OUT:bin/code_gen.lib bin/obj/code_gen.o bin/obj/instr.o bin/obj/instr.gen.o bin/obj/x64.o bin/obj/x64_encoding.o bin/obj/x64_reg_alloc.o bin/core.lib
 clang.exe -m64 -g -o bin/c.exe bin/obj/main.o -lbin/core.lib -lbin/parser.lib -lbin/compiler.lib -lbin/code_gen.lib -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib
 clang.exe -c gen/src/gen/gen_main.c -m64 -g -Wall -o bin/obj/gen_main.o "-Icore/src" "-Iparser/src"
 clang.exe -m64 -g -o bin/gen.exe bin/obj/gen_main.o -lbin/core.lib -lbin/parser.lib -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib

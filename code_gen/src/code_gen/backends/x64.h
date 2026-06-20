@@ -86,7 +86,6 @@ typedef struct {
 } MachineCodeBuffer;
 
 void x64_merge_all_string_consts(X64CodeGenerator* gen, StringArray strings);
-void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers);
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
 
 #endif

@@ -1,12 +1,13 @@
 #include "x64.h"
 
 #include "core/profiler.h"
+#include "code_gen/backends/x64_reg_alloc.h"
 
 inline uint8_t _bit_count_from_index(uint8_t i) {
 	return (1 << i) * 8;
 }
 
-static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
+X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_NO_OP]                  = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
 	[INSTR_CONST_8]                = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
@@ -136,157 +137,78 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 	}
 }
 
-static InstrIndexArray _x64_gather_instr_with_storage_requirement(const InstrBuffer instr_buffer,
-		const InstrUsageRange* usage_ranges,
-		Arena* allocator) {
-
-	InstrIndexArray result;
-	result.count = 0;
-	result.instr = arena_alloc_array(allocator, InstrIndex, 0);
-
-	for (size_t i = 0; i < instr_buffer.count; i += 1) {
-		const InstrKind kind = instr_buffer.instr[i].kind;
-		if (!has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			continue;
-		}
-
-		if (usage_ranges[i].value == UINT32_MAX) {
-			// Not used
-			continue;
-		}
-
-		arena_alloc(allocator, InstrIndex);
-		result.instr[result.count].value = (uint16_t)i;
-		result.count += 1;
-	}
-
-	return result;
-}
-
-// Returned array stores an array of edges for each instruction in `instr_with_storage_requirement`
-// The array must be indexed using an element index of the `instr_with_storage_requirement`
-static UInt16Array* _x64_build_interference_graph(const InstrBuffer instr_buffer,
-		const InstrIndexArray instr_with_storage_requirement,
-		const InstrUsageRange* usage_ranges,
-		Arena* allocator) {
-
-	// Each array stores indices into `instr_with_storage_requirement`
-	UInt16Array* graph_edges = arena_alloc_array_zeroed(allocator,
-			UInt16Array,
-			instr_with_storage_requirement.count);
-
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		UInt16Array* edges = &graph_edges[i];
-		edges->values = arena_alloc_array(allocator, uint16_t, 0);
-	
-		InstrUsageRange usage_range_a = usage_ranges[instr_with_storage_requirement.instr[i].value];
-		for (size_t j = 0; j < instr_with_storage_requirement.count; j += 1) {
-			if (i == j) {
-				continue;
-			}
-
-			InstrUsageRange usage_range_b = usage_ranges[instr_with_storage_requirement.instr[j].value];
-
-			uint16_t max_start = max(usage_range_a.first_usage.value, usage_range_b.first_usage.value);
-			uint16_t min_end = min(usage_range_a.last_usage.value, usage_range_b.last_usage.value);
-
-			bool overlap = min_end > max_start;
-			if (overlap) {
-				arena_alloc(allocator, InstrIndex);
-				edges->values[edges->count] = (uint16_t)j;
-				edges->count += 1;
-			}
-		}
-	}
-
-	return graph_edges;
-}
-
-// Writes storage locations into `instr_storage` array.
-// This array must be of size `instr_buffer.count`
-static void _x64_run_graph_coloring(InstrBuffer instr_buffer,
-		InstrIndexArray instr_with_storage_requirement,
-		UInt16Array* interference_graph,
-		InstrStorageLocation* instr_storage,
-		uint16_t allowed_registers,
-		Arena* temp_allocator) {
+static void _gather_phis(X64CodeGenerator* gen) {
 	profile_scope_start(__func__);
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
-	uint16_t* potential_instr_registers = arena_alloc_array(temp_allocator,
+	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(gen->allocator,
 			uint16_t,
-			instr_buffer.count);
+			gen->instr_buffer.region_count);
 
-	for (size_t i = 0; i < instr_buffer.count; i += 1) {
-		InstrKind kind = instr_buffer.instr[i].kind;
+	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		const Instr* instr = &gen->instr_buffer.instr[i];
+		if (instr->kind == INSTR_PHI) {
+			InstrInputs variants = instr->phi.variants;
+			for (uint16_t j = 0; j < variants.count; j += 1) {
+				InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
+				const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
+				assert(variant->kind == INSTR_SELECT);
 
-		if (kind == INSTR_LOAD_ARG) {
-			continue;
-		}
-
-		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			uint16_t instr_registers = s_instr_storage_requiremenets[kind].allowed_registers;
-			potential_instr_registers[i] = instr_registers & allowed_registers;
-
-			assert_msg(potential_instr_registers[i] != 0,
-					"This instruction must be spilled, but spilling is not yet implemented");
-		}
-	}
-
-	// Assign locations to function arguments
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
-		InstrKind kind = instr_buffer.instr[instr_index.value].kind;
-
-		if (kind != INSTR_LOAD_ARG) {
-			continue;
-		}
-
-		const Instr* instr = &instr_buffer.instr[instr_index.value];
-
-		// NOTE: INSTR_LOAD_ARG are handled separtely here.
-		//       Since these instructions access arguments which
-		//       are stored in the `cdecl_arg_regs`
-
-		// NOTE: Well that's slowly turning into a mess, why is it here?
-		//       Probably need to introduce a proper concept of calling
-		//       conventions on the code gen level
-		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
-		assert(instr->load_arg.index < array_size(cdecl_arg_regs));
-
-		X64Register reg = cdecl_arg_regs[instr->load_arg.index];
-		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
-		instr_storage[instr_index.value].reg = reg;
-
-		UInt16Array edges = interference_graph[i];
-		for (size_t j = 0; j < edges.count; j += 1) {
-			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-			potential_instr_registers[interfering_instr.value] &= ~(1 << reg);
+				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
+				phi_variant_counts_per_region[region_id] += 1;
+			}
 		}
 	}
 
-	// Assign locations to the rest of the instructions
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
+	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(gen->allocator,
+			InstrIndexArray,
+			gen->instr_buffer.region_count);
+	InstrIndex** phi_node_of_variant = arena_alloc_array_zeroed(gen->allocator,
+			InstrIndex*,
+			gen->instr_buffer.region_count);
 
-		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_NONE) {
-			continue;
+	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
+		phi_variants_per_region[i].instr = arena_alloc_array(gen->allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+
+		phi_node_of_variant[i] = arena_alloc_array(gen->allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		const Instr* instr = &gen->instr_buffer.instr[i];
+		if (instr->kind == INSTR_PHI) {
+			InstrInputs variants = instr->phi.variants;
+			for (uint16_t j = 0; j < variants.count; j += 1) {
+				InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
+				const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
+				assert(variant->kind == INSTR_SELECT);
+
+				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
+				uint16_t variant_count_in_region = phi_variants_per_region[region_id].count;
+
+				assert(variant_count_in_region < phi_variant_counts_per_region[region_id]);
+				phi_variants_per_region[region_id].instr[variant_count_in_region] = variant->select.value;
+				phi_variants_per_region[region_id].count += 1;
+
+				phi_node_of_variant[region_id][variant_count_in_region] = (InstrIndex) { .value = i };
+			}
 		}
+	}
 
-		uint16_t potential_registers = potential_instr_registers[instr_index.value];
-		assert_msg(potential_registers != 0,
-				"This instruction must be spilled, but spilling is not yet implemented");
+	gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
+	gen->phi_variants_per_region = phi_variants_per_region;
+	gen->phi_node_of_variant = phi_node_of_variant;
 
-		uint16_t first_potential_register = count_trailing_zeros(potential_registers);
-		assert(first_potential_register < 16);
-
-		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
-		instr_storage[instr_index.value].reg = first_potential_register;
-
-		UInt16Array edges = interference_graph[i];
-		for (size_t j = 0; j < edges.count; j += 1) {
-			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-			potential_instr_registers[interfering_instr.value] &= ~(1 << first_potential_register);
+	printf("phi_variants_per_region:\n");
+	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
+		printf("%u:\n", (uint32_t)i);
+		for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
+			printf("  phi: %u variant_value: %u\n",
+					(uint32_t)phi_node_of_variant[i][j].value,
+					(uint32_t)phi_variants_per_region[i].instr[j].value);
 		}
 	}
 
@@ -294,127 +216,22 @@ static void _x64_run_graph_coloring(InstrBuffer instr_buffer,
 	profile_scope_end();
 }
 
-void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
-	profile_scope_start(__func__);
-	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+static void _run_reg_allocator(X64CodeGenerator* gen) {
+	uint16_t allowed_registers = UINT16_MAX;
+	allowed_registers &= ~(1 << X64_REG_SP);
+	allowed_registers &= ~(1 << X64_REG_BP);
 
-	// What cranelift's register allocator does:
-	// 1. For each region compute live input and output instructions.
-	//     a. Phi nodes variants must appear as outputs of the corresponding regions
-	// 2. Once we have the in/out bitset for each region, compute more precise live ranges
-	//
-	// What this allocator can do for now (regarding the phi nodes):
-	// 1. Extend phi nodes live ranges to include the end of the live range of it's variants
-	// 2. Allocate registers for phi nodes
-	// 3. At the end of variant's live range place a move,
-	//    which copies the value from the variant's location into phi's location.
+	// HACK: Some times the register allocator might allocate the whole register
+	//       to some instruction and also it's high part to the other, thus any
+	//       writes by any of the two instructions will be reflected in two places.
+	allowed_registers &= ~(1 << X64_REG_SI);
+	allowed_registers &= ~(1 << X64_REG_DI);
 
-	{
-		uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(gen->allocator,
-				uint16_t,
-				gen->instr_buffer.region_count);
-
-		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-			const Instr* instr = &gen->instr_buffer.instr[i];
-			if (instr->kind == INSTR_PHI) {
-				InstrInputs variants = instr->phi.variants;
-				for (uint16_t j = 0; j < variants.count; j += 1) {
-					InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
-					const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
-					assert(variant->kind == INSTR_SELECT);
-
-					uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-					phi_variant_counts_per_region[region_id] += 1;
-				}
-			}
-		}
-
-		InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(gen->allocator,
-				InstrIndexArray,
-				gen->instr_buffer.region_count);
-		InstrIndex** phi_node_of_variant = arena_alloc_array_zeroed(gen->allocator,
-				InstrIndex*,
-				gen->instr_buffer.region_count);
-
-		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-			phi_variants_per_region[i].instr = arena_alloc_array(gen->allocator,
-					InstrIndex,
-					phi_variant_counts_per_region[i]);
-
-			phi_node_of_variant[i] = arena_alloc_array(gen->allocator,
-					InstrIndex,
-					phi_variant_counts_per_region[i]);
-		}
-
-		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-			const Instr* instr = &gen->instr_buffer.instr[i];
-			if (instr->kind == INSTR_PHI) {
-				InstrInputs variants = instr->phi.variants;
-				for (uint16_t j = 0; j < variants.count; j += 1) {
-					InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
-					const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
-					assert(variant->kind == INSTR_SELECT);
-
-					uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-					uint16_t variant_count_in_region = phi_variants_per_region[region_id].count;
-
-					assert(variant_count_in_region < phi_variant_counts_per_region[region_id]);
-					phi_variants_per_region[region_id].instr[variant_count_in_region] = variant->select.value;
-					phi_variants_per_region[region_id].count += 1;
-
-					phi_node_of_variant[region_id][variant_count_in_region] = (InstrIndex) { .value = i };
-				}
-			}
-		}
-
-		gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
-		gen->phi_variants_per_region = phi_variants_per_region;
-		gen->phi_node_of_variant = phi_node_of_variant;
-
-		printf("phi_variants_per_region:\n");
-		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-			printf("%u:\n", (uint32_t)i);
-			for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
-				printf("  phi: %u variant_value: %u\n",
-						(uint32_t)phi_node_of_variant[i][j].value,
-						(uint32_t)phi_variants_per_region[i].instr[j].value);
-			}
-		}
-	}
-
-	InstrIndexArray instr_with_storage_requirement = _x64_gather_instr_with_storage_requirement(
-			gen->instr_buffer,
+	gen->instr_storage = x64_alloc_regs(&gen->instr_buffer,
 			gen->usage_ranges,
-			gen->temp_allocator);
-
-	UInt16Array* interference_graph = _x64_build_interference_graph(gen->instr_buffer, 
-			instr_with_storage_requirement,
-			gen->usage_ranges,
-			gen->temp_allocator);
-
-	gen->instr_storage = arena_alloc_array_zeroed(gen->allocator,
-			InstrStorageLocation,
-			gen->instr_buffer.count);
-
-	_x64_run_graph_coloring(gen->instr_buffer,
-			instr_with_storage_requirement,
-			interference_graph,
-			gen->instr_storage,
 			allowed_registers,
+			gen->allocator,
 			gen->temp_allocator);
-
-	printf("Interference Graph Edges for each Instr:\n");
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		UInt16Array overlap = interference_graph[i];
-		printf("%u: ", (uint32_t)instr_with_storage_requirement.instr[i].value);
-
-		for (size_t j = 0; j < overlap.count; j += 1) {
-			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[overlap.values[j]];
-			printf("%u ", (uint32_t)overlapping_instr.value);
-		}
-
-		printf("\n");
-	}
 
 	printf("Assigned storage locations:\n");
 	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
@@ -426,9 +243,13 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 			StringBuilder builder = { .arena = gen->temp_allocator };
 
 			const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
-			const X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr_kind];
+			const X64InstrStorageRequirement storage_requirement =
+				s_instr_storage_requiremenets[instr_kind];
 
-			_format_reg_name(&builder, gen->instr_storage[i].reg, storage_requirement.reg_size);
+			_format_reg_name(&builder,
+					gen->instr_storage[i].reg,
+					storage_requirement.reg_size);
+
 			storage_string = builder.string;
 		}
 
@@ -436,9 +257,6 @@ void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
 
 		arena_end_temp(temp);
 	}
-
-	arena_end_temp(temp);
-	profile_scope_end();
 }
 
 static bool _x64_validate(X64CodeGenerator* gen) {
@@ -1173,6 +991,9 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	bool validation_result = _x64_validate(gen);
 	assert(validation_result);
 
+	_gather_phis(gen);
+	_run_reg_allocator(gen);
+	
 	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
 	InstrIndexArray regions_in_dfs_order = _instr_gather_regions_in_dfs_order(gen->instr_buffer,

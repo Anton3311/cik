@@ -837,13 +837,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 				" reached, it means this function was accidentally called for a region");
 	case INSTR_PHI:
 		// Nothing to do here, everything is already handled during code gen of `INSTR_REGION`
-
-		InstrInputs variants = instr->phi.variants;
-		for (uint16_t i = 0; i < variants.count; i += 1) {
-			InstrIndex instr = gen->instr_buffer.inputs_buffer[variants.start + i];
-			_x64_generate_code(gen, instr, buffer);
-		}
-
 		return;
 	case INSTR_SELECT: {
 		return;

@@ -417,9 +417,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_BIN_OP_8);
 
-		_x64_generate_code(gen, instr->bin_op.left, buffer);
-		_x64_generate_code(gen, instr->bin_op.right, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
 		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
@@ -502,8 +499,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
 	case INSTR_PTR_LOAD_64: {
-		_x64_generate_code(gen, instr->ptr_load.ptr, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation ptr_loc = gen->instr_storage[instr->ptr_load.ptr.value];
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
@@ -531,8 +526,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_LOGICAL_SHIFT_LEFT_32:
 		unreachable();
 	case INSTR_LOGICAL_SHIFT_LEFT_64: {
-		_x64_generate_code(gen, instr->logical_shift.operand, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation operand_loc = gen->instr_storage[instr->logical_shift.operand.value];
 
@@ -556,9 +549,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			unreachable();
 		}
 
-		_x64_generate_code(gen, instr->compare.left, buffer);
-		_x64_generate_code(gen, instr->compare.right, buffer);
-
 		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
 		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
 		assert(left_loc.kind == INSTR_STORAGE_REG);
@@ -573,8 +563,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 	case INSTR_BOOL_TO_INT: {
-		_x64_generate_code(gen, instr->bool_to_int.operand, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 
@@ -617,8 +605,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_NEGATE_64: {
 		assert(instr->kind != INSTR_NEGATE_16);
 
-		_x64_generate_code(gen, instr->negate.operand, buffer);
-
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_NEGATE_8);
 
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
@@ -636,8 +622,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_CAST_TO_16:
 	case INSTR_CAST_TO_32:
 	case INSTR_CAST_TO_64: {
-		_x64_generate_code(gen, instr->cast.value, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation src_loc = gen->instr_storage[instr->cast.value.value];
 
@@ -674,7 +658,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					operand_reg(src_loc.reg, operand_size),
 					operand_reg(dst_loc.reg, output_size));
 		} else if (operand_size == 32) {
-			// NOTE: Moving writing to a 32-bit register zeros out the upper half of the
+			// NOTE: Moving (writing) to a 32-bit register zeros out the upper half of the
 			//       corresponding 64-bit regiters.
 			//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
 
@@ -689,27 +673,20 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	}
 
 	case INSTR_BRANCH: {
-		_x64_generate_code(gen, instr->branch.io_state, buffer);
-
 		const Instr* condition_instr = instr_buffer_at(instr_buffer, instr->branch.condition);
 
 		// HACK: Need to store somewhere the currently processed region
 		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
-
-		_x64_generate_phi_variants(gen, current_region_id, buffer);
 
 		switch (condition_instr->kind) {
 		case INSTR_COMPARE_8:
 		case INSTR_COMPARE_16:
 		case INSTR_COMPARE_32:
 		case INSTR_COMPARE_64:
-			_x64_generate_code(gen, instr->branch.condition, buffer);
 			break;
 		default:
 			const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
 			assert(cond_loc.kind == INSTR_STORAGE_REG);
-
-			_x64_generate_code(gen, instr->branch.condition, buffer);
 
 			assert(has_flag(INSTR_FEATURES[condition_instr->kind], INSTR_FEATURE_REG_STORAGE));
 			uint8_t bit_count = s_instr_storage_requiremenets[condition_instr->kind].reg_size;
@@ -727,17 +704,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		// HACK: Need to store somewhere the currently processed region
 		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
 
-		_x64_generate_code(gen, instr->jump.io_state, buffer);
-
-		_x64_generate_phi_variants(gen, current_region_id, buffer);
-
 		_x64_generate_phi_copies(gen, current_region_id, buffer);
 		return;
 	}
 
 	case INSTR_RETURN_VALUE:
-		_x64_generate_code(gen, instr->return_value.io_state, buffer);
-		_x64_generate_code(gen, instr->return_value.value, buffer);
 		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->return_value.value.value];
 		assert(return_value_loc.kind == INSTR_STORAGE_REG);
 
@@ -747,22 +718,15 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		//       control instructions at the end of each code blocks are generated
 		return;
 	case INSTR_RET:
-		_x64_generate_code(gen, instr->ret.io_state, buffer);
 		// NOTE: Don't need to generate a `ret` instruction, since it is done later when the
 		//       control instructions at the end of each code blocks are generated
 		return;
 	
 	case INSTR_IO_STATE:
-		if (instr->io_state.producer.value != UINT16_MAX) {
-			_x64_generate_code(gen, instr->io_state.producer, buffer);
-		}
-
 		return;
 	
 	case INSTR_CALL_INTERNAL: {
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
-
-		_x64_generate_code(gen, instr->call_internal.io_state, buffer);
 
 		const uint32_t SHADOW_SPACE_SIZE = 32;
 
@@ -779,10 +743,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(instr->call_internal.args.count <= 1);
 
 		InstrInputs args = instr->call_internal.args;
-		if (args.count == 1) {
-			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + 0];
-			_x64_generate_code(gen, arg_instr, buffer);
-		}
 
 		// Push saved registers
 		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
@@ -976,6 +936,250 @@ static void _merge_string_consts(X64CodeGenerator* gen) {
 	profile_scope_end();
 }
 
+static void _validate_linearization(const InstrBuffer* instr_buffer,
+		BitArray* visited_instr,
+		InstrIndexArray linearized,
+		Arena* temp_allocator) {
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	for (size_t i = 0; i < linearized.count; i += 1) {
+		ArenaRegion inner_temp = arena_begin_temp(temp_allocator);
+
+		InstrQueue queue;
+		instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
+
+		instr_enumerate_uses(instr_buffer, linearized.instr[i], &queue);
+
+		for (size_t j = 0; j < queue.count; j += 1) {
+			InstrIndex input = queue.buffer[j];
+			if (input.value == INVALID_INSTR_INDEX.value) {
+				continue;
+			}
+
+			const Instr* input_instr = instr_buffer_at(instr_buffer, input);
+			bool skip = false;
+			switch (input_instr->kind) {
+			case INSTR_REGION:
+			case INSTR_PHI:
+			case INSTR_SELECT:
+				skip = true;
+				break;
+			}
+
+			if (skip) {
+				continue;
+			}
+
+			assert_msg(bit_array_get(visited_instr, input.value),
+					"Value definition '%u' appears before its input '%u'",
+					(uint32_t)linearized.instr[i].value,
+					(uint32_t)input.value);
+		}
+
+		bit_array_set(visited_instr, linearized.instr[i].value, true);
+
+		arena_end_temp(inner_temp);
+	}
+	
+	arena_end_temp(temp);
+}
+
+static void _linearize_instr(const InstrBuffer* instr_buffer,
+		InstrIndex instr_index,
+		BitArray* visited_instr,
+		InstrIndexArray* out_linearized,
+		Arena* allocator) {
+	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+	if (instr->kind == INSTR_REGION) {
+		return;
+	}
+
+	if (bit_array_get(visited_instr, instr_index.value)) {
+		return;
+	}
+
+	bit_array_set(visited_instr, instr_index.value, true);
+
+	switch (instr->kind) {
+	case INSTR_NO_OP:
+	case INSTR_CONST_8:
+	case INSTR_CONST_16:
+	case INSTR_CONST_32:
+	case INSTR_CONST_64:
+	case INSTR_CONST_STRING:
+		break;
+	case INSTR_BIN_OP_8:
+	case INSTR_BIN_OP_16:
+	case INSTR_BIN_OP_32:
+	case INSTR_BIN_OP_64:
+		_linearize_instr(instr_buffer,
+				instr->bin_op.left,
+				visited_instr,
+				out_linearized,
+				allocator);
+		_linearize_instr(instr_buffer,
+				instr->bin_op.right,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_PTR_LOAD_8:
+	case INSTR_PTR_LOAD_16:
+	case INSTR_PTR_LOAD_32:
+	case INSTR_PTR_LOAD_64:
+		_linearize_instr(instr_buffer,
+				instr->ptr_load.ptr,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_LOAD_ARG:
+		break;
+	case INSTR_LOGICAL_SHIFT_LEFT_8:
+	case INSTR_LOGICAL_SHIFT_LEFT_16:
+	case INSTR_LOGICAL_SHIFT_LEFT_32:
+	case INSTR_LOGICAL_SHIFT_LEFT_64:
+		_linearize_instr(instr_buffer,
+				instr->logical_shift.operand,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_COMPARE_8:
+	case INSTR_COMPARE_16:
+	case INSTR_COMPARE_32:
+	case INSTR_COMPARE_64:
+		_linearize_instr(instr_buffer,
+				instr->compare.left,
+				visited_instr,
+				out_linearized,
+				allocator);
+		_linearize_instr(instr_buffer,
+				instr->compare.right,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_BOOL_TO_INT:
+		_linearize_instr(instr_buffer,
+				instr->bool_to_int.operand,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_NEGATE_8:
+	case INSTR_NEGATE_16:
+	case INSTR_NEGATE_32:
+	case INSTR_NEGATE_64:
+		_linearize_instr(instr_buffer,
+				instr->negate.operand,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_CAST_TO_8:
+	case INSTR_CAST_TO_16:
+	case INSTR_CAST_TO_32:
+	case INSTR_CAST_TO_64:
+		_linearize_instr(instr_buffer,
+				instr->cast.value,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_BRANCH:
+		_linearize_instr(instr_buffer,
+				instr->branch.io_state,
+				visited_instr,
+				out_linearized,
+				allocator);
+		_linearize_instr(instr_buffer,
+				instr->branch.condition,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_JUMP:
+		_linearize_instr(instr_buffer,
+				instr->jump.io_state,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_RETURN_VALUE:
+		_linearize_instr(instr_buffer,
+				instr->return_value.io_state,
+				visited_instr,
+				out_linearized,
+				allocator);
+		_linearize_instr(instr_buffer,
+				instr->return_value.value,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_RET:
+		_linearize_instr(instr_buffer,
+				instr->ret.io_state,
+				visited_instr,
+				out_linearized,
+				allocator);
+		break;
+	case INSTR_IO_STATE:
+		if (instr->io_state.producer.value != UINT16_MAX) {
+			_linearize_instr(instr_buffer,
+					instr->io_state.producer,
+					visited_instr,
+					out_linearized,
+					allocator);
+		}
+
+		break;
+	case INSTR_CALL_INTERNAL: {
+		_linearize_instr(instr_buffer,
+				instr->call_internal.io_state,
+				visited_instr,
+				out_linearized,
+				allocator);
+
+		InstrInputs args = instr->call_internal.args;
+		if (args.count == 1) {
+			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + 0];
+			_linearize_instr(instr_buffer,
+					arg_instr,
+					visited_instr,
+					out_linearized,
+					allocator);
+		}
+
+		break;
+	}
+	case INSTR_REGION:
+		unreachable();
+	case INSTR_PHI:
+		break;
+	case INSTR_SELECT:
+		break;
+	}
+
+	arena_alloc(allocator, InstrIndex);
+	out_linearized->instr[out_linearized->count] = instr_index;
+	out_linearized->count += 1;
+}
+
+static InstrIndexArray _linearize_instr_for_region(const InstrBuffer* instr_buffer,
+		InstrIndex initial_instr,
+		BitArray* visited_instr,
+		Arena* temp_allocator) {
+
+	InstrIndexArray linearized;
+	linearized.instr = arena_alloc_array(temp_allocator, InstrIndex, 0);
+	linearized.count = 0;
+
+	_linearize_instr(instr_buffer, initial_instr, visited_instr, &linearized, temp_allocator);
+	return linearized;
+}
+
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
 	profile_scope_start(__func__);
 
@@ -998,6 +1202,47 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
 			CodeBuffer,
 			region_count);
+
+	InstrIndexArray* linearized_instr_per_region = arena_alloc_array(gen->temp_allocator,
+			InstrIndexArray,
+			regions_in_dfs_order.count);
+
+	BitArray visited_instr = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.count);
+	bit_array_clear(&visited_instr);
+
+	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+	
+		InstrIndexArray linearized = _linearize_instr_for_region(&gen->instr_buffer,
+				instr->region.last_instr,
+				&visited_instr,
+				gen->temp_allocator);
+
+		linearized_instr_per_region[instr->region.id] = linearized;
+	}
+
+	bit_array_clear(&visited_instr);
+	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+
+		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
+		_validate_linearization(&gen->instr_buffer, &visited_instr, linearized, gen->temp_allocator);
+	}
+
+	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+
+		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
+
+		printf("%u: ", (uint32_t)instr->region.id);
+		for (size_t i = 0; i < linearized.count; i++) {
+			printf("%u ", (uint32_t)linearized.instr[i].value);
+		}
+		printf("\n");
+	}
 
 	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
 		InstrIndex region_instr = regions_in_dfs_order.instr[i];

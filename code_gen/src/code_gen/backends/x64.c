@@ -1292,8 +1292,12 @@ typedef struct {
 	// Per region `BitArray` of regions that it dominates
 	// The size of this array is equal to the total number of regions
 	//
-	// Size of each `BitArray` is also equal to the number of regions
+	// Size of each `BitArray` is also equal to the total number of regions
 	BitArray* dominates;
+
+	// An array of size eqaul to the total number of regions.
+	// Maps region id to the immediate dominator of that region.
+	uint16_t* immediate_dominators;
 } CFGDominanceTree;
 
 static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffer,
@@ -1310,6 +1314,7 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 	// Allocate the tree
 	CFGDominanceTree tree;
 	tree.dominates = arena_alloc_array(allocator, BitArray, instr_buffer->region_count);
+	tree.immediate_dominators = arena_alloc_array(allocator, uint16_t, instr_buffer->region_count);
 
 	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
 		tree.dominates[i] = bit_array_alloc(allocator, instr_buffer->region_count);
@@ -1323,6 +1328,8 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 	{
 		const Instr* initial = instr_buffer_at(instr_buffer, initial_region);
 		bit_array_set(&visited_regions, initial->region.id, true);
+
+		tree.immediate_dominators[initial->region.id] = UINT16_MAX;
 	}
 	
 	// Build the tree
@@ -1384,6 +1391,24 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 		}
 	}
 
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		BitArray* dominance = &tree.dominates[i];
+		assert(bit_array_get(dominance, i));
+		bit_array_set(dominance, i, false);
+
+		bool found = false;
+		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
+			if (bit_array_equal(dominance, &tree.dominates[j])) {
+				tree.immediate_dominators[i] = j;
+				found = true;
+				bit_array_set(dominance, i, true);
+				break;
+			}
+		}
+
+		assert(found);
+	}
+
 	arena_end_temp(temp);
 
 	return tree;
@@ -1392,7 +1417,10 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominanceTree tree) {
 	printf("dom tree:\n");
 	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
-		printf("region id=%u: ", (uint32_t)i);
+		printf("region id=%u imm dom=%u: ",
+				(uint32_t)i,
+				(uint32_t)tree.immediate_dominators[i]);
+
 		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
 			if (bit_array_get(&tree.dominates[i], j)) {
 				printf("%u ", (uint32_t)j);
@@ -1431,10 +1459,6 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 			gen->allocator,
 			gen->temp_allocator);
 	_print_dom_tree(&gen->instr_buffer, dom_tree);
-
-	gen->assigned_instr_regions = arena_alloc_array(gen->temp_allocator,
-			uint16_t,
-			gen->instr_buffer.count);
 
 	BitArray visited_instr = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.count);
 	bit_array_clear(&visited_instr);

@@ -547,7 +547,8 @@ inline void bit_array_set(const BitArray* array, size_t index, bool value) {
 inline void bit_array_and(const BitArray* a, const BitArray* b, BitArray* out) {
 	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
 
-	for (size_t i = 0; i < a->bit_count; i++) {
+	size_t element_count = (a->bit_count + 7) / 8;
+	for (size_t i = 0; i < element_count; i++) {
 		out->values[i] = a->values[i] & b->values[i];
 	}
 }
@@ -555,10 +556,13 @@ inline void bit_array_and(const BitArray* a, const BitArray* b, BitArray* out) {
 inline void bit_array_or(const BitArray* a, const BitArray* b, BitArray* out) {
 	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
 
-	for (size_t i = 0; i < a->bit_count; i++) {
+	size_t element_count = (a->bit_count + 7) / 8;
+	for (size_t i = 0; i < element_count; i++) {
 		out->values[i] = a->values[i] | b->values[i];
 	}
 }
+
+bool bit_array_equal(const BitArray* a, const BitArray* b);
 
 //
 // Registry

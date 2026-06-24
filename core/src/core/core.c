@@ -498,6 +498,34 @@ StringArray fs_enumerate_entries_in_directory(String directory_path,
 }
 
 //
+// BitArray
+//
+
+bool bit_array_equal(const BitArray* a, const BitArray* b) {
+	if (a == b) {
+		return true;
+	}
+
+	if (a->bit_count != b->bit_count) {
+		return false;
+	}
+
+	size_t full_element_count = a->bit_count / 8;
+	if (memcmp(a->values, b->values, full_element_count) != 0) {
+		return false;
+	}
+
+	if (a->bit_count % 8 == 0) {
+		return true;
+	}
+
+	uint8_t mask = (1 << (a->bit_count & 7)) - 1;
+	uint8_t a_last = a->values[full_element_count] & mask;
+	uint8_t b_last = b->values[full_element_count] & mask;
+	return a_last == b_last;
+}
+
+//
 // Registry
 //
 

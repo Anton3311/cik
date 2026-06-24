@@ -1297,6 +1297,9 @@ typedef struct {
 
 	// An array of size eqaul to the total number of regions.
 	// Maps region id to the immediate dominator of that region.
+	//
+	// `UINT16_MAX` means the regions doesn't have an immediate dominator.
+	// Which can only be true for the root region.
 	uint16_t* immediate_dominators;
 } CFGDominanceTree;
 
@@ -1409,6 +1412,9 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 		assert(found);
 	}
 
+	// The initial region dones't have an immediate dominator
+	tree.immediate_dominators[instr_region_id(instr_buffer, initial_region)] = UINT16_MAX;
+
 	arena_end_temp(temp);
 
 	return tree;
@@ -1428,6 +1434,108 @@ static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominanceTree tr
 		}
 		printf("\n");
 	} 
+}
+
+// Find a region where the control flow splits and later reaches both provided regions.
+static uint16_t _find_control_flow_split(const CFGDominanceTree* tree,
+		uint16_t region_count,
+		uint16_t region_a_id,
+		uint16_t region_b_id,
+		Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	BitArray visited_regions = bit_array_alloc(temp_allocator, region_count);
+	bit_array_clear(&visited_regions);
+
+	// NOTE: There is no queue for `uint16_t`, so just reuse the implementation of `InstrIndex`
+	InstrIndex backing_buffer[2];
+	InstrQueue queue;
+	instr_queue_init(&queue, backing_buffer, array_size(backing_buffer));
+
+	instr_queue_push_back(&queue, (InstrIndex) { region_a_id });
+	instr_queue_push_back(&queue, (InstrIndex) { region_b_id });
+
+	while (queue.count) {
+		InstrIndex region_id = instr_queue_pop_front(&queue);
+
+		if (region_id.value == UINT16_MAX) {
+			continue;
+		}
+
+		if (bit_array_get(&visited_regions, region_id.value)) {
+			arena_end_temp(temp);
+			return region_id.value;
+		}
+
+		bit_array_set(&visited_regions, region_id.value, true);
+		instr_queue_push_back(&queue, (InstrIndex) { tree->immediate_dominators[region_id.value] });
+	}
+
+	unreachable();
+	return UINT16_MAX;
+}
+
+static void _uplift_phi_nodes(X64CodeGenerator* gen,
+		const CFGDominanceTree* dom_tree,
+		Arena* temp_allocator) {
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	uint16_t region_count = gen->instr_buffer.region_count;
+
+	typedef struct VariantUse VariantUse;
+	struct VariantUse {
+		InstrIndex used_by_phi;
+		uint16_t region_id;
+		VariantUse* next;
+	};
+
+	VariantUse** variant_usages = arena_alloc_array_zeroed(temp_allocator,
+			VariantUse*,
+			gen->instr_buffer.count);
+
+	size_t total_phi_count = 0;
+	for (uint16_t i = 0; i < region_count; i += 1) {
+		total_phi_count += gen->phi_variant_counts_per_region[i];
+
+		for (uint16_t j = 0; j < gen->phi_variant_counts_per_region[i]; j += 1) {
+			InstrIndex variant = gen->phi_variants_per_region[i].instr[j];
+			InstrIndex phi_node = gen->phi_node_of_variant[i][j];
+
+			VariantUse* use = arena_alloc(temp_allocator, VariantUse);
+			use->used_by_phi = phi_node;
+			use->region_id = i;
+			use->next = variant_usages[variant.value];
+
+			variant_usages[variant.value] = use;
+		}
+	}
+
+	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		if (variant_usages[i] == NULL) {
+			continue;
+		}
+
+		VariantUse* use_0 = variant_usages[i];
+		if (use_0->next == NULL) {
+			continue;
+		}
+
+		VariantUse* use_1 = use_0->next;
+		assert(use_1->next == NULL);
+
+		uint16_t control_flow_split = _find_control_flow_split(dom_tree,
+				gen->instr_buffer.region_count,
+				use_0->region_id,
+				use_1->region_id,
+				temp_allocator);
+
+		printf("found control flow split at %u for phi [%u] and [%u]\n",
+				(uint32_t)control_flow_split,
+				(uint32_t)use_0->used_by_phi.value,
+				(uint32_t)use_1->used_by_phi.value);
+	}
+
+	arena_end_temp(temp);
 }
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
@@ -1459,6 +1567,8 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 			gen->allocator,
 			gen->temp_allocator);
 	_print_dom_tree(&gen->instr_buffer, dom_tree);
+
+	_uplift_phi_nodes(gen, &dom_tree, gen->temp_allocator);
 
 	BitArray visited_instr = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.count);
 	bit_array_clear(&visited_instr);

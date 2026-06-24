@@ -297,6 +297,15 @@ inline void instr_queue_alloc(InstrQueue* queue, Arena* allocator, size_t capaci
 	queue->capacity = capacity;
 }
 
+inline void instr_queue_init(InstrQueue* queue, InstrIndex* backing_buffer, size_t capacity) {
+	assert(capacity >= 1);
+
+	queue->buffer = backing_buffer;
+	queue->head = 0;
+	queue->count = 0;
+	queue->capacity = capacity;
+}
+
 inline void instr_queue_push_back(InstrQueue* queue, InstrIndex instr) {
 	assert_msg(queue->count != queue->capacity, "Queue is full");
 

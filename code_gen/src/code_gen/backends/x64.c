@@ -1551,7 +1551,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	_gather_phis(gen);
 	_run_reg_allocator(gen);
 	
-	InstrIndexArray regions_in_dfs_order = _gather_scheduled_regions(gen, root_region);
+	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
 
 	uint16_t region_count = gen->instr_buffer.region_count;
 	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
@@ -1560,7 +1560,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 	InstrIndexArray* linearized_instr_per_region = arena_alloc_array(gen->temp_allocator,
 			InstrIndexArray,
-			regions_in_dfs_order.count);
+			scheduled_regions.count);
 
 	CFGDominanceTree dom_tree = _build_cfg_dominator_tree(&gen->instr_buffer,
 			root_region,
@@ -1573,8 +1573,8 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	BitArray visited_instr = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.count);
 	bit_array_clear(&visited_instr);
 
-	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
-		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_instr = scheduled_regions.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 	 
 		gen->current_linearized_region_id = instr->region.id;
@@ -1589,8 +1589,8 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	}
 
 	// Print linearized instructions
-	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
-		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_instr = scheduled_regions.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
@@ -1612,16 +1612,16 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	}
 
 	bit_array_clear(&visited_instr);
-	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
-		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_instr = scheduled_regions.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
 		_validate_linearization(&gen->instr_buffer, &visited_instr, linearized, gen->temp_allocator);
 	}
 
-	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
-		InstrIndex region_instr = regions_in_dfs_order.instr[i];
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_instr = scheduled_regions.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
@@ -1633,21 +1633,21 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		}
 	}
 
-	uint16_t* blocks_in_dfs_order = arena_alloc_array(gen->allocator, uint16_t, regions_in_dfs_order.count);
-	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+	uint16_t* blocks_in_dfs_order = arena_alloc_array(gen->allocator, uint16_t, scheduled_regions.count);
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
-		const Instr* instr = instr_buffer_at(instr_buffer, regions_in_dfs_order.instr[i]);
+		const Instr* instr = instr_buffer_at(instr_buffer, scheduled_regions.instr[i]);
 		blocks_in_dfs_order[i] = instr->region.id;
 	}
 
 	size_t final_code_size = 0;
 	size_t* code_block_offsets = arena_alloc_array(gen->temp_allocator, size_t, region_count);
 	size_t* control_instr_size = arena_alloc_array(gen->temp_allocator, size_t, region_count);
-	for (uint16_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 
-		const Instr* region_instr = instr_buffer_at(instr_buffer, regions_in_dfs_order.instr[i]);
-		uint16_t region_id = instr_region_id(&gen->instr_buffer, regions_in_dfs_order.instr[i]);
+		const Instr* region_instr = instr_buffer_at(instr_buffer, scheduled_regions.instr[i]);
+		uint16_t region_id = instr_region_id(&gen->instr_buffer, scheduled_regions.instr[i]);
 
 		const CodeBuffer* code_buffer = &gen->per_region_code_buffer[region_id];
 		code_block_offsets[region_id] = final_code_size;
@@ -1659,11 +1659,11 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	}
 
 	void* executable_memory = allocate_executable(final_code_size);
-	for (uint16_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 
-		const Instr* region_instr = instr_buffer_at(instr_buffer, regions_in_dfs_order.instr[i]);
-		uint16_t region_id = instr_region_id(&gen->instr_buffer, regions_in_dfs_order.instr[i]);
+		const Instr* region_instr = instr_buffer_at(instr_buffer, scheduled_regions.instr[i]);
+		uint16_t region_id = instr_region_id(&gen->instr_buffer, scheduled_regions.instr[i]);
 
 		size_t block_size = gen->per_region_code_buffer[region_id].size;
 		size_t block_offset = code_block_offsets[region_id];

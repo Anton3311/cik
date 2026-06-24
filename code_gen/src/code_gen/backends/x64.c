@@ -984,11 +984,45 @@ static void _validate_linearization(const InstrBuffer* instr_buffer,
 	arena_end_temp(temp);
 }
 
-static void _linearize_instr(const InstrBuffer* instr_buffer,
+static void _linearize_instr(X64CodeGenerator* gen,
+		InstrIndex instr_index,
+		BitArray* visited_instr,
+		InstrIndexArray* out_linearized,
+		Arena* allocator);
+
+static void _linearize_phis(X64CodeGenerator* gen,
+		BitArray* visited_instr,
+		InstrIndexArray* out_linearized,
+		Arena* temp_allocator) {
+
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
+	uint16_t region_id = gen->current_linearized_region_id; 
+
+	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
+	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
+
+	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
+		InstrIndex variant_index = phi_variants.instr[i];
+
+		if (bit_array_get(visited_instr, variant_index.value)) {
+			continue;
+		}
+
+		_linearize_instr(gen,
+				variant_index,
+				visited_instr,
+				out_linearized,
+				temp_allocator);
+	}
+}
+
+static void _linearize_instr(X64CodeGenerator* gen,
 		InstrIndex instr_index,
 		BitArray* visited_instr,
 		InstrIndexArray* out_linearized,
 		Arena* allocator) {
+
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 	if (instr->kind == INSTR_REGION) {
 		return;
@@ -1012,12 +1046,12 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
 	case INSTR_BIN_OP_64:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->bin_op.left,
 				visited_instr,
 				out_linearized,
 				allocator);
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->bin_op.right,
 				visited_instr,
 				out_linearized,
@@ -1027,7 +1061,7 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
 	case INSTR_PTR_LOAD_64:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->ptr_load.ptr,
 				visited_instr,
 				out_linearized,
@@ -1039,7 +1073,7 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	case INSTR_LOGICAL_SHIFT_LEFT_16:
 	case INSTR_LOGICAL_SHIFT_LEFT_32:
 	case INSTR_LOGICAL_SHIFT_LEFT_64:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->logical_shift.operand,
 				visited_instr,
 				out_linearized,
@@ -1049,19 +1083,19 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	case INSTR_COMPARE_16:
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->compare.left,
 				visited_instr,
 				out_linearized,
 				allocator);
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->compare.right,
 				visited_instr,
 				out_linearized,
 				allocator);
 		break;
 	case INSTR_BOOL_TO_INT:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->bool_to_int.operand,
 				visited_instr,
 				out_linearized,
@@ -1071,7 +1105,7 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	case INSTR_NEGATE_16:
 	case INSTR_NEGATE_32:
 	case INSTR_NEGATE_64:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->negate.operand,
 				visited_instr,
 				out_linearized,
@@ -1081,45 +1115,48 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	case INSTR_CAST_TO_16:
 	case INSTR_CAST_TO_32:
 	case INSTR_CAST_TO_64:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->cast.value,
 				visited_instr,
 				out_linearized,
 				allocator);
 		break;
 	case INSTR_BRANCH:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->branch.io_state,
 				visited_instr,
 				out_linearized,
 				allocator);
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->branch.condition,
 				visited_instr,
 				out_linearized,
 				allocator);
+
+		_linearize_phis(gen, visited_instr, out_linearized, allocator);
 		break;
 	case INSTR_JUMP:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->jump.io_state,
 				visited_instr,
 				out_linearized,
 				allocator);
+		_linearize_phis(gen, visited_instr, out_linearized, allocator);
 		break;
 	case INSTR_RETURN_VALUE:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->return_value.io_state,
 				visited_instr,
 				out_linearized,
 				allocator);
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->return_value.value,
 				visited_instr,
 				out_linearized,
 				allocator);
 		break;
 	case INSTR_RET:
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->ret.io_state,
 				visited_instr,
 				out_linearized,
@@ -1127,7 +1164,7 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 		break;
 	case INSTR_IO_STATE:
 		if (instr->io_state.producer.value != UINT16_MAX) {
-			_linearize_instr(instr_buffer,
+			_linearize_instr(gen,
 					instr->io_state.producer,
 					visited_instr,
 					out_linearized,
@@ -1136,7 +1173,7 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 
 		break;
 	case INSTR_CALL_INTERNAL: {
-		_linearize_instr(instr_buffer,
+		_linearize_instr(gen,
 				instr->call_internal.io_state,
 				visited_instr,
 				out_linearized,
@@ -1145,7 +1182,7 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 		InstrInputs args = instr->call_internal.args;
 		if (args.count == 1) {
 			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + 0];
-			_linearize_instr(instr_buffer,
+			_linearize_instr(gen,
 					arg_instr,
 					visited_instr,
 					out_linearized,
@@ -1156,9 +1193,24 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	}
 	case INSTR_REGION:
 		unreachable();
-	case INSTR_PHI:
+	case INSTR_PHI: {
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t i = 0; i < variants.count; i += 1) {
+			InstrIndex variant = instr_buffer->inputs_buffer[variants.start + i];
+			_linearize_instr(gen,
+					variant,
+					visited_instr,
+					out_linearized,
+					allocator);
+		}
 		break;
+	}
 	case INSTR_SELECT:
+		_linearize_instr(gen,
+				instr->select.value,
+				visited_instr,
+				out_linearized,
+				allocator);
 		break;
 	}
 
@@ -1167,7 +1219,9 @@ static void _linearize_instr(const InstrBuffer* instr_buffer,
 	out_linearized->count += 1;
 }
 
-static InstrIndexArray _linearize_instr_for_region(const InstrBuffer* instr_buffer,
+static InstrIndexArray _linearize_instr_for_region(X64CodeGenerator* gen,
+		const InstrBuffer* instr_buffer,
+		uint16_t region_id,
 		InstrIndex initial_instr,
 		BitArray* visited_instr,
 		Arena* temp_allocator) {
@@ -1176,7 +1230,7 @@ static InstrIndexArray _linearize_instr_for_region(const InstrBuffer* instr_buff
 	linearized.instr = arena_alloc_array(temp_allocator, InstrIndex, 0);
 	linearized.count = 0;
 
-	_linearize_instr(instr_buffer, initial_instr, visited_instr, &linearized, temp_allocator);
+	_linearize_instr(gen, initial_instr, visited_instr, &linearized, temp_allocator);
 	return linearized;
 }
 
@@ -1213,8 +1267,11 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
 		InstrIndex region_instr = regions_in_dfs_order.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
-	
-		InstrIndexArray linearized = _linearize_instr_for_region(&gen->instr_buffer,
+	 
+		gen->current_linearized_region_id = instr->region.id;
+		InstrIndexArray linearized = _linearize_instr_for_region(gen,
+				&gen->instr_buffer,
+				instr->region.id,
 				instr->region.last_instr,
 				&visited_instr,
 				gen->temp_allocator);
@@ -1222,15 +1279,30 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		linearized_instr_per_region[instr->region.id] = linearized;
 	}
 
-	bit_array_clear(&visited_instr);
+	// Print linearized instructions
 	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
 		InstrIndex region_instr = regions_in_dfs_order.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
-		_validate_linearization(&gen->instr_buffer, &visited_instr, linearized, gen->temp_allocator);
+
+		printf("region %%%u id=%u: \n", (uint32_t)region_instr.value, (uint32_t)instr->region.id);
+		for (size_t j = 0; j < linearized.count; j++) {
+			ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+			InstrIndex instr_index = linearized.instr[j];
+
+			printf("%zu\t%%%u:", j, (uint32_t)instr_index.value);
+			printf("\033[20G");
+			instr_print(&gen->instr_buffer.instr[instr_index.value],
+					gen->instr_buffer.inputs_buffer,
+					gen->temp_allocator);
+
+			arena_end_temp(temp);
+		}
+		printf("\n");
 	}
 
+	bit_array_clear(&visited_instr);
 	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
 		InstrIndex region_instr = regions_in_dfs_order.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
@@ -1250,7 +1322,11 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
 		code_buffer_init(code_buffer, gen->temp_allocator);
-		_x64_generate_code(gen, instr->region.last_instr, code_buffer);
+
+		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
+		for (size_t j = 0; j < linearized.count; j += 1) {
+			_x64_generate_code(gen, linearized.instr[j], code_buffer);
+		}
 	}
 
 	uint16_t* blocks_in_dfs_order = arena_alloc_array(gen->allocator, uint16_t, regions_in_dfs_order.count);

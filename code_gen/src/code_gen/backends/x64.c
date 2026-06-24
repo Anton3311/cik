@@ -960,8 +960,6 @@ static void _validate_linearization(const InstrBuffer* instr_buffer,
 			bool skip = false;
 			switch (input_instr->kind) {
 			case INSTR_REGION:
-			case INSTR_PHI:
-			case INSTR_SELECT:
 				skip = true;
 				break;
 			}
@@ -1234,6 +1232,62 @@ static InstrIndexArray _linearize_instr_for_region(X64CodeGenerator* gen,
 	return linearized;
 }
 
+static void _schedule_regions(X64CodeGenerator* gen,
+		InstrIndex region_instr_index,
+		Arena* allocator,
+		BitArray* visited_regions,
+		InstrIndexArray* out_scheduled) {
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
+	const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
+
+	assert(instr->kind == INSTR_REGION);
+
+	uint16_t region_id = instr->region.id;
+	if (bit_array_get(visited_regions, region_id)) {
+		return;
+	}
+
+	bit_array_set(visited_regions, region_id, true);
+
+	const Instr* last_instr = instr_buffer_at(instr_buffer, instr->region.last_instr);
+	switch (last_instr->kind) {
+	case INSTR_JUMP:
+		_schedule_regions(gen, last_instr->jump.target_region, allocator, visited_regions, out_scheduled);
+		break;
+	case INSTR_BRANCH:
+		_schedule_regions(gen, last_instr->branch.true_region, allocator, visited_regions, out_scheduled);
+		_schedule_regions(gen, last_instr->branch.false_region, allocator, visited_regions, out_scheduled);
+		break;
+	case INSTR_RET:
+	case INSTR_RETURN_VALUE:
+		break;
+	}
+
+	*arena_alloc(allocator, InstrIndex) = region_instr_index;
+	out_scheduled->count += 1;
+}
+
+static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrIndex initial_region) {
+	BitArray visited_regions = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.region_count);
+	bit_array_clear(&visited_regions);
+
+	InstrIndexArray regions;
+	regions.instr = arena_alloc_array(gen->temp_allocator, InstrIndex, 0);
+	regions.count = 0;
+
+	_schedule_regions(gen, initial_region, gen->temp_allocator, &visited_regions, &regions);
+
+	for (size_t i = 0; i < regions.count / 2; i += 1) {
+		size_t j = regions.count - 1 - i;
+
+		InstrIndex temp = regions.instr[i];
+		regions.instr[i] = regions.instr[j];
+		regions.instr[j] = temp;
+	}
+
+	return regions;
+}
+
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
 	profile_scope_start(__func__);
 
@@ -1247,10 +1301,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	_gather_phis(gen);
 	_run_reg_allocator(gen);
 	
-	InstrIndexArray regions_in_dfs_order = _instr_gather_regions_in_dfs_order(gen->instr_buffer,
-			gen->allocator,
-			gen->temp_allocator,
-			root_region);
+	InstrIndexArray regions_in_dfs_order = _gather_scheduled_regions(gen, root_region);
 
 	uint16_t region_count = gen->instr_buffer.region_count;
 	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
@@ -1308,12 +1359,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
-
-		printf("%u: ", (uint32_t)instr->region.id);
-		for (size_t i = 0; i < linearized.count; i++) {
-			printf("%u ", (uint32_t)linearized.instr[i].value);
-		}
-		printf("\n");
+		_validate_linearization(&gen->instr_buffer, &visited_instr, linearized, gen->temp_allocator);
 	}
 
 	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {

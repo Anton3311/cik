@@ -965,12 +965,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			compiler->instr_allocator,
 			compiler->temp_allocator);
 
-	for (size_t i = 0; i < compiler->instr_buffer.count; i += 1) {
-		printf("\t%zu: %u\t%u\n", i,
-				(uint32_t)usage_ranges[i].first_usage.value,
-				(uint32_t)usage_ranges[i].last_usage.value);
-	}
-
 	CompiledFunction compiled_function;
 	compiled_function.instr_buffer = compiler->instr_buffer;
 	compiled_function.usage_ranges = usage_ranges;

@@ -21,8 +21,7 @@ typedef enum {
 	C_FLAG_NONE                    = 0,
 	C_FLAG_KEEP_DEAD_INSTR         = 1 << 0,
 	C_FLAG_DO_NOT_INCLUDE_WIN_SDK  = 1 << 1,
-	C_FLAG_PRINT_IR_INSTR          = 1 << 2,
-	C_FLAG_PRINT_AST               = 1 << 3,
+	C_FLAG_PRINT_AST               = 1 << 2,
 } CompilerFlags;
 
 static const char* s_help_menu = 
@@ -37,7 +36,9 @@ static const char* s_help_menu =
 	"\n"
 	"  Backend flags:           \n"
 	"    --keep-dead-instr      don't eliminate dead instructions\n"
-	"    --show-ir              print IR instructions before lowering to machine code\n";
+	"    --show-ir              print generated IR instructions\n"
+	"    --x64-debug-log        log results of intermediate operations for debugging\n"
+	"    --x64-show-instr-loc   print which storage locations were assigned to each instruction";
 
 int main(int argc, char *argv[]) {
 	profile_init(1000 * 1000);
@@ -68,6 +69,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	CompilerFlags flags = C_FLAG_NONE;
+	X64BackendFlags backend_flags = X64_NONE;
 
 	if (argc >= 2) {
 		SourceStorage source_storage = {};
@@ -92,9 +94,13 @@ int main(int argc, char *argv[]) {
 			} else if (str_equal(arg, STR_LIT("--keep-dead-instr"))) {
 				flags |= C_FLAG_KEEP_DEAD_INSTR;
 			} else if (str_equal(arg, STR_LIT("--show-ir"))) {
-				flags |= C_FLAG_PRINT_IR_INSTR;
+				backend_flags |= X64_PRINT_SCHEDULED_IR;
 			} else if (str_equal(arg, STR_LIT("--show-ast"))) {
 				flags |= C_FLAG_PRINT_AST;
+			} else if (str_equal(arg, STR_LIT("--x64-debug-log"))) {
+				backend_flags |= X64_DEBUG_LOG;
+			} else if (str_equal(arg, STR_LIT("--x64-show-instr-loc"))) {
+				backend_flags |= X64_PRINT_ASSIGNED_STORAGE_LOC;
 			} else {
 				fprintf(stderr, "Unknown argument '%s'", argv[i]);
 				return EXIT_FAILURE;
@@ -184,11 +190,8 @@ int main(int argc, char *argv[]) {
 					instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
 				}
 
-				if (has_flag(flags, C_FLAG_PRINT_IR_INSTR)) {
-					instr_print_all(func.instr_buffer, &temp_arena);
-				}
-
 				X64CodeGenerator gen = {};
+				gen.flags = backend_flags;
 				gen.instr_buffer = func.instr_buffer;
 				gen.usage_ranges = func.usage_ranges;
 				gen.allocator = &arena;

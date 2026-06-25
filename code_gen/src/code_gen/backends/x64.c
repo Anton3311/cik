@@ -202,13 +202,15 @@ static void _gather_phis(X64CodeGenerator* gen) {
 	gen->phi_variants_per_region = phi_variants_per_region;
 	gen->phi_node_of_variant = phi_node_of_variant;
 
-	printf("phi_variants_per_region:\n");
-	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-		printf("%u:\n", (uint32_t)i);
-		for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
-			printf("  phi: %u variant_value: %u\n",
-					(uint32_t)phi_node_of_variant[i][j].value,
-					(uint32_t)phi_variants_per_region[i].instr[j].value);
+	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
+		printf("phi_variants_per_region:\n");
+		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
+			printf("%u:\n", (uint32_t)i);
+			for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
+				printf("  phi: %u variant_value: %u\n",
+						(uint32_t)phi_node_of_variant[i][j].value,
+						(uint32_t)phi_variants_per_region[i].instr[j].value);
+			}
 		}
 	}
 
@@ -233,29 +235,31 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 			gen->allocator,
 			gen->temp_allocator);
 
-	printf("Assigned storage locations:\n");
-	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+	if (has_flag(gen->flags, X64_PRINT_ASSIGNED_STORAGE_LOC)) {
+		printf("Assigned storage locations:\n");
+		for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
+			ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
-		String storage_string = STR_LIT("none");
+			String storage_string = STR_LIT("none");
 
-		if (gen->instr_storage[i].kind == INSTR_STORAGE_REG) {
-			StringBuilder builder = { .arena = gen->temp_allocator };
+			if (gen->instr_storage[i].kind == INSTR_STORAGE_REG) {
+				StringBuilder builder = { .arena = gen->temp_allocator };
 
-			const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
-			const X64InstrStorageRequirement storage_requirement =
-				s_instr_storage_requiremenets[instr_kind];
+				const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
+				const X64InstrStorageRequirement storage_requirement =
+					s_instr_storage_requiremenets[instr_kind];
 
-			_format_reg_name(&builder,
-					gen->instr_storage[i].reg,
-					storage_requirement.reg_size);
+				_format_reg_name(&builder,
+						gen->instr_storage[i].reg,
+						storage_requirement.reg_size);
 
-			storage_string = builder.string;
+				storage_string = builder.string;
+			}
+
+			printf("%zu: %.*s\n", i, STR_FMT(storage_string));
+
+			arena_end_temp(temp);
 		}
-
-		printf("%zu: %.*s\n", i, STR_FMT(storage_string));
-
-		arena_end_temp(temp);
 	}
 }
 
@@ -1566,7 +1570,10 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 			root_region,
 			gen->allocator,
 			gen->temp_allocator);
-	_print_dom_tree(&gen->instr_buffer, dom_tree);
+
+	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
+		_print_dom_tree(&gen->instr_buffer, dom_tree);
+	}
 
 	_uplift_phi_nodes(gen, &dom_tree, gen->temp_allocator);
 
@@ -1588,27 +1595,29 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		linearized_instr_per_region[instr->region.id] = linearized;
 	}
 
-	// Print linearized instructions
-	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
-		InstrIndex region_instr = scheduled_regions.instr[i];
-		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+	if (has_flag(gen->flags, X64_PRINT_SCHEDULED_IR)) {
+		// Print linearized instructions
+		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+			InstrIndex region_instr = scheduled_regions.instr[i];
+			const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
-		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
+			InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
 
-		printf("region %%%u id=%u: \n", (uint32_t)region_instr.value, (uint32_t)instr->region.id);
-		for (size_t j = 0; j < linearized.count; j++) {
-			ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
-			InstrIndex instr_index = linearized.instr[j];
+			printf("region %%%u id=%u: \n", (uint32_t)region_instr.value, (uint32_t)instr->region.id);
+			for (size_t j = 0; j < linearized.count; j++) {
+				ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+				InstrIndex instr_index = linearized.instr[j];
 
-			printf("%zu\t%%%u:", j, (uint32_t)instr_index.value);
-			printf("\033[20G");
-			instr_print(&gen->instr_buffer.instr[instr_index.value],
-					gen->instr_buffer.inputs_buffer,
-					gen->temp_allocator);
+				printf("%zu\t%%%u:", j, (uint32_t)instr_index.value);
+				printf("\033[20G");
+				instr_print(&gen->instr_buffer.instr[instr_index.value],
+						gen->instr_buffer.inputs_buffer,
+						gen->temp_allocator);
 
-			arena_end_temp(temp);
+				arena_end_temp(temp);
+			}
+			printf("\n");
 		}
-		printf("\n");
 	}
 
 	bit_array_clear(&visited_instr);

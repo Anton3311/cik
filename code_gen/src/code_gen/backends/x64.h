@@ -32,6 +32,13 @@ typedef enum {
 	INSTR_STORAGE_STACK,
 } InstrStorageKind;
 
+typedef enum {
+	X64_NONE                       = 0,
+	X64_PRINT_SCHEDULED_IR         = 1 << 0,
+	X64_DEBUG_LOG                  = 1 << 1,
+	X64_PRINT_ASSIGNED_STORAGE_LOC = 1 << 2,
+} X64BackendFlags;
+
 typedef struct {
 	uint16_t allowed_registers;
 	uint8_t reg_size;
@@ -45,6 +52,8 @@ typedef struct {
 } InstrStorageLocation;
 
 typedef struct {
+	X64BackendFlags flags;
+
 	InstrBuffer instr_buffer;
 	InstrUsageRange* usage_ranges;
 	InstrStorageLocation* instr_storage;

@@ -91,7 +91,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			}
 
 			instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
-			instr_print_all(func.instr_buffer, context->temp_arena);
 
 			X64CodeGenerator gen = {};
 			gen.instr_buffer = func.instr_buffer;

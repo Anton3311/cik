@@ -137,68 +137,225 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 	}
 }
 
-static void _gather_phis(X64CodeGenerator* gen) {
-	profile_scope_start(__func__);
-	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+//
+// CFG Dominator Tree
+//
 
-	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(gen->allocator,
+typedef struct CFGDominatorTree CFGDominatorTree;
+static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
+		uint16_t region_count,
+		uint16_t region_a_id,
+		uint16_t region_b_id,
+		Arena* temp_allocator);
+
+//
+// Phi Node Handling
+//
+
+typedef struct PhiVariantNode PhiVariantNode;
+struct PhiVariantNode {
+	InstrIndex phi;
+	PhiVariantNode* next;
+};
+
+typedef struct {
+	InstrIndex value;
+	uint16_t region_id;
+
+	PhiVariantNode* phi_nodes;
+	uint16_t phi_node_count;
+} PhiVariantUse;
+
+typedef struct {
+	uint16_t capacity;
+	uint16_t count;
+	InstrIndex* keys;
+	PhiVariantUse* values;
+} PhiVariantHashMap;
+
+static void _phi_variant_map_alloc(PhiVariantHashMap* map, uint16_t capacity, Arena* allocator) {
+	map->count = 0;
+	map->capacity = capacity;
+	map->keys = arena_alloc_array(allocator, InstrIndex, capacity);
+	map->values = arena_alloc_array_zeroed(allocator, PhiVariantUse, capacity);
+	memset(map->keys, 0xff, sizeof(*map->keys) * capacity);
+}
+
+static uint16_t _phi_variant_map_insert(PhiVariantHashMap* map, InstrIndex key) {
+	assert(key.value != INVALID_INSTR_INDEX.value);
+	size_t hash = hash_bytes(&key, sizeof(key));
+
+	for (size_t i = 0; i < map->capacity; i += 1) {
+		size_t index = (hash + i) % map->capacity;
+		if (map->keys[index].value == INVALID_INSTR_INDEX.value) {
+			map->keys[index] = key;
+			return (uint16_t)index;
+		}
+	}
+
+	unreachable();
+	return UINT16_MAX;
+}
+
+static uint16_t _phi_variant_map_find(PhiVariantHashMap* map, InstrIndex key) {
+	assert(key.value != INVALID_INSTR_INDEX.value);
+	size_t hash = hash_bytes(&key, sizeof(key));
+
+	for (size_t i = 0; i < map->capacity; i += 1) {
+		size_t index = (hash + i) % map->capacity;
+
+		if (map->keys[index].value == INVALID_INSTR_INDEX.value) {
+			break;
+		}
+
+		if (map->keys[index].value == key.value) {
+			return (uint16_t)index;
+		}
+	}
+
+	return UINT16_MAX;
+}
+
+static void _gather_phis(X64CodeGenerator* gen,
+		const CFGDominatorTree* dom_tree,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	profile_scope_start(__func__);
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	uint16_t total_variant_count = 0;
+	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		const Instr* instr = &gen->instr_buffer.instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		total_variant_count += variants.count;
+	}
+
+	PhiVariantHashMap map;
+	_phi_variant_map_alloc(&map, total_variant_count * 2, temp_allocator);
+
+	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+		const Instr* instr = &gen->instr_buffer.instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
+			const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
+			assert(variant->kind == INSTR_SELECT);
+
+			InstrIndex value_index = variant->select.value;
+			uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
+
+			PhiVariantNode* phi_node = arena_alloc(temp_allocator, PhiVariantNode);
+			phi_node->phi = (InstrIndex) { i };
+			phi_node->next = NULL;
+
+			uint16_t entry_index = _phi_variant_map_find(&map, value_index);
+			if (entry_index == UINT16_MAX) {
+				uint16_t index = _phi_variant_map_insert(&map, value_index);
+				
+				PhiVariantUse* entry = &map.values[index];
+				entry->value = value_index;
+				entry->region_id = region_id;
+				entry->phi_nodes = phi_node;
+				entry->phi_node_count = 1;
+			} else {
+				// Two phi nodes want to select this value, but from different regions. The value
+				// can only be computed once.
+				//
+				// And we can't simply place the value in one of those regions, since it must be
+				// available in both of them. So the solution is to 'uplift' this value to a common
+				// region.
+
+				PhiVariantUse* entry = &map.values[entry_index];
+
+				// We if the both phis end up selecting this value from the same regions, uplifting
+				// this value is not required.
+				if (entry->region_id == region_id) {
+					continue;
+				}
+
+				uint16_t common_region_id = _find_control_flow_split(dom_tree,
+						gen->instr_buffer.region_count,
+						entry->region_id,
+						region_id,
+						temp_allocator);
+
+				// And finally assign the new common region to this value. Uplifting is done.
+				entry->region_id = common_region_id;
+
+				phi_node->next = entry->phi_nodes;
+				entry->phi_nodes = phi_node;
+				entry->phi_node_count += 1;
+			}
+		}
+	}
+
+	// Now count how many phi variants will need to be placed in each region, so that we can later
+	// preallocate areays for storing the variants placed in each region.
+	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(allocator,
 			uint16_t,
 			gen->instr_buffer.region_count);
 
-	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		const Instr* instr = &gen->instr_buffer.instr[i];
-		if (instr->kind == INSTR_PHI) {
-			InstrInputs variants = instr->phi.variants;
-			for (uint16_t j = 0; j < variants.count; j += 1) {
-				InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
-				const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
-				assert(variant->kind == INSTR_SELECT);
-
-				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-				phi_variant_counts_per_region[region_id] += 1;
-			}
+	for (uint16_t i = 0; i < map.capacity; i += 1) {
+		if (map.keys[i].value == INVALID_INSTR_INDEX.value) {
+			continue;
 		}
+
+		const PhiVariantUse* entry = &map.values[i];
+		phi_variant_counts_per_region[entry->region_id] += entry->phi_node_count;
 	}
 
-	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(gen->allocator,
+	// Now preallocate the arrays
+	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(allocator,
 			InstrIndexArray,
 			gen->instr_buffer.region_count);
-	InstrIndex** phi_node_of_variant = arena_alloc_array_zeroed(gen->allocator,
+
+	InstrIndex** phi_node_of_variant = arena_alloc_array(allocator,
 			InstrIndex*,
 			gen->instr_buffer.region_count);
 
-	for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-		phi_variants_per_region[i].instr = arena_alloc_array(gen->allocator,
-				InstrIndex,
-				phi_variant_counts_per_region[i]);
-
-		phi_node_of_variant[i] = arena_alloc_array(gen->allocator,
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_variants_per_region[i].instr = arena_alloc_array(allocator,
 				InstrIndex,
 				phi_variant_counts_per_region[i]);
 	}
 
-	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		const Instr* instr = &gen->instr_buffer.instr[i];
-		if (instr->kind == INSTR_PHI) {
-			InstrInputs variants = instr->phi.variants;
-			for (uint16_t j = 0; j < variants.count; j += 1) {
-				InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
-				const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
-				assert(variant->kind == INSTR_SELECT);
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_node_of_variant[i] = arena_alloc_array(allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
 
-				uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-				uint16_t variant_count_in_region = phi_variants_per_region[region_id].count;
+	// Sort all the phi variants into the arrays corresponding to the region where the variant must
+	// be placed.
+	for (uint16_t i = 0; i < map.capacity; i += 1) {
+		if (map.keys[i].value == INVALID_INSTR_INDEX.value) {
+			continue;
+		}
 
-				assert(variant_count_in_region < phi_variant_counts_per_region[region_id]);
-				phi_variants_per_region[region_id].instr[variant_count_in_region] = variant->select.value;
-				phi_variants_per_region[region_id].count += 1;
+		const PhiVariantUse* entry = &map.values[i];
+		uint16_t region_id = entry->region_id;
 
-				phi_node_of_variant[region_id][variant_count_in_region] = (InstrIndex) { .value = i };
-			}
+		InstrIndexArray* variants = &phi_variants_per_region[region_id];
+
+		uint16_t max_entries_for_this_region = phi_variant_counts_per_region[region_id];
+		for (const PhiVariantNode* node = entry->phi_nodes; node != NULL; node = node->next) {
+			variants->instr[variants->count] = entry->value;
+			phi_node_of_variant[region_id][variants->count] = node->phi;
+			variants->count += 1;
+
+			assert(variants->count <= max_entries_for_this_region);
 		}
 	}
 
-	gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
 	gen->phi_variants_per_region = phi_variants_per_region;
 	gen->phi_node_of_variant = phi_node_of_variant;
 
@@ -356,12 +513,10 @@ static void _x64_generate_phi_variants(X64CodeGenerator* gen, uint16_t region_id
 }
 
 static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
-	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
-
 	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
 	const InstrIndex* phi_nodes = gen->phi_node_of_variant[region_id];
 
-	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
+	for (uint16_t i = 0; i < phi_variants.count; i += 1) {
 		InstrIndex variant_index = phi_variants.instr[i];
 		InstrIndex phi_node_index = phi_nodes[i];
 		const Instr* value = &gen->instr_buffer.instr[variant_index.value];
@@ -1000,10 +1155,8 @@ static void _linearize_phis(X64CodeGenerator* gen,
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	uint16_t region_id = gen->current_linearized_region_id; 
 
-	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
 	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
-
-	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
+	for (uint16_t i = 0; i < phi_variants.count; i += 1) {
 		InstrIndex variant_index = phi_variants.instr[i];
 
 		if (bit_array_get(visited_instr, variant_index.value)) {
@@ -1292,7 +1445,7 @@ static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrInd
 	return regions;
 }
 
-typedef struct {
+struct CFGDominatorTree {
 	// Per region `BitArray` of regions that it dominates
 	// The size of this array is equal to the total number of regions
 	//
@@ -1305,9 +1458,9 @@ typedef struct {
 	// `UINT16_MAX` means the regions doesn't have an immediate dominator.
 	// Which can only be true for the root region.
 	uint16_t* immediate_dominators;
-} CFGDominanceTree;
+};
 
-static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffer,
+static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffer,
 		InstrIndex initial_region,
 		Arena* allocator,
 		Arena* temp_allocator) {
@@ -1320,7 +1473,7 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 	instr_queue_alloc(&stack, temp_allocator, instr_buffer->region_count);
 
 	// Allocate the tree
-	CFGDominanceTree tree;
+	CFGDominatorTree tree;
 	tree.dominates = arena_alloc_array(allocator, BitArray, instr_buffer->region_count);
 	tree.immediate_dominators = arena_alloc_array(allocator, uint16_t, instr_buffer->region_count);
 
@@ -1425,7 +1578,7 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 	return tree;
 }
 
-static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominanceTree tree) {
+static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominatorTree tree) {
 	printf("dom tree:\n");
 	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
 		printf("region id=%u imm dom=%u: ",
@@ -1442,7 +1595,8 @@ static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominanceTree tr
 }
 
 // Find a region where the control flow splits and later reaches both provided regions.
-static uint16_t _find_control_flow_split(const CFGDominanceTree* tree,
+// The returned value is the region id.
+static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 		uint16_t region_count,
 		uint16_t region_a_id,
 		uint16_t region_b_id,
@@ -1479,70 +1633,6 @@ static uint16_t _find_control_flow_split(const CFGDominanceTree* tree,
 	return UINT16_MAX;
 }
 
-static void _uplift_phi_nodes(X64CodeGenerator* gen,
-		const CFGDominanceTree* dom_tree,
-		Arena* temp_allocator) {
-
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
-
-	uint16_t region_count = gen->instr_buffer.region_count;
-
-	typedef struct VariantUse VariantUse;
-	struct VariantUse {
-		InstrIndex used_by_phi;
-		uint16_t region_id;
-		VariantUse* next;
-	};
-
-	VariantUse** variant_usages = arena_alloc_array_zeroed(temp_allocator,
-			VariantUse*,
-			gen->instr_buffer.count);
-
-	size_t total_phi_count = 0;
-	for (uint16_t i = 0; i < region_count; i += 1) {
-		total_phi_count += gen->phi_variant_counts_per_region[i];
-
-		for (uint16_t j = 0; j < gen->phi_variant_counts_per_region[i]; j += 1) {
-			InstrIndex variant = gen->phi_variants_per_region[i].instr[j];
-			InstrIndex phi_node = gen->phi_node_of_variant[i][j];
-
-			VariantUse* use = arena_alloc(temp_allocator, VariantUse);
-			use->used_by_phi = phi_node;
-			use->region_id = i;
-			use->next = variant_usages[variant.value];
-
-			variant_usages[variant.value] = use;
-		}
-	}
-
-	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		if (variant_usages[i] == NULL) {
-			continue;
-		}
-
-		VariantUse* use_0 = variant_usages[i];
-		if (use_0->next == NULL) {
-			continue;
-		}
-
-		VariantUse* use_1 = use_0->next;
-		assert(use_1->next == NULL);
-
-		uint16_t control_flow_split = _find_control_flow_split(dom_tree,
-				gen->instr_buffer.region_count,
-				use_0->region_id,
-				use_1->region_id,
-				temp_allocator);
-
-		printf("found control flow split at %u for phi [%u] and [%u]\n",
-				(uint32_t)control_flow_split,
-				(uint32_t)use_0->used_by_phi.value,
-				(uint32_t)use_1->used_by_phi.value);
-	}
-
-	arena_end_temp(temp);
-}
-
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
 	profile_scope_start(__func__);
 
@@ -1553,7 +1643,17 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	assert(validation_result);
 
 	_merge_string_consts(gen);
-	_gather_phis(gen);
+
+	CFGDominatorTree dom_tree = _build_cfg_dominator_tree(&gen->instr_buffer,
+			root_region,
+			gen->allocator,
+			gen->temp_allocator);
+
+	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
+		_print_dom_tree(&gen->instr_buffer, dom_tree);
+	}
+
+	_gather_phis(gen, &dom_tree, gen->temp_allocator, gen->allocator);
 	_run_reg_allocator(gen);
 	
 	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
@@ -1566,17 +1666,6 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	InstrIndexArray* linearized_instr_per_region = arena_alloc_array(gen->temp_allocator,
 			InstrIndexArray,
 			scheduled_regions.count);
-
-	CFGDominanceTree dom_tree = _build_cfg_dominator_tree(&gen->instr_buffer,
-			root_region,
-			gen->allocator,
-			gen->temp_allocator);
-
-	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
-		_print_dom_tree(&gen->instr_buffer, dom_tree);
-	}
-
-	_uplift_phi_nodes(gen, &dom_tree, gen->temp_allocator);
 
 	BitArray visited_instr = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.count);
 	bit_array_clear(&visited_instr);

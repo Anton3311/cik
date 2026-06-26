@@ -1314,6 +1314,7 @@ static CFGDominanceTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	BitArray visited_regions = bit_array_alloc(temp_allocator, instr_buffer->region_count);
+	bit_array_clear(&visited_regions);
 
 	InstrQueue stack;
 	instr_queue_alloc(&stack, temp_allocator, instr_buffer->region_count);

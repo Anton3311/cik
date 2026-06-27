@@ -1384,7 +1384,7 @@ static void _merge_string_consts(X64CodeGenerator* gen) {
 	profile_scope_end();
 }
 
-static bool _validate_linearization(const InstrBuffer* instr_buffer,
+static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffer,
 		uint16_t* assigned_region_to_instr, 
 		uint16_t current_region_id,
 		InstrIndexArray linearized,
@@ -1481,257 +1481,6 @@ static bool _validate_linearization(const InstrBuffer* instr_buffer,
 	return valid;
 }
 
-static void _linearize_instr(X64CodeGenerator* gen,
-		InstrIndex instr_index,
-		BitArray* visited_instr,
-		InstrIndexArray* out_linearized,
-		Arena* allocator);
-
-static void _linearize_phis(X64CodeGenerator* gen,
-		BitArray* visited_instr,
-		InstrIndexArray* out_linearized,
-		Arena* temp_allocator) {
-
-	const InstrBuffer* instr_buffer = &gen->instr_buffer;
-	uint16_t region_id = gen->current_linearized_region_id; 
-
-	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
-	for (uint16_t i = 0; i < phi_variants.count; i += 1) {
-		InstrIndex variant_index = phi_variants.instr[i];
-
-		if (bit_array_get(visited_instr, variant_index.value)) {
-			continue;
-		}
-
-		_linearize_instr(gen,
-				variant_index,
-				visited_instr,
-				out_linearized,
-				temp_allocator);
-	}
-}
-
-static void _linearize_instr(X64CodeGenerator* gen,
-		InstrIndex instr_index,
-		BitArray* visited_instr,
-		InstrIndexArray* out_linearized,
-		Arena* allocator) {
-
-	const InstrBuffer* instr_buffer = &gen->instr_buffer;
-	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-	if (instr->kind == INSTR_REGION) {
-		return;
-	}
-
-	if (bit_array_get(visited_instr, instr_index.value)) {
-		return;
-	}
-
-	bit_array_set(visited_instr, instr_index.value, true);
-
-	switch (instr->kind) {
-	case INSTR_NO_OP:
-	case INSTR_CONST_8:
-	case INSTR_CONST_16:
-	case INSTR_CONST_32:
-	case INSTR_CONST_64:
-	case INSTR_CONST_STRING:
-		break;
-	case INSTR_BIN_OP_8:
-	case INSTR_BIN_OP_16:
-	case INSTR_BIN_OP_32:
-	case INSTR_BIN_OP_64:
-		_linearize_instr(gen,
-				instr->bin_op.left,
-				visited_instr,
-				out_linearized,
-				allocator);
-		_linearize_instr(gen,
-				instr->bin_op.right,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_PTR_LOAD_8:
-	case INSTR_PTR_LOAD_16:
-	case INSTR_PTR_LOAD_32:
-	case INSTR_PTR_LOAD_64:
-		_linearize_instr(gen,
-				instr->ptr_load.ptr,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_LOAD_ARG:
-		break;
-	case INSTR_LOGICAL_SHIFT_LEFT_8:
-	case INSTR_LOGICAL_SHIFT_LEFT_16:
-	case INSTR_LOGICAL_SHIFT_LEFT_32:
-	case INSTR_LOGICAL_SHIFT_LEFT_64:
-		_linearize_instr(gen,
-				instr->logical_shift.operand,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_COMPARE_8:
-	case INSTR_COMPARE_16:
-	case INSTR_COMPARE_32:
-	case INSTR_COMPARE_64:
-		_linearize_instr(gen,
-				instr->compare.left,
-				visited_instr,
-				out_linearized,
-				allocator);
-		_linearize_instr(gen,
-				instr->compare.right,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_BOOL_TO_INT:
-		_linearize_instr(gen,
-				instr->bool_to_int.operand,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_NEGATE_8:
-	case INSTR_NEGATE_16:
-	case INSTR_NEGATE_32:
-	case INSTR_NEGATE_64:
-		_linearize_instr(gen,
-				instr->negate.operand,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_CAST_TO_8:
-	case INSTR_CAST_TO_16:
-	case INSTR_CAST_TO_32:
-	case INSTR_CAST_TO_64:
-		_linearize_instr(gen,
-				instr->cast.value,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_BRANCH:
-		_linearize_instr(gen,
-				instr->branch.io_state,
-				visited_instr,
-				out_linearized,
-				allocator);
-		_linearize_instr(gen,
-				instr->branch.condition,
-				visited_instr,
-				out_linearized,
-				allocator);
-
-		_linearize_phis(gen, visited_instr, out_linearized, allocator);
-		break;
-	case INSTR_JUMP:
-		_linearize_instr(gen,
-				instr->jump.io_state,
-				visited_instr,
-				out_linearized,
-				allocator);
-		_linearize_phis(gen, visited_instr, out_linearized, allocator);
-		break;
-	case INSTR_RETURN_VALUE:
-		_linearize_instr(gen,
-				instr->return_value.io_state,
-				visited_instr,
-				out_linearized,
-				allocator);
-		_linearize_instr(gen,
-				instr->return_value.value,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_RET:
-		_linearize_instr(gen,
-				instr->ret.io_state,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	case INSTR_IO_STATE:
-		if (instr->io_state.producer.value != UINT16_MAX) {
-			_linearize_instr(gen,
-					instr->io_state.producer,
-					visited_instr,
-					out_linearized,
-					allocator);
-		}
-
-		break;
-	case INSTR_CALL_INTERNAL: {
-		_linearize_instr(gen,
-				instr->call_internal.io_state,
-				visited_instr,
-				out_linearized,
-				allocator);
-
-		InstrInputs args = instr->call_internal.args;
-		if (args.count == 1) {
-			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + 0];
-			_linearize_instr(gen,
-					arg_instr,
-					visited_instr,
-					out_linearized,
-					allocator);
-		}
-
-		break;
-	}
-	case INSTR_REGION:
-		unreachable();
-	case INSTR_PHI: {
-		InstrInputs variants = instr->phi.variants;
-		for (uint16_t i = 0; i < variants.count; i += 1) {
-			InstrIndex variant = instr_buffer->inputs_buffer[variants.start + i];
-			_linearize_instr(gen,
-					variant,
-					visited_instr,
-					out_linearized,
-					allocator);
-		}
-		break;
-	}
-	case INSTR_SELECT:
-		_linearize_instr(gen,
-				instr->select.value,
-				visited_instr,
-				out_linearized,
-				allocator);
-		break;
-	}
-
-	arena_alloc(allocator, InstrIndex);
-	out_linearized->instr[out_linearized->count] = instr_index;
-	out_linearized->count += 1;
-
-	uint16_t region_id = gen->current_linearized_region_id; 
-	gen->assigned_region_to_instr[instr_index.value] = region_id;
-}
-
-static InstrIndexArray _linearize_instr_for_region(X64CodeGenerator* gen,
-		const InstrBuffer* instr_buffer,
-		uint16_t region_id,
-		InstrIndex initial_instr,
-		BitArray* visited_instr,
-		Arena* temp_allocator) {
-
-	InstrIndexArray linearized;
-	linearized.instr = arena_alloc_array(temp_allocator, InstrIndex, 0);
-	linearized.count = 0;
-
-	_linearize_instr(gen, initial_instr, visited_instr, &linearized, temp_allocator);
-	return linearized;
-}
-
 typedef struct {
 	uint16_t decided_region_id;
 } InstrSchedulingState;
@@ -1744,7 +1493,11 @@ typedef struct {
 	Arena* temp_allocator;
 } InstrSchedulingContext;
 
-static void _try_enqueue_for_scheduling_in_region(InstrQueue* queue,
+// Checks whether the `input_instr_index` is guaranteed to be available in the `region_id`.
+//
+// If it's not, uplifts `input_instr_index`. And pushes it onto the queue, since now
+// `input_instr_index` and it's dependencies need to be rescheduled.
+static void _try_enqueue_for_scheduling(InstrQueue* queue,
 		InstrSchedulingContext* context,
 		uint16_t region_id,
 		InstrIndex input_instr_index) {
@@ -1775,28 +1528,15 @@ static void _try_enqueue_for_scheduling_in_region(InstrQueue* queue,
 	instr_queue_push_back(queue, input_instr_index);
 }
 
-static void _try_enqueue_for_scheduling(InstrQueue* queue,
-		InstrSchedulingContext* context,
-		InstrIndex instr_index,
-		InstrIndex input_instr_index) {
-	
-	uint16_t current_instr_region_id = context->states[instr_index.value].decided_region_id;
-	assert_msg(current_instr_region_id != UINT16_MAX,
-			"Instr at `instr_index` must have an already assigned region id");
-
-	uint16_t input_instr_region_id = context->states[input_instr_index.value].decided_region_id;
-	_try_enqueue_for_scheduling_in_region(queue,
-			context,
-			current_instr_region_id,
-			input_instr_index);
-}
-
 static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		InstrIndex instr_index,
 		InstrSchedulingContext* context) {
 	const InstrBuffer* instr_buffer = context->instr_buffer;
-
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+	uint16_t current_region_id = context->states[instr_index.value].decided_region_id;
+	assert_msg(current_region_id != UINT16_MAX,
+			"Instr at `instr_index` must have an already assigned region id");
 
 	switch (instr->kind) {
 	case INSTR_NO_OP:
@@ -1810,14 +1550,14 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
 	case INSTR_BIN_OP_64:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->bin_op.left);
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->bin_op.right);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bin_op.left);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bin_op.right);
 		break;
 	case INSTR_PTR_LOAD_8:
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
 	case INSTR_PTR_LOAD_64:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->ptr_load.ptr);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.ptr);
 		break;
 	case INSTR_LOAD_ARG:
 		break;
@@ -1825,61 +1565,57 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_LOGICAL_SHIFT_LEFT_16:
 	case INSTR_LOGICAL_SHIFT_LEFT_32:
 	case INSTR_LOGICAL_SHIFT_LEFT_64:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->logical_shift.operand);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->logical_shift.operand);
 		break;
 	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->compare.left);
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->compare.right);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->compare.left);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->compare.right);
 		break;
 	case INSTR_BOOL_TO_INT:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->bool_to_int.operand);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bool_to_int.operand);
 		break;
 	case INSTR_NEGATE_8:
 	case INSTR_NEGATE_16:
 	case INSTR_NEGATE_32:
 	case INSTR_NEGATE_64:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->negate.operand);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->negate.operand);
 		break;
 	case INSTR_CAST_TO_8:
 	case INSTR_CAST_TO_16:
 	case INSTR_CAST_TO_32:
 	case INSTR_CAST_TO_64:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->cast.value);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->cast.value);
 		break;
 	case INSTR_BRANCH:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->branch.io_state);
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->branch.condition);
-
-		// _linearize_phis(gen, visited_instr, out_linearized, allocator);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->branch.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->branch.condition);
 		break;
 	case INSTR_JUMP:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->jump.io_state);
-
-		// _linearize_phis(gen, visited_instr, out_linearized, allocator);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->jump.io_state);
 		break;
 	case INSTR_RETURN_VALUE:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->return_value.io_state);
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->return_value.value);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->return_value.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->return_value.value);
 		break;
 	case INSTR_RET:
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->ret.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ret.io_state);
 		break;
 	case INSTR_IO_STATE:
 		if (instr->io_state.producer.value != INVALID_INSTR_INDEX.value) {
-			_try_enqueue_for_scheduling(queue, context, instr_index, instr->io_state.producer);
+			_try_enqueue_for_scheduling(queue, context, current_region_id, instr->io_state.producer);
 		}
 
 		break;
 	case INSTR_CALL_INTERNAL: {
-		_try_enqueue_for_scheduling(queue, context, instr_index, instr->call_internal.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->call_internal.io_state);
 
 		InstrInputs args = instr->call_internal.args;
-		if (args.count == 1) {
-			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + 0];
-			_try_enqueue_for_scheduling(queue, context, instr_index, arg_instr);
+		for (uint16_t i = 0; i < args.count; i += 1) {
+			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + i];
+			_try_enqueue_for_scheduling(queue, context, current_region_id, arg_instr);
 		}
 
 		break;
@@ -1890,13 +1626,13 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		InstrInputs variants = instr->phi.variants;
 		for (uint16_t i = 0; i < variants.count; i += 1) {
 			InstrIndex variant = instr_buffer->inputs_buffer[variants.start + i];
-			_try_enqueue_for_scheduling(queue, context, instr_index, variant);
+			_try_enqueue_for_scheduling(queue, context, current_region_id, variant);
 		}
 		break;
 	}
 	case INSTR_SELECT: {
 		uint16_t region_id = instr_region_id(instr_buffer, instr->select.region);
-		_try_enqueue_for_scheduling_in_region(queue, context, region_id, instr->select.value);
+		_try_enqueue_for_scheduling(queue, context, region_id, instr->select.value);
 		break;
 	}
 	}
@@ -1907,6 +1643,7 @@ static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
 		const CFGDominatorTree* dom_tree,
 		Arena* allocator,
 		Arena* temp_allocator) {
+	profile_scope_start(__func__);
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	InstrSchedulingState* states = arena_alloc_array(temp_allocator,
@@ -1947,12 +1684,14 @@ static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
 		arena_end_temp(temp1);
 	}
 
+	// Prepare all the necessary buffers to store the scheduling results.
 	uint16_t* instr_count_per_region = arena_alloc_array_zeroed(temp_allocator,
 			uint16_t,
 			instr_buffer->region_count);
 
 	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
 		if (states[i].decided_region_id == UINT16_MAX) {
+			// This instruction doesn't belong to any of regions.
 			continue;
 		}
 
@@ -1970,6 +1709,18 @@ static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
 		scheduled_instr_per_region[i].count = 0;
 	}
 
+	// Now append each instruction to the corresponding region.
+	// 
+	// Instructions are appended in the same order they appear in the `instr_buffer`. After
+	// appending the control instruction to this region, we might still encounter some instruction
+	// that should also belong in this region.
+	//
+	// These instructions are defined later in the `instr_buffer`, and were uplifted to this region.
+	// We shouldn't simply add these uplifted instruction after the control instruction. The control
+	// instruction must be the last one in the region.
+	//
+	// To handle this correctly, during the first pass, control instructions are skipped, and later
+	// during the second pass they are added to the end of each region.
 	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
 		if (states[i].decided_region_id == UINT16_MAX) {
 			continue;
@@ -1996,6 +1747,7 @@ static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
 		region_instr_array->count += 1;
 	}
 
+	// Now the second pass. Append control instructions.
 	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrIndex region_index = scheduled_regions.instr[i];
 		const Instr* instr = instr_buffer_at(instr_buffer, region_index);
@@ -2012,6 +1764,7 @@ static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
 
 	arena_end_temp(temp);
 
+	profile_scope_end();
 	return scheduled_instr_per_region;
 }
 
@@ -2094,30 +1847,24 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
 	_collect_phis(gen, gen->temp_allocator);
 
-	InstrIndexArray* linearized_instr_per_region =  _schedule_instr(&gen->instr_buffer,
+	InstrIndexArray* linearized_instr_per_region = _schedule_instr(&gen->instr_buffer,
 			scheduled_regions,
 			&dom_tree,
 			gen->temp_allocator,
 			gen->allocator);
 
-	gen->assigned_region_to_instr = arena_alloc_array(gen->temp_allocator,
+	uint16_t* assigned_region_to_instr = arena_alloc_array(gen->temp_allocator,
 			uint16_t,
 			gen->instr_buffer.count);
 
 	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
 		InstrIndexArray instr = linearized_instr_per_region[i];
 		for (uint16_t j = 0; j < instr.count; j += 1) {
-			gen->assigned_region_to_instr[instr.instr[j].value] = i;
+			assigned_region_to_instr[instr.instr[j].value] = i;
 		}
 	}
 
-	// _gather_phis(gen, &dom_tree, gen->temp_allocator, gen->allocator);
 	_run_reg_allocator(gen);
-
-	uint16_t region_count = gen->instr_buffer.region_count;
-	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
-			CodeBuffer,
-			region_count);
 
 	if (has_flag(gen->flags, X64_PRINT_SCHEDULED_IR)) {
 		// Print linearized instructions
@@ -2144,21 +1891,27 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		}
 	}
 
+	// Now check that scheduling is valid
 	bool scheduling_is_valid = true;
 	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrIndex region_instr = scheduled_regions.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
-		scheduling_is_valid &= _validate_linearization(&gen->instr_buffer,
-				gen->assigned_region_to_instr,
+		scheduling_is_valid &= _validate_instr_scheduling_for_region(&gen->instr_buffer,
+				assigned_region_to_instr,
 				instr->region.id,
 				linearized,
 				&dom_tree,
 				gen->temp_allocator);
 	}
 
-	assert(scheduling_is_valid);
+	assert_msg(scheduling_is_valid, "Instruction scheduler failed to produce a valid result");
+
+	uint16_t region_count = gen->instr_buffer.region_count;
+	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
+			CodeBuffer,
+			region_count);
 
 	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrIndex region_instr = scheduled_regions.instr[i];

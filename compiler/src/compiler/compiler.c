@@ -987,9 +987,14 @@ static void _internal_panic(const char* message) {
 	panic(message);
 }
 
+static uint64_t _internal_identity(uint64_t value) {
+	return value;
+}
+
 void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
 	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
 	func_ref_table_resolve_ref_to(table, STR_LIT("printf"), printf);
 	func_ref_table_resolve_ref_to(table, STR_LIT("panic"), _internal_panic);
+	func_ref_table_resolve_ref_to(table, STR_LIT("identity"), _internal_identity);
 }

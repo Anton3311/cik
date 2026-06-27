@@ -590,6 +590,77 @@ static void _gather_phis(X64CodeGenerator* gen,
 	profile_scope_end();
 }
 
+static void _collect_phis(X64CodeGenerator* gen, Arena* allocator) {
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
+
+	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(allocator,
+			uint16_t,
+			gen->instr_buffer.region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		const Instr* instr = &instr_buffer->instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
+			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
+
+			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
+			phi_variant_counts_per_region[region_id] += 1;
+
+		}
+	}
+
+	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(allocator,
+			InstrIndexArray,
+			instr_buffer->region_count);
+
+	InstrIndex** phi_node_of_variant = arena_alloc_array(allocator,
+			InstrIndex*,
+			instr_buffer->region_count);
+
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_variants_per_region[i].instr = arena_alloc_array(allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_node_of_variant[i] = arena_alloc_array(allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	// Sort all the phi variants into the arrays corresponding to the region where the variant must
+	// be placed.
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		const Instr* instr = &instr_buffer->instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
+			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
+
+			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
+			InstrIndexArray* variants = &phi_variants_per_region[region_id];
+
+			variants->instr[variants->count] = select_instr->select.value;
+			phi_node_of_variant[region_id][variants->count] = (InstrIndex) { i };
+			variants->count += 1;
+		}
+	}
+
+	gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
+	gen->phi_variants_per_region = phi_variants_per_region;
+	gen->phi_node_of_variant = phi_node_of_variant;
+}
+
 static void _run_reg_allocator(X64CodeGenerator* gen) {
 	uint16_t allowed_registers = UINT16_MAX;
 	allowed_registers &= ~(1 << X64_REG_SP);
@@ -734,7 +805,10 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 	for (uint16_t i = 0; i < phi_variants.count; i += 1) {
 		InstrIndex variant_index = phi_variants.instr[i];
 		InstrIndex phi_node_index = phi_nodes[i];
+
 		const Instr* value = &gen->instr_buffer.instr[variant_index.value];
+		const Instr* phi_node = &gen->instr_buffer.instr[phi_node_index.value];
+		assert(phi_node->kind == INSTR_PHI);
 
 		const InstrStorageLocation value_storage = gen->instr_storage[phi_variants.instr[i].value];
 		const InstrStorageLocation phi_storage = gen->instr_storage[phi_node_index.value];
@@ -1310,18 +1384,22 @@ static void _merge_string_consts(X64CodeGenerator* gen) {
 	profile_scope_end();
 }
 
-static void _validate_linearization(const InstrBuffer* instr_buffer,
+static bool _validate_linearization(const InstrBuffer* instr_buffer,
 		uint16_t* assigned_region_to_instr, 
 		uint16_t current_region_id,
 		InstrIndexArray linearized,
 		const CFGDominatorTree* dom_tree,
 		Arena* temp_allocator) {
 
+	bool valid = true;
+
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	BitArray visited_instr = bit_array_alloc(temp_allocator, instr_buffer->count);
+	bit_array_clear(&visited_instr);
+
 	for (size_t i = 0; i < linearized.count; i += 1) {
 		const Instr* instr = instr_buffer_at(instr_buffer, linearized.instr[i]);
 		if (instr->kind == INSTR_SELECT) {
-
 			uint16_t region_assigned_to_input = assigned_region_to_instr[instr->select.value.value];
 			uint16_t expected_region = instr_region_id(instr_buffer, instr->select.region);
 
@@ -1357,21 +1435,50 @@ static void _validate_linearization(const InstrBuffer* instr_buffer,
 				}
 
 				uint16_t region_assigned_to_input = assigned_region_to_instr[input.value];
-				bool input_is_available = _is_region_dominated_by(dom_tree,
-						region_assigned_to_input,
-						current_region_id);
+				if (region_assigned_to_input == current_region_id) {
+					if (!bit_array_get(&visited_instr, input.value)) {
+						debug_log_error(
+								"Value definition '%u' in region '%u' appers before its input '%u'",
+								(uint32_t)linearized.instr[i].value,
+								(uint32_t)current_region_id,
+								(uint32_t)input.value);
 
-				assert_msg(input_is_available,
-						"Value definition '%u' appears before its input '%u'",
-						(uint32_t)linearized.instr[i].value,
-						(uint32_t)input.value);
+						valid = false;
+					}
+				} else {
+					bool input_is_available = _is_region_dominated_by(dom_tree,
+							region_assigned_to_input,
+							current_region_id);
+
+					if (!input_is_available) {
+						debug_log_error(
+								"Input '%u' for value definition '%u' is not available on this "
+								"control path\n"
+								"\n"
+								"Def '%u' is scheduled to execute in region with id '%u'\n"
+								"Input '%u' is scheduled to execute in region with id '%u'\n",
+								(uint32_t)input.value,
+								(uint32_t)linearized.instr[i].value,
+
+								(uint32_t)linearized.instr[i].value,
+								(uint32_t)current_region_id,
+
+								(uint32_t)input.value,
+								(uint32_t)region_assigned_to_input);
+
+						valid = false;
+					}
+				}
 			}
 
 			arena_end_temp(inner_temp);
 		}
+
+		bit_array_set(&visited_instr, linearized.instr[i].value, true);
 	}
 	
 	arena_end_temp(temp);
+	return valid;
 }
 
 static void _linearize_instr(X64CodeGenerator* gen,
@@ -1625,6 +1732,289 @@ static InstrIndexArray _linearize_instr_for_region(X64CodeGenerator* gen,
 	return linearized;
 }
 
+typedef struct {
+	uint16_t decided_region_id;
+} InstrSchedulingState;
+
+typedef struct {
+	const InstrBuffer* instr_buffer;
+	InstrSchedulingState* states;
+	const CFGDominatorTree* dom_tree;
+
+	Arena* temp_allocator;
+} InstrSchedulingContext;
+
+static void _try_enqueue_for_scheduling_in_region(InstrQueue* queue,
+		InstrSchedulingContext* context,
+		uint16_t region_id,
+		InstrIndex input_instr_index) {
+
+	uint16_t input_instr_region_id = context->states[input_instr_index.value].decided_region_id;
+	if (input_instr_region_id == UINT16_MAX) {
+		context->states[input_instr_index.value].decided_region_id = region_id;
+		instr_queue_push_back(queue, input_instr_index);
+		return;
+	}
+
+	bool is_input_dominated = _is_region_dominated_by(context->dom_tree,
+				input_instr_region_id,
+				region_id);
+
+	// The input is guaranteed to appear before the instr at `instr_index`
+	if (is_input_dominated) {
+		return;
+	}
+	
+	uint16_t common_region_id = _find_control_flow_split(context->dom_tree,
+			context->states[input_instr_index.value].decided_region_id,
+			region_id,
+			context->temp_allocator);
+
+	context->states[input_instr_index.value].decided_region_id = common_region_id;
+
+	instr_queue_push_back(queue, input_instr_index);
+}
+
+static void _try_enqueue_for_scheduling(InstrQueue* queue,
+		InstrSchedulingContext* context,
+		InstrIndex instr_index,
+		InstrIndex input_instr_index) {
+	
+	uint16_t current_instr_region_id = context->states[instr_index.value].decided_region_id;
+	assert_msg(current_instr_region_id != UINT16_MAX,
+			"Instr at `instr_index` must have an already assigned region id");
+
+	uint16_t input_instr_region_id = context->states[input_instr_index.value].decided_region_id;
+	_try_enqueue_for_scheduling_in_region(queue,
+			context,
+			current_instr_region_id,
+			input_instr_index);
+}
+
+static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
+		InstrIndex instr_index,
+		InstrSchedulingContext* context) {
+	const InstrBuffer* instr_buffer = context->instr_buffer;
+
+	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+	switch (instr->kind) {
+	case INSTR_NO_OP:
+	case INSTR_CONST_8:
+	case INSTR_CONST_16:
+	case INSTR_CONST_32:
+	case INSTR_CONST_64:
+	case INSTR_CONST_STRING:
+		break;
+	case INSTR_BIN_OP_8:
+	case INSTR_BIN_OP_16:
+	case INSTR_BIN_OP_32:
+	case INSTR_BIN_OP_64:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->bin_op.left);
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->bin_op.right);
+		break;
+	case INSTR_PTR_LOAD_8:
+	case INSTR_PTR_LOAD_16:
+	case INSTR_PTR_LOAD_32:
+	case INSTR_PTR_LOAD_64:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->ptr_load.ptr);
+		break;
+	case INSTR_LOAD_ARG:
+		break;
+	case INSTR_LOGICAL_SHIFT_LEFT_8:
+	case INSTR_LOGICAL_SHIFT_LEFT_16:
+	case INSTR_LOGICAL_SHIFT_LEFT_32:
+	case INSTR_LOGICAL_SHIFT_LEFT_64:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->logical_shift.operand);
+		break;
+	case INSTR_COMPARE_8:
+	case INSTR_COMPARE_16:
+	case INSTR_COMPARE_32:
+	case INSTR_COMPARE_64:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->compare.left);
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->compare.right);
+		break;
+	case INSTR_BOOL_TO_INT:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->bool_to_int.operand);
+		break;
+	case INSTR_NEGATE_8:
+	case INSTR_NEGATE_16:
+	case INSTR_NEGATE_32:
+	case INSTR_NEGATE_64:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->negate.operand);
+		break;
+	case INSTR_CAST_TO_8:
+	case INSTR_CAST_TO_16:
+	case INSTR_CAST_TO_32:
+	case INSTR_CAST_TO_64:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->cast.value);
+		break;
+	case INSTR_BRANCH:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->branch.io_state);
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->branch.condition);
+
+		// _linearize_phis(gen, visited_instr, out_linearized, allocator);
+		break;
+	case INSTR_JUMP:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->jump.io_state);
+
+		// _linearize_phis(gen, visited_instr, out_linearized, allocator);
+		break;
+	case INSTR_RETURN_VALUE:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->return_value.io_state);
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->return_value.value);
+		break;
+	case INSTR_RET:
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->ret.io_state);
+		break;
+	case INSTR_IO_STATE:
+		if (instr->io_state.producer.value != INVALID_INSTR_INDEX.value) {
+			_try_enqueue_for_scheduling(queue, context, instr_index, instr->io_state.producer);
+		}
+
+		break;
+	case INSTR_CALL_INTERNAL: {
+		_try_enqueue_for_scheduling(queue, context, instr_index, instr->call_internal.io_state);
+
+		InstrInputs args = instr->call_internal.args;
+		if (args.count == 1) {
+			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + 0];
+			_try_enqueue_for_scheduling(queue, context, instr_index, arg_instr);
+		}
+
+		break;
+	}
+	case INSTR_REGION:
+		unreachable();
+	case INSTR_PHI: {
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t i = 0; i < variants.count; i += 1) {
+			InstrIndex variant = instr_buffer->inputs_buffer[variants.start + i];
+			_try_enqueue_for_scheduling(queue, context, instr_index, variant);
+		}
+		break;
+	}
+	case INSTR_SELECT: {
+		uint16_t region_id = instr_region_id(instr_buffer, instr->select.region);
+		_try_enqueue_for_scheduling_in_region(queue, context, region_id, instr->select.value);
+		break;
+	}
+	}
+}
+
+static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
+		InstrIndexArray scheduled_regions,
+		const CFGDominatorTree* dom_tree,
+		Arena* allocator,
+		Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	InstrSchedulingState* states = arena_alloc_array(temp_allocator,
+			InstrSchedulingState,
+			instr_buffer->count);
+	memset(states, 0xff, sizeof(*states) * instr_buffer->count);
+
+	InstrSchedulingContext context;
+	context.instr_buffer = instr_buffer;
+	context.states = states;
+	context.dom_tree = dom_tree;
+	context.temp_allocator = temp_allocator;
+
+	{
+		ArenaRegion temp1 = arena_begin_temp(temp_allocator);
+
+		InstrQueue queue;
+		instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
+
+		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+			InstrIndex root_region_index = scheduled_regions.instr[i];
+			uint16_t current_region_id = instr_region_id(instr_buffer, root_region_index);
+
+			const Instr* root_region = instr_buffer_at(instr_buffer, root_region_index);
+			instr_queue_push_back(&queue, root_region->region.last_instr);
+			states[root_region->region.last_instr.value].decided_region_id = current_region_id;
+
+			while (queue.count) {
+				InstrIndex instr_index = instr_queue_pop_front(&queue);
+
+				InstrSchedulingState* instr_state = &states[instr_index.value];
+				assert(instr_state->decided_region_id < instr_buffer->region_count);
+
+				_enqueue_inputs_for_scheduling(&queue, instr_index, &context);
+			}
+		}
+
+		arena_end_temp(temp1);
+	}
+
+	uint16_t* instr_count_per_region = arena_alloc_array_zeroed(temp_allocator,
+			uint16_t,
+			instr_buffer->region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		if (states[i].decided_region_id == UINT16_MAX) {
+			continue;
+		}
+
+		instr_count_per_region[states[i].decided_region_id] += 1;
+	}
+
+	InstrIndexArray* scheduled_instr_per_region = arena_alloc_array(allocator,
+			InstrIndexArray,
+			instr_buffer->region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		scheduled_instr_per_region[i].instr = arena_alloc_array(allocator,
+				InstrIndex,
+				instr_count_per_region[i]);
+		scheduled_instr_per_region[i].count = 0;
+	}
+
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		if (states[i].decided_region_id == UINT16_MAX) {
+			continue;
+		}
+
+		bool skip = false;
+		switch (instr_buffer->instr[i].kind) {
+		case INSTR_BRANCH:
+		case INSTR_JUMP:
+		case INSTR_RET:
+		case INSTR_RETURN_VALUE:
+			skip = true;
+			break;
+		}
+
+		if (skip) {
+			continue;
+		}
+
+		InstrIndexArray* region_instr_array =
+			&scheduled_instr_per_region[states[i].decided_region_id];
+
+		region_instr_array->instr[region_instr_array->count] = (InstrIndex) { i };
+		region_instr_array->count += 1;
+	}
+
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_index = scheduled_regions.instr[i];
+		const Instr* instr = instr_buffer_at(instr_buffer, region_index);
+
+		InstrIndex last_instr = instr->region.last_instr;
+		uint32_t region_id = instr->region.id;
+
+		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];
+		assert(region_instr_array->count + 1 == instr_count_per_region[region_id]);
+
+		region_instr_array->instr[region_instr_array->count] = last_instr;
+		region_instr_array->count += 1;
+	}
+
+	arena_end_temp(temp);
+
+	return scheduled_instr_per_region;
+}
+
 static void _schedule_regions(X64CodeGenerator* gen,
 		InstrIndex region_instr_index,
 		Arena* allocator,
@@ -1701,41 +2091,33 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		_print_dom_tree(&gen->instr_buffer, dom_tree);
 	}
 
-	_gather_phis(gen, &dom_tree, gen->temp_allocator, gen->allocator);
-	_run_reg_allocator(gen);
-	
 	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
+	_collect_phis(gen, gen->temp_allocator);
 
-	uint16_t region_count = gen->instr_buffer.region_count;
-	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
-			CodeBuffer,
-			region_count);
+	InstrIndexArray* linearized_instr_per_region =  _schedule_instr(&gen->instr_buffer,
+			scheduled_regions,
+			&dom_tree,
+			gen->temp_allocator,
+			gen->allocator);
 
 	gen->assigned_region_to_instr = arena_alloc_array(gen->temp_allocator,
 			uint16_t,
 			gen->instr_buffer.count);
 
-	InstrIndexArray* linearized_instr_per_region = arena_alloc_array(gen->temp_allocator,
-			InstrIndexArray,
-			scheduled_regions.count);
-
-	BitArray visited_instr = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.count);
-	bit_array_clear(&visited_instr);
-
-	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
-		InstrIndex region_instr = scheduled_regions.instr[i];
-		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
-	 
-		gen->current_linearized_region_id = instr->region.id;
-		InstrIndexArray linearized = _linearize_instr_for_region(gen,
-				&gen->instr_buffer,
-				instr->region.id,
-				instr->region.last_instr,
-				&visited_instr,
-				gen->temp_allocator);
-
-		linearized_instr_per_region[instr->region.id] = linearized;
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		InstrIndexArray instr = linearized_instr_per_region[i];
+		for (uint16_t j = 0; j < instr.count; j += 1) {
+			gen->assigned_region_to_instr[instr.instr[j].value] = i;
+		}
 	}
+
+	// _gather_phis(gen, &dom_tree, gen->temp_allocator, gen->allocator);
+	_run_reg_allocator(gen);
+
+	uint16_t region_count = gen->instr_buffer.region_count;
+	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
+			CodeBuffer,
+			region_count);
 
 	if (has_flag(gen->flags, X64_PRINT_SCHEDULED_IR)) {
 		// Print linearized instructions
@@ -1762,19 +2144,21 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		}
 	}
 
-	bit_array_clear(&visited_instr);
+	bool scheduling_is_valid = true;
 	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrIndex region_instr = scheduled_regions.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
-		_validate_linearization(&gen->instr_buffer,
+		scheduling_is_valid &= _validate_linearization(&gen->instr_buffer,
 				gen->assigned_region_to_instr,
 				instr->region.id,
 				linearized,
 				&dom_tree,
 				gen->temp_allocator);
 	}
+
+	assert(scheduling_is_valid);
 
 	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrIndex region_instr = scheduled_regions.instr[i];

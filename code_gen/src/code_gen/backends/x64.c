@@ -148,9 +148,6 @@ typedef struct {
 	// The size of this array is equal to the total number of regions
 	//
 	// Size of each `BitArray` is also equal to the total number of regions
-	//
-	// NOTE: Not sure whether it might be usefull to keep it here, as it is only used during the
-	//       building step to determinte immediate dominators
 	BitArray* dominates;
 
 	// An array of size eqaul to the total number of regions.
@@ -287,7 +284,7 @@ static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominatorTree tr
 	} 
 }
 
-// Find a region where the control flow splits and later reaches both provided regions.
+// Finds a region where the control flow splits and later reaches both provided regions.
 // The returned value is the region id.
 static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 		uint16_t region_a_id,
@@ -333,400 +330,8 @@ static bool _is_region_dominated_by(const CFGDominatorTree* tree,
 }
 
 //
-// Phi Node Handling
+// Code Generation
 //
-
-typedef struct PhiVariantNode PhiVariantNode;
-struct PhiVariantNode {
-	InstrIndex phi;
-	PhiVariantNode* next;
-};
-
-typedef struct {
-	InstrIndex value;
-
-	// The currently decided region, where this value should be computed, so that it is available
-	// to all the phis interested in it.
-	uint16_t region_id;
-
-	// For each value we need to store a list of phis that are interested in this value.
-	PhiVariantNode* phi_nodes;
-	uint16_t phi_node_count;
-} PhiVariantUse;
-
-typedef struct {
-	uint16_t capacity;
-	uint16_t count;
-	InstrIndex* keys;
-	PhiVariantUse* values;
-} PhiVariantHashMap;
-
-static void _phi_variant_map_alloc(PhiVariantHashMap* map, uint16_t capacity, Arena* allocator) {
-	map->count = 0;
-	map->capacity = capacity;
-	map->keys = arena_alloc_array(allocator, InstrIndex, capacity);
-	map->values = arena_alloc_array_zeroed(allocator, PhiVariantUse, capacity);
-	memset(map->keys, 0xff, sizeof(*map->keys) * capacity);
-}
-
-static uint16_t _phi_variant_map_insert(PhiVariantHashMap* map, InstrIndex key) {
-	assert(key.value != INVALID_INSTR_INDEX.value);
-	size_t hash = hash_bytes(&key, sizeof(key));
-
-	for (size_t i = 0; i < map->capacity; i += 1) {
-		size_t index = (hash + i) % map->capacity;
-		if (map->keys[index].value == INVALID_INSTR_INDEX.value) {
-			map->keys[index] = key;
-			return (uint16_t)index;
-		}
-	}
-
-	unreachable();
-	return UINT16_MAX;
-}
-
-static uint16_t _phi_variant_map_find(PhiVariantHashMap* map, InstrIndex key) {
-	assert(key.value != INVALID_INSTR_INDEX.value);
-	size_t hash = hash_bytes(&key, sizeof(key));
-
-	for (size_t i = 0; i < map->capacity; i += 1) {
-		size_t index = (hash + i) % map->capacity;
-
-		if (map->keys[index].value == INVALID_INSTR_INDEX.value) {
-			break;
-		}
-
-		if (map->keys[index].value == key.value) {
-			return (uint16_t)index;
-		}
-	}
-
-	return UINT16_MAX;
-}
-
-// The purpose of this function is decide in which region should a phi variant be computed.
-//
-// In case the variant value is only selected by a single phi instruction, the decision process is
-// rather straight forward: if the phi selects a value from region `A` then simply make sure that
-// this value is computed in the region `A`.
-//
-// However, if we have multiple phis interested in the same value, we have multiple control paths
-// where this value must be available. In such case the value is "uplifted" to a common region,
-// which all control paths share.
-//
-// Let's say we have the following graph of regions:
-//
-//        A
-//      /   \
-//     B     C
-//     |    / \
-//     |    D E
-//     |    \ /
-//     \     F
-//      \   /
-//        G
-//
-// For two control paths (one going through the region `B` and the other one going through `D`),
-// the common region is `A`.
-//
-// This function generates 3 arrays:
-// 1. `phi_variant_counts_per_region`
-// 2. `phi_variants_per_region`
-// 3. `phi_node_of_variant`
-static void _gather_phis(X64CodeGenerator* gen,
-		const CFGDominatorTree* dom_tree,
-		Arena* allocator,
-		Arena* temp_allocator) {
-
-	profile_scope_start(__func__);
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
-
-	uint16_t total_variant_count = 0;
-	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		const Instr* instr = &gen->instr_buffer.instr[i];
-		if (instr->kind != INSTR_PHI) {
-			continue;
-		}
-
-		InstrInputs variants = instr->phi.variants;
-		total_variant_count += variants.count;
-	}
-
-	PhiVariantHashMap map;
-	_phi_variant_map_alloc(&map, total_variant_count * 2, temp_allocator);
-
-	for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		const Instr* instr = &gen->instr_buffer.instr[i];
-		if (instr->kind != INSTR_PHI) {
-			continue;
-		}
-
-		InstrInputs variants = instr->phi.variants;
-		for (uint16_t j = 0; j < variants.count; j += 1) {
-			InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
-			const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
-			assert(variant->kind == INSTR_SELECT);
-
-			InstrIndex value_index = variant->select.value;
-			uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-
-			PhiVariantNode* phi_node = arena_alloc(temp_allocator, PhiVariantNode);
-			phi_node->phi = (InstrIndex) { i };
-			phi_node->next = NULL;
-
-			uint16_t entry_index = _phi_variant_map_find(&map, value_index);
-			if (entry_index == UINT16_MAX) {
-				uint16_t index = _phi_variant_map_insert(&map, value_index);
-				
-				PhiVariantUse* entry = &map.values[index];
-				entry->value = value_index;
-				entry->region_id = region_id;
-				entry->phi_nodes = phi_node;
-				entry->phi_node_count = 1;
-			} else {
-				PhiVariantUse* entry = &map.values[entry_index];
-
-				// We if the both phis end up selecting this value from the same regions, uplifting
-				// this value is not required.
-				if (entry->region_id == region_id) {
-					continue;
-				}
-
-				// Two phi nodes want to select this value, but from different regions. The value
-				// can only be computed once.
-				//
-				// And we can't simply place the value in one of those regions, since it must be
-				// available in both of them. So the solution is to 'uplift' this value to a common
-				// region.
-				uint16_t common_region_id = _find_control_flow_split(dom_tree,
-						entry->region_id,
-						region_id,
-						temp_allocator);
-
-				// And finally assign the new common region to this value. Uplifting is done.
-				entry->region_id = common_region_id;
-
-				phi_node->next = entry->phi_nodes;
-				entry->phi_nodes = phi_node;
-				entry->phi_node_count += 1;
-			}
-		}
-	}
-
-	// Now count how many phi variants will need to be placed in each region, so that we can later
-	// preallocate areays for storing the variants placed in each region.
-	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(allocator,
-			uint16_t,
-			gen->instr_buffer.region_count);
-
-	for (uint16_t i = 0; i < map.capacity; i += 1) {
-		if (map.keys[i].value == INVALID_INSTR_INDEX.value) {
-			continue;
-		}
-
-		const PhiVariantUse* entry = &map.values[i];
-		phi_variant_counts_per_region[entry->region_id] += entry->phi_node_count;
-	}
-
-	// Now preallocate the arrays
-	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(allocator,
-			InstrIndexArray,
-			gen->instr_buffer.region_count);
-
-	InstrIndex** phi_node_of_variant = arena_alloc_array(allocator,
-			InstrIndex*,
-			gen->instr_buffer.region_count);
-
-	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
-		phi_variants_per_region[i].instr = arena_alloc_array(allocator,
-				InstrIndex,
-				phi_variant_counts_per_region[i]);
-	}
-
-	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
-		phi_node_of_variant[i] = arena_alloc_array(allocator,
-				InstrIndex,
-				phi_variant_counts_per_region[i]);
-	}
-
-	// Sort all the phi variants into the arrays corresponding to the region where the variant must
-	// be placed.
-	for (uint16_t i = 0; i < map.capacity; i += 1) {
-		if (map.keys[i].value == INVALID_INSTR_INDEX.value) {
-			continue;
-		}
-
-		const PhiVariantUse* entry = &map.values[i];
-		uint16_t region_id = entry->region_id;
-
-		InstrIndexArray* variants = &phi_variants_per_region[region_id];
-
-		uint16_t max_entries_for_this_region = phi_variant_counts_per_region[region_id];
-		for (const PhiVariantNode* node = entry->phi_nodes; node != NULL; node = node->next) {
-			variants->instr[variants->count] = entry->value;
-			phi_node_of_variant[region_id][variants->count] = node->phi;
-			variants->count += 1;
-
-			assert(variants->count <= max_entries_for_this_region);
-		}
-	}
-
-	gen->phi_variants_per_region = phi_variants_per_region;
-	gen->phi_node_of_variant = phi_node_of_variant;
-
-	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
-		printf("phi_variants_per_region:\n");
-		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-			printf("%u:\n", (uint32_t)i);
-			for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
-				printf("  phi: %u variant_value: %u\n",
-						(uint32_t)phi_node_of_variant[i][j].value,
-						(uint32_t)phi_variants_per_region[i].instr[j].value);
-			}
-		}
-	}
-
-	arena_end_temp(temp);
-	profile_scope_end();
-}
-
-static void _collect_phis(X64CodeGenerator* gen, Arena* allocator) {
-	const InstrBuffer* instr_buffer = &gen->instr_buffer;
-
-	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(allocator,
-			uint16_t,
-			gen->instr_buffer.region_count);
-
-	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
-		const Instr* instr = &instr_buffer->instr[i];
-		if (instr->kind != INSTR_PHI) {
-			continue;
-		}
-
-		InstrInputs variants = instr->phi.variants;
-		for (uint16_t j = 0; j < variants.count; j += 1) {
-			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
-			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
-
-			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
-			phi_variant_counts_per_region[region_id] += 1;
-
-		}
-	}
-
-	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(allocator,
-			InstrIndexArray,
-			instr_buffer->region_count);
-
-	InstrIndex** phi_node_of_variant = arena_alloc_array(allocator,
-			InstrIndex*,
-			instr_buffer->region_count);
-
-	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
-		phi_variants_per_region[i].instr = arena_alloc_array(allocator,
-				InstrIndex,
-				phi_variant_counts_per_region[i]);
-	}
-
-	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
-		phi_node_of_variant[i] = arena_alloc_array(allocator,
-				InstrIndex,
-				phi_variant_counts_per_region[i]);
-	}
-
-	// Sort all the phi variants into the arrays corresponding to the region where the variant must
-	// be placed.
-	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
-		const Instr* instr = &instr_buffer->instr[i];
-		if (instr->kind != INSTR_PHI) {
-			continue;
-		}
-
-		InstrInputs variants = instr->phi.variants;
-		for (uint16_t j = 0; j < variants.count; j += 1) {
-			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
-			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
-
-			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
-			InstrIndexArray* variants = &phi_variants_per_region[region_id];
-
-			variants->instr[variants->count] = select_instr->select.value;
-			phi_node_of_variant[region_id][variants->count] = (InstrIndex) { i };
-			variants->count += 1;
-		}
-	}
-
-	gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
-	gen->phi_variants_per_region = phi_variants_per_region;
-	gen->phi_node_of_variant = phi_node_of_variant;
-}
-
-static void _run_reg_allocator(X64CodeGenerator* gen) {
-	uint16_t allowed_registers = UINT16_MAX;
-	allowed_registers &= ~(1 << X64_REG_SP);
-	allowed_registers &= ~(1 << X64_REG_BP);
-
-	// HACK: Some times the register allocator might allocate the whole register
-	//       to some instruction and also it's high part to the other, thus any
-	//       writes by any of the two instructions will be reflected in two places.
-	allowed_registers &= ~(1 << X64_REG_SI);
-	allowed_registers &= ~(1 << X64_REG_DI);
-
-	gen->instr_storage = x64_alloc_regs(&gen->instr_buffer,
-			gen->usage_ranges,
-			allowed_registers,
-			gen->allocator,
-			gen->temp_allocator);
-
-	if (has_flag(gen->flags, X64_PRINT_ASSIGNED_STORAGE_LOC)) {
-		printf("Assigned storage locations:\n");
-		for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
-			ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
-
-			String storage_string = STR_LIT("none");
-
-			if (gen->instr_storage[i].kind == INSTR_STORAGE_REG) {
-				StringBuilder builder = { .arena = gen->temp_allocator };
-
-				const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
-				const X64InstrStorageRequirement storage_requirement =
-					s_instr_storage_requiremenets[instr_kind];
-
-				_format_reg_name(&builder,
-						gen->instr_storage[i].reg,
-						storage_requirement.reg_size);
-
-				storage_string = builder.string;
-			}
-
-			printf("%zu: %.*s\n", i, STR_FMT(storage_string));
-
-			arena_end_temp(temp);
-		}
-	}
-}
-
-static bool _x64_validate(X64CodeGenerator* gen) {
-	profile_scope_start(__func__);
-
-	bool result = true;
-
-	// Validate symbols
-	assert(gen->ref_table);
-
-	const FunctionRefTable* ref_table = gen->ref_table;
-	for (uint16_t i = 0; i < ref_table->size; i += 1) {
-		const FunctionRef* ref = &ref_table->refs[i];
-
-		if (ref->address == NULL) {
-			printf("unresolved function symbol %.*s\n", STR_FMT(ref->name));
-			result = false;
-		}
-	}
-
-	profile_scope_end();
-	return result;
-}
 
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
 	encode_2(buffer,
@@ -781,21 +386,6 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 			MNEMONIC_ADD,
 			operand_reg(X64_REG_SP, 64),
 			operand_imm(offset, 32));
-}
-
-//
-// Code Generation
-//
-
-static void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer);
-static void _x64_generate_phi_variants(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
-	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
-
-	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
-	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
-		InstrIndex variant_index = phi_variants.instr[i];
-		_x64_generate_code(gen, variant_index, code_buffer);
-	}
 }
 
 static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
@@ -1362,6 +952,78 @@ static void _encode_control_instr(const Instr* instr,
 	return;
 }
 
+//
+// Code Generation Stages
+//
+
+static void _run_reg_allocator(X64CodeGenerator* gen) {
+	uint16_t allowed_registers = UINT16_MAX;
+	allowed_registers &= ~(1 << X64_REG_SP);
+	allowed_registers &= ~(1 << X64_REG_BP);
+
+	// HACK: Some times the register allocator might allocate the whole register
+	//       to some instruction and also it's high part to the other, thus any
+	//       writes by any of the two instructions will be reflected in two places.
+	allowed_registers &= ~(1 << X64_REG_SI);
+	allowed_registers &= ~(1 << X64_REG_DI);
+
+	gen->instr_storage = x64_alloc_regs(&gen->instr_buffer,
+			gen->usage_ranges,
+			allowed_registers,
+			gen->allocator,
+			gen->temp_allocator);
+
+	if (has_flag(gen->flags, X64_PRINT_ASSIGNED_STORAGE_LOC)) {
+		printf("Assigned storage locations:\n");
+		for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
+			ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+
+			String storage_string = STR_LIT("none");
+
+			if (gen->instr_storage[i].kind == INSTR_STORAGE_REG) {
+				StringBuilder builder = { .arena = gen->temp_allocator };
+
+				const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
+				const X64InstrStorageRequirement storage_requirement =
+					s_instr_storage_requiremenets[instr_kind];
+
+				_format_reg_name(&builder,
+						gen->instr_storage[i].reg,
+						storage_requirement.reg_size);
+
+				storage_string = builder.string;
+			}
+
+			printf("%zu: %.*s\n", i, STR_FMT(storage_string));
+
+			arena_end_temp(temp);
+		}
+	}
+}
+
+static bool _x64_validate(X64CodeGenerator* gen) {
+	profile_scope_start(__func__);
+
+	bool result = true;
+
+	// Validate symbols
+	assert(gen->ref_table);
+
+	const FunctionRefTable* ref_table = gen->ref_table;
+	for (uint16_t i = 0; i < ref_table->size; i += 1) {
+		const FunctionRef* ref = &ref_table->refs[i];
+
+		if (ref->address == NULL) {
+			printf("unresolved function symbol %.*s\n", STR_FMT(ref->name));
+			result = false;
+		}
+	}
+
+	profile_scope_end();
+	return result;
+}
+
+
 static void _merge_string_consts(X64CodeGenerator* gen) {
 	profile_scope_start(__func__);
 
@@ -1384,12 +1046,95 @@ static void _merge_string_consts(X64CodeGenerator* gen) {
 	profile_scope_end();
 }
 
+//
+// Instruction Scheduler
+//
+// Instruction scheduler is resposible for assigning each instruction to one of the regions in such
+// a way, that whenever an instruction is about to execute, all of its inputs are guaranteed to be
+// available.
+//
+
+static void _collect_phis(X64CodeGenerator* gen, Arena* allocator) {
+	profile_scope_start(__func__);
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
+
+	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(allocator,
+			uint16_t,
+			gen->instr_buffer.region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		const Instr* instr = &instr_buffer->instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
+			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
+
+			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
+			phi_variant_counts_per_region[region_id] += 1;
+
+		}
+	}
+
+	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(allocator,
+			InstrIndexArray,
+			instr_buffer->region_count);
+
+	InstrIndex** phi_node_of_variant = arena_alloc_array(allocator,
+			InstrIndex*,
+			instr_buffer->region_count);
+
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_variants_per_region[i].instr = arena_alloc_array(allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_node_of_variant[i] = arena_alloc_array(allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	// Sort all the phi variants into the arrays corresponding to the region where the variant must
+	// be placed.
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		const Instr* instr = &instr_buffer->instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
+			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
+
+			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
+			InstrIndexArray* variants = &phi_variants_per_region[region_id];
+
+			variants->instr[variants->count] = select_instr->select.value;
+			phi_node_of_variant[region_id][variants->count] = (InstrIndex) { i };
+			variants->count += 1;
+		}
+	}
+
+	gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
+	gen->phi_variants_per_region = phi_variants_per_region;
+	gen->phi_node_of_variant = phi_node_of_variant;
+
+	profile_scope_end();
+}
+
 static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffer,
 		uint16_t* assigned_region_to_instr, 
 		uint16_t current_region_id,
-		InstrIndexArray linearized,
+		InstrIndexArray scheduled,
 		const CFGDominatorTree* dom_tree,
 		Arena* temp_allocator) {
+	profile_scope_start(__func__);
 
 	bool valid = true;
 
@@ -1397,8 +1142,8 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 	BitArray visited_instr = bit_array_alloc(temp_allocator, instr_buffer->count);
 	bit_array_clear(&visited_instr);
 
-	for (size_t i = 0; i < linearized.count; i += 1) {
-		const Instr* instr = instr_buffer_at(instr_buffer, linearized.instr[i]);
+	for (size_t i = 0; i < scheduled.count; i += 1) {
+		const Instr* instr = instr_buffer_at(instr_buffer, scheduled.instr[i]);
 		if (instr->kind == INSTR_SELECT) {
 			uint16_t region_assigned_to_input = assigned_region_to_instr[instr->select.value.value];
 			uint16_t expected_region = instr_region_id(instr_buffer, instr->select.region);
@@ -1411,7 +1156,7 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 					"Value definition '%u' appears before its input '%u'. "
 					"Input is not available in region with id '%u', since it is placed in region "
 					"with id '%u'",
-					(uint32_t)linearized.instr[i].value,
+					(uint32_t)scheduled.instr[i].value,
 					(uint32_t)instr->select.value.value,
 					expected_region,
 					region_assigned_to_input);
@@ -1421,7 +1166,7 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 			InstrQueue queue;
 			instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
 
-			instr_enumerate_uses(instr_buffer, linearized.instr[i], &queue);
+			instr_enumerate_uses(instr_buffer, scheduled.instr[i], &queue);
 
 			for (size_t j = 0; j < queue.count; j += 1) {
 				InstrIndex input = queue.buffer[j];
@@ -1439,7 +1184,7 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 					if (!bit_array_get(&visited_instr, input.value)) {
 						debug_log_error(
 								"Value definition '%u' in region '%u' appers before its input '%u'",
-								(uint32_t)linearized.instr[i].value,
+								(uint32_t)scheduled.instr[i].value,
 								(uint32_t)current_region_id,
 								(uint32_t)input.value);
 
@@ -1458,9 +1203,9 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 								"Def '%u' is scheduled to execute in region with id '%u'\n"
 								"Input '%u' is scheduled to execute in region with id '%u'\n",
 								(uint32_t)input.value,
-								(uint32_t)linearized.instr[i].value,
+								(uint32_t)scheduled.instr[i].value,
 
-								(uint32_t)linearized.instr[i].value,
+								(uint32_t)scheduled.instr[i].value,
 								(uint32_t)current_region_id,
 
 								(uint32_t)input.value,
@@ -1474,10 +1219,11 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 			arena_end_temp(inner_temp);
 		}
 
-		bit_array_set(&visited_instr, linearized.instr[i].value, true);
+		bit_array_set(&visited_instr, scheduled.instr[i].value, true);
 	}
 	
 	arena_end_temp(temp);
+	profile_scope_end();
 	return valid;
 }
 
@@ -1565,6 +1311,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_LOGICAL_SHIFT_LEFT_16:
 	case INSTR_LOGICAL_SHIFT_LEFT_32:
 	case INSTR_LOGICAL_SHIFT_LEFT_64:
+	case INSTR_LOGICAL_SHIFT_RIGHT_8:
+	case INSTR_LOGICAL_SHIFT_RIGHT_16:
+	case INSTR_LOGICAL_SHIFT_RIGHT_32:
+	case INSTR_LOGICAL_SHIFT_RIGHT_64:
 		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->logical_shift.operand);
 		break;
 	case INSTR_COMPARE_8:
@@ -1635,12 +1385,22 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		_try_enqueue_for_scheduling(queue, context, region_id, instr->select.value);
 		break;
 	}
+	case INSTR_COUNT:
+		unreachable();
 	}
 }
 
-static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
+typedef struct {
+	uint16_t* region_assigned_to_instr;
+
+	// An array that for each region stores an array of instructions that belong to it.
+	InstrIndexArray* scheduled_instr;
+} SchedulingResult;
+
+static void _schedule_instr(const InstrBuffer* instr_buffer,
 		InstrIndexArray scheduled_regions,
 		const CFGDominatorTree* dom_tree,
+		SchedulingResult* out_result,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
@@ -1734,6 +1494,8 @@ static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
 		case INSTR_RETURN_VALUE:
 			skip = true;
 			break;
+		default:
+			break;
 		}
 
 		if (skip) {
@@ -1764,18 +1526,29 @@ static InstrIndexArray* _schedule_instr(const InstrBuffer* instr_buffer,
 
 	arena_end_temp(temp);
 
+	uint16_t* region_assigned_to_instr = arena_alloc_array(allocator,
+			uint16_t,
+			instr_buffer->count);
+
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		InstrIndexArray instr = scheduled_instr_per_region[i];
+		for (uint16_t j = 0; j < instr.count; j += 1) {
+			region_assigned_to_instr[instr.instr[j].value] = i;
+		}
+	}
+
+	out_result->region_assigned_to_instr = region_assigned_to_instr;
+	out_result->scheduled_instr = scheduled_instr_per_region;
+
 	profile_scope_end();
-	return scheduled_instr_per_region;
 }
 
-static void _schedule_regions(X64CodeGenerator* gen,
+static void _schedule_regions(const InstrBuffer* instr_buffer,
 		InstrIndex region_instr_index,
 		Arena* allocator,
 		BitArray* visited_regions,
 		InstrIndexArray* out_scheduled) {
-	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
-
 	assert(instr->kind == INSTR_REGION);
 
 	uint16_t region_id = instr->region.id;
@@ -1788,15 +1561,29 @@ static void _schedule_regions(X64CodeGenerator* gen,
 	const Instr* last_instr = instr_buffer_at(instr_buffer, instr->region.last_instr);
 	switch (last_instr->kind) {
 	case INSTR_JUMP:
-		_schedule_regions(gen, last_instr->jump.target_region, allocator, visited_regions, out_scheduled);
+		_schedule_regions(instr_buffer,
+				last_instr->jump.target_region,
+				allocator,
+				visited_regions,
+				out_scheduled);
 		break;
 	case INSTR_BRANCH:
-		_schedule_regions(gen, last_instr->branch.true_region, allocator, visited_regions, out_scheduled);
-		_schedule_regions(gen, last_instr->branch.false_region, allocator, visited_regions, out_scheduled);
+		_schedule_regions(instr_buffer,
+				last_instr->branch.true_region,
+				allocator,
+				visited_regions,
+				out_scheduled);
+		_schedule_regions(instr_buffer,
+				last_instr->branch.false_region,
+				allocator,
+				visited_regions,
+				out_scheduled);
 		break;
 	case INSTR_RET:
 	case INSTR_RETURN_VALUE:
 		break;
+	default:
+		unreachable();
 	}
 
 	*arena_alloc(allocator, InstrIndex) = region_instr_index;
@@ -1811,7 +1598,11 @@ static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrInd
 	regions.instr = arena_alloc_array(gen->temp_allocator, InstrIndex, 0);
 	regions.count = 0;
 
-	_schedule_regions(gen, initial_region, gen->temp_allocator, &visited_regions, &regions);
+	_schedule_regions(&gen->instr_buffer,
+			initial_region,
+			gen->temp_allocator,
+			&visited_regions,
+			&regions);
 
 	for (size_t i = 0; i < regions.count / 2; i += 1) {
 		size_t j = regions.count - 1 - i;
@@ -1847,37 +1638,28 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
 	_collect_phis(gen, gen->temp_allocator);
 
-	InstrIndexArray* linearized_instr_per_region = _schedule_instr(&gen->instr_buffer,
+	SchedulingResult scheduling_result = {};
+	_schedule_instr(&gen->instr_buffer,
 			scheduled_regions,
 			&dom_tree,
+			&scheduling_result,
 			gen->temp_allocator,
 			gen->allocator);
 
-	uint16_t* assigned_region_to_instr = arena_alloc_array(gen->temp_allocator,
-			uint16_t,
-			gen->instr_buffer.count);
-
-	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
-		InstrIndexArray instr = linearized_instr_per_region[i];
-		for (uint16_t j = 0; j < instr.count; j += 1) {
-			assigned_region_to_instr[instr.instr[j].value] = i;
-		}
-	}
-
-	_run_reg_allocator(gen);
-
+	// Print scheduled instructions
 	if (has_flag(gen->flags, X64_PRINT_SCHEDULED_IR)) {
-		// Print linearized instructions
+		const InstrBuffer* instr_buffer = &gen->instr_buffer;
+
 		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 			InstrIndex region_instr = scheduled_regions.instr[i];
-			const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+			const Instr* instr = instr_buffer_at(instr_buffer, region_instr);
 
-			InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
+			InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
 
 			printf("region %%%u id=%u: \n", (uint32_t)region_instr.value, (uint32_t)instr->region.id);
-			for (size_t j = 0; j < linearized.count; j++) {
+			for (size_t j = 0; j < scheduled.count; j++) {
 				ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
-				InstrIndex instr_index = linearized.instr[j];
+				InstrIndex instr_index = scheduled.instr[j];
 
 				printf("%zu\t%%%u:", j, (uint32_t)instr_index.value);
 				printf("\033[20G");
@@ -1897,16 +1679,18 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		InstrIndex region_instr = scheduled_regions.instr[i];
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
-		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
+		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
 		scheduling_is_valid &= _validate_instr_scheduling_for_region(&gen->instr_buffer,
-				assigned_region_to_instr,
+				scheduling_result.region_assigned_to_instr,
 				instr->region.id,
-				linearized,
+				scheduled,
 				&dom_tree,
 				gen->temp_allocator);
 	}
 
 	assert_msg(scheduling_is_valid, "Instruction scheduler failed to produce a valid result");
+
+	_run_reg_allocator(gen);
 
 	uint16_t region_count = gen->instr_buffer.region_count;
 	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
@@ -1920,9 +1704,9 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
 		code_buffer_init(code_buffer, gen->temp_allocator);
 
-		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
-		for (size_t j = 0; j < linearized.count; j += 1) {
-			_x64_generate_code(gen, linearized.instr[j], code_buffer);
+		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
+		for (size_t j = 0; j < scheduled.count; j += 1) {
+			_x64_generate_code(gen, scheduled.instr[j], code_buffer);
 		}
 	}
 

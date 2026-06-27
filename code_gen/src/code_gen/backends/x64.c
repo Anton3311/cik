@@ -141,12 +141,190 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 // CFG Dominator Tree
 //
 
-typedef struct CFGDominatorTree CFGDominatorTree;
+typedef struct {
+	uint16_t region_count;
+
+	// Per region `BitArray` of regions that it dominates
+	// The size of this array is equal to the total number of regions
+	//
+	// Size of each `BitArray` is also equal to the total number of regions
+	//
+	// NOTE: Not sure whether it might be usefull to keep it here, as it is only used during the
+	//       building step to determinte immediate dominators
+	BitArray* dominates;
+
+	// An array of size eqaul to the total number of regions.
+	// Maps region id to the immediate dominator of that region.
+	//
+	// `UINT16_MAX` means the regions doesn't have an immediate dominator.
+	// Which is only true for the root region.
+	uint16_t* immediate_dominators;
+} CFGDominatorTree;
+
+static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffer,
+		InstrIndex initial_region,
+		Arena* allocator,
+		Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	BitArray visited_regions = bit_array_alloc(temp_allocator, instr_buffer->region_count);
+	bit_array_clear(&visited_regions);
+
+	InstrQueue stack;
+	instr_queue_alloc(&stack, temp_allocator, instr_buffer->region_count);
+
+	// Allocate the tree
+	CFGDominatorTree tree;
+	tree.region_count = instr_buffer->region_count;
+	tree.dominates = arena_alloc_array(allocator, BitArray, tree.region_count);
+	tree.immediate_dominators = arena_alloc_array(allocator, uint16_t, tree.region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		tree.dominates[i] = bit_array_alloc(allocator, tree.region_count);
+		bit_array_clear(&tree.dominates[i]);
+		bit_array_set(&tree.dominates[i], i, true);
+	}
+
+	// Push the initial region on the stack
+	instr_queue_push_back(&stack, initial_region);
+
+	{
+		const Instr* initial = instr_buffer_at(instr_buffer, initial_region);
+		bit_array_set(&visited_regions, initial->region.id, true);
+
+		tree.immediate_dominators[initial->region.id] = UINT16_MAX;
+	}
+	
+	// Build the tree
+	while (stack.count) {
+		InstrIndex region_instr_index = instr_queue_pop_back(&stack);
+		const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
+		assert(instr->kind == INSTR_REGION);
+
+		InstrIndex successors[2];
+		size_t successor_count = 0;
+
+		const Instr* last_instr = instr_buffer_at(instr_buffer, instr->region.last_instr);
+		switch (last_instr->kind) {
+		case INSTR_JUMP:
+			successors[0] = last_instr->jump.target_region;
+			successor_count = 1;
+			break;
+		case INSTR_BRANCH:
+			successors[0] = last_instr->branch.true_region;
+			successors[1] = last_instr->branch.false_region;
+			successor_count = 2;
+			break;
+		case INSTR_RET:
+		case INSTR_RETURN_VALUE:
+			break;
+		default:
+			unreachable();
+		}
+		
+		for (size_t i = 0; i < successor_count; i += 1) {
+			InstrIndex successor_index = successors[i];
+			const Instr* successor = instr_buffer_at(instr_buffer, successor_index);
+			assert(successor->kind == INSTR_REGION);
+
+			if (bit_array_get(&visited_regions, successor->region.id)) {
+				bit_array_and(&tree.dominates[instr->region.id],
+						&tree.dominates[successor->region.id],
+						&tree.dominates[successor->region.id]);
+				 bit_array_set(&tree.dominates[successor->region.id], successor->region.id, true);
+			} else {
+				bit_array_or(&tree.dominates[instr->region.id],
+						&tree.dominates[successor->region.id],
+						&tree.dominates[successor->region.id]);
+
+				bit_array_set(&visited_regions, successor->region.id, true);
+			}
+
+			instr_queue_push_back(&stack, successor_index);
+		}
+	}
+
+	// Now determine immediate dominators.
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		BitArray* dominance = &tree.dominates[i];
+		assert(bit_array_get(dominance, i));
+		bit_array_set(dominance, i, false);
+
+		bool found = false;
+		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
+			if (bit_array_equal(dominance, &tree.dominates[j])) {
+				tree.immediate_dominators[i] = j;
+				found = true;
+				bit_array_set(dominance, i, true);
+				break;
+			}
+		}
+
+		assert(found);
+	}
+
+	// The initial region dones't have an immediate dominator
+	tree.immediate_dominators[instr_region_id(instr_buffer, initial_region)] = UINT16_MAX;
+
+	arena_end_temp(temp);
+
+	return tree;
+}
+
+static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominatorTree tree) {
+	printf("dom tree:\n");
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		printf("region id=%u imm dom=%u: ",
+				(uint32_t)i,
+				(uint32_t)tree.immediate_dominators[i]);
+
+		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
+			if (bit_array_get(&tree.dominates[i], j)) {
+				printf("%u ", (uint32_t)j);
+			}
+		}
+		printf("\n");
+	} 
+}
+
+// Find a region where the control flow splits and later reaches both provided regions.
+// The returned value is the region id.
 static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
-		uint16_t region_count,
 		uint16_t region_a_id,
 		uint16_t region_b_id,
-		Arena* temp_allocator);
+		Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	BitArray visited_regions = bit_array_alloc(temp_allocator, tree->region_count);
+	bit_array_clear(&visited_regions);
+
+	// NOTE: There is no queue for `uint16_t`, so just reuse the implementation of `InstrIndex`
+	InstrIndex backing_buffer[2];
+	InstrQueue queue;
+	instr_queue_init(&queue, backing_buffer, array_size(backing_buffer));
+
+	instr_queue_push_back(&queue, (InstrIndex) { region_a_id });
+	instr_queue_push_back(&queue, (InstrIndex) { region_b_id });
+
+	while (queue.count) {
+		InstrIndex region_id = instr_queue_pop_front(&queue);
+
+		if (region_id.value == UINT16_MAX) {
+			continue;
+		}
+
+		if (bit_array_get(&visited_regions, region_id.value)) {
+			arena_end_temp(temp);
+			return region_id.value;
+		}
+
+		bit_array_set(&visited_regions, region_id.value, true);
+		instr_queue_push_back(&queue, (InstrIndex) { tree->immediate_dominators[region_id.value] });
+	}
+
+	unreachable();
+	return UINT16_MAX;
+}
+
 
 //
 // Phi Node Handling
@@ -160,8 +338,12 @@ struct PhiVariantNode {
 
 typedef struct {
 	InstrIndex value;
+
+	// The currently decided region, where this value should be computed, so that it is available
+	// to all the phis interested in it.
 	uint16_t region_id;
 
+	// For each value we need to store a list of phis that are interested in this value.
 	PhiVariantNode* phi_nodes;
 	uint16_t phi_node_count;
 } PhiVariantUse;
@@ -216,6 +398,35 @@ static uint16_t _phi_variant_map_find(PhiVariantHashMap* map, InstrIndex key) {
 	return UINT16_MAX;
 }
 
+// The purpose of this function is decide in which region should a phi variant be computed.
+//
+// In case the variant value is only selected by a single phi instruction, the decision process is
+// rather straight forward: if the phi selects a value from region `A` then simply make sure that
+// this value is computed in the region `A`.
+//
+// However, if we have multiple phis interested in the same value, we have multiple control paths
+// where this value must be available. In such case the value is "uplifted" to a common region,
+// which all control paths share.
+//
+// Let's say we have the following graph of regions:
+//
+//        A
+//      /   \
+//     B     C
+//     |    / \
+//     |    D E
+//     |    \ /
+//     \     F
+//      \   /
+//        G
+//
+// For two control paths (one going through the region `B` and the other one going through `D`),
+// the common region is `A`.
+//
+// This function generates 3 arrays:
+// 1. `phi_variant_counts_per_region`
+// 2. `phi_variants_per_region`
+// 3. `phi_node_of_variant`
 static void _gather_phis(X64CodeGenerator* gen,
 		const CFGDominatorTree* dom_tree,
 		Arena* allocator,
@@ -267,13 +478,6 @@ static void _gather_phis(X64CodeGenerator* gen,
 				entry->phi_nodes = phi_node;
 				entry->phi_node_count = 1;
 			} else {
-				// Two phi nodes want to select this value, but from different regions. The value
-				// can only be computed once.
-				//
-				// And we can't simply place the value in one of those regions, since it must be
-				// available in both of them. So the solution is to 'uplift' this value to a common
-				// region.
-
 				PhiVariantUse* entry = &map.values[entry_index];
 
 				// We if the both phis end up selecting this value from the same regions, uplifting
@@ -282,8 +486,13 @@ static void _gather_phis(X64CodeGenerator* gen,
 					continue;
 				}
 
+				// Two phi nodes want to select this value, but from different regions. The value
+				// can only be computed once.
+				//
+				// And we can't simply place the value in one of those regions, since it must be
+				// available in both of them. So the solution is to 'uplift' this value to a common
+				// region.
 				uint16_t common_region_id = _find_control_flow_split(dom_tree,
-						gen->instr_buffer.region_count,
 						entry->region_id,
 						region_id,
 						temp_allocator);
@@ -1443,194 +1652,6 @@ static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrInd
 	}
 
 	return regions;
-}
-
-struct CFGDominatorTree {
-	// Per region `BitArray` of regions that it dominates
-	// The size of this array is equal to the total number of regions
-	//
-	// Size of each `BitArray` is also equal to the total number of regions
-	BitArray* dominates;
-
-	// An array of size eqaul to the total number of regions.
-	// Maps region id to the immediate dominator of that region.
-	//
-	// `UINT16_MAX` means the regions doesn't have an immediate dominator.
-	// Which can only be true for the root region.
-	uint16_t* immediate_dominators;
-};
-
-static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffer,
-		InstrIndex initial_region,
-		Arena* allocator,
-		Arena* temp_allocator) {
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
-
-	BitArray visited_regions = bit_array_alloc(temp_allocator, instr_buffer->region_count);
-	bit_array_clear(&visited_regions);
-
-	InstrQueue stack;
-	instr_queue_alloc(&stack, temp_allocator, instr_buffer->region_count);
-
-	// Allocate the tree
-	CFGDominatorTree tree;
-	tree.dominates = arena_alloc_array(allocator, BitArray, instr_buffer->region_count);
-	tree.immediate_dominators = arena_alloc_array(allocator, uint16_t, instr_buffer->region_count);
-
-	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
-		tree.dominates[i] = bit_array_alloc(allocator, instr_buffer->region_count);
-		bit_array_clear(&tree.dominates[i]);
-		bit_array_set(&tree.dominates[i], i, true);
-	}
-
-	// Push the initial region on the stack
-	instr_queue_push_back(&stack, initial_region);
-
-	{
-		const Instr* initial = instr_buffer_at(instr_buffer, initial_region);
-		bit_array_set(&visited_regions, initial->region.id, true);
-
-		tree.immediate_dominators[initial->region.id] = UINT16_MAX;
-	}
-	
-	// Build the tree
-	while (stack.count) {
-		InstrIndex region_instr_index = instr_queue_pop_back(&stack);
-		const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
-		assert(instr->kind == INSTR_REGION);
-
-		InstrIndex successors[2];
-		size_t successor_count = 0;
-
-		const Instr* last_instr = instr_buffer_at(instr_buffer, instr->region.last_instr);
-		switch (last_instr->kind) {
-		case INSTR_JUMP:
-			successors[0] = last_instr->jump.target_region;
-			successor_count = 1;
-			break;
-		case INSTR_BRANCH:
-			successors[0] = last_instr->branch.true_region;
-			successors[1] = last_instr->branch.false_region;
-			successor_count = 2;
-			break;
-		case INSTR_RET:
-		case INSTR_RETURN_VALUE:
-			break;
-		default:
-			unreachable();
-		}
-		
-		for (size_t i = 0; i < successor_count; i += 1) {
-			InstrIndex successor_index = successors[i];
-			const Instr* successor = instr_buffer_at(instr_buffer, successor_index);
-			assert(successor->kind == INSTR_REGION);
-
-			printf("dom tree visit: %u\n", (uint32_t)successor->region.id);
-
-			if (bit_array_get(&visited_regions, successor->region.id)) {
-				bit_array_and(&tree.dominates[instr->region.id],
-						&tree.dominates[successor->region.id],
-						&tree.dominates[successor->region.id]);
-				 bit_array_set(&tree.dominates[successor->region.id], successor->region.id, true);
-			} else {
-				bit_array_or(&tree.dominates[instr->region.id],
-						&tree.dominates[successor->region.id],
-						&tree.dominates[successor->region.id]);
-
-				bit_array_set(&visited_regions, successor->region.id, true);
-			}
-
-			instr_queue_push_back(&stack, successor_index);
-
-			printf("update dom for id=%u: ", (uint32_t)successor->region.id);
-			for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
-				if (bit_array_get(&tree.dominates[successor->region.id], j)) {
-					printf("%u ", (uint32_t)j);
-				}
-			}
-			printf("\n");
-		}
-	}
-
-	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
-		BitArray* dominance = &tree.dominates[i];
-		assert(bit_array_get(dominance, i));
-		bit_array_set(dominance, i, false);
-
-		bool found = false;
-		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
-			if (bit_array_equal(dominance, &tree.dominates[j])) {
-				tree.immediate_dominators[i] = j;
-				found = true;
-				bit_array_set(dominance, i, true);
-				break;
-			}
-		}
-
-		assert(found);
-	}
-
-	// The initial region dones't have an immediate dominator
-	tree.immediate_dominators[instr_region_id(instr_buffer, initial_region)] = UINT16_MAX;
-
-	arena_end_temp(temp);
-
-	return tree;
-}
-
-static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominatorTree tree) {
-	printf("dom tree:\n");
-	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
-		printf("region id=%u imm dom=%u: ",
-				(uint32_t)i,
-				(uint32_t)tree.immediate_dominators[i]);
-
-		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
-			if (bit_array_get(&tree.dominates[i], j)) {
-				printf("%u ", (uint32_t)j);
-			}
-		}
-		printf("\n");
-	} 
-}
-
-// Find a region where the control flow splits and later reaches both provided regions.
-// The returned value is the region id.
-static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
-		uint16_t region_count,
-		uint16_t region_a_id,
-		uint16_t region_b_id,
-		Arena* temp_allocator) {
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
-	BitArray visited_regions = bit_array_alloc(temp_allocator, region_count);
-	bit_array_clear(&visited_regions);
-
-	// NOTE: There is no queue for `uint16_t`, so just reuse the implementation of `InstrIndex`
-	InstrIndex backing_buffer[2];
-	InstrQueue queue;
-	instr_queue_init(&queue, backing_buffer, array_size(backing_buffer));
-
-	instr_queue_push_back(&queue, (InstrIndex) { region_a_id });
-	instr_queue_push_back(&queue, (InstrIndex) { region_b_id });
-
-	while (queue.count) {
-		InstrIndex region_id = instr_queue_pop_front(&queue);
-
-		if (region_id.value == UINT16_MAX) {
-			continue;
-		}
-
-		if (bit_array_get(&visited_regions, region_id.value)) {
-			arena_end_temp(temp);
-			return region_id.value;
-		}
-
-		bit_array_set(&visited_regions, region_id.value, true);
-		instr_queue_push_back(&queue, (InstrIndex) { tree->immediate_dominators[region_id.value] });
-	}
-
-	unreachable();
-	return UINT16_MAX;
 }
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {

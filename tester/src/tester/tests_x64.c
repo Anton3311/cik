@@ -813,3 +813,54 @@ void test_encode_mov_indirect_addr(TestContext* context) {
 	assert(buffer.size == array_size(expected));
 	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov rax, [rdx]");
 }
+
+void test_encode_mov_const_32_to_extended_register(TestContext* context) {
+	uint8_t expected[] = { 0x41, 0xb8, 0x6d, 0x0, 0x0, 0x0 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode_2(&buffer,
+			MNEMONIC_MOV,
+			operand_reg(X64_REG_8, 32),
+			operand_imm(0x6d, 32));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov r8d, 0x6d");
+}
+
+void test_encode_push_extended_register(TestContext* context) {
+	// NOTE: REX.W seems to be ignored here, however the encoding algorithm prefers to set it, so
+	//       test for that.
+	//
+	//       Without REX.W set the encoded bytes should be 0x41, 0x50
+	uint8_t expected[] = { 0x49, 0x50 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode_1(&buffer,
+			MNEMONIC_PUSH,
+			operand_reg(X64_REG_8, 64));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "push r8");
+}
+
+void test_encode_pop_extended_register(TestContext* context) {
+	// NOTE: REX.W seems to be ignored here, however the encoding algorithm prefers to set it, so
+	//       test for that.
+	//
+	//       Without REX.W set the encoded bytes should be 0x41, 0x58
+	uint8_t expected[] = { 0x49, 0x58 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode_1(&buffer,
+			MNEMONIC_POP,
+			operand_reg(X64_REG_8, 64));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "pop r8");
+}

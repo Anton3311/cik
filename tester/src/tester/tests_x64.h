@@ -41,5 +41,8 @@ void test_return_file_path(TestContext* context);
 
 // Encoding
 void test_encode_mov_indirect_addr(TestContext* context);
+void test_encode_mov_const_32_to_extended_register(TestContext* context);
+void test_encode_push_extended_register(TestContext* context);
+void test_encode_pop_extended_register(TestContext* context);
 
 #endif

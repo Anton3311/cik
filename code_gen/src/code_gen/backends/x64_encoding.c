@@ -385,7 +385,13 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		assert(operand_count >= 1);
 		
 		if (operands[0].kind == OP_REG) {
-			rex_prefix_bits |= (operands[0].reg >> 3) << 2; // reg field
+			if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+				// For instructions that require adding register number to the opcode byte, store
+				// the register extension in the B field of the rex prefix instead of R
+				rex_prefix_bits |= (operands[0].reg >> 3); // rm field
+			} else {
+				rex_prefix_bits |= (operands[0].reg >> 3) << 2; // reg field
+			}
 		}
 	}
 

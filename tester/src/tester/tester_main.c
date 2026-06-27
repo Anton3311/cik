@@ -127,8 +127,11 @@ static TestCase x64_tests[] = {
 	test(test_min),
 	test(test_char_to_lower),
 	test(test_char_to_upper),
-	test(test_encode_mov_indirect_addr),
 	test(test_return_file_path),
+	test(test_encode_mov_indirect_addr),
+	test(test_encode_mov_const_32_to_extended_register),
+	test(test_encode_push_extended_register),
+	test(test_encode_pop_extended_register),
 };
 
 static TestSuite s_test_suites[] = {

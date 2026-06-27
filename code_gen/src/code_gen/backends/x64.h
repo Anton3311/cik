@@ -65,6 +65,8 @@ typedef struct {
 
 	const FunctionRefTable* ref_table;
 
+	uint16_t* assigned_region_to_instr;
+
 	uint16_t* phi_variant_counts_per_region;
 	InstrIndexArray* phi_variants_per_region;
 

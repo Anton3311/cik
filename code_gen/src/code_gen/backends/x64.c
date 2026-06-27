@@ -325,6 +325,12 @@ static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 	return UINT16_MAX;
 }
 
+static bool _is_region_dominated_by(const CFGDominatorTree* tree,
+		uint16_t dominated_region_id,
+		uint16_t dominated_by_region_id) {
+	const BitArray* dominated_regions = &tree->dominates[dominated_by_region_id];
+	return bit_array_get(dominated_regions, dominated_region_id);
+}
 
 //
 // Phi Node Handling
@@ -1305,46 +1311,64 @@ static void _merge_string_consts(X64CodeGenerator* gen) {
 }
 
 static void _validate_linearization(const InstrBuffer* instr_buffer,
-		BitArray* visited_instr,
+		uint16_t* assigned_region_to_instr, 
+		uint16_t current_region_id,
 		InstrIndexArray linearized,
+		const CFGDominatorTree* dom_tree,
 		Arena* temp_allocator) {
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 	for (size_t i = 0; i < linearized.count; i += 1) {
-		ArenaRegion inner_temp = arena_begin_temp(temp_allocator);
+		const Instr* instr = instr_buffer_at(instr_buffer, linearized.instr[i]);
+		if (instr->kind == INSTR_SELECT) {
 
-		InstrQueue queue;
-		instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
+			uint16_t region_assigned_to_input = assigned_region_to_instr[instr->select.value.value];
+			uint16_t expected_region = instr_region_id(instr_buffer, instr->select.region);
 
-		instr_enumerate_uses(instr_buffer, linearized.instr[i], &queue);
+			bool input_is_available = _is_region_dominated_by(dom_tree,
+					region_assigned_to_input,
+					expected_region);
 
-		for (size_t j = 0; j < queue.count; j += 1) {
-			InstrIndex input = queue.buffer[j];
-			if (input.value == INVALID_INSTR_INDEX.value) {
-				continue;
-			}
-
-			const Instr* input_instr = instr_buffer_at(instr_buffer, input);
-			bool skip = false;
-			switch (input_instr->kind) {
-			case INSTR_REGION:
-				skip = true;
-				break;
-			}
-
-			if (skip) {
-				continue;
-			}
-
-			assert_msg(bit_array_get(visited_instr, input.value),
-					"Value definition '%u' appears before its input '%u'",
+			assert_msg(input_is_available,
+					"Value definition '%u' appears before its input '%u'. "
+					"Input is not available in region with id '%u', since it is placed in region "
+					"with id '%u'",
 					(uint32_t)linearized.instr[i].value,
-					(uint32_t)input.value);
+					(uint32_t)instr->select.value.value,
+					expected_region,
+					region_assigned_to_input);
+		} else {
+			ArenaRegion inner_temp = arena_begin_temp(temp_allocator);
+
+			InstrQueue queue;
+			instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
+
+			instr_enumerate_uses(instr_buffer, linearized.instr[i], &queue);
+
+			for (size_t j = 0; j < queue.count; j += 1) {
+				InstrIndex input = queue.buffer[j];
+				if (input.value == INVALID_INSTR_INDEX.value) {
+					continue;
+				}
+
+				const Instr* input_instr = instr_buffer_at(instr_buffer, input);
+				if (input_instr->kind == INSTR_REGION) {
+					continue;
+				}
+
+				uint16_t region_assigned_to_input = assigned_region_to_instr[input.value];
+				bool input_is_available = _is_region_dominated_by(dom_tree,
+						region_assigned_to_input,
+						current_region_id);
+
+				assert_msg(input_is_available,
+						"Value definition '%u' appears before its input '%u'",
+						(uint32_t)linearized.instr[i].value,
+						(uint32_t)input.value);
+			}
+
+			arena_end_temp(inner_temp);
 		}
-
-		bit_array_set(visited_instr, linearized.instr[i].value, true);
-
-		arena_end_temp(inner_temp);
 	}
 	
 	arena_end_temp(temp);
@@ -1581,6 +1605,9 @@ static void _linearize_instr(X64CodeGenerator* gen,
 	arena_alloc(allocator, InstrIndex);
 	out_linearized->instr[out_linearized->count] = instr_index;
 	out_linearized->count += 1;
+
+	uint16_t region_id = gen->current_linearized_region_id; 
+	gen->assigned_region_to_instr[instr_index.value] = region_id;
 }
 
 static InstrIndexArray _linearize_instr_for_region(X64CodeGenerator* gen,
@@ -1684,6 +1711,10 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 			CodeBuffer,
 			region_count);
 
+	gen->assigned_region_to_instr = arena_alloc_array(gen->temp_allocator,
+			uint16_t,
+			gen->instr_buffer.count);
+
 	InstrIndexArray* linearized_instr_per_region = arena_alloc_array(gen->temp_allocator,
 			InstrIndexArray,
 			scheduled_regions.count);
@@ -1737,7 +1768,12 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
 		InstrIndexArray linearized = linearized_instr_per_region[instr->region.id];
-		_validate_linearization(&gen->instr_buffer, &visited_instr, linearized, gen->temp_allocator);
+		_validate_linearization(&gen->instr_buffer,
+				gen->assigned_region_to_instr,
+				instr->region.id,
+				linearized,
+				&dom_tree,
+				gen->temp_allocator);
 	}
 
 	for (size_t i = 0; i < scheduled_regions.count; i += 1) {

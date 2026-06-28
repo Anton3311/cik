@@ -1,9 +1,11 @@
 #include "builder_core.h"
 
-static String COMPILER_EXE =
-	STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe");
-static String LIBRARY_BUNDLER_EXE =
-	STR_LIT("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\llvm-lib.exe");
+typedef struct {
+	String clang_path;
+	String llvm_lib_path;
+} ClangCompilerInfo;
+
+static ClangCompilerInfo s_clang_info;
 
 inline BuildUnit* _get_unit(BuildContext* context, BuildUnitId id) {
 	assert((size_t)id.value < context->unit_count);
@@ -140,7 +142,9 @@ void build_output_executable(BuildContext* context, String output_dir_path) {
 	str_builder_append(&path_builder, STR_LIT(".exe"));
 }
 
-static void _format_output_file_path(StringBuilder* builder, const BuildUnit* unit) {
+static void _format_output_file_path(StringBuilder* builder,
+		const BuildUnit* unit,
+		bool include_file_ext) {
 	switch (unit->output_type) {
 	case OUTPUT_OBJ:
 		str_builder_append(builder, STR_LIT("bin/obj/"));
@@ -154,6 +158,10 @@ static void _format_output_file_path(StringBuilder* builder, const BuildUnit* un
 	}
 
 	str_builder_append(builder, unit->name);
+	
+	if (!include_file_ext) {
+		return;
+	}
 
 	switch (unit->output_type) {
 	case OUTPUT_OBJ:
@@ -170,66 +178,84 @@ static void _format_output_file_path(StringBuilder* builder, const BuildUnit* un
 	}
 }
 
-static String _generate_source_file_build_cmd(const BuildUnit* unit, StringArray include_dirs, Arena* allocator) {
-	StringBuilder builder = { .arena = allocator };
+void _clang_gen_file_compile_cmd(BuildContext* context,
+		StringBuilder* cmd_builder,
+		const BuildUnit* unit,
+		FileBuildOptions options) {
 
-	str_builder_append(&builder, STR_LIT("clang.exe -c "));
-	str_builder_append(&builder, unit->path);
-	str_builder_append(&builder, STR_LIT(" -m64 -g -Wall -o "));
+	str_builder_append(cmd_builder, STR_LIT("-c "));
+	str_builder_append(cmd_builder, unit->path);
+	str_builder_append_char(cmd_builder, ' ');
 
-	_format_output_file_path(&builder, unit);
-
-	for (size_t i = 0; i < include_dirs.count; i += 1) {
-		str_builder_append(&builder, STR_LIT(" \"-I"));
-		str_builder_append(&builder, include_dirs.values[i]);
-		str_builder_append_char(&builder, '\"');
+	switch (context->target_arch) {
+	case ARCH_X64:
+		str_builder_append(cmd_builder, STR_LIT("-m64 "));
+		break;
 	}
 
-	return builder.string;
+	switch (context->language) {
+	case LANG_C99:
+		str_builder_append(cmd_builder, STR_LIT("-std=c99 "));
+		break;
+	case LANG_C11:
+		str_builder_append(cmd_builder, STR_LIT("-std=c11 "));
+		break;
+	}
+
+	if (has_flag(options, FILE_OPTION_GENERATE_DEBUG_INFO)) {
+		str_builder_append(cmd_builder, STR_LIT("-g "));
+	}
+
+	if (has_flag(options, FILE_OPTION_WARNINGS_ALL)) {
+		str_builder_append(cmd_builder, STR_LIT("-Wall "));
+	}
+
+	str_builder_append(cmd_builder, STR_LIT("-o "));
+	_format_output_file_path(cmd_builder, unit, true);
+	str_builder_append_char(cmd_builder, ' ');
+
+	StringArray include_dirs = unit->include_dirs;
+	for (size_t i = 0; i < include_dirs.count; i += 1) {
+		str_builder_append(cmd_builder, STR_LIT("\"-I"));
+		str_builder_append(cmd_builder, include_dirs.values[i]);
+		str_builder_append(cmd_builder, STR_LIT("\" "));
+	}
 }
 
-static String _generate_static_lib_link_cmd(BuildContext* context,
-		const BuildUnit* unit,
-		Arena* allocator) {
+static void _clang_gen_static_lib_link_cmd(BuildContext* context,
+		StringBuilder* builder,
+		const BuildUnit* unit) {
 	assert(unit->output_type == OUTPUT_LIB);
 
-	StringBuilder builder = { .arena = allocator };
-	str_builder_append(&builder, STR_LIT("llvm-lib.exe "));
-
-	str_builder_append(&builder, STR_LIT("/OUT:"));
-	_format_output_file_path(&builder, unit);
+	str_builder_append(builder, STR_LIT("/OUT:"));
+	_format_output_file_path(builder, unit, true);
 
 	for (size_t i = 0; i < unit->dependency_count; i += 1) {
-		str_builder_append_char(&builder, ' ');
-		_format_output_file_path(&builder, _get_unit(context, unit->dependencies[i]));
+		str_builder_append_char(builder, ' ');
+		_format_output_file_path(builder, _get_unit(context, unit->dependencies[i]), true);
 	}
-
-	return builder.string;
 }
 
-static String _generate_exe_link_cmd(BuildContext* context, const BuildUnit* unit, Arena* allocator) {
+static void _clang_gen_exe_link_cmd(BuildContext* context,
+		StringBuilder* builder,
+		const BuildUnit* unit) {
 	assert(unit->output_type == OUTPUT_EXE);
 
-	StringBuilder builder = { .arena = allocator };
-	str_builder_append(&builder, STR_LIT("clang.exe "));
-
-	str_builder_append(&builder, STR_LIT("-m64 -g -o "));
-	_format_output_file_path(&builder, unit);
+	str_builder_append(builder, STR_LIT("-m64 -g -o "));
+	_format_output_file_path(builder, unit, true);
 
 	for (size_t i = 0; i < unit->dependency_count; i += 1) {
-		str_builder_append_char(&builder, ' ');
+		str_builder_append_char(builder, ' ');
 
 		BuildUnit* dependency = _get_unit(context, unit->dependencies[i]);
 		if (dependency->output_type == OUTPUT_LIB) {
-			str_builder_append(&builder, STR_LIT("-l"));
+			str_builder_append(builder, STR_LIT("-l"));
 		}
 
-		_format_output_file_path(&builder, dependency);
+		_format_output_file_path(builder, dependency, true);
 	}
 
-	str_builder_append(&builder, STR_LIT(" -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib"));
-
-	return builder.string;
+	str_builder_append(builder, STR_LIT(" -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib"));
 }
 
 typedef enum {
@@ -358,7 +384,9 @@ static bool _run_build_process(BuildContext* context,
 	bool result = true;
 
 	// Build units
-	UnitStatus* status = arena_alloc_array_zeroed(context->allocator, UnitStatus, context->unit_count);
+	UnitStatus* status = arena_alloc_array_zeroed(context->allocator,
+			UnitStatus,
+			context->unit_count);
 
 	StringBuilder cmd_log = { .arena = context->unit_allocator };
 	for (size_t i = 0; i < build_queue.count; i += 1) {
@@ -372,87 +400,64 @@ static bool _run_build_process(BuildContext* context,
 			continue;
 		}
 
+		String step_name = {};
+		String exe_path = {};
+
+		StringBuilder cmd_builder = { .arena = context->allocator };
+
 		switch (unit->output_type) {
 		case OUTPUT_EXE: {
-			String link_cmd = _generate_exe_link_cmd(context, unit, context->allocator);
+			step_name = STR_LIT("link");
+			exe_path = s_clang_info.clang_path;
 
-			int32_t exit_code = 0;
-			bool success = process_run(COMPILER_EXE,
-						STR_LIT("."),
-						link_cmd,
-						&exit_code,
-						context->allocator) == PROCESS_RUN_OK;
-
-			if (cmd_log_enabled) {
-				str_builder_append(&cmd_log, link_cmd);
-				str_builder_append_char(&cmd_log, '\n');
-			}
-
-			if (success && exit_code == 0) {
-				status[unit_id.value] = UNIT_STATUS_DONE;
-			} else {
-				status[unit_id.value] = UNIT_STATUS_FAILED;
-				result = false;
-			}
-
-			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("link"), unit->name);
+			str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+			str_builder_append_char(&cmd_builder, ' ');
+			_clang_gen_exe_link_cmd(context, &cmd_builder, unit);
 			break;
 		}
 		case OUTPUT_LIB: {
-			String link_cmd = _generate_static_lib_link_cmd(context, unit, context->allocator);
+			step_name = STR_LIT("link");
+			exe_path = s_clang_info.llvm_lib_path;
 
-			int32_t exit_code = 0;
-			bool success = process_run(LIBRARY_BUNDLER_EXE,
-						STR_LIT("."),
-						link_cmd,
-						&exit_code,
-						context->allocator) == PROCESS_RUN_OK;
-
-			if (cmd_log_enabled) {
-				str_builder_append(&cmd_log, link_cmd);
-				str_builder_append_char(&cmd_log, '\n');
-			}
-
-			if (success && exit_code == 0) {
-				status[unit_id.value] = UNIT_STATUS_DONE;
-			} else {
-				status[unit_id.value] = UNIT_STATUS_FAILED;
-				result = false;
-			}
-
-			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("link"), unit->name);
+			str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+			str_builder_append_char(&cmd_builder, ' ');
+			_clang_gen_static_lib_link_cmd(context, &cmd_builder, unit);
 			break;
 		}
 		case OUTPUT_OBJ: {
-			String cmd = _generate_source_file_build_cmd(unit,
-					unit->include_dirs,
-					context->allocator);
+			step_name = STR_LIT("compile");
+			exe_path = s_clang_info.clang_path;
 
-			int32_t exit_code = 0;
-			bool success = process_run(COMPILER_EXE,
-						STR_LIT("."),
-						cmd,
-						&exit_code,
-						context->allocator) == PROCESS_RUN_OK;
-
-			if (cmd_log_enabled) {
-				str_builder_append(&cmd_log, cmd);
-				str_builder_append_char(&cmd_log, '\n');
-			}
-
-			if (success && exit_code == 0) {
-				status[unit_id.value] = UNIT_STATUS_DONE;
-			} else {
-				status[unit_id.value] = UNIT_STATUS_FAILED;
-				result = false;
-			}
-
-			_print_result(status[unit_id.value] == UNIT_STATUS_DONE, STR_LIT("compile"), unit->path);
+			str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+			str_builder_append_char(&cmd_builder, ' ');
+			_clang_gen_file_compile_cmd(context, &cmd_builder, unit, FILE_OPTION_GENERATE_DEBUG_INFO);
 			break;
 		}
 		case OUTPUT_NONE:
-			break;
+			unreachable();
 		}
+
+		if (cmd_log_enabled) {
+			str_builder_append(&cmd_log, cmd_builder.string);
+			str_builder_append_char(&cmd_log, '\n');
+			status[unit_id.value] = UNIT_STATUS_DONE;
+		}
+
+		int32_t exit_code = 0;
+		bool success = process_run(exe_path,
+					STR_LIT("."),
+					cmd_builder.string,
+					&exit_code,
+					context->allocator) == PROCESS_RUN_OK;
+
+		if (success && exit_code == 0) {
+			status[unit_id.value] = UNIT_STATUS_DONE;
+		} else {
+			status[unit_id.value] = UNIT_STATUS_FAILED;
+			result = false;
+		}
+
+		_print_result(status[unit_id.value] == UNIT_STATUS_DONE, step_name, unit->path);
 
 		arena_end_temp(temp);
 	}
@@ -487,6 +492,66 @@ static void _print_all_targets(const BuildContext* context) {
 	printf("\n");
 }
 
+static bool _try_resolve_clang_exes(String dir,
+		ClangCompilerInfo* out_info,
+		Arena* allocator) {
+	ArenaRegion temp = arena_begin_temp(allocator);
+
+	bool result = false;
+
+	String clang_path = path_append(dir, STR_LIT("clang.exe"), allocator);
+	String llvm_lib_path = path_append(dir, STR_LIT("llvm-lib.exe"), allocator);
+
+	bool clang_exists = path_exists(allocator, clang_path);
+	bool llvm_lib_exists = path_exists(allocator, llvm_lib_path);
+	result = clang_exists && llvm_lib_exists;
+
+	if (result) {
+		out_info->clang_path = clang_path;
+		out_info->llvm_lib_path = llvm_lib_path;
+	} else {
+		// Undo allocations
+		arena_end_temp(temp);
+	}
+
+	return result;
+}
+
+static bool _find_compiler_in_path(ClangCompilerInfo* out_info,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	String path_var = env_get("PATH", temp_allocator);
+
+	bool result = false;
+	while (path_var.length) {
+		String path = path_var;
+		for (size_t i = 0; i < path_var.length; i += 1) {
+			if (path_var.v[i] == ';') {
+				path = sub_str(path_var, 0, i);
+				path_var.v += i + 1;
+				path_var.length -= i + 1;
+				break;
+			}
+		}
+
+		if (_try_resolve_clang_exes(path, out_info, allocator)) {
+			result = true;
+			break;
+		}
+
+		if (str_equal(path, path_var)) {
+			break;
+		}
+	}
+
+
+	arena_end_temp(temp);
+	return result;
+}
+
 static const char* s_help_message =
 	"\n"
 	"  Usage:\n"
@@ -500,8 +565,14 @@ static const char* s_help_message =
 
 int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 	if (argc <= 1) {
-		fprintf(stderr, "\033[1;31mNot enough arguments\033[0m\n");
+		printf("\033[1;31mNot enough arguments\033[0m\n");
 		printf("%s", s_help_message);
+		return EXIT_FAILURE;
+	}
+
+	s_clang_info = (ClangCompilerInfo) {};
+	if (!_find_compiler_in_path(&s_clang_info, context->allocator, context->unit_allocator)) {
+		fprintf(stderr, "Clang compiler not found in PATH");
 		return EXIT_FAILURE;
 	}
 

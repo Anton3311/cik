@@ -16,6 +16,21 @@ typedef enum {
 
 #define INVALID_BUILD_UNIT_ID UINT16_MAX
 
+typedef enum {
+	ARCH_X64
+} TargetArch;
+
+typedef enum {
+	LANG_C99,
+	LANG_C11,
+} Language;
+
+typedef enum {
+	FILE_OPTION_NONE                = 0,
+	FILE_OPTION_GENERATE_DEBUG_INFO = 1 << 0,
+	FILE_OPTION_WARNINGS_ALL        = 1 << 1,
+} FileBuildOptions;
+
 struct BuildUnitId {
 	uint16_t value;
 };
@@ -24,6 +39,8 @@ struct BuildUnit {
 	String name;
 	String path;
 	BuildUnitOutputType output_type;
+
+	FileBuildOptions file_build_options;
 
 	BuildUnitId* dependencies;
 	size_t dependency_count;
@@ -35,6 +52,9 @@ struct BuildContext {
 	Arena* unit_allocator;
 	Arena* allocator;
 	Arena* dependency_allocator;
+
+	TargetArch target_arch;
+	Language language;
 
 	BuildUnitId current_project;
 

@@ -6,6 +6,8 @@ int main(int argc, char *argv[]) {
 	Arena dependency_allocator = { .capacity = 16 * 4096 };
 
 	BuildContext context;
+	context.target_arch = ARCH_X64;
+	context.language = LANG_C11;
 	build_init(&context, &unit_allocator, &dependency_allocator, &allocator);
 	
 	BuildUnitId core = build_begin_project(&context, STR_LIT("core"), OUTPUT_LIB);

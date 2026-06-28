@@ -518,21 +518,20 @@ static bool _try_resolve_clang_exes(String dir,
 }
 
 static bool _find_compiler_in_path(ClangCompilerInfo* out_info,
+		String paths,
 		Arena* allocator,
 		Arena* temp_allocator) {
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
-	String path_var = env_get("PATH", temp_allocator);
-
 	bool result = false;
-	while (path_var.length) {
-		String path = path_var;
-		for (size_t i = 0; i < path_var.length; i += 1) {
-			if (path_var.v[i] == ';') {
-				path = sub_str(path_var, 0, i);
-				path_var.v += i + 1;
-				path_var.length -= i + 1;
+	while (paths.length) {
+		String path = paths;
+		for (size_t i = 0; i < paths.length; i += 1) {
+			if (paths.v[i] == ';') {
+				path = sub_str(paths, 0, i);
+				paths.v += i + 1;
+				paths.length -= i + 1;
 				break;
 			}
 		}
@@ -542,11 +541,10 @@ static bool _find_compiler_in_path(ClangCompilerInfo* out_info,
 			break;
 		}
 
-		if (str_equal(path, path_var)) {
+		if (str_equal(path, paths)) {
 			break;
 		}
 	}
-
 
 	arena_end_temp(temp);
 	return result;
@@ -559,8 +557,14 @@ static const char* s_help_message =
 	"\n"
 	"  Commands:\n"
 	"    build                 build all projects and generate scripts/build_all.bat\n"
+	"                          use --compiler-paths=<compiler-search-paths> to specify a ';'\n"
+	"                          separated list of search paths.\n"
+	"                          By default `PATH` environment variable is used\n"
+	"\n"
 	"    build <project-name>  build specific project\n"
+	"\n"
 	"    list                  show a list of available build targets\n"
+	"\n"
 	"    help                  show help message\n";
 
 int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
@@ -571,10 +575,6 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 	}
 
 	s_clang_info = (ClangCompilerInfo) {};
-	if (!_find_compiler_in_path(&s_clang_info, context->allocator, context->unit_allocator)) {
-		fprintf(stderr, "Clang compiler not found in PATH");
-		return EXIT_FAILURE;
-	}
 
 	size_t arg_index = 1;
 	while (arg_index < argc) {
@@ -584,10 +584,49 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 			String project_name = {};
 			bool cmd_log_enabled = false;
 			if (arg_index < argc) {
-				project_name = str_from_cstr(argv[arg_index]);
-				arg_index += 1;
-			} else {
+				String arg = str_from_cstr(argv[arg_index]);
+				if (!str_starts_with(arg, STR_LIT("--"))) {
+					project_name = str_from_cstr(argv[arg_index]);
+					arg_index += 1;
+				}
+			}
+
+			if (project_name.length == 0) {
 				cmd_log_enabled = true;
+			}
+
+			String compiler_paths_prefix = STR_LIT("--compiler-paths=");
+
+			String compiler_search_paths = {};
+			if (arg_index < argc) {
+				String arg = str_from_cstr(argv[arg_index]);
+				if (str_starts_with(arg, compiler_paths_prefix)) {
+					compiler_search_paths = sub_str(arg,
+							compiler_paths_prefix.length,
+							arg.length - compiler_paths_prefix.length);
+
+					if (compiler_search_paths.length == 0) {
+						fprintf(stderr, "Empty --compiler-paths\n");
+						return EXIT_FAILURE;
+					}
+
+					arg_index += 1;
+				} else {
+					fprintf(stderr, "Unknown build argument: %.*s\n", STR_FMT(arg));
+					return EXIT_FAILURE;
+				}
+			}
+
+			if (compiler_search_paths.length == 0) {
+				compiler_search_paths = env_get("PATH", context->allocator);
+			}
+
+			if (!_find_compiler_in_path(&s_clang_info,
+						compiler_search_paths,
+						context->allocator,
+						context->unit_allocator)) {
+				fprintf(stderr, "Clang compiler not found in the search path");
+				return EXIT_FAILURE;
 			}
 
 			BuildResult result = {};

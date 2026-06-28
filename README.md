@@ -6,8 +6,10 @@
 1. [Running tests](#running-tests)
 1. [Project Structure](#project-structure)
 1. [Features](#features)
+1. [About the Preprocessor](docs/preprocessor.md)
 1. [Preprocessor features](#preprocessor-features)
 1. [Parser features](#parser-features)
+1. [About the Compiler](docs/compiler.md)
 1. [Compiler features](#compiler-features)
 
 # About

@@ -9,9 +9,13 @@ typedef struct Preprocessor Preprocessor;
 typedef struct MacroDefinition MacroDefinition;
 typedef struct PreprocessorBranchRegion PreprocessorBranchRegion;
 
+#define MACRO_TABLE_INITIAL_CAPACITY 64
+
 typedef struct {
+	Allocator allocator;
 	size_t capacity;
 	size_t count;
+
 	MacroDefinition* macros;
 } MacroTable;
 
@@ -216,9 +220,12 @@ void preprocessor_init(Preprocessor* state,
 		SourceStorage* source_storage,
 		const SourceFile* source_file,
 		Diagnostics* diagnostics,
+		Allocator gpa,
 		Arena* allocator,
 		Arena* temp_allocator,
 		Arena* generated_tokens_allocator);
+
+void preprocessor_release(Preprocessor* state);
 
 // Returns the next token, without consuming it.
 // The next call to `preprocessor_view_next` or

@@ -1,18 +1,21 @@
 #include "x64.h"
 
 #include "core/profiler.h"
+#include "code_gen/backends/x64_reg_alloc.h"
 
 inline uint8_t _bit_count_from_index(uint8_t i) {
 	return (1 << i) * 8;
 }
 
-static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
+X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_NO_OP]                  = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
 
 	[INSTR_CONST_8]                = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_CONST_16]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
 	[INSTR_CONST_32]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_CONST_64]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
+	[INSTR_CONST_STRING]           = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
 	[INSTR_BIN_OP_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_BIN_OP_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
@@ -29,10 +32,17 @@ static X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
 	[INSTR_LOGICAL_SHIFT_RIGHT_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
 	[INSTR_LOGICAL_SHIFT_RIGHT_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
 
-	[INSTR_COMPARE_8]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_16]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_32]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_COMPARE_64]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_COMPARE_8]              = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_COMPARE_16]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_COMPARE_32]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	[INSTR_COMPARE_64]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+
+	[INSTR_BOOL_TO_INT]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+
+	[INSTR_NEGATE_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_NEGATE_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_NEGATE_32]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	[INSTR_NEGATE_64]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 
 	[INSTR_CAST_TO_8]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
 	[INSTR_CAST_TO_16]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
@@ -127,561 +137,233 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 	}
 }
 
-static InstrIndexArray _x64_gather_instr_with_storage_requirement(const InstrBuffer instr_buffer,
-		const InstrUsageRange* usage_ranges,
-		Arena* allocator) {
+//
+// CFG Dominator Tree
+//
 
-	InstrIndexArray result;
-	result.count = 0;
-	result.instr = arena_alloc_array(allocator, InstrIndex, 0);
+typedef struct {
+	uint16_t region_count;
 
-	for (size_t i = 0; i < instr_buffer.count; i += 1) {
-		const InstrKind kind = instr_buffer.instr[i].kind;
-		if (!has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			continue;
-		}
+	// Per region `BitArray` of regions that it dominates
+	// The size of this array is equal to the total number of regions
+	//
+	// Size of each `BitArray` is also equal to the total number of regions
+	BitArray* dominates;
 
-		if (usage_ranges[i].value == UINT32_MAX) {
-			// Not used
-			continue;
-		}
+	// An array of size eqaul to the total number of regions.
+	// Maps region id to the immediate dominator of that region.
+	//
+	// `UINT16_MAX` means the regions doesn't have an immediate dominator.
+	// Which is only true for the root region.
+	uint16_t* immediate_dominators;
+} CFGDominatorTree;
 
-		arena_alloc(allocator, InstrIndex);
-		result.instr[result.count].value = (uint16_t)i;
-		result.count += 1;
-	}
-
-	return result;
-}
-
-// Returned array stores an array of edges for each instruction in `instr_with_storage_requirement`
-// The array must be indexed using an element index of the `instr_with_storage_requirement`
-static UInt16Array* _x64_build_interference_graph(const InstrBuffer instr_buffer,
-		const InstrIndexArray instr_with_storage_requirement,
-		const InstrUsageRange* usage_ranges,
-		Arena* allocator) {
-
-	// Each array stores indices into `instr_with_storage_requirement`
-	UInt16Array* graph_edges = arena_alloc_array_zeroed(allocator,
-			UInt16Array,
-			instr_with_storage_requirement.count);
-
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		UInt16Array* edges = &graph_edges[i];
-		edges->values = arena_alloc_array(allocator, uint16_t, 0);
-	
-		InstrUsageRange usage_range_a = usage_ranges[instr_with_storage_requirement.instr[i].value];
-		for (size_t j = 0; j < instr_with_storage_requirement.count; j += 1) {
-			if (i == j) {
-				continue;
-			}
-
-			InstrUsageRange usage_range_b = usage_ranges[instr_with_storage_requirement.instr[j].value];
-
-			uint16_t max_start = max(usage_range_a.first_usage.value, usage_range_b.first_usage.value);
-			uint16_t min_end = min(usage_range_a.last_usage.value, usage_range_b.last_usage.value);
-
-			bool overlap = min_end > max_start;
-			if (overlap) {
-				arena_alloc(allocator, InstrIndex);
-				edges->values[edges->count] = (uint16_t)j;
-				edges->count += 1;
-			}
-		}
-	}
-
-	return graph_edges;
-}
-
-// Writes storage locations into `instr_storage` array.
-// This array must be of size `instr_buffer.count`
-static void _x64_run_graph_coloring(InstrBuffer instr_buffer,
-		InstrIndexArray instr_with_storage_requirement,
-		UInt16Array* interference_graph,
-		InstrStorageLocation* instr_storage,
-		uint16_t allowed_registers,
+static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffer,
+		InstrIndex initial_region,
+		Arena* allocator,
 		Arena* temp_allocator) {
-	profile_scope_start(__func__);
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
-	uint16_t* potential_instr_registers = arena_alloc_array(temp_allocator,
-			uint16_t,
-			instr_buffer.count);
+	BitArray visited_regions = bit_array_alloc(temp_allocator, instr_buffer->region_count);
+	bit_array_clear(&visited_regions);
 
-	for (size_t i = 0; i < instr_buffer.count; i += 1) {
-		InstrKind kind = instr_buffer.instr[i].kind;
+	InstrQueue stack;
+	instr_queue_alloc(&stack, temp_allocator, instr_buffer->region_count);
 
-		if (kind == INSTR_LOAD_ARG) {
-			continue;
-		}
+	// Allocate the tree
+	CFGDominatorTree tree;
+	tree.region_count = instr_buffer->region_count;
+	tree.dominates = arena_alloc_array(allocator, BitArray, tree.region_count);
+	tree.immediate_dominators = arena_alloc_array(allocator, uint16_t, tree.region_count);
 
-		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			uint16_t instr_registers = s_instr_storage_requiremenets[kind].allowed_registers;
-			potential_instr_registers[i] = instr_registers & allowed_registers;
-
-			assert_msg(potential_instr_registers[i] != 0,
-					"This instruction must be spilled, but spilling is not yet implemented");
-		}
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		tree.dominates[i] = bit_array_alloc(allocator, tree.region_count);
+		bit_array_clear(&tree.dominates[i]);
+		bit_array_set(&tree.dominates[i], i, true);
 	}
 
-	// Assign locations to function arguments
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
-		InstrKind kind = instr_buffer.instr[instr_index.value].kind;
-
-		if (kind != INSTR_LOAD_ARG) {
-			continue;
-		}
-
-		const Instr* instr = &instr_buffer.instr[instr_index.value];
-
-		// NOTE: INSTR_LOAD_ARG are handled separtely here.
-		//       Since these instructions access arguments which
-		//       are stored in the `cdecl_arg_regs`
-
-		// NOTE: Well that's slowly turning into a mess, why is it here?
-		//       Probably need to introduce a proper concept of calling
-		//       conventions on the code gen level
-		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
-		assert(instr->load_arg.index < array_size(cdecl_arg_regs));
-
-		X64Register reg = cdecl_arg_regs[instr->load_arg.index];
-		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
-		instr_storage[instr_index.value].reg = reg;
-
-		UInt16Array edges = interference_graph[i];
-		for (size_t j = 0; j < edges.count; j += 1) {
-			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-			potential_instr_registers[interfering_instr.value] &= ~(1 << reg);
-		}
-	}
-
-	// Assign locations to the rest of the instructions
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
-
-		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_NONE) {
-			continue;
-		}
-
-		uint16_t potential_registers = potential_instr_registers[instr_index.value];
-		assert_msg(potential_registers != 0,
-				"This instruction must be spilled, but spilling is not yet implemented");
-
-		uint16_t first_potential_register = count_trailing_zeros(potential_registers);
-		assert(first_potential_register < 16);
-
-		instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
-		instr_storage[instr_index.value].reg = first_potential_register;
-
-		UInt16Array edges = interference_graph[i];
-		for (size_t j = 0; j < edges.count; j += 1) {
-			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-			potential_instr_registers[interfering_instr.value] &= ~(1 << first_potential_register);
-		}
-	}
-
-	arena_end_temp(temp);
-	profile_scope_end();
-}
-
-void x64_alloc_registers(X64CodeGenerator* gen, uint16_t allowed_registers) {
-	profile_scope_start(__func__);
-	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
-
-	// What cranelift's register allocator does:
-	// 1. For each region compute live input and output instructions.
-	//     a. Phi nodes variants must appear as outputs of the corresponding regions
-	// 2. Once we have the in/out bitset for each region, compute more precise live ranges
-	//
-	// What this allocator can do for now (regarding the phi nodes):
-	// 1. Extend phi nodes live ranges to include the end of the live range of it's variants
-	// 2. Allocate registers for phi nodes
-	// 3. At the end of variant's live range place a move,
-	//    which copies the value from the variant's location into phi's location.
+	// Push the initial region on the stack
+	instr_queue_push_back(&stack, initial_region);
 
 	{
-		uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(gen->allocator,
-				uint16_t,
-				gen->instr_buffer.region_count);
+		const Instr* initial = instr_buffer_at(instr_buffer, initial_region);
+		bit_array_set(&visited_regions, initial->region.id, true);
 
-		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-			const Instr* instr = &gen->instr_buffer.instr[i];
-			if (instr->kind == INSTR_PHI) {
-				InstrInputs variants = instr->phi.variants;
-				for (uint16_t j = 0; j < variants.count; j += 1) {
-					InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
-					const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
-					assert(variant->kind == INSTR_SELECT);
+		tree.immediate_dominators[initial->region.id] = UINT16_MAX;
+	}
+	
+	// Build the tree
+	while (stack.count) {
+		InstrIndex region_instr_index = instr_queue_pop_back(&stack);
+		const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
+		assert(instr->kind == INSTR_REGION);
 
-					uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-					phi_variant_counts_per_region[region_id] += 1;
-				}
-			}
+		InstrIndex successors[2];
+		size_t successor_count = 0;
+
+		const Instr* last_instr = instr_buffer_at(instr_buffer, instr->region.last_instr);
+		switch (last_instr->kind) {
+		case INSTR_JUMP:
+			successors[0] = last_instr->jump.target_region;
+			successor_count = 1;
+			break;
+		case INSTR_BRANCH:
+			successors[0] = last_instr->branch.true_region;
+			successors[1] = last_instr->branch.false_region;
+			successor_count = 2;
+			break;
+		case INSTR_RET:
+		case INSTR_RETURN_VALUE:
+			break;
+		default:
+			unreachable();
 		}
+		
+		for (size_t i = 0; i < successor_count; i += 1) {
+			InstrIndex successor_index = successors[i];
+			const Instr* successor = instr_buffer_at(instr_buffer, successor_index);
+			assert(successor->kind == INSTR_REGION);
 
-		InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(gen->allocator,
-				InstrIndexArray,
-				gen->instr_buffer.region_count);
-		InstrIndex** phi_node_of_variant = arena_alloc_array_zeroed(gen->allocator,
-				InstrIndex*,
-				gen->instr_buffer.region_count);
+			if (bit_array_get(&visited_regions, successor->region.id)) {
+				bit_array_and(&tree.dominates[instr->region.id],
+						&tree.dominates[successor->region.id],
+						&tree.dominates[successor->region.id]);
+				 bit_array_set(&tree.dominates[successor->region.id], successor->region.id, true);
+			} else {
+				bit_array_or(&tree.dominates[instr->region.id],
+						&tree.dominates[successor->region.id],
+						&tree.dominates[successor->region.id]);
 
-		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-			phi_variants_per_region[i].instr = arena_alloc_array(gen->allocator,
-					InstrIndex,
-					phi_variant_counts_per_region[i]);
-
-			phi_node_of_variant[i] = arena_alloc_array(gen->allocator,
-					InstrIndex,
-					phi_variant_counts_per_region[i]);
-		}
-
-		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
-			const Instr* instr = &gen->instr_buffer.instr[i];
-			if (instr->kind == INSTR_PHI) {
-				InstrInputs variants = instr->phi.variants;
-				for (uint16_t j = 0; j < variants.count; j += 1) {
-					InstrIndex variant_index = gen->instr_buffer.inputs_buffer[variants.start + j];
-					const Instr* variant = &gen->instr_buffer.instr[variant_index.value];
-					assert(variant->kind == INSTR_SELECT);
-
-					uint16_t region_id = instr_region_id(&gen->instr_buffer, variant->select.region);
-					uint16_t variant_count_in_region = phi_variants_per_region[region_id].count;
-
-					assert(variant_count_in_region < phi_variant_counts_per_region[region_id]);
-					phi_variants_per_region[region_id].instr[variant_count_in_region] = variant->select.value;
-					phi_variants_per_region[region_id].count += 1;
-
-					phi_node_of_variant[region_id][variant_count_in_region] = (InstrIndex) { .value = i };
-				}
+				bit_array_set(&visited_regions, successor->region.id, true);
 			}
-		}
 
-		gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
-		gen->phi_variants_per_region = phi_variants_per_region;
-		gen->phi_node_of_variant = phi_node_of_variant;
-
-		printf("phi_variants_per_region:\n");
-		for (uint16_t i = 0 ;i < gen->instr_buffer.region_count; i += 1) {
-			printf("%u:\n", (uint32_t)i);
-			for (uint16_t j = 0; j < phi_variant_counts_per_region[i]; j += 1) {
-				printf("  phi: %u variant_value: %u\n",
-						(uint32_t)phi_node_of_variant[i][j].value,
-						(uint32_t)phi_variants_per_region[i].instr[j].value);
-			}
+			instr_queue_push_back(&stack, successor_index);
 		}
 	}
 
-	InstrIndexArray instr_with_storage_requirement = _x64_gather_instr_with_storage_requirement(
-			gen->instr_buffer,
-			gen->usage_ranges,
-			gen->temp_allocator);
+	// Now determine immediate dominators.
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		BitArray* dominance = &tree.dominates[i];
+		assert(bit_array_get(dominance, i));
+		bit_array_set(dominance, i, false);
 
-	UInt16Array* interference_graph = _x64_build_interference_graph(gen->instr_buffer, 
-			instr_with_storage_requirement,
-			gen->usage_ranges,
-			gen->temp_allocator);
-
-	gen->instr_storage = arena_alloc_array_zeroed(gen->allocator,
-			InstrStorageLocation,
-			gen->instr_buffer.count);
-
-	_x64_run_graph_coloring(gen->instr_buffer,
-			instr_with_storage_requirement,
-			interference_graph,
-			gen->instr_storage,
-			allowed_registers,
-			gen->temp_allocator);
-
-	printf("Interference Graph Edges for each Instr:\n");
-	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
-		UInt16Array overlap = interference_graph[i];
-		printf("%u: ", (uint32_t)instr_with_storage_requirement.instr[i].value);
-
-		for (size_t j = 0; j < overlap.count; j += 1) {
-			InstrIndex overlapping_instr = instr_with_storage_requirement.instr[overlap.values[j]];
-			printf("%u ", (uint32_t)overlapping_instr.value);
+		bool found = false;
+		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
+			if (bit_array_equal(dominance, &tree.dominates[j])) {
+				tree.immediate_dominators[i] = j;
+				found = true;
+				bit_array_set(dominance, i, true);
+				break;
+			}
 		}
 
-		printf("\n");
+		assert(found);
 	}
 
-	printf("Assigned storage locations:\n");
-	for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
-		ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
-
-		String storage_string = STR_LIT("none");
-
-		if (gen->instr_storage[i].kind == INSTR_STORAGE_REG) {
-			StringBuilder builder = { .arena = gen->temp_allocator };
-
-			const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
-			const X64InstrStorageRequirement storage_requirement = s_instr_storage_requiremenets[instr_kind];
-
-			_format_reg_name(&builder, gen->instr_storage[i].reg, storage_requirement.reg_size);
-			storage_string = builder.string;
-		}
-
-		printf("%zu: %.*s\n", i, STR_FMT(storage_string));
-
-		arena_end_temp(temp);
-	}
+	// The initial region dones't have an immediate dominator
+	tree.immediate_dominators[instr_region_id(instr_buffer, initial_region)] = UINT16_MAX;
 
 	arena_end_temp(temp);
-	profile_scope_end();
+
+	return tree;
 }
 
-static bool _x64_validate(X64CodeGenerator* gen) {
-	profile_scope_start(__func__);
+static void _print_dom_tree(const InstrBuffer* instr_buffer, CFGDominatorTree tree) {
+	printf("dom tree:\n");
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		printf("region id=%u imm dom=%u: ",
+				(uint32_t)i,
+				(uint32_t)tree.immediate_dominators[i]);
 
-	bool result = true;
-
-	// Validate symbols
-	assert(gen->ref_table);
-
-	const FunctionRefTable* ref_table = gen->ref_table;
-	for (uint16_t i = 0; i < ref_table->size; i += 1) {
-		const FunctionRef* ref = &ref_table->refs[i];
-
-		if (ref->address == NULL) {
-			printf("unresolved function symbol %.*s\n", STR_FMT(ref->name));
-			result = false;
+		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
+			if (bit_array_get(&tree.dominates[i], j)) {
+				printf("%u ", (uint32_t)j);
+			}
 		}
+		printf("\n");
+	} 
+}
+
+// Finds a region where the control flow splits and later reaches both provided regions.
+// The returned value is the region id.
+static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
+		uint16_t region_a_id,
+		uint16_t region_b_id,
+		Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	BitArray visited_regions = bit_array_alloc(temp_allocator, tree->region_count);
+	bit_array_clear(&visited_regions);
+
+	// NOTE: There is no queue for `uint16_t`, so just reuse the implementation of `InstrIndex`
+	InstrIndex backing_buffer[2];
+	InstrQueue queue;
+	instr_queue_init(&queue, backing_buffer, array_size(backing_buffer));
+
+	instr_queue_push_back(&queue, (InstrIndex) { region_a_id });
+	instr_queue_push_back(&queue, (InstrIndex) { region_b_id });
+
+	while (queue.count) {
+		InstrIndex region_id = instr_queue_pop_front(&queue);
+
+		if (region_id.value == UINT16_MAX) {
+			continue;
+		}
+
+		if (bit_array_get(&visited_regions, region_id.value)) {
+			arena_end_temp(temp);
+			return region_id.value;
+		}
+
+		bit_array_set(&visited_regions, region_id.value, true);
+		instr_queue_push_back(&queue, (InstrIndex) { tree->immediate_dominators[region_id.value] });
 	}
 
-	profile_scope_end();
-	return result;
+	unreachable();
+	return UINT16_MAX;
+}
+
+static bool _is_region_dominated_by(const CFGDominatorTree* tree,
+		uint16_t dominated_region_id,
+		uint16_t dominated_by_region_id) {
+	const BitArray* dominated_regions = &tree->dominates[dominated_by_region_id];
+	return bit_array_get(dominated_regions, dominated_region_id);
 }
 
 //
-// CodeBuffer
+// Code Generation
 //
-
-static const size_t CODE_BUFFER_ALLOCATION_STEP = 64;
-static const size_t CODE_BUFFER_ALLOCATION_STEP_MASK = CODE_BUFFER_ALLOCATION_STEP - 1;
-
-static void _code_buffer_init(CodeBuffer* buffer, Arena* allocator) {
-	buffer->allocator = allocator;
-	buffer->capacity = 0;
-	buffer->size = 0;
-	buffer->buffer = arena_alloc_array(allocator, uint8_t, 0);
-}
-
-static void _code_buffer_grow(CodeBuffer* buffer, size_t expected_capacity) {
-	size_t capacity_delta = expected_capacity - buffer->capacity;
-	size_t allocation_size = (capacity_delta + CODE_BUFFER_ALLOCATION_STEP - 1) & ~CODE_BUFFER_ALLOCATION_STEP_MASK;
-
-	assert_msg(buffer->buffer + buffer->capacity == buffer->allocator->base + buffer->allocator->allocated,
-			"Trying to grow CodeBuffer, however since the last grow there were allocations done, "
-			"with the arena associated with this code buffer");
-
-	arena_alloc_array(buffer->allocator, uint8_t, allocation_size);
-
-	buffer->capacity += allocation_size;
-}
-
-inline uint8_t* _code_buffer_append(CodeBuffer* buffer, size_t byte_count) {
-	if (buffer->size + byte_count > buffer->capacity) {
-		_code_buffer_grow(buffer, buffer->size + byte_count);
-	}
-
-	uint8_t* bytes = buffer->buffer + buffer->size;
-	buffer->size += byte_count;
-	return bytes;
-}
-
-inline void _code_buffer_push_64(CodeBuffer* buffer, uint64_t value) {
-	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
-	a[7] = (uint8_t)(value >> 56);
-	a[6] = (uint8_t)((value >> 48) & 0xff);
-	a[5] = (uint8_t)((value >> 40) & 0xff);
-	a[4] = (uint8_t)((value >> 32) & 0xff);
-	a[3] = (uint8_t)((value >> 24) & 0xff);
-	a[2] = (uint8_t)((value >> 16) & 0xff);
-	a[1] = (uint8_t)((value >> 8) & 0xff);
-	a[0] = (uint8_t)((value >> 0) & 0xff);
-}
-
-inline void _code_buffer_push_32(CodeBuffer* buffer, uint32_t value) {
-	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
-	a[3] = (uint8_t)((value >> 24) & 0xff);
-	a[2] = (uint8_t)((value >> 16) & 0xff);
-	a[1] = (uint8_t)((value >> 8) & 0xff);
-	a[0] = (uint8_t)((value >> 0) & 0xff);
-}
-
-inline void _code_buffer_push_8(CodeBuffer* buffer, uint8_t value) {
-	uint8_t* a = _code_buffer_append(buffer, sizeof(value));
-	*a = value;
-}
-
-inline uint8_t _rex_prefix(uint8_t w, uint8_t r, uint8_t x, uint8_t b) {
-	assert(w <= 1);
-	assert(r <= 1);
-	assert(x <= 1);
-	assert(b <= 1);
-	return 0b01000000 | (w << 3) | (r << 2) | (x << 1) | (b << 0);
-}
-
-inline uint8_t _rex_prefix_src_dst(uint8_t is_64_bit_reg, uint8_t src_reg, uint8_t dst_reg) {
-	return _rex_prefix(is_64_bit_reg, src_reg >> 3, 0, dst_reg >> 3);
-}
-
-typedef enum {
-	MOD_RM_ADDRESS_RM         = 0b00000000,
-	MOD_RM_ADDRESS_RM_DISP_8  = 0b00000000,
-	MOD_RM_ADDRESS_RM_DISP_32 = 0b00000000,
-	MOD_RM_RM                 = 0b11000000,
-} ModRMMod;
-
-inline uint8_t _mod_rm(ModRMMod mod, X64Register reg, uint8_t rm) {
-	assert(reg < 8);
-	assert(rm < 8);
-	assert((mod & 0b00111111) == 0);
-	return ((uint8_t)mod) | (reg << 3) | (rm);
-}
-
-inline uint8_t _mod_rm_with_ext(uint8_t extension, uint8_t reg) {
-	assert(extension < 8);
-	assert(reg < 8);
-	return 0b11000000 | (extension << 3) | (reg);
-}
 
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
-	uint8_t* bytes = _code_buffer_append(buffer, 2);
-	bytes[0] = 0b01000000 | (1 << 3) | (reg >> 3);
-	bytes[1] = 0xb8 + (reg & 0b111);
-	_code_buffer_push_64(buffer, value);
+	encode_2(buffer,
+			MNEMONIC_MOV,
+			operand_reg(reg, 64),
+			operand_imm(value, 64));
 }
 
 inline void _emit_load_const_32(CodeBuffer* buffer, X64Register reg, uint32_t value) {
-	if (reg >= 8) {
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
-		bytes[0] = 0b00000000 | (1 << 3) | (reg >> 3);
-		bytes[1] = 0xb8 + (reg & 0b111);
-	} else {
-		uint8_t* bytes = _code_buffer_append(buffer, 1);
-		bytes[0] = 0xb8 + (reg & 0b111);
-	}
-
-	_code_buffer_push_32(buffer, value);
+	encode_2(buffer,
+			MNEMONIC_MOV,
+			operand_reg(reg, 32),
+			operand_imm(value, 32));
 }
 
 inline void _emit_load_const_8(CodeBuffer* buffer, X64Register reg, uint8_t value) {
-	if (reg >= 8) {
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
-		bytes[0] = 0b00000000 | (1 << 3) | (reg >> 3);
-		bytes[1] = 0xb0 + (reg & 0b111);
-	} else {
-		uint8_t* bytes = _code_buffer_append(buffer, 1);
-		bytes[0] = 0xb0 + (reg & 0b111);
-	}
-
-	_code_buffer_push_8(buffer, value);
+	encode_2(buffer,
+			MNEMONIC_MOV,
+			operand_reg(reg, 8),
+			operand_imm(value, 8));
 }
 
-inline void _emit_return(CodeBuffer* buffer) {
-	*_code_buffer_append(buffer, 1) = 0xc3;
-}
-
+// NOTE: Not emitted when src and dst match. Don't use as a 32-bit movzx for that reason.
 inline void _emit_mov_regs(CodeBuffer* buffer, X64Register src, X64Register dst, uint8_t reg_bit_count) {
-	// NOTE: emit the mov anyways for 32-bit regs even if the src and dst are the same,
-	//       since writing to a 32-bit resgister zeros out an upper half of the corresponding 64-bit reg,
-	//       thus this function can be used to zero extend 32-bit values to 64 bits
-	if (src == dst && reg_bit_count != 32) {
+	if (src == dst) {
 		return;
 	}
 
-	switch (reg_bit_count) {
-	case 8: {
-		if (src >= 8 || dst >= 8) {
-			uint8_t rex_prefix = _rex_prefix_src_dst(0, src, dst);
-			_code_buffer_push_8(buffer, rex_prefix);
-		}
-
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
-		bytes[0] = 0x88;
-		bytes[1] = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
-		break;
-	}
-	case 16:
-		unreachable();
-	case 32: {
-		if (src >= 8 || dst >= 8) {
-			uint8_t rex_prefix = _rex_prefix_src_dst(0, src, dst);
-			_code_buffer_push_8(buffer, rex_prefix);
-		}
-
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
-		bytes[0] = 0x89;
-		bytes[1] = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
-		break;
-	}
-	case 64: {
-		uint8_t rex_prefix = _rex_prefix_src_dst(1, src, dst);
-		uint8_t rm = _mod_rm(MOD_RM_RM, src & 0b111, dst & 0b111);
-
-		uint8_t* bytes = _code_buffer_append(buffer, 3);
-		bytes[0] = rex_prefix;
-		bytes[1] = 0x89;
-		bytes[2] = rm;
-		break;
-	}
-	default:
-		 unreachable();
-	}
-}
-
-inline void _emit_push_reg(CodeBuffer* buffer, X64Register reg, uint8_t reg_bit_count) {
-	switch (reg_bit_count) {
-	case 8:
-	case 16:
-	case 32:
-		unreachable();
-	case 64:
-		// The register index dones't fit in 3-bit,
-		// so we need a REX prefix with R set 1,
-		// for an extension of the register index in MODRM
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
-		if (reg >= 8) {
-			bytes[0] = _rex_prefix(0, 0, (reg >> 3), 1);
-			bytes[1] = 0x50 + (reg & 0b111);
-		} else {
-			bytes[0] = 0xff;
-			bytes[1] = _mod_rm_with_ext(6, reg);
-		}
-
-		break;
-	default:
-		unreachable();
-	}
-}
-
-inline void _emit_pop_reg(CodeBuffer* buffer, X64Register dst_reg, uint8_t reg_bit_count) {
-
-	switch (reg_bit_count) {
-	case 8:
-	case 16:
-	case 32:
-		unreachable();
-	case 64:
-		// The register index dones't fit in 3-bit,
-		// so we need a REX prefix with R set 1,
-		// for an extension of the register index in MODRM
-
-		uint8_t* bytes = _code_buffer_append(buffer, 2);
-		if (dst_reg >= 8) {
-			bytes[0] = _rex_prefix(0, 0, (dst_reg >> 3), 1);
-			bytes[1] = 0x58 + (dst_reg & 0b111);
-		} else {
-			bytes[0] = 0x8f;
-			bytes[1] = _mod_rm_with_ext(0, dst_reg);
-		}
-		break;
-	default:
-		unreachable();
-	}
+	encode_2(buffer,
+			MNEMONIC_MOV,
+			operand_reg(dst, reg_bit_count),
+			operand_reg(src, reg_bit_count));
 }
 
 static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
@@ -689,12 +371,10 @@ static void _emit_sub_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	uint8_t* bytes = _code_buffer_append(buffer, 3);
-	bytes[0] = _rex_prefix(1, 0, 0, 0);
-	bytes[1] = 0x81;
-	bytes[2] = _mod_rm_with_ext(5, X64_REG_SP);
-
-	_code_buffer_push_32(buffer, offset);
+	encode_2(buffer,
+			MNEMONIC_SUB,
+			operand_reg(X64_REG_SP, 64),
+			operand_imm(offset, 32));
 }
 
 static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
@@ -702,39 +382,23 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 		return;
 	}
 
-	uint8_t* bytes = _code_buffer_append(buffer, 3);
-	bytes[0] = _rex_prefix(1, 0, 0, 0);
-	bytes[1] = 0x81;
-	bytes[2] = _mod_rm_with_ext(0, X64_REG_SP);
-
-	_code_buffer_push_32(buffer, offset);
-}
-
-//
-// Code Generation
-//
-
-static void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer);
-static void _x64_generate_phi_variants(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
-	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
-
-	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
-	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
-		InstrIndex variant_index = phi_variants.instr[i];
-		_x64_generate_code(gen, variant_index, code_buffer);
-	}
+	encode_2(buffer,
+			MNEMONIC_ADD,
+			operand_reg(X64_REG_SP, 64),
+			operand_imm(offset, 32));
 }
 
 static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
-	uint16_t phi_variant_count = gen->phi_variant_counts_per_region[region_id];
-
 	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
 	const InstrIndex* phi_nodes = gen->phi_node_of_variant[region_id];
 
-	for (uint16_t i = 0; i < phi_variant_count; i += 1) {
+	for (uint16_t i = 0; i < phi_variants.count; i += 1) {
 		InstrIndex variant_index = phi_variants.instr[i];
 		InstrIndex phi_node_index = phi_nodes[i];
+
 		const Instr* value = &gen->instr_buffer.instr[variant_index.value];
+		const Instr* phi_node = &gen->instr_buffer.instr[phi_node_index.value];
+		assert(phi_node->kind == INSTR_PHI);
 
 		const InstrStorageLocation value_storage = gen->instr_storage[phi_variants.instr[i].value];
 		const InstrStorageLocation phi_storage = gen->instr_storage[phi_node_index.value];
@@ -750,6 +414,7 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	const Instr* instr = &gen->instr_buffer.instr[instr_index.value];
 	const InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
 
@@ -773,6 +438,15 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_emit_load_const_64(buffer, instr_storage.reg, instr->const_64.u);
 		return;
 
+	case INSTR_CONST_STRING: {
+		assert(instr_storage.kind == INSTR_STORAGE_REG);
+
+		uint32_t str_id = instr->const_string.string_id;
+		const char* string = gen->merged_strings_buffer + gen->string_offsets[str_id];
+		_emit_load_const_64(buffer, instr_storage.reg, (uint64_t)string);
+		return;
+	}
+
 	case INSTR_BIN_OP_8:
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
@@ -781,17 +455,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_BIN_OP_8);
 
-		_x64_generate_code(gen, instr->bin_op.left, buffer);
-		_x64_generate_code(gen, instr->bin_op.right, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
 		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(left_loc.kind == INSTR_STORAGE_REG);
 		assert(right_loc.kind == INSTR_STORAGE_REG);
-
-		uint8_t* instr_bytes;
 
 		uint8_t left_reg;
 		uint8_t right_reg;
@@ -828,60 +497,34 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			right_reg = right_loc.reg;
 		}
 
-		uint8_t opcode_byte = 0xff;
-		if (instr->kind == INSTR_BIN_OP_8) {
-			switch (instr->bin_op.kind) {
-			case INSTR_BIN_ADD:
-				opcode_byte = 0x2;
-				break;
-			case INSTR_BIN_SUB:
-				opcode_byte = 0x2a;
-				break;
-			}
-		} else if (instr->kind == INSTR_BIN_OP_32 || instr->kind == INSTR_BIN_OP_64) {
-			switch (instr->bin_op.kind) {
-			case INSTR_BIN_ADD:
-				opcode_byte = 0x3;
-				break;
-			case INSTR_BIN_SUB:
-				opcode_byte = 0x2b;
-				break;
-			}
-		}
-
-		assert(opcode_byte != 0xff);
-
 		switch (instr->bin_op.kind) {
 		case INSTR_BIN_ADD:
-			if (instr->kind == INSTR_BIN_OP_64 || left_reg >> 3 || right_reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix_src_dst(instr->kind == INSTR_BIN_OP_64, left_reg, right_reg);
-				_code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			instr_bytes = _code_buffer_append(buffer, 2);
-			instr_bytes[0] = opcode_byte;
-			instr_bytes[1] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
+			encode_2(buffer,
+					MNEMONIC_ADD,
+					operand_reg(left_reg, bit_count),
+					operand_reg(right_reg, bit_count));
 			break;
 		case INSTR_BIN_SUB: {
 			bool should_save_right = dst_loc.reg == right_loc.reg;
 
 			if (should_save_right) {
 				// NOTE: When saving the register, push/pop the whole 64-bit register
-				_emit_push_reg(buffer, right_loc.reg, 64);
+				encode_1(buffer,
+						MNEMONIC_PUSH,
+						operand_reg(right_loc.reg, 64));
 			}
 
-			if (instr->kind == INSTR_BIN_OP_64 || left_reg >> 3 || right_reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix_src_dst(instr->kind == INSTR_BIN_OP_64, left_reg, right_reg);
-				_code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			instr_bytes = _code_buffer_append(buffer, 2);
-			instr_bytes[0] = opcode_byte;
-			instr_bytes[1] = _mod_rm(MOD_RM_RM, left_reg & 0b111, right_reg & 0b111);
+			encode_2(buffer,
+					MNEMONIC_SUB,
+					operand_reg(left_reg, bit_count),
+					operand_reg(right_reg, bit_count));
 
 			if (should_save_right) {
 				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, bit_count);
-				_emit_pop_reg(buffer, right_loc.reg, 64);
+
+				encode_1(buffer,
+						MNEMONIC_POP,
+						operand_reg(right_loc.reg, 64));
 			}
 			break;
 		}
@@ -893,22 +536,17 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_PTR_LOAD_8:
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
-		unreachable();
 	case INSTR_PTR_LOAD_64: {
-		_x64_generate_code(gen, instr->ptr_load.ptr, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation ptr_loc = gen->instr_storage[instr->ptr_load.ptr.value];
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 
-		uint8_t rex_prefix = _rex_prefix_src_dst(1, dst_loc.reg, ptr_loc.reg);
-		uint8_t rm = _mod_rm(MOD_RM_ADDRESS_RM, dst_loc.reg & 0b111, ptr_loc.reg & 0b111);
-
-		uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
-		instr_bytes[0] = rex_prefix;
-		instr_bytes[1] = 0x8b;
-		instr_bytes[2] = rm;
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_LOAD_8);
+		encode_2(buffer,
+				MNEMONIC_MOV,
+				operand_reg(dst_loc.reg, bit_count),
+				operand_mem(ptr_loc.reg, bit_count));
 		return;
 	}
 
@@ -926,8 +564,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_LOGICAL_SHIFT_LEFT_32:
 		unreachable();
 	case INSTR_LOGICAL_SHIFT_LEFT_64: {
-		_x64_generate_code(gen, instr->logical_shift.operand, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation operand_loc = gen->instr_storage[instr->logical_shift.operand.value];
 
@@ -936,133 +572,87 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		_emit_mov_regs(buffer, operand_loc.reg, dst_loc.reg, 64);
 
-		uint8_t rex_prefix = _rex_prefix_src_dst(1, 0, dst_loc.reg);
-		uint8_t rm = _mod_rm_with_ext(4, dst_loc.reg & 0b111);
-
-		uint8_t* instr_bytes = _code_buffer_append(buffer, 4);
-		instr_bytes[0] = rex_prefix;
-		instr_bytes[1] = 0xc1;
-		instr_bytes[2] = rm;
-		instr_bytes[3] = instr->logical_shift.shift_count;
+		encode_2(buffer,
+				MNEMONIC_SHL,
+				operand_reg(dst_loc.reg, 64),
+				operand_imm(instr->logical_shift.shift_count, 8));
 		return;
 	}
 
-	case INSTR_COMPARE_8: {
-		// NOTE: This is mostly a duplicate of what is implemented for `INSTR_COMPARE_32` and `INSTR_COMPARE_64`
-		_x64_generate_code(gen, instr->compare.left, buffer);
-		_x64_generate_code(gen, instr->compare.right, buffer);
-
-		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
-		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
-		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
-		assert(dst_loc.kind == INSTR_STORAGE_REG);
-		assert(left_loc.kind == INSTR_STORAGE_REG);
-		assert(right_loc.kind == INSTR_STORAGE_REG);
-
-		{
-			if (left_loc.reg >> 3 || right_loc.reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix(0, left_loc.reg >> 3, 0, right_loc.reg >> 3);
-				_code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			_code_buffer_push_8(buffer, 0x38);
-			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
-		}
-
-		{
-			if (dst_loc.reg >> 3) {
-				// Why REX.B needs to be set instead of REX.R?
-				_code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
-			}
-
-			uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
-			instr_bytes[0] = 0x0f;
-			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg & 0b111);
-
-			switch (instr->compare.kind) {
-			case INSTR_CMP_EQUAL:
-				instr_bytes[1] = 0x94; // setz
-				return;
-			case INSTR_CMP_NOT_EQUAL:
-				instr_bytes[1] = 0x95; // setne
-				return;
-			case INSTR_CMP_LESS:
-				instr_bytes[1] = 0x9c; // setl
-				return;
-			case INSTR_CMP_LESS_OR_EQUAL:
-				instr_bytes[1] = 0x9e; // setng
-				return;
-			case INSTR_CMP_GREATER:
-				instr_bytes[1] = 0x9f; // setg
-				return;
-			case INSTR_CMP_GREATER_OR_EQUAL:
-				instr_bytes[1] = 0x9d; // setge
-				return;
-			}
-
-			unreachable();
-		}
-
-		return;
-	}
+	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:
-		unreachable();
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64: {
-		_x64_generate_code(gen, instr->compare.left, buffer);
-		_x64_generate_code(gen, instr->compare.right, buffer);
-
-		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
-		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
-		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
-		assert(dst_loc.kind == INSTR_STORAGE_REG);
-		assert(left_loc.kind == INSTR_STORAGE_REG);
-		assert(right_loc.kind == INSTR_STORAGE_REG);
-
-		{
-			if (instr->kind == INSTR_COMPARE_64 || left_loc.reg >> 3 || right_loc.reg >> 3) {
-				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_COMPARE_64, left_loc.reg >> 3, 0, right_loc.reg >> 3);
-				_code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			_code_buffer_push_8(buffer, 0x3b);
-			_code_buffer_push_8(buffer, _mod_rm_with_ext(left_loc.reg & 0b111, right_loc.reg & 0b111));
-		}
-
-		{
-			if (dst_loc.reg >> 3) {
-				// Why REX.B needs to be set instead of REX.R?
-				_code_buffer_push_8(buffer, _rex_prefix(0, 0, 0, dst_loc.reg >> 3));
-			}
-
-			uint8_t* instr_bytes = _code_buffer_append(buffer, 3);
-			instr_bytes[0] = 0x0f;
-			instr_bytes[2] = _mod_rm_with_ext(0, dst_loc.reg & 0b111);
-
-			switch (instr->compare.kind) {
-			case INSTR_CMP_EQUAL:
-				instr_bytes[1] = 0x94; // setz
-				return;
-			case INSTR_CMP_NOT_EQUAL:
-				instr_bytes[1] = 0x95; // setne
-				return;
-			case INSTR_CMP_LESS:
-				instr_bytes[1] = 0x9c; // setl
-				return;
-			case INSTR_CMP_LESS_OR_EQUAL:
-				instr_bytes[1] = 0x9e; // setng
-				return;
-			case INSTR_CMP_GREATER:
-				instr_bytes[1] = 0x9f; // setg
-				return;
-			case INSTR_CMP_GREATER_OR_EQUAL:
-				instr_bytes[1] = 0x9d; // setge
-				return;
-			}
-
+		if (instr->kind == INSTR_COMPARE_16) {
 			unreachable();
 		}
 
+		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
+		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
+		assert(left_loc.kind == INSTR_STORAGE_REG);
+		assert(right_loc.kind == INSTR_STORAGE_REG);
+
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_COMPARE_8);
+
+		encode_2(buffer,
+				MNEMONIC_CMP,
+				operand_reg(left_loc.reg, bit_count),
+				operand_reg(right_loc.reg, bit_count));
+		return;
+	}
+	case INSTR_BOOL_TO_INT: {
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+
+		Instr* operand_instr = instr_buffer_at(instr_buffer, instr->bool_to_int.operand);
+		assert(operand_instr->kind >= INSTR_COMPARE_8);
+		assert(operand_instr->kind <= INSTR_COMPARE_64);
+
+		InstrCompareKind compare_kind = operand_instr->compare.kind;
+		MnemonicKind mnemonic = 0;
+		switch (compare_kind) {
+		case INSTR_CMP_EQUAL:
+			mnemonic = MNEMONIC_SETZ;
+			break;
+		case INSTR_CMP_NOT_EQUAL:
+			mnemonic = MNEMONIC_SETNZ;
+			break;
+		case INSTR_CMP_LESS:
+			mnemonic = MNEMONIC_SETL;
+			break;
+		case INSTR_CMP_LESS_OR_EQUAL:
+			mnemonic = MNEMONIC_SETLE;
+			break;
+		case INSTR_CMP_GREATER:
+			mnemonic = MNEMONIC_SETNLE;
+			break;
+		case INSTR_CMP_GREATER_OR_EQUAL:
+			mnemonic = MNEMONIC_SETNL;
+			break;
+		}
+
+		assert(mnemonic != 0);
+
+		encode_1(buffer, mnemonic, operand_reg(dst_loc.reg, 8));
+		return;							
+	}
+	
+	case INSTR_NEGATE_8:
+	case INSTR_NEGATE_16:
+	case INSTR_NEGATE_32:
+	case INSTR_NEGATE_64: {
+		assert(instr->kind != INSTR_NEGATE_16);
+
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_NEGATE_8);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation operand_loc = gen->instr_storage[instr->negate.operand.value];
+
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(operand_loc.kind == INSTR_STORAGE_REG);
+
+		_emit_mov_regs(buffer, operand_loc.reg, dst_loc.reg, bit_count);
+		encode_1(buffer, MNEMONIC_NEG, operand_reg(dst_loc.reg, bit_count));
 		return;
 	}
 	
@@ -1070,8 +660,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_CAST_TO_16:
 	case INSTR_CAST_TO_32:
 	case INSTR_CAST_TO_64: {
-		_x64_generate_code(gen, instr->cast.value, buffer);
-
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
 		const InstrStorageLocation src_loc = gen->instr_storage[instr->cast.value.value];
 
@@ -1087,28 +675,35 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);
 
+		if (operand_size == output_size) {
+			// The cast is redundant
+			return;
+		}
+
 		if (output_size < operand_size) {
 			// NOTE: When casting to a smaller bit count, just copy the corresponding
 			//       lower half of an input register
-			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, output_size);
+			encode_2(buffer,
+					MNEMONIC_MOV,
+					operand_reg(dst_loc.reg, output_size),
+					operand_reg(src_loc.reg, output_size));
 			return;
 		}
 
 		if (operand_size == 8) {
-			if (instr->kind == INSTR_CAST_TO_64 || (src_loc.reg >= 8 || dst_loc.reg >= 8)) {
-				uint8_t rex_prefix = _rex_prefix(instr->kind == INSTR_CAST_TO_64, dst_loc.reg >> 3, 0, src_loc.reg >> 3);
-				_code_buffer_push_8(buffer, rex_prefix);
-			}
-
-			// movzx
-			_code_buffer_push_8(buffer, 0x0f);
-			_code_buffer_push_8(buffer, 0xb6);
-
-			_code_buffer_push_8(buffer, _mod_rm_with_ext(dst_loc.reg & 0b111, src_loc.reg & 0b111));
+			encode_2(buffer,
+					MNEMONIC_MOVZX,
+					operand_reg(src_loc.reg, operand_size),
+					operand_reg(dst_loc.reg, output_size));
 		} else if (operand_size == 32) {
-			// NOTE: Moving writing to a 32-bit register zeros out the upper half of the corresponding 64-bit regiters.
+			// NOTE: Moving (writing) to a 32-bit register zeros out the upper half of the
+			//       corresponding 64-bit regiters.
 			//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
-			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, 32);
+
+			encode_2(buffer,
+					MNEMONIC_MOV,
+					operand_reg(dst_loc.reg, operand_size),
+					operand_reg(src_loc.reg, operand_size));
 		} else {
 			panic("Not implemented for this operand size");
 		}
@@ -1116,68 +711,60 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	}
 
 	case INSTR_BRANCH: {
-		_x64_generate_code(gen, instr->branch.io_state, buffer);
+		const Instr* condition_instr = instr_buffer_at(instr_buffer, instr->branch.condition);
 
 		// HACK: Need to store somewhere the currently processed region
 		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
 
-		_x64_generate_phi_variants(gen, current_region_id, buffer);
+		switch (condition_instr->kind) {
+		case INSTR_COMPARE_8:
+		case INSTR_COMPARE_16:
+		case INSTR_COMPARE_32:
+		case INSTR_COMPARE_64:
+			break;
+		default:
+			const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
+			assert(cond_loc.kind == INSTR_STORAGE_REG);
 
-		_x64_generate_code(gen, instr->branch.condition, buffer);
+			assert(has_flag(INSTR_FEATURES[condition_instr->kind], INSTR_FEATURE_REG_STORAGE));
+			uint8_t bit_count = s_instr_storage_requiremenets[condition_instr->kind].reg_size;
+			encode_2(buffer,
+					MNEMONIC_TEST,
+					operand_reg(cond_loc.reg, bit_count),
+					operand_reg(cond_loc.reg, bit_count));
+			break;
+		}
 
 		_x64_generate_phi_copies(gen, current_region_id, buffer);
-
-		const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
-		assert(cond_loc.kind == INSTR_STORAGE_REG);
-
-		_code_buffer_push_8(buffer, _rex_prefix(1, cond_loc.reg >> 3, 0, cond_loc.reg >> 3));
-		_code_buffer_push_8(buffer, 0x85);
-		_code_buffer_push_8(buffer, _mod_rm_with_ext(cond_loc.reg & 0b111, cond_loc.reg & 0b111));
-
-		_x64_generate_code(gen, instr->branch.true_region, NULL);
-		_x64_generate_code(gen, instr->branch.false_region, NULL);
 		return;
 	}
 	case INSTR_JUMP: {
 		// HACK: Need to store somewhere the currently processed region
 		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
 
-		_x64_generate_code(gen, instr->jump.io_state, buffer);
-
-		_x64_generate_phi_variants(gen, current_region_id, buffer);
-
 		_x64_generate_phi_copies(gen, current_region_id, buffer);
-
-		_x64_generate_code(gen, instr->jump.target_region, NULL);
 		return;
 	}
 
 	case INSTR_RETURN_VALUE:
-		_x64_generate_code(gen, instr->return_value.io_state, buffer);
-		_x64_generate_code(gen, instr->return_value.value, buffer);
 		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->return_value.value.value];
 		assert(return_value_loc.kind == INSTR_STORAGE_REG);
 
 		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 
-		_emit_return(buffer);
+		// NOTE: Don't need to generate a `ret` instruction, since it is done later when the
+		//       control instructions at the end of each code blocks are generated
 		return;
 	case INSTR_RET:
-		_x64_generate_code(gen, instr->ret.io_state, buffer);
-		_emit_return(buffer);
+		// NOTE: Don't need to generate a `ret` instruction, since it is done later when the
+		//       control instructions at the end of each code blocks are generated
 		return;
 	
 	case INSTR_IO_STATE:
-		if (instr->io_state.producer.value != UINT16_MAX) {
-			_x64_generate_code(gen, instr->io_state.producer, buffer);
-		}
-
 		return;
 	
 	case INSTR_CALL_INTERNAL: {
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
-
-		_x64_generate_code(gen, instr->call_internal.io_state, buffer);
 
 		const uint32_t SHADOW_SPACE_SIZE = 32;
 
@@ -1194,14 +781,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(instr->call_internal.args.count <= 1);
 
 		InstrInputs args = instr->call_internal.args;
-		if (args.count == 1) {
-			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + 0];
-			_x64_generate_code(gen, arg_instr, buffer);
-		}
 
 		// Push saved registers
 		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
-			_emit_push_reg(buffer, saved_registers[i], 64);
+			encode_1(buffer,
+					MNEMONIC_PUSH,
+					operand_reg(saved_registers[i], 64));
 		}
 
 		if (args.count == 1) {
@@ -1219,10 +804,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		// push shadow space
 		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
 
-		// call
-		uint8_t* instr_bytes = _code_buffer_append(buffer, 2);
-		instr_bytes[0] = 0xff;
-		instr_bytes[1] = _mod_rm_with_ext(2, 0);
+		encode_1(buffer, MNEMONIC_CALL, operand_reg(X64_REG_A, 64));
 
 		// pop shadow space
 		_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);
@@ -1233,10 +815,13 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 		// Pop saved registers in reverse order
 		for (size_t i = array_size(saved_registers); i > 0; i -= 1) {
+
 			X64Register reg = saved_registers[i - 1];
 			bool should_restore = instr_storage.reg != reg;
 			if (should_restore) {
-				_emit_pop_reg(buffer, reg, 64);
+				encode_1(buffer,
+						MNEMONIC_POP,
+						operand_reg(reg, 64));
 			} else {
 				_emit_add_rsp(buffer, 8);
 			}
@@ -1245,21 +830,11 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 
-	case INSTR_REGION: {
-		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
-		_code_buffer_init(code_buffer, gen->allocator);
-		_x64_generate_code(gen, instr->region.last_instr, code_buffer);
-		return;
-	}
+	case INSTR_REGION:
+		panic("`INSTR_REGION` are handled outside of this functions. If this `panic` has been"
+				" reached, it means this function was accidentally called for a region");
 	case INSTR_PHI:
 		// Nothing to do here, everything is already handled during code gen of `INSTR_REGION`
-
-		InstrInputs variants = instr->phi.variants;
-		for (uint16_t i = 0; i < variants.count; i += 1) {
-			InstrIndex instr = gen->instr_buffer.inputs_buffer[variants.start + i];
-			_x64_generate_code(gen, instr, buffer);
-		}
-
 		return;
 	case INSTR_SELECT: {
 		return;
@@ -1270,16 +845,15 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 }
 
 static size_t _compute_control_instr_encoding_size(const Instr* instr) {
-	size_t jump_offset_size = sizeof(uint32_t);
-
 	switch (instr->kind) {
 	case INSTR_JUMP:
-		return jump_offset_size + 1;
+		return compute_encoding_size_1(MNEMONIC_JMP, operand_rel32(0));
 	case INSTR_BRANCH:
 		// A branch gets encoded as two jumps:
 		// 1. Jump to the true region if condition is true
 		// 2. Jump to the false region otherwise
-		return jump_offset_size + 2 + jump_offset_size + 1;
+		return compute_encoding_size_1(MNEMONIC_JZ, operand_rel32(0))
+			+ compute_encoding_size_1(MNEMONIC_JMP, operand_rel32(0));
 	case INSTR_RETURN_VALUE:
 	case INSTR_RET:
 		return 1;
@@ -1290,22 +864,42 @@ static size_t _compute_control_instr_encoding_size(const Instr* instr) {
 	return 0;
 }
 
+static MnemonicKind _select_jmp_mnemonic(InstrCompareKind op) {
+	switch (op) {
+	case INSTR_CMP_EQUAL:
+		return MNEMONIC_JZ;
+	case INSTR_CMP_NOT_EQUAL:
+		return MNEMONIC_JNZ;
+	case INSTR_CMP_LESS:
+		return MNEMONIC_JL;
+	case INSTR_CMP_LESS_OR_EQUAL:
+		return MNEMONIC_JLE;
+	case INSTR_CMP_GREATER:
+		return MNEMONIC_JNLE;
+	case INSTR_CMP_GREATER_OR_EQUAL:
+		return MNEMONIC_JNL;
+	}
+
+	unreachable();
+	return 0;
+}
+
 static void _encode_control_instr(const Instr* instr,
 		const InstrBuffer* instr_buffer,
 		size_t current_block_end_offset,
 		const size_t* code_block_offsets,
-		uint8_t* out_encoding) {
+		CodeBuffer* buffer) {
 	switch (instr->kind) {
 	case INSTR_JUMP: {
 		uint16_t target_region_id = instr_region_id(instr_buffer, instr->jump.target_region);
 		size_t target_offset = code_block_offsets[target_region_id];
+		assert(target_offset <= INT64_MAX);
 
-		uint32_t relative_offset = (uint32_t)target_offset - ((uint32_t)current_block_end_offset + 5);
-		assert(relative_offset <= UINT32_MAX);
+		int64_t relative_offset = (int64_t)target_offset - ((int64_t)current_block_end_offset + 5);
+		assert(relative_offset >= INT32_MIN);
+		assert(relative_offset <= INT32_MAX);
 
-		// jmp
-		out_encoding[0] = 0xe9;
-		memcpy(out_encoding + 1, &relative_offset, sizeof(relative_offset));
+		encode_1(buffer, MNEMONIC_JMP, operand_rel32((int32_t)relative_offset));
 		break;
 	}
 	case INSTR_BRANCH: {
@@ -1313,31 +907,43 @@ static void _encode_control_instr(const Instr* instr,
 		// 1. Jump to the true region if condition is true
 		// 2. Jump to the false region otherwise
 
+		MnemonicKind jump_to_true_mnemonic_kind = 0;
+
+		const Instr* condition_instr = instr_buffer_at(instr_buffer, instr->branch.condition);
+		switch (condition_instr->kind) {
+		case INSTR_COMPARE_8:
+		case INSTR_COMPARE_16:
+		case INSTR_COMPARE_32:
+		case INSTR_COMPARE_64:
+			jump_to_true_mnemonic_kind = _select_jmp_mnemonic(condition_instr->compare.kind);
+			break;
+		default:
+			jump_to_true_mnemonic_kind = MNEMONIC_JNZ;
+		}
+
 		uint16_t true_region_id = instr_region_id(instr_buffer, instr->branch.true_region);
 		size_t true_offset = code_block_offsets[true_region_id];
+		assert(true_offset <= INT64_MAX);
 
-		uint32_t true_relative_offset = (uint32_t)true_offset - ((uint32_t)current_block_end_offset + 6);
-		assert(true_relative_offset <= UINT32_MAX);
+		int64_t true_relative_offset = (int64_t)true_offset - ((int64_t)current_block_end_offset + 6);
+		assert(true_relative_offset >= INT32_MIN);
+		assert(true_relative_offset <= INT32_MAX);
 
 		uint16_t false_region_id = instr_region_id(instr_buffer, instr->branch.false_region);
 		size_t false_offset = code_block_offsets[false_region_id];
+		assert(false_offset <= INT64_MAX);
 
-		uint32_t false_relative_offset = (uint32_t)false_offset - ((uint32_t)current_block_end_offset + 6 + 5);
-		assert(false_relative_offset <= UINT32_MAX);
+		int64_t false_relative_offset = (int64_t)false_offset - ((int64_t)current_block_end_offset + 6 + 5);
+		assert(false_relative_offset >= INT32_MIN);
+		assert(false_relative_offset <= INT32_MAX);
 
-		// jnz
-		out_encoding[0] = 0x0f;
-		out_encoding[1] = 0x85;
-		memcpy(out_encoding + 2, &true_relative_offset, sizeof(true_relative_offset));
-
-		// jmp
-		out_encoding[6] = 0xe9;
-		memcpy(out_encoding + 7, &false_relative_offset, sizeof(false_relative_offset));
+		encode_1(buffer, jump_to_true_mnemonic_kind, operand_rel32((int32_t)true_relative_offset));
+		encode_1(buffer, MNEMONIC_JMP, operand_rel32((int32_t)false_relative_offset));
 		break;
 	}
 	case INSTR_RETURN_VALUE:
 	case INSTR_RET:
-		out_encoding[0] = 0xc3;
+		code_buffer_push_8(buffer, 0xc3); // ret
 		break;
 	default:
 		unreachable();
@@ -1346,53 +952,795 @@ static void _encode_control_instr(const Instr* instr,
 	return;
 }
 
+//
+// Code Generation Stages
+//
+
+static void _run_reg_allocator(X64CodeGenerator* gen) {
+	uint16_t allowed_registers = UINT16_MAX;
+	allowed_registers &= ~(1 << X64_REG_SP);
+	allowed_registers &= ~(1 << X64_REG_BP);
+
+	// HACK: Some times the register allocator might allocate the whole register
+	//       to some instruction and also it's high part to the other, thus any
+	//       writes by any of the two instructions will be reflected in two places.
+	allowed_registers &= ~(1 << X64_REG_SI);
+	allowed_registers &= ~(1 << X64_REG_DI);
+
+	gen->instr_storage = x64_alloc_regs(&gen->instr_buffer,
+			gen->usage_ranges,
+			allowed_registers,
+			gen->allocator,
+			gen->temp_allocator);
+
+	if (has_flag(gen->flags, X64_PRINT_ASSIGNED_STORAGE_LOC)) {
+		printf("Assigned storage locations:\n");
+		for (size_t i = 0; i < gen->instr_buffer.count; i += 1) {
+			ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+
+			String storage_string = STR_LIT("none");
+
+			if (gen->instr_storage[i].kind == INSTR_STORAGE_REG) {
+				StringBuilder builder = { .arena = gen->temp_allocator };
+
+				const InstrKind instr_kind = gen->instr_buffer.instr[i].kind;
+				const X64InstrStorageRequirement storage_requirement =
+					s_instr_storage_requiremenets[instr_kind];
+
+				_format_reg_name(&builder,
+						gen->instr_storage[i].reg,
+						storage_requirement.reg_size);
+
+				storage_string = builder.string;
+			}
+
+			printf("%zu: %.*s\n", i, STR_FMT(storage_string));
+
+			arena_end_temp(temp);
+		}
+	}
+}
+
+static bool _x64_validate(X64CodeGenerator* gen) {
+	profile_scope_start(__func__);
+
+	bool result = true;
+
+	// Validate symbols
+	assert(gen->ref_table);
+
+	const FunctionRefTable* ref_table = gen->ref_table;
+	for (uint16_t i = 0; i < ref_table->size; i += 1) {
+		const FunctionRef* ref = &ref_table->refs[i];
+
+		if (ref->address == NULL) {
+			printf("unresolved function symbol %.*s\n", STR_FMT(ref->name));
+			result = false;
+		}
+	}
+
+	profile_scope_end();
+	return result;
+}
+
+
+static void _merge_string_consts(X64CodeGenerator* gen) {
+	profile_scope_start(__func__);
+
+	StringArray strings = gen->string_consts;
+
+	gen->string_offsets = arena_alloc_array(gen->temp_allocator, size_t, strings.count);
+	gen->merged_strings_buffer = arena_alloc_array(gen->allocator, char, 0);
+
+	for (size_t i = 0; i < strings.count; i += 1) {
+		size_t string_length = strings.values[i].length;
+
+		// +1 for null-terminator
+		char* string = arena_alloc_array(gen->allocator, char, string_length + 1);
+		memcpy(string, strings.values[i].v, string_length);
+		string[string_length] = 0;
+
+		gen->string_offsets[i] = string - gen->merged_strings_buffer;
+	}
+
+	profile_scope_end();
+}
+
+//
+// Instruction Scheduler
+//
+// Instruction scheduler is resposible for assigning each instruction to one of the regions in such
+// a way, that whenever an instruction is about to execute, all of its inputs are guaranteed to be
+// available.
+//
+
+static void _collect_phis(X64CodeGenerator* gen, Arena* allocator) {
+	profile_scope_start(__func__);
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
+
+	uint16_t* phi_variant_counts_per_region = arena_alloc_array_zeroed(allocator,
+			uint16_t,
+			gen->instr_buffer.region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		const Instr* instr = &instr_buffer->instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
+			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
+
+			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
+			phi_variant_counts_per_region[region_id] += 1;
+
+		}
+	}
+
+	InstrIndexArray* phi_variants_per_region = arena_alloc_array_zeroed(allocator,
+			InstrIndexArray,
+			instr_buffer->region_count);
+
+	InstrIndex** phi_node_of_variant = arena_alloc_array(allocator,
+			InstrIndex*,
+			instr_buffer->region_count);
+
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_variants_per_region[i].instr = arena_alloc_array(allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	for (uint16_t i = 0; i < gen->instr_buffer.region_count; i += 1) {
+		phi_node_of_variant[i] = arena_alloc_array(allocator,
+				InstrIndex,
+				phi_variant_counts_per_region[i]);
+	}
+
+	// Sort all the phi variants into the arrays corresponding to the region where the variant must
+	// be placed.
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		const Instr* instr = &instr_buffer->instr[i];
+		if (instr->kind != INSTR_PHI) {
+			continue;
+		}
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex select = instr_buffer->inputs_buffer[variants.start + j];
+			const Instr* select_instr = instr_buffer_at(instr_buffer, select);
+
+			uint16_t region_id = instr_region_id(instr_buffer, select_instr->select.region);
+			InstrIndexArray* variants = &phi_variants_per_region[region_id];
+
+			variants->instr[variants->count] = select_instr->select.value;
+			phi_node_of_variant[region_id][variants->count] = (InstrIndex) { i };
+			variants->count += 1;
+		}
+	}
+
+	gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
+	gen->phi_variants_per_region = phi_variants_per_region;
+	gen->phi_node_of_variant = phi_node_of_variant;
+
+	profile_scope_end();
+}
+
+static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffer,
+		uint16_t* assigned_region_to_instr, 
+		uint16_t current_region_id,
+		InstrIndexArray scheduled,
+		const CFGDominatorTree* dom_tree,
+		Arena* temp_allocator) {
+	profile_scope_start(__func__);
+
+	bool valid = true;
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	BitArray visited_instr = bit_array_alloc(temp_allocator, instr_buffer->count);
+	bit_array_clear(&visited_instr);
+
+	for (size_t i = 0; i < scheduled.count; i += 1) {
+		const Instr* instr = instr_buffer_at(instr_buffer, scheduled.instr[i]);
+		if (instr->kind == INSTR_SELECT) {
+			uint16_t region_assigned_to_input = assigned_region_to_instr[instr->select.value.value];
+			uint16_t expected_region = instr_region_id(instr_buffer, instr->select.region);
+
+			bool input_is_available = _is_region_dominated_by(dom_tree,
+					region_assigned_to_input,
+					expected_region);
+
+			assert_msg(input_is_available,
+					"Value definition '%u' appears before its input '%u'. "
+					"Input is not available in region with id '%u', since it is placed in region "
+					"with id '%u'",
+					(uint32_t)scheduled.instr[i].value,
+					(uint32_t)instr->select.value.value,
+					expected_region,
+					region_assigned_to_input);
+		} else {
+			ArenaRegion inner_temp = arena_begin_temp(temp_allocator);
+
+			InstrQueue queue;
+			instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
+
+			instr_enumerate_uses(instr_buffer, scheduled.instr[i], &queue);
+
+			for (size_t j = 0; j < queue.count; j += 1) {
+				InstrIndex input = queue.buffer[j];
+				if (input.value == INVALID_INSTR_INDEX.value) {
+					continue;
+				}
+
+				const Instr* input_instr = instr_buffer_at(instr_buffer, input);
+				if (input_instr->kind == INSTR_REGION) {
+					continue;
+				}
+
+				uint16_t region_assigned_to_input = assigned_region_to_instr[input.value];
+				if (region_assigned_to_input == current_region_id) {
+					if (!bit_array_get(&visited_instr, input.value)) {
+						debug_log_error(
+								"Value definition '%u' in region '%u' appers before its input '%u'",
+								(uint32_t)scheduled.instr[i].value,
+								(uint32_t)current_region_id,
+								(uint32_t)input.value);
+
+						valid = false;
+					}
+				} else {
+					bool input_is_available = _is_region_dominated_by(dom_tree,
+							region_assigned_to_input,
+							current_region_id);
+
+					if (!input_is_available) {
+						debug_log_error(
+								"Input '%u' for value definition '%u' is not available on this "
+								"control path\n"
+								"\n"
+								"Def '%u' is scheduled to execute in region with id '%u'\n"
+								"Input '%u' is scheduled to execute in region with id '%u'\n",
+								(uint32_t)input.value,
+								(uint32_t)scheduled.instr[i].value,
+
+								(uint32_t)scheduled.instr[i].value,
+								(uint32_t)current_region_id,
+
+								(uint32_t)input.value,
+								(uint32_t)region_assigned_to_input);
+
+						valid = false;
+					}
+				}
+			}
+
+			arena_end_temp(inner_temp);
+		}
+
+		bit_array_set(&visited_instr, scheduled.instr[i].value, true);
+	}
+	
+	arena_end_temp(temp);
+	profile_scope_end();
+	return valid;
+}
+
+typedef struct {
+	uint16_t decided_region_id;
+} InstrSchedulingState;
+
+typedef struct {
+	const InstrBuffer* instr_buffer;
+	InstrSchedulingState* states;
+	const CFGDominatorTree* dom_tree;
+
+	Arena* temp_allocator;
+} InstrSchedulingContext;
+
+// Checks whether the `input_instr_index` is guaranteed to be available in the `region_id`.
+//
+// If it's not, uplifts `input_instr_index`. And pushes it onto the queue, since now
+// `input_instr_index` and it's dependencies need to be rescheduled.
+static void _try_enqueue_for_scheduling(InstrQueue* queue,
+		InstrSchedulingContext* context,
+		uint16_t region_id,
+		InstrIndex input_instr_index) {
+
+	uint16_t input_instr_region_id = context->states[input_instr_index.value].decided_region_id;
+	if (input_instr_region_id == UINT16_MAX) {
+		context->states[input_instr_index.value].decided_region_id = region_id;
+		instr_queue_push_back(queue, input_instr_index);
+		return;
+	}
+
+	bool is_input_dominated = _is_region_dominated_by(context->dom_tree,
+				input_instr_region_id,
+				region_id);
+
+	// The input is guaranteed to appear before the instr at `instr_index`
+	if (is_input_dominated) {
+		return;
+	}
+	
+	uint16_t common_region_id = _find_control_flow_split(context->dom_tree,
+			context->states[input_instr_index.value].decided_region_id,
+			region_id,
+			context->temp_allocator);
+
+	context->states[input_instr_index.value].decided_region_id = common_region_id;
+
+	instr_queue_push_back(queue, input_instr_index);
+}
+
+static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
+		InstrIndex instr_index,
+		InstrSchedulingContext* context) {
+	const InstrBuffer* instr_buffer = context->instr_buffer;
+	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+	uint16_t current_region_id = context->states[instr_index.value].decided_region_id;
+	assert_msg(current_region_id != UINT16_MAX,
+			"Instr at `instr_index` must have an already assigned region id");
+
+	switch (instr->kind) {
+	case INSTR_NO_OP:
+	case INSTR_CONST_8:
+	case INSTR_CONST_16:
+	case INSTR_CONST_32:
+	case INSTR_CONST_64:
+	case INSTR_CONST_STRING:
+		break;
+	case INSTR_BIN_OP_8:
+	case INSTR_BIN_OP_16:
+	case INSTR_BIN_OP_32:
+	case INSTR_BIN_OP_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bin_op.left);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bin_op.right);
+		break;
+	case INSTR_PTR_LOAD_8:
+	case INSTR_PTR_LOAD_16:
+	case INSTR_PTR_LOAD_32:
+	case INSTR_PTR_LOAD_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.ptr);
+		break;
+	case INSTR_LOAD_ARG:
+		break;
+	case INSTR_LOGICAL_SHIFT_LEFT_8:
+	case INSTR_LOGICAL_SHIFT_LEFT_16:
+	case INSTR_LOGICAL_SHIFT_LEFT_32:
+	case INSTR_LOGICAL_SHIFT_LEFT_64:
+	case INSTR_LOGICAL_SHIFT_RIGHT_8:
+	case INSTR_LOGICAL_SHIFT_RIGHT_16:
+	case INSTR_LOGICAL_SHIFT_RIGHT_32:
+	case INSTR_LOGICAL_SHIFT_RIGHT_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->logical_shift.operand);
+		break;
+	case INSTR_COMPARE_8:
+	case INSTR_COMPARE_16:
+	case INSTR_COMPARE_32:
+	case INSTR_COMPARE_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->compare.left);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->compare.right);
+		break;
+	case INSTR_BOOL_TO_INT:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bool_to_int.operand);
+		break;
+	case INSTR_NEGATE_8:
+	case INSTR_NEGATE_16:
+	case INSTR_NEGATE_32:
+	case INSTR_NEGATE_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->negate.operand);
+		break;
+	case INSTR_CAST_TO_8:
+	case INSTR_CAST_TO_16:
+	case INSTR_CAST_TO_32:
+	case INSTR_CAST_TO_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->cast.value);
+		break;
+	case INSTR_BRANCH:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->branch.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->branch.condition);
+		break;
+	case INSTR_JUMP:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->jump.io_state);
+		break;
+	case INSTR_RETURN_VALUE:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->return_value.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->return_value.value);
+		break;
+	case INSTR_RET:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ret.io_state);
+		break;
+	case INSTR_IO_STATE:
+		if (instr->io_state.producer.value != INVALID_INSTR_INDEX.value) {
+			_try_enqueue_for_scheduling(queue, context, current_region_id, instr->io_state.producer);
+		}
+
+		break;
+	case INSTR_CALL_INTERNAL: {
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->call_internal.io_state);
+
+		InstrInputs args = instr->call_internal.args;
+		for (uint16_t i = 0; i < args.count; i += 1) {
+			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + i];
+			_try_enqueue_for_scheduling(queue, context, current_region_id, arg_instr);
+		}
+
+		break;
+	}
+	case INSTR_REGION:
+		unreachable();
+	case INSTR_PHI: {
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t i = 0; i < variants.count; i += 1) {
+			InstrIndex variant = instr_buffer->inputs_buffer[variants.start + i];
+			_try_enqueue_for_scheduling(queue, context, current_region_id, variant);
+		}
+		break;
+	}
+	case INSTR_SELECT: {
+		uint16_t region_id = instr_region_id(instr_buffer, instr->select.region);
+		_try_enqueue_for_scheduling(queue, context, region_id, instr->select.value);
+		break;
+	}
+	case INSTR_COUNT:
+		unreachable();
+	}
+}
+
+typedef struct {
+	uint16_t* region_assigned_to_instr;
+
+	// An array that for each region stores an array of instructions that belong to it.
+	InstrIndexArray* scheduled_instr;
+} SchedulingResult;
+
+static void _schedule_instr(const InstrBuffer* instr_buffer,
+		InstrIndexArray scheduled_regions,
+		const CFGDominatorTree* dom_tree,
+		SchedulingResult* out_result,
+		Arena* allocator,
+		Arena* temp_allocator) {
+	profile_scope_start(__func__);
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	InstrSchedulingState* states = arena_alloc_array(temp_allocator,
+			InstrSchedulingState,
+			instr_buffer->count);
+	memset(states, 0xff, sizeof(*states) * instr_buffer->count);
+
+	InstrSchedulingContext context;
+	context.instr_buffer = instr_buffer;
+	context.states = states;
+	context.dom_tree = dom_tree;
+	context.temp_allocator = temp_allocator;
+
+	{
+		ArenaRegion temp1 = arena_begin_temp(temp_allocator);
+
+		InstrQueue queue;
+		instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
+
+		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+			InstrIndex root_region_index = scheduled_regions.instr[i];
+			uint16_t current_region_id = instr_region_id(instr_buffer, root_region_index);
+
+			const Instr* root_region = instr_buffer_at(instr_buffer, root_region_index);
+			instr_queue_push_back(&queue, root_region->region.last_instr);
+			states[root_region->region.last_instr.value].decided_region_id = current_region_id;
+
+			while (queue.count) {
+				InstrIndex instr_index = instr_queue_pop_front(&queue);
+
+				InstrSchedulingState* instr_state = &states[instr_index.value];
+				assert(instr_state->decided_region_id < instr_buffer->region_count);
+
+				_enqueue_inputs_for_scheduling(&queue, instr_index, &context);
+			}
+		}
+
+		arena_end_temp(temp1);
+	}
+
+	// Prepare all the necessary buffers to store the scheduling results.
+	uint16_t* instr_count_per_region = arena_alloc_array_zeroed(temp_allocator,
+			uint16_t,
+			instr_buffer->region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		if (states[i].decided_region_id == UINT16_MAX) {
+			// This instruction doesn't belong to any of regions.
+			continue;
+		}
+
+		instr_count_per_region[states[i].decided_region_id] += 1;
+	}
+
+	InstrIndexArray* scheduled_instr_per_region = arena_alloc_array(allocator,
+			InstrIndexArray,
+			instr_buffer->region_count);
+
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		scheduled_instr_per_region[i].instr = arena_alloc_array(allocator,
+				InstrIndex,
+				instr_count_per_region[i]);
+		scheduled_instr_per_region[i].count = 0;
+	}
+
+	// Now append each instruction to the corresponding region.
+	// 
+	// Instructions are appended in the same order they appear in the `instr_buffer`. After
+	// appending the control instruction to this region, we might still encounter some instruction
+	// that should also belong in this region.
+	//
+	// These instructions are defined later in the `instr_buffer`, and were uplifted to this region.
+	// We shouldn't simply add these uplifted instruction after the control instruction. The control
+	// instruction must be the last one in the region.
+	//
+	// To handle this correctly, during the first pass, control instructions are skipped, and later
+	// during the second pass they are added to the end of each region.
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		if (states[i].decided_region_id == UINT16_MAX) {
+			continue;
+		}
+
+		bool skip = false;
+		switch (instr_buffer->instr[i].kind) {
+		case INSTR_BRANCH:
+		case INSTR_JUMP:
+		case INSTR_RET:
+		case INSTR_RETURN_VALUE:
+			skip = true;
+			break;
+		default:
+			break;
+		}
+
+		if (skip) {
+			continue;
+		}
+
+		InstrIndexArray* region_instr_array =
+			&scheduled_instr_per_region[states[i].decided_region_id];
+
+		region_instr_array->instr[region_instr_array->count] = (InstrIndex) { i };
+		region_instr_array->count += 1;
+	}
+
+	// Now the second pass. Append control instructions.
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_index = scheduled_regions.instr[i];
+		const Instr* instr = instr_buffer_at(instr_buffer, region_index);
+
+		InstrIndex last_instr = instr->region.last_instr;
+		uint32_t region_id = instr->region.id;
+
+		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];
+		assert(region_instr_array->count + 1 == instr_count_per_region[region_id]);
+
+		region_instr_array->instr[region_instr_array->count] = last_instr;
+		region_instr_array->count += 1;
+	}
+
+	arena_end_temp(temp);
+
+	uint16_t* region_assigned_to_instr = arena_alloc_array(allocator,
+			uint16_t,
+			instr_buffer->count);
+
+	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		InstrIndexArray instr = scheduled_instr_per_region[i];
+		for (uint16_t j = 0; j < instr.count; j += 1) {
+			region_assigned_to_instr[instr.instr[j].value] = i;
+		}
+	}
+
+	out_result->region_assigned_to_instr = region_assigned_to_instr;
+	out_result->scheduled_instr = scheduled_instr_per_region;
+
+	profile_scope_end();
+}
+
+static void _schedule_regions(const InstrBuffer* instr_buffer,
+		InstrIndex region_instr_index,
+		Arena* allocator,
+		BitArray* visited_regions,
+		InstrIndexArray* out_scheduled) {
+	const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
+	assert(instr->kind == INSTR_REGION);
+
+	uint16_t region_id = instr->region.id;
+	if (bit_array_get(visited_regions, region_id)) {
+		return;
+	}
+
+	bit_array_set(visited_regions, region_id, true);
+
+	const Instr* last_instr = instr_buffer_at(instr_buffer, instr->region.last_instr);
+	switch (last_instr->kind) {
+	case INSTR_JUMP:
+		_schedule_regions(instr_buffer,
+				last_instr->jump.target_region,
+				allocator,
+				visited_regions,
+				out_scheduled);
+		break;
+	case INSTR_BRANCH:
+		_schedule_regions(instr_buffer,
+				last_instr->branch.true_region,
+				allocator,
+				visited_regions,
+				out_scheduled);
+		_schedule_regions(instr_buffer,
+				last_instr->branch.false_region,
+				allocator,
+				visited_regions,
+				out_scheduled);
+		break;
+	case INSTR_RET:
+	case INSTR_RETURN_VALUE:
+		break;
+	default:
+		unreachable();
+	}
+
+	*arena_alloc(allocator, InstrIndex) = region_instr_index;
+	out_scheduled->count += 1;
+}
+
+static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrIndex initial_region) {
+	BitArray visited_regions = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.region_count);
+	bit_array_clear(&visited_regions);
+
+	InstrIndexArray regions;
+	regions.instr = arena_alloc_array(gen->temp_allocator, InstrIndex, 0);
+	regions.count = 0;
+
+	_schedule_regions(&gen->instr_buffer,
+			initial_region,
+			gen->temp_allocator,
+			&visited_regions,
+			&regions);
+
+	for (size_t i = 0; i < regions.count / 2; i += 1) {
+		size_t j = regions.count - 1 - i;
+
+		InstrIndex temp = regions.instr[i];
+		regions.instr[i] = regions.instr[j];
+		regions.instr[j] = temp;
+	}
+
+	return regions;
+}
+
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
+	profile_scope_start(__func__);
+
+	encoding_init();
+	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+
 	bool validation_result = _x64_validate(gen);
 	assert(validation_result);
 
-	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+	_merge_string_consts(gen);
 
-	InstrIndexArray regions_in_dfs_order = _instr_gather_regions_in_dfs_order(gen->instr_buffer,
+	CFGDominatorTree dom_tree = _build_cfg_dominator_tree(&gen->instr_buffer,
+			root_region,
 			gen->allocator,
+			gen->temp_allocator);
+
+	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
+		_print_dom_tree(&gen->instr_buffer, dom_tree);
+	}
+
+	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
+	_collect_phis(gen, gen->temp_allocator);
+
+	SchedulingResult scheduling_result = {};
+	_schedule_instr(&gen->instr_buffer,
+			scheduled_regions,
+			&dom_tree,
+			&scheduling_result,
 			gen->temp_allocator,
-			root_region);
+			gen->allocator);
+
+	// Print scheduled instructions
+	if (has_flag(gen->flags, X64_PRINT_SCHEDULED_IR)) {
+		const InstrBuffer* instr_buffer = &gen->instr_buffer;
+
+		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+			InstrIndex region_instr = scheduled_regions.instr[i];
+			const Instr* instr = instr_buffer_at(instr_buffer, region_instr);
+
+			InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
+
+			printf("region %%%u id=%u: \n", (uint32_t)region_instr.value, (uint32_t)instr->region.id);
+			for (size_t j = 0; j < scheduled.count; j++) {
+				ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+				InstrIndex instr_index = scheduled.instr[j];
+
+				printf("%zu\t%%%u:", j, (uint32_t)instr_index.value);
+				printf("\033[20G");
+				instr_print(&gen->instr_buffer.instr[instr_index.value],
+						gen->instr_buffer.inputs_buffer,
+						gen->temp_allocator);
+
+				arena_end_temp(temp);
+			}
+			printf("\n");
+		}
+	}
+
+	// Now check that scheduling is valid
+	bool scheduling_is_valid = true;
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_instr = scheduled_regions.instr[i];
+		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+
+		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
+		scheduling_is_valid &= _validate_instr_scheduling_for_region(&gen->instr_buffer,
+				scheduling_result.region_assigned_to_instr,
+				instr->region.id,
+				scheduled,
+				&dom_tree,
+				gen->temp_allocator);
+	}
+
+	assert_msg(scheduling_is_valid, "Instruction scheduler failed to produce a valid result");
+
+	_run_reg_allocator(gen);
 
 	uint16_t region_count = gen->instr_buffer.region_count;
 	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
 			CodeBuffer,
 			region_count);
 
-	_x64_generate_code(gen, root_region, NULL);
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex region_instr = scheduled_regions.instr[i];
+		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
 
-	uint16_t* blocks_in_dfs_order = arena_alloc_array(gen->allocator, uint16_t, regions_in_dfs_order.count);
-	for (size_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
+		code_buffer_init(code_buffer, gen->temp_allocator);
+
+		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
+		for (size_t j = 0; j < scheduled.count; j += 1) {
+			_x64_generate_code(gen, scheduled.instr[j], code_buffer);
+		}
+	}
+
+	uint16_t* blocks_in_dfs_order = arena_alloc_array(gen->allocator, uint16_t, scheduled_regions.count);
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
-		const Instr* instr = instr_buffer_at(instr_buffer, regions_in_dfs_order.instr[i]);
+		const Instr* instr = instr_buffer_at(instr_buffer, scheduled_regions.instr[i]);
 		blocks_in_dfs_order[i] = instr->region.id;
 	}
 
 	size_t final_code_size = 0;
 	size_t* code_block_offsets = arena_alloc_array(gen->temp_allocator, size_t, region_count);
-	for (uint16_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+	size_t* control_instr_size = arena_alloc_array(gen->temp_allocator, size_t, region_count);
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 
-		const Instr* region_instr = instr_buffer_at(instr_buffer, regions_in_dfs_order.instr[i]);
-		uint16_t region_id = instr_region_id(&gen->instr_buffer, regions_in_dfs_order.instr[i]);
+		const Instr* region_instr = instr_buffer_at(instr_buffer, scheduled_regions.instr[i]);
+		uint16_t region_id = instr_region_id(&gen->instr_buffer, scheduled_regions.instr[i]);
 
 		const CodeBuffer* code_buffer = &gen->per_region_code_buffer[region_id];
 		code_block_offsets[region_id] = final_code_size;
+		control_instr_size[region_id] = _compute_control_instr_encoding_size(
+				instr_buffer_at(instr_buffer, region_instr->region.last_instr));
 
 		final_code_size += code_buffer->size;
-		final_code_size += _compute_control_instr_encoding_size(
-				instr_buffer_at(instr_buffer, region_instr->region.last_instr));
+		final_code_size += control_instr_size[region_id];
 	}
 
 	void* executable_memory = allocate_executable(final_code_size);
-	for (uint16_t i = 0; i < regions_in_dfs_order.count; i += 1) {
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 
-		const Instr* region_instr = instr_buffer_at(instr_buffer, regions_in_dfs_order.instr[i]);
-		uint16_t region_id = instr_region_id(&gen->instr_buffer, regions_in_dfs_order.instr[i]);
+		const Instr* region_instr = instr_buffer_at(instr_buffer, scheduled_regions.instr[i]);
+		uint16_t region_id = instr_region_id(&gen->instr_buffer, scheduled_regions.instr[i]);
 
 		size_t block_size = gen->per_region_code_buffer[region_id].size;
 		size_t block_offset = code_block_offsets[region_id];
@@ -1401,13 +1749,19 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 				gen->per_region_code_buffer[region_id].buffer,
 				block_size);
 
-		uint8_t* control_instr_encoding_buffer = (uint8_t*)executable_memory + block_offset + block_size;
+		CodeBuffer control_instr_buffer = {};
+		code_buffer_wrap(&control_instr_buffer,
+				(uint8_t*)executable_memory + block_offset + block_size,
+				control_instr_size[region_id]);
+
 		_encode_control_instr(
 				instr_buffer_at(instr_buffer, region_instr->region.last_instr),
 				instr_buffer,
 				block_offset + block_size,
 				code_block_offsets,
-				control_instr_encoding_buffer);
+				&control_instr_buffer);
+
+		assert(control_instr_buffer.size == control_instr_buffer.capacity);
 	}
 
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;
@@ -1419,5 +1773,6 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	machine_code.size_in_bytes = final_code_size;
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return machine_code;
 }

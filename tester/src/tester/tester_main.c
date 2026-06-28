@@ -84,6 +84,16 @@ static TestCase parser_tests[] = {
 	test(test_parse_int_literal_sufixes_with_bit_count),
 	test(test_invalid_int_literal_sufixes),
 	test(test_parse_type_of_int_literal_with_sufix),
+	test(test_simple_escape_sequences),
+	test(test_invalid_escape_sequences),
+	test(test_octal_escape_sequence),
+	test(test_hex_escape_sequence),
+	test(test_out_of_range_octal_sequence),
+	test(test_out_of_range_hex_sequence),
+	test(test_hex_escape_sequence_without_following_digits_fails),
+	test(test_parse_empty_char_fails),
+	test(test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long),
+	test(test_parse_char_const_with_multiple_chars_is_tool_long),
 };
 
 static TestCase compiler_tests[] = {
@@ -117,6 +127,11 @@ static TestCase x64_tests[] = {
 	test(test_min),
 	test(test_char_to_lower),
 	test(test_char_to_upper),
+	test(test_return_file_path),
+	test(test_encode_mov_indirect_addr),
+	test(test_encode_mov_const_32_to_extended_register),
+	test(test_encode_push_extended_register),
+	test(test_encode_pop_extended_register),
 };
 
 static TestSuite s_test_suites[] = {
@@ -178,6 +193,7 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 			&source_storage,
 			source_file,
 			&diagnostics,
+			heap_allocator_new(),
 			arena,
 			temp_arena,
 			&generated_tokens_arena);
@@ -195,6 +211,8 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 			has_token = true;
 		}
 	}
+
+	preprocessor_release(&preprocessor);
 
 	assert_msg(has_token, "Preprocessor hasn't generated any tokens");
 	assert(first_token.kind == TOKEN_IDENT);

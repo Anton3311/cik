@@ -21,7 +21,6 @@
 typedef struct Instr Instr;
 typedef struct InstrBuffer InstrBuffer;
 typedef struct InstrUsageRange InstrUsageRange;
-typedef struct InstrStack InstrStack;
 typedef struct InstrQueue InstrQueue;
 
 typedef enum {
@@ -32,10 +31,17 @@ typedef enum {
 	INSTR_CONST_32,
 	INSTR_CONST_64,
 
+	INSTR_CONST_STRING,
+
 	INSTR_BIN_OP_8,
 	INSTR_BIN_OP_16,
 	INSTR_BIN_OP_32,
 	INSTR_BIN_OP_64,
+
+	INSTR_NEGATE_8,
+	INSTR_NEGATE_16,
+	INSTR_NEGATE_32,
+	INSTR_NEGATE_64,
 
 	INSTR_LOGICAL_SHIFT_LEFT_8,
 	INSTR_LOGICAL_SHIFT_LEFT_16,
@@ -51,6 +57,8 @@ typedef enum {
 	INSTR_COMPARE_16,
 	INSTR_COMPARE_32,
 	INSTR_COMPARE_64,
+
+	INSTR_BOOL_TO_INT,
 
 	INSTR_CAST_TO_8,
 	INSTR_CAST_TO_16,
@@ -153,12 +161,20 @@ struct Instr {
 			double f;
 		} const_64;
 
+		struct {
+			uint32_t string_id;
+		} const_string;
+
 		// The same for all INSTR_BIN_OP_*
 		struct {
 			InstrBinOp kind;
 			InstrIndex left;
 			InstrIndex right;
 		} bin_op;
+
+		struct {
+			InstrIndex operand;
+		} negate;
 
 		struct {
 			InstrIndex operand;
@@ -170,6 +186,10 @@ struct Instr {
 			InstrIndex left;
 			InstrIndex right;
 		} compare;
+
+		struct {
+			InstrIndex operand;
+		} bool_to_int;
 
 		struct {
 			InstrIndex value;
@@ -261,30 +281,6 @@ inline InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer,
 	return inputs;
 }
 
-struct InstrStack {
-	InstrIndex* instr;
-	size_t count;
-	size_t capacity;
-};
-
-inline void instr_stack_alloc(InstrStack* stack, Arena* allocator, size_t capacity) {
-	stack->count = 0;
-	stack->capacity = capacity;
-	stack->instr = arena_alloc_array(allocator, InstrIndex, capacity);
-}
-
-inline void instr_stack_push(InstrStack* stack, InstrIndex instr) {
-	assert(stack->count < stack->capacity);
-	stack->instr[stack->count] = instr;
-	stack->count += 1;
-}
-
-inline InstrIndex instr_stack_pop(InstrStack* stack) {
-	assert(stack->count > 0);
-	stack->count -= 1;
-	return stack->instr[stack->count];
-}
-
 struct InstrQueue {
 	InstrIndex* buffer;
 	size_t head;
@@ -296,6 +292,15 @@ inline void instr_queue_alloc(InstrQueue* queue, Arena* allocator, size_t capaci
 	assert(capacity >= 1);
 
 	queue->buffer = arena_alloc_array(allocator, InstrIndex, capacity);
+	queue->head = 0;
+	queue->count = 0;
+	queue->capacity = capacity;
+}
+
+inline void instr_queue_init(InstrQueue* queue, InstrIndex* backing_buffer, size_t capacity) {
+	assert(capacity >= 1);
+
+	queue->buffer = backing_buffer;
 	queue->head = 0;
 	queue->count = 0;
 	queue->capacity = capacity;
@@ -371,6 +376,11 @@ inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 
 #define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[index.value]
 
+InstrIndex instr_new_int_const(InstrBuffer* buffer,
+		Arena* allocator,
+		uint64_t value,
+		size_t int_size);
+
 inline InstrIndex instr_new_region(InstrBuffer* buffer, Arena* allocator) {
 	InstrIndex i = instr_buffer_append(buffer, allocator);
 	Instr* instr = instr_buffer_at(buffer, i);
@@ -432,8 +442,14 @@ InstrIndex instr_new_cast(InstrBuffer* buffer,
 uint16_t instr_region_id(const InstrBuffer* buffer, InstrIndex region_index);
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);
 
-void instr_push_input_dependeices(const InstrBuffer* buffer, InstrInputs inputs, InstrStack* out_dependencies);
-void instr_enumerate_dependencies(const InstrBuffer buffer, InstrIndex instr_index, InstrStack* out_dependencies);
+void instr_push_input_dependencies(const InstrBuffer* buffer,
+		InstrInputs inputs,
+		InstrQueue* out_dependencies);
+
+// Pushes all the uses (inputs) of this instructions to the back of the queue
+void instr_enumerate_uses(const InstrBuffer* buffer,
+		InstrIndex instr_index,
+		InstrQueue* queue);
 
 typedef struct {
 	InstrIndex* instr;

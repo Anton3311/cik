@@ -21,8 +21,7 @@ typedef enum {
 	C_FLAG_NONE                    = 0,
 	C_FLAG_KEEP_DEAD_INSTR         = 1 << 0,
 	C_FLAG_DO_NOT_INCLUDE_WIN_SDK  = 1 << 1,
-	C_FLAG_PRINT_IR_INSTR          = 1 << 2,
-	C_FLAG_PRINT_AST               = 1 << 3,
+	C_FLAG_PRINT_AST               = 1 << 2,
 } CompilerFlags;
 
 static const char* s_help_menu = 
@@ -37,7 +36,9 @@ static const char* s_help_menu =
 	"\n"
 	"  Backend flags:           \n"
 	"    --keep-dead-instr      don't eliminate dead instructions\n"
-	"    --show-ir              print IR instructions before lowering to machine code\n";
+	"    --show-ir              print generated IR instructions\n"
+	"    --x64-debug-log        log results of intermediate operations for debugging\n"
+	"    --x64-show-instr-loc   print which storage locations were assigned to each instruction";
 
 int main(int argc, char *argv[]) {
 	profile_init(1000 * 1000);
@@ -68,6 +69,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	CompilerFlags flags = C_FLAG_NONE;
+	X64BackendFlags backend_flags = X64_NONE;
 
 	if (argc >= 2) {
 		SourceStorage source_storage = {};
@@ -92,9 +94,13 @@ int main(int argc, char *argv[]) {
 			} else if (str_equal(arg, STR_LIT("--keep-dead-instr"))) {
 				flags |= C_FLAG_KEEP_DEAD_INSTR;
 			} else if (str_equal(arg, STR_LIT("--show-ir"))) {
-				flags |= C_FLAG_PRINT_IR_INSTR;
+				backend_flags |= X64_PRINT_SCHEDULED_IR;
 			} else if (str_equal(arg, STR_LIT("--show-ast"))) {
 				flags |= C_FLAG_PRINT_AST;
+			} else if (str_equal(arg, STR_LIT("--x64-debug-log"))) {
+				backend_flags |= X64_DEBUG_LOG;
+			} else if (str_equal(arg, STR_LIT("--x64-show-instr-loc"))) {
+				backend_flags |= X64_PRINT_ASSIGNED_STORAGE_LOC;
 			} else {
 				fprintf(stderr, "Unknown argument '%s'", argv[i]);
 				return EXIT_FAILURE;
@@ -125,6 +131,7 @@ int main(int argc, char *argv[]) {
 				&source_storage,
 				source_file,
 				&diagnostics,
+				heap_allocator_new(),
 				&arena,
 				&temp_arena,
 				&generated_tokens_arena);
@@ -138,12 +145,14 @@ int main(int argc, char *argv[]) {
 		Parser parser = {};
 		parser_init(&parser, &ast_arena, &temp_arena, &ident_storage, &preprocessor, &diagnostics);
 
-		ParsedAST parsed_ast = {};
+		AST parsed_ast = {};
 		{
 			profile_scope_start("parse");
 			parser_parse(&parser, &parsed_ast);
 			profile_scope_end();
 		}
+
+		preprocessor_release(&preprocessor);
 
 		if (has_flag(flags, C_FLAG_PRINT_AST)) {
 			if (parsed_ast.root_nodes.first) {
@@ -156,7 +165,7 @@ int main(int argc, char *argv[]) {
 			return EXIT_FAILURE;
 		}
 
-		for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+		for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 			if (node->kind == AST_NODE_FUNCTION) {
 				if (node->function_def->body == NULL) {
 					continue;
@@ -172,6 +181,7 @@ int main(int argc, char *argv[]) {
 				c.temp_allocator = &temp_arena;
 				c.pointer_type_layout = type_layout_new(8, 8);
 				c.func_ref_table.allocator = heap_allocator_new();
+				c.str_storage.allocator = heap_allocator_new();
 
 				CompiledFunction func = function_compiler_compile(&c);
 				compiler_resolve_default_func_refs(&func.func_ref_table);
@@ -180,32 +190,21 @@ int main(int argc, char *argv[]) {
 					instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
 				}
 
-				if (has_flag(flags, C_FLAG_PRINT_IR_INSTR)) {
-					instr_print_all(func.instr_buffer, &temp_arena);
-				}
-
-				uint16_t allowed_registers = UINT16_MAX;
-				allowed_registers &= ~(1 << X64_REG_SP);
-				allowed_registers &= ~(1 << X64_REG_BP);
-
-				// HACK: Some times the register allocator might allocate the whole register
-				//       to some instruction and also it's high part to the other, thus any
-				//       writes by any of the two instructions will be reflected in two places.
-				allowed_registers &= ~(1 << X64_REG_SI);
-				allowed_registers &= ~(1 << X64_REG_DI);
-
 				X64CodeGenerator gen = {};
+				gen.flags = backend_flags;
 				gen.instr_buffer = func.instr_buffer;
 				gen.usage_ranges = func.usage_ranges;
 				gen.allocator = &arena;
 				gen.temp_allocator = &temp_arena;
 				gen.ref_table = &func.func_ref_table;
+				gen.string_consts = str_storage_to_array(&c.str_storage);
 
-				x64_alloc_registers(&gen, allowed_registers);
 				MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 
 				// Free function symbol table
 				func_ref_table_release(&func.func_ref_table);
+				// Free string storage
+				str_storage_release(&c.str_storage);
 
 				typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
 				ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;

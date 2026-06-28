@@ -12,10 +12,15 @@ static String s_instr_kind_to_string[] = {
     [INSTR_CONST_16] = STR_LIT("const_16"),
     [INSTR_CONST_32] = STR_LIT("const_32"),
     [INSTR_CONST_64] = STR_LIT("const_64"),
+    [INSTR_CONST_STRING] = STR_LIT("const_string"),
     [INSTR_BIN_OP_8] = STR_LIT("bin_op_8"),
     [INSTR_BIN_OP_16] = STR_LIT("bin_op_16"),
     [INSTR_BIN_OP_32] = STR_LIT("bin_op_32"),
     [INSTR_BIN_OP_64] = STR_LIT("bin_op_64"),
+    [INSTR_NEGATE_8] = STR_LIT("negate_8"),
+    [INSTR_NEGATE_16] = STR_LIT("negate_16"),
+    [INSTR_NEGATE_32] = STR_LIT("negate_32"),
+    [INSTR_NEGATE_64] = STR_LIT("negate_64"),
     [INSTR_LOGICAL_SHIFT_LEFT_8] = STR_LIT("logical_shift_left_8"),
     [INSTR_LOGICAL_SHIFT_LEFT_16] = STR_LIT("logical_shift_left_16"),
     [INSTR_LOGICAL_SHIFT_LEFT_32] = STR_LIT("logical_shift_left_32"),
@@ -28,6 +33,7 @@ static String s_instr_kind_to_string[] = {
     [INSTR_COMPARE_16] = STR_LIT("compare_16"),
     [INSTR_COMPARE_32] = STR_LIT("compare_32"),
     [INSTR_COMPARE_64] = STR_LIT("compare_64"),
+    [INSTR_BOOL_TO_INT] = STR_LIT("bool_to_int"),
     [INSTR_CAST_TO_8] = STR_LIT("cast_to_8"),
     [INSTR_CAST_TO_16] = STR_LIT("cast_to_16"),
     [INSTR_CAST_TO_32] = STR_LIT("cast_to_32"),
@@ -70,10 +76,10 @@ String instr_bin_op_name(InstrBinOp op_kind) {
 String instr_compare_kind_name(InstrCompareKind kind) {
 	return s_instr_compare_kind_to_string[kind];
 }
-void instr_enumerate_dependencies(const InstrBuffer buffer,
-                                  InstrIndex instr_index,
-                                  InstrStack* out_dependencies) {
-    const Instr* instr = &buffer.instr[instr_index.value];
+void instr_enumerate_uses(const InstrBuffer* buffer,
+                                InstrIndex instr_index,
+                                InstrQueue* out_dependencies) {
+    const Instr* instr = &buffer->instr[instr_index.value];
     switch (instr->kind) {
     case INSTR_NO_OP:
         break;
@@ -85,121 +91,138 @@ void instr_enumerate_dependencies(const InstrBuffer buffer,
         break;
     case INSTR_CONST_64:
         break;
+    case INSTR_CONST_STRING:
+        break;
     case INSTR_BIN_OP_8:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
         break;
     case INSTR_BIN_OP_16:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
         break;
     case INSTR_BIN_OP_32:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
         break;
     case INSTR_BIN_OP_64:
-        instr_stack_push(out_dependencies, instr->bin_op.left);
-        instr_stack_push(out_dependencies, instr->bin_op.right);
+        instr_queue_push_back(out_dependencies, instr->bin_op.left);
+        instr_queue_push_back(out_dependencies, instr->bin_op.right);
+        break;
+    case INSTR_NEGATE_8:
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
+        break;
+    case INSTR_NEGATE_16:
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
+        break;
+    case INSTR_NEGATE_32:
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
+        break;
+    case INSTR_NEGATE_64:
+        instr_queue_push_back(out_dependencies, instr->negate.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_16:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_32:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_64:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_8:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_16:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_32:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_64:
-        instr_stack_push(out_dependencies, instr->logical_shift.operand);
+        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
         break;
     case INSTR_COMPARE_8:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
         break;
     case INSTR_COMPARE_16:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
         break;
     case INSTR_COMPARE_32:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
         break;
     case INSTR_COMPARE_64:
-        instr_stack_push(out_dependencies, instr->compare.left);
-        instr_stack_push(out_dependencies, instr->compare.right);
+        instr_queue_push_back(out_dependencies, instr->compare.left);
+        instr_queue_push_back(out_dependencies, instr->compare.right);
+        break;
+    case INSTR_BOOL_TO_INT:
+        instr_queue_push_back(out_dependencies, instr->bool_to_int.operand);
         break;
     case INSTR_CAST_TO_8:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_CAST_TO_16:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_CAST_TO_32:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_CAST_TO_64:
-        instr_stack_push(out_dependencies, instr->cast.value);
+        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_PTR_LOAD_8:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_PTR_LOAD_16:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_PTR_LOAD_32:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_PTR_LOAD_64:
-        instr_stack_push(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         break;
     case INSTR_LOAD_ARG:
         break;
     case INSTR_BRANCH:
-        instr_stack_push(out_dependencies, instr->branch.condition);
-        instr_stack_push(out_dependencies, instr->branch.true_region);
-        instr_stack_push(out_dependencies, instr->branch.false_region);
-        instr_stack_push(out_dependencies, instr->branch.io_state);
+        instr_queue_push_back(out_dependencies, instr->branch.condition);
+        instr_queue_push_back(out_dependencies, instr->branch.true_region);
+        instr_queue_push_back(out_dependencies, instr->branch.false_region);
+        instr_queue_push_back(out_dependencies, instr->branch.io_state);
         break;
     case INSTR_JUMP:
-        instr_stack_push(out_dependencies, instr->jump.target_region);
-        instr_stack_push(out_dependencies, instr->jump.io_state);
+        instr_queue_push_back(out_dependencies, instr->jump.target_region);
+        instr_queue_push_back(out_dependencies, instr->jump.io_state);
         break;
     case INSTR_RET:
-        instr_stack_push(out_dependencies, instr->ret.io_state);
+        instr_queue_push_back(out_dependencies, instr->ret.io_state);
         break;
     case INSTR_RETURN_VALUE:
-        instr_stack_push(out_dependencies, instr->return_value.value);
-        instr_stack_push(out_dependencies, instr->return_value.io_state);
+        instr_queue_push_back(out_dependencies, instr->return_value.value);
+        instr_queue_push_back(out_dependencies, instr->return_value.io_state);
         break;
     case INSTR_IO_STATE:
-        instr_stack_push(out_dependencies, instr->io_state.producer);
+        instr_queue_push_back(out_dependencies, instr->io_state.producer);
         break;
     case INSTR_REGION:
-        instr_stack_push(out_dependencies, instr->region.last_instr);
+        instr_queue_push_back(out_dependencies, instr->region.last_instr);
         break;
     case INSTR_PHI:
-        instr_push_input_dependeices(&buffer, instr->phi.variants, out_dependencies);
+        instr_push_input_dependencies(buffer, instr->phi.variants, out_dependencies);
         break;
     case INSTR_SELECT:
-        instr_stack_push(out_dependencies, instr->select.value);
-        instr_stack_push(out_dependencies, instr->select.region);
+        instr_queue_push_back(out_dependencies, instr->select.value);
+        instr_queue_push_back(out_dependencies, instr->select.region);
         break;
     case INSTR_CALL_INTERNAL:
-        instr_push_input_dependeices(&buffer, instr->call_internal.args, out_dependencies);
-        instr_stack_push(out_dependencies, instr->call_internal.io_state);
+        instr_push_input_dependencies(buffer, instr->call_internal.args, out_dependencies);
+        instr_queue_push_back(out_dependencies, instr->call_internal.io_state);
         break;
     case INSTR_COUNT:
         unreachable();
@@ -227,6 +250,9 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
     case INSTR_CONST_64:
         printf("u: %llu i: %lld f: %f ", instr->const_64.u, instr->const_64.i, instr->const_64.f);
         break;
+    case INSTR_CONST_STRING:
+        printf("string_id: %u ", (uint32_t)instr->const_string.string_id);
+        break;
     case INSTR_BIN_OP_8:
         printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
         break;
@@ -238,6 +264,18 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_BIN_OP_64:
         printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        break;
+    case INSTR_NEGATE_8:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        break;
+    case INSTR_NEGATE_16:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        break;
+    case INSTR_NEGATE_32:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        break;
+    case INSTR_NEGATE_64:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
         printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
@@ -274,6 +312,9 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_COMPARE_64:
         printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        break;
+    case INSTR_BOOL_TO_INT:
+        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->bool_to_int.operand.value);
         break;
     case INSTR_CAST_TO_8:
         printf("value: \033[33;1m%u\033[0m ", (uint32_t)instr->cast.value.value);

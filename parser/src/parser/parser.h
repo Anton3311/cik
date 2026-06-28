@@ -2,7 +2,7 @@
 #define PARSER_H
 
 #include "core/core.h"
-#include "parser/parsed_ast.h"
+#include "parser/ast.h"
 
 // A bit unnecessary, a forward declaration would've been enough
 #include "parser/tokenizer.h"
@@ -64,20 +64,20 @@ struct IdentifierEntry {
 	IdentifierEntry* prev;
 
 	union {
-		ParsedStruct* struct_def;
-		ParsedStruct* union_def;
-		ParsedEnum* enum_def;
-		ParsedTypeDef* type_def;
-		ParsedFunction* function_def;
-		ParsedVariable* variable;
+		Struct* struct_def;
+		Struct* union_def;
+		Enum* enum_def;
+		TypeDef* type_def;
+		Function* function_def;
+		Variable* variable;
 
 		struct {
-			ParsedEnum* enum_def;
+			Enum* enum_def;
 			size_t variant_index;
 		} enum_constant;
 
 		struct {
-			ParsedFunction* function_def;
+			Function* function_def;
 			size_t param_index;
 		} function_param;
 	};
@@ -173,6 +173,6 @@ void parser_init(Parser* parser,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics);
 
-void parser_parse(Parser* parser, ParsedAST* ast);
+void parser_parse(Parser* parser, AST* ast);
 
 #endif

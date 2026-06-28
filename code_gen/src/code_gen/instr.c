@@ -22,10 +22,17 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_CONST_32] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_CONST_64] = INSTR_FEATURE_REG_STORAGE,
 
+	[INSTR_CONST_STRING] = INSTR_FEATURE_REG_STORAGE,
+
 	[INSTR_BIN_OP_8] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_BIN_OP_16] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_BIN_OP_32] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_BIN_OP_64] = INSTR_FEATURE_REG_STORAGE,
+
+	[INSTR_NEGATE_8] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_NEGATE_16] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_NEGATE_32] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_NEGATE_64] = INSTR_FEATURE_REG_STORAGE,
 
 	[INSTR_PTR_LOAD_8] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_PTR_LOAD_16] = INSTR_FEATURE_REG_STORAGE,
@@ -42,10 +49,12 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_LOGICAL_SHIFT_RIGHT_32] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_LOGICAL_SHIFT_RIGHT_64] = INSTR_FEATURE_REG_STORAGE,
 
-	[INSTR_COMPARE_8] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_COMPARE_16] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_COMPARE_32] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_COMPARE_64] = INSTR_FEATURE_REG_STORAGE,
+	[INSTR_COMPARE_8] = 0,
+	[INSTR_COMPARE_16] = 0,
+	[INSTR_COMPARE_32] = 0,
+	[INSTR_COMPARE_64] = 0,
+
+	[INSTR_BOOL_TO_INT] = INSTR_FEATURE_REG_STORAGE,
 
 	[INSTR_CAST_TO_8] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_CAST_TO_16] = INSTR_FEATURE_REG_STORAGE,
@@ -68,6 +77,41 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_IO_STATE] = INSTR_FEATURE_CONTROL,
 	[INSTR_REGION] = INSTR_FEATURE_CONTROL,
 };
+
+InstrIndex instr_new_int_const(InstrBuffer* buffer,
+		Arena* allocator,
+		uint64_t value,
+		size_t int_size) {
+	InstrIndex instr_index = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, instr_index);
+
+	switch (int_size) {
+	case 1:
+		assert(value <= 0xff);
+		instr->kind = INSTR_CONST_8;
+		instr->const_8.u = (uint8_t)value;
+		break;
+	case 2:
+		assert(value <= 0xffff);
+		instr->kind = INSTR_CONST_16;
+		instr->const_16.u = (uint16_t)value;
+		break;
+	case 4:
+		assert(value <= 0xffffffff);
+		instr->kind = INSTR_CONST_32;
+		instr->const_32.u = (uint32_t)value;
+		break;
+	case 8:
+		assert(value <= 0xffffffffffffffff);
+		instr->kind = INSTR_CONST_64;
+		instr->const_64.u = value;
+		break;
+	default:
+		unreachable();
+	}
+
+	return instr_index;
+}
 
 InstrIndex instr_new_cast(InstrBuffer* buffer,
 		Arena* allocator,
@@ -107,12 +151,12 @@ bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index) {
 	return has_flag(INSTR_FEATURES[last_instr_kind], INSTR_FEATURE_CONTROL);
 }
 
-void instr_push_input_dependeices(const InstrBuffer* buffer,
+void instr_push_input_dependencies(const InstrBuffer* buffer,
 		InstrInputs inputs,
-		InstrStack* out_dependencies) {
+		InstrQueue* out_dependencies) {
 
 	for (uint16_t i = 0; i < inputs.count; i += 1) {
-		instr_stack_push(out_dependencies, buffer->inputs_buffer[inputs.start + i]);
+		instr_queue_push_back(out_dependencies, buffer->inputs_buffer[inputs.start + i]);
 	}
 }
 
@@ -126,16 +170,16 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 	InstrUsageRange* usage_ranges = arena_alloc_array(allocator, InstrUsageRange, buffer.count);
 	memset(usage_ranges, 0xff, sizeof(*usage_ranges) * buffer.count);
 
-	InstrStack stack;
-	instr_stack_alloc(&stack, temp_allocator, buffer.count);
+	InstrQueue stack;
+	instr_queue_alloc(&stack, temp_allocator, buffer.count);
 
 	BitArray visited_instr = bit_array_alloc(temp_allocator, buffer.count);
 	bit_array_clear(&visited_instr);
 
-	instr_stack_push(&stack, root_instr);
+	instr_queue_push_back(&stack, root_instr);
 
 	while (stack.count) {
-		InstrIndex instr_index = instr_stack_pop(&stack);
+		InstrIndex instr_index = instr_queue_pop_back(&stack);
 		if (instr_index.value == UINT16_MAX) {
 			continue;
 		}
@@ -156,7 +200,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		}
 
 		size_t first_dep_index = stack.count;
-		instr_enumerate_dependencies(buffer, instr_index, &stack);
+		instr_enumerate_uses(&buffer, instr_index, &stack);
 
 		// NOTE: The loop after this check is used to extend the usage range of this instruction dependencies.
 		//       In this way data dependencies get defined for the later register allocation step.
@@ -169,7 +213,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		}
 
 		for (size_t i = first_dep_index; i < stack.count; i += 1) {
-			InstrIndex dep_index = stack.instr[i];
+			InstrIndex dep_index = stack.buffer[i];
 			if (dep_index.value >= buffer.count) {
 				continue;
 			}

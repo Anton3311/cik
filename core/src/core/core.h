@@ -134,6 +134,12 @@ inline void heap_release(void* ptr) {
 Allocator heap_allocator_new();
 
 //
+// Panic Allocator
+//
+
+Allocator panic_allocator_new();
+
+//
 // Arena
 //
 
@@ -301,37 +307,12 @@ inline String sub_str(String str, size_t start, size_t length) {
 	return (String) { .v = str.v + start, .length = length };
 }
 
-#if 0
-inline bool str_equal(String str, const char* cstr) {
-	if (str.v == cstr) {
-		size_t cstr_length = strlen(cstr);
-		return cstr_length == str.length;
-	}
-
-	size_t i = 0;
-	for (i = 0; i < str.length; i++) {
-		if (cstr[i] != str.v[i]) {
-			return false;
-		}
-	}
-
-	// The both strings seem to be equal, so check whether ends of both strings were reached
-	return cstr[i] == 0;
-}
-#endif
-
 inline bool str_equal(String str, String other) {
 	if (str.length != other.length) {
 		return false;
 	}
 
-	for (size_t i = 0; i < str.length; i++) {
-		if (str.v[i] != other.v[i]) {
-			return false;
-		}
-	}
-
-	return true;
+	return strncmp(str.v, other.v, str.length) == 0;
 }
 
 inline bool str_starts_with(String str, String prefix) {
@@ -566,7 +547,8 @@ inline void bit_array_set(const BitArray* array, size_t index, bool value) {
 inline void bit_array_and(const BitArray* a, const BitArray* b, BitArray* out) {
 	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
 
-	for (size_t i = 0; i < a->bit_count; i++) {
+	size_t element_count = (a->bit_count + 7) / 8;
+	for (size_t i = 0; i < element_count; i++) {
 		out->values[i] = a->values[i] & b->values[i];
 	}
 }
@@ -574,10 +556,13 @@ inline void bit_array_and(const BitArray* a, const BitArray* b, BitArray* out) {
 inline void bit_array_or(const BitArray* a, const BitArray* b, BitArray* out) {
 	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
 
-	for (size_t i = 0; i < a->bit_count; i++) {
+	size_t element_count = (a->bit_count + 7) / 8;
+	for (size_t i = 0; i < element_count; i++) {
 		out->values[i] = a->values[i] | b->values[i];
 	}
 }
+
+bool bit_array_equal(const BitArray* a, const BitArray* b);
 
 //
 // Registry

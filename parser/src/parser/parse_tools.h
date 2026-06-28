@@ -44,4 +44,28 @@ typedef struct {
 
 bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_result);
 
+//
+// Escape Sequence Parsing
+//
+
+typedef enum {
+	ESCAPED_CHAR_VALID,
+	ESCAPED_CHAR_INVALID,
+} EscapedCharResult;
+
+typedef struct {
+	EscapedCharResult result;
+	char char_value;
+	uint32_t escape_sequence_length;
+} EscapedChar;
+
+EscapedChar parse_escaped_char(String string,
+		const SourceFile* file,
+		Diagnostics* diagnostics);
+
+void parse_escaped_string(StringBuilder* builder,
+		String string,
+		const SourceFile* file,
+		Diagnostics* diagnostics);
+
 #endif

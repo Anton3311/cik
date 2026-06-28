@@ -1,7 +1,7 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
-#include "parser/parsed_ast.h"
+#include "parser/ast.h"
 #include "code_gen/instr.h"
 #include "code_gen/code_gen.h"
 
@@ -14,8 +14,31 @@ inline TypeLayout type_layout_new(size_t size, size_t alignment) {
 	return (TypeLayout) { .size = size, .alignment = alignment };
 }
 
+//
+// StringStorage
+//
+
 typedef struct {
-	const ParsedFunction* function;
+	Allocator allocator;
+
+	String* strings;
+	uint32_t count;
+	uint32_t capacity;
+} StringStorage;
+
+uint32_t str_storage_append(StringStorage* storage, String string);
+void str_storage_release(StringStorage* storage);
+
+inline StringArray str_storage_to_array(StringStorage* storage) {
+	return (StringArray) { .values = storage->strings, .count = storage->count };
+}
+
+//
+// FunctionCompiler
+//
+
+typedef struct {
+	const Function* function;
 
 	Arena* allocator;
 
@@ -29,13 +52,14 @@ typedef struct {
 	InstrIndex io_state;
 
 	size_t var_count;
-	const ParsedVariable** vars;
-	const ParsedScope** var_parent_scopes;
+	const Variable** vars;
+	const Scope** var_parent_scopes;
 	InstrIndex* var_values;
 	InstrIndex* arg_states;
 
 	TypeLayout pointer_type_layout;
 
+	StringStorage str_storage;
 	FunctionRefTable func_ref_table;
 } FunctionCompiler;
 
@@ -45,6 +69,8 @@ typedef struct {
 	InstrUsageRange* usage_ranges;
 
 	FunctionRefTable func_ref_table;
+
+	StringArray string_consts;
 } CompiledFunction;
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);

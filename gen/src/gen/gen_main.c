@@ -24,7 +24,7 @@ typedef struct {
 bool _parse(GenContext* context,
 		String file_path,
 		StringArray include_dirs,
-		ParsedAST* out_ast,
+		AST* out_ast,
 		IdentifierStorage* out_ident_storage) {
 
 	// Initialize all the required stages
@@ -47,6 +47,7 @@ bool _parse(GenContext* context,
 			source_storage,
 			source_file,
 			&diagnostics,
+			heap_allocator_new(),
 			context->allocator,
 			context->temp_allocator,
 			context->generated_tokens_allocator);
@@ -105,7 +106,7 @@ void _emit_include(StringBuilder* builder, String include_path) {
 void _emit_enum_to_string_mapping(GenContext* context,
 		StringBuilder* builder,
 		String mapping_name,
-		const ParsedEnum* enum_def,
+		const Enum* enum_def,
 		bool skip_last,
 		size_t prefix_length) {
 
@@ -136,7 +137,7 @@ void _emit_enum_to_string_mapping(GenContext* context,
 // There are specifal cases, because such instruction kinds like `INSTR_BIN_OP_*`
 // are defined for different bit counts, are however implemented by the same union
 // variant in the `Instr` struct.
-static String _instr_kind_to_corresponding_instr_field(const ParsedEnum* enum_def,
+static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 		size_t variant_index,
 		Arena* temp_allocator) {
 
@@ -144,6 +145,8 @@ static String _instr_kind_to_corresponding_instr_field(const ParsedEnum* enum_de
 	String variant_name = enum_def->variants[variant_index].name.string;
 	if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
 		return STR_LIT("bin_op");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_NEGATE_"))) {
+		return STR_LIT("negate");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
 		return STR_LIT("ptr_load");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {
@@ -167,16 +170,16 @@ static void* _find_type(IdentifierStorage* ident_storage, IdentifierEntryKind ki
 	assert(kind == IDENT_STRUCT || kind == IDENT_ENUM || kind == IDENT_UNION);
 	assert(name.length > 0);
 
-	ParsedTypeKind type_kind = 0;
+	TypeKind type_kind = 0;
 	switch (kind) {
 	case IDENT_STRUCT:
-		type_kind = PARSED_TYPE_STRUCT;
+		type_kind = TYPE_STRUCT;
 		break;
 	case IDENT_ENUM:
-		type_kind = PARSED_TYPE_ENUM;
+		type_kind = TYPE_ENUM;
 		break;
 	case IDENT_UNION:
-		type_kind = PARSED_TYPE_UNION;
+		type_kind = TYPE_UNION;
 		break;
 	default:
 		unreachable();
@@ -188,7 +191,7 @@ static void* _find_type(IdentifierStorage* ident_storage, IdentifierEntryKind ki
 			name);
 
 	if (alias_entry) {
-		ParsedType* aliased_type = &alias_entry->type_def->aliased_type;
+		Type* aliased_type = &alias_entry->type_def->aliased_type;
 		assert_msg(aliased_type->kind == type_kind,
 				"Given type name ('%.*s') is of a different type, that it was expected",
 				STR_FMT(name));
@@ -233,7 +236,7 @@ bool _generate_instr(GenContext* context) {
 		STR_LIT("stdx"),
 	};
 
-	ParsedAST ast;
+	AST ast;
 	IdentifierStorage ident_storage;
 	if (!_parse(context,
 				STR_LIT("code_gen/src/code_gen/inst.h"),
@@ -243,25 +246,25 @@ bool _generate_instr(GenContext* context) {
 		return false;
 	}
 
-	const ParsedStruct* instr_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* instr_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("Instr"));
-	const ParsedStruct* instr_index_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* instr_index_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("InstrIndex"));
-	const ParsedEnum* instr_kind_enum = (const ParsedEnum*)_find_type(&ident_storage,
+	const Enum* instr_kind_enum = (const Enum*)_find_type(&ident_storage,
 			IDENT_ENUM,
 			STR_LIT("InstrKind"));
-	const ParsedEnum* instr_bin_op_enum = (const ParsedEnum*)_find_type(&ident_storage,
+	const Enum* instr_bin_op_enum = (const Enum*)_find_type(&ident_storage,
 			IDENT_ENUM,
 			STR_LIT("InstrBinOp"));
-	const ParsedEnum* compare_kind_enum = (const ParsedEnum*)_find_type(&ident_storage,
+	const Enum* compare_kind_enum = (const Enum*)_find_type(&ident_storage,
 			IDENT_ENUM,
 			STR_LIT("InstrCompareKind"));
-	const ParsedStruct* string_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* string_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("String"));
-	const ParsedStruct* instr_inputs_struct = (const ParsedStruct*)_find_type(&ident_storage,
+	const Struct* instr_inputs_struct = (const Struct*)_find_type(&ident_storage,
 			IDENT_STRUCT,
 			STR_LIT("InstrInputs"));
 
@@ -306,16 +309,16 @@ bool _generate_instr(GenContext* context) {
 				"	return s_instr_compare_kind_to_string[kind];\n"
 				"}\n"));
 
-	// `instr_enumerate_dependencies` is reponsible for pushing every dependency
+	// `instr_enumerate_uses` is reponsible for pushing every use (input) 
 	// of the current instruction onto the stack,
 	// All the fields of type `InstrIndex` store a dependency, so the generator
 	// needs to go over all of them, and for each generate a piece of code that
 	// pushes dependency stored in that field onto the stack
 	str_builder_append(&builder, STR_LIT(
-				"void instr_enumerate_dependencies(const InstrBuffer buffer,\n"
-				"                                  InstrIndex instr_index,\n"
-				"                                  InstrStack* out_dependencies) {\n"
-				"    const Instr* instr = &buffer.instr[instr_index.value];\n"
+				"void instr_enumerate_uses(const InstrBuffer* buffer,\n"
+				"                                InstrIndex instr_index,\n"
+				"                                InstrQueue* out_dependencies) {\n"
+				"    const Instr* instr = &buffer->instr[instr_index.value];\n"
 				"    switch (instr->kind) {\n"));
 
 	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
@@ -325,21 +328,21 @@ bool _generate_instr(GenContext* context) {
 		str_builder_append(&builder, instr_kind_enum->variants[i].name.string);
 		str_builder_append(&builder, STR_LIT(":\n"));
 
-		const ParsedStructField* field = struct_find_field(instr_struct, instr_struct_name);
+		const StructField* field = struct_find_field(instr_struct, instr_struct_name);
 		if (field) {
 			switch (field->type.kind) {
-			case PARSED_TYPE_STRUCT:
-			case PARSED_TYPE_UNION: {
-				const ParsedStruct* instr_struct = field->type.struct_def;
+			case TYPE_STRUCT:
+			case TYPE_UNION: {
+				const Struct* instr_struct = field->type.struct_def;
 				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
 					if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
-						str_builder_append(&builder, STR_LIT("        instr_stack_push(out_dependencies, instr->"));
+						str_builder_append(&builder, STR_LIT("        instr_queue_push_back(out_dependencies, instr->"));
 						str_builder_append(&builder, instr_struct_name);
 						str_builder_append_char(&builder, '.');
 						str_builder_append(&builder, instr_struct->fields[j].name.string);
 						str_builder_append(&builder, STR_LIT(");\n"));
 					} else if (type_is_struct(&instr_struct->fields[j].type, instr_inputs_struct)) {
-						str_builder_append(&builder, STR_LIT("        instr_push_input_dependeices(&buffer, instr->"));
+						str_builder_append(&builder, STR_LIT("        instr_push_input_dependencies(buffer, instr->"));
 						str_builder_append(&builder, instr_struct_name);
 						str_builder_append_char(&builder, '.');
 						str_builder_append(&builder, instr_struct->fields[j].name.string);
@@ -357,7 +360,7 @@ bool _generate_instr(GenContext* context) {
 		str_builder_append(&builder, STR_LIT("        break;\n"));
 	}
 
-	// End of `instr_enumerate_dependencies`
+	// End of `instr_enumerate_uses`
 	str_builder_append(&builder, STR_LIT(
 				"    case INSTR_COUNT:\n"
 				"        unreachable();\n"
@@ -402,12 +405,12 @@ bool _generate_instr(GenContext* context) {
 		str_builder_append(&builder, variant_name);
 		str_builder_append(&builder, STR_LIT(":\n"));
 
-		const ParsedStructField* field = struct_find_field(instr_struct, instr_struct_name);
+		const StructField* field = struct_find_field(instr_struct, instr_struct_name);
 		if (field) {
 			switch (field->type.kind) {
-			case PARSED_TYPE_STRUCT:
-			case PARSED_TYPE_UNION: {
-				const ParsedStruct* instr_struct = field->type.struct_def;
+			case TYPE_STRUCT:
+			case TYPE_UNION: {
+				const Struct* instr_struct = field->type.struct_def;
 				str_builder_append(&builder, STR_LIT("        printf(\""));
 
 				// First generate the format string
@@ -416,53 +419,53 @@ bool _generate_instr(GenContext* context) {
 					str_builder_append(&builder, STR_LIT(": "));
 
 					switch (instr_struct->fields[j].type.kind) {
-					case PARSED_TYPE_CHAR:
-					case PARSED_TYPE_SIGNED_CHAR:
-					case PARSED_TYPE_SHORT:
-					case PARSED_TYPE_SIGNED_SHORT:
-					case PARSED_TYPE_INT:
-					case PARSED_TYPE_SIGNED_INT:
-					case PARSED_TYPE_INT8:
-					case PARSED_TYPE_INT16:
-					case PARSED_TYPE_INT32:
+					case TYPE_CHAR:
+					case TYPE_SIGNED_CHAR:
+					case TYPE_SHORT:
+					case TYPE_SIGNED_SHORT:
+					case TYPE_INT:
+					case TYPE_SIGNED_INT:
+					case TYPE_INT8:
+					case TYPE_INT16:
+					case TYPE_INT32:
 						str_builder_append(&builder, STR_LIT("%d "));
 						break;
-					case PARSED_TYPE_LONG:
-					case PARSED_TYPE_LONG_LONG:
-					case PARSED_TYPE_INT64:
-					case PARSED_TYPE_SIGNED_LONG:
-					case PARSED_TYPE_SIGNED_LONG_LONG:
-					case PARSED_TYPE_SIGNED_INT64:
+					case TYPE_LONG:
+					case TYPE_LONG_LONG:
+					case TYPE_INT64:
+					case TYPE_SIGNED_LONG:
+					case TYPE_SIGNED_LONG_LONG:
+					case TYPE_SIGNED_INT64:
 						str_builder_append(&builder, STR_LIT("%lld "));
 						break;
 
-					case PARSED_TYPE_UNSIGNED_CHAR:
-					case PARSED_TYPE_UNSIGNED_SHORT:
-					case PARSED_TYPE_UNSIGNED_INT:
-					case PARSED_TYPE_UNSIGNED_INT8:
-					case PARSED_TYPE_UNSIGNED_INT16:
-					case PARSED_TYPE_UNSIGNED_INT32:
+					case TYPE_UNSIGNED_CHAR:
+					case TYPE_UNSIGNED_SHORT:
+					case TYPE_UNSIGNED_INT:
+					case TYPE_UNSIGNED_INT8:
+					case TYPE_UNSIGNED_INT16:
+					case TYPE_UNSIGNED_INT32:
 						str_builder_append(&builder, STR_LIT("%u "));
 						break;
 
-					case PARSED_TYPE_UNSIGNED_LONG:
-					case PARSED_TYPE_UNSIGNED_LONG_LONG:
-					case PARSED_TYPE_UNSIGNED_INT64:
+					case TYPE_UNSIGNED_LONG:
+					case TYPE_UNSIGNED_LONG_LONG:
+					case TYPE_UNSIGNED_INT64:
 						str_builder_append(&builder, STR_LIT("%llu "));
 						break;
 
-					case PARSED_TYPE_FLOAT:
-					case PARSED_TYPE_DOUBLE:
+					case TYPE_FLOAT:
+					case TYPE_DOUBLE:
 						str_builder_append(&builder, STR_LIT("%f "));
 						break;
-					case PARSED_TYPE_ENUM:
+					case TYPE_ENUM:
 						if (type_is_enum(&instr_struct->fields[j].type, instr_bin_op_enum)) {
 							str_builder_append(&builder, STR_LIT("%.*s "));
 						} else if (type_is_enum(&instr_struct->fields[j].type, compare_kind_enum)) {
 							str_builder_append(&builder, STR_LIT("%.*s "));
 						}
 						break;
-					case PARSED_TYPE_STRUCT:
+					case TYPE_STRUCT:
 						if (type_is_struct(&instr_struct->fields[j].type, string_struct)) {
 							str_builder_append(&builder, STR_LIT("%.*s "));
 						} else if (type_is_struct(&instr_struct->fields[j].type, instr_index_struct)) {
@@ -484,44 +487,44 @@ bool _generate_instr(GenContext* context) {
 					String post_arg = {};
 
 					switch (instr_struct->fields[j].type.kind) {
-					case PARSED_TYPE_CHAR:
-					case PARSED_TYPE_SIGNED_CHAR:
-					case PARSED_TYPE_SHORT:
-					case PARSED_TYPE_SIGNED_SHORT:
-					case PARSED_TYPE_INT:
-					case PARSED_TYPE_SIGNED_INT:
-					case PARSED_TYPE_INT8:
-					case PARSED_TYPE_INT16:
+					case TYPE_CHAR:
+					case TYPE_SIGNED_CHAR:
+					case TYPE_SHORT:
+					case TYPE_SIGNED_SHORT:
+					case TYPE_INT:
+					case TYPE_SIGNED_INT:
+					case TYPE_INT8:
+					case TYPE_INT16:
 						pre_arg = STR_LIT("(int32_t)");
 						break;
-					case PARSED_TYPE_INT32:
+					case TYPE_INT32:
 						break;
-					case PARSED_TYPE_LONG:
-					case PARSED_TYPE_LONG_LONG:
-					case PARSED_TYPE_INT64:
-					case PARSED_TYPE_SIGNED_LONG:
-					case PARSED_TYPE_SIGNED_LONG_LONG:
-					case PARSED_TYPE_SIGNED_INT64:
+					case TYPE_LONG:
+					case TYPE_LONG_LONG:
+					case TYPE_INT64:
+					case TYPE_SIGNED_LONG:
+					case TYPE_SIGNED_LONG_LONG:
+					case TYPE_SIGNED_INT64:
 						break;
 
-					case PARSED_TYPE_UNSIGNED_CHAR:
-					case PARSED_TYPE_UNSIGNED_SHORT:
-					case PARSED_TYPE_UNSIGNED_INT:
-					case PARSED_TYPE_UNSIGNED_INT8:
-					case PARSED_TYPE_UNSIGNED_INT16:
+					case TYPE_UNSIGNED_CHAR:
+					case TYPE_UNSIGNED_SHORT:
+					case TYPE_UNSIGNED_INT:
+					case TYPE_UNSIGNED_INT8:
+					case TYPE_UNSIGNED_INT16:
 						pre_arg = STR_LIT("(uint32_t)");
 						break;
-					case PARSED_TYPE_UNSIGNED_INT32:
+					case TYPE_UNSIGNED_INT32:
 						break;
-					case PARSED_TYPE_UNSIGNED_LONG:
-					case PARSED_TYPE_UNSIGNED_LONG_LONG:
-					case PARSED_TYPE_UNSIGNED_INT64:
+					case TYPE_UNSIGNED_LONG:
+					case TYPE_UNSIGNED_LONG_LONG:
+					case TYPE_UNSIGNED_INT64:
 						break;
 
-					case PARSED_TYPE_FLOAT:
-					case PARSED_TYPE_DOUBLE:
+					case TYPE_FLOAT:
+					case TYPE_DOUBLE:
 						break;
-					case PARSED_TYPE_ENUM:
+					case TYPE_ENUM:
 						if (type_is_enum(&instr_struct->fields[j].type, instr_bin_op_enum)) {
 							pre_arg = STR_LIT("STR_FMT(instr_bin_op_name(");
 							post_arg = STR_LIT("))");
@@ -530,7 +533,7 @@ bool _generate_instr(GenContext* context) {
 							post_arg = STR_LIT("))");
 						}
 						break;
-					case PARSED_TYPE_STRUCT:
+					case TYPE_STRUCT:
 						if (type_is_struct(&instr_struct->fields[j].type, string_struct)) {
 							pre_arg = STR_LIT("STR_FMT(");
 							post_arg = STR_LIT(")");

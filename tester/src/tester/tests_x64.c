@@ -39,6 +39,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			&source_storage,
 			source_file,
 			&diagnostics,
+			heap_allocator_new(),
 			context->arena,
 			context->temp_arena,
 			&generated_tokens_arena);
@@ -52,7 +53,9 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	Parser parser = {};
 	parser_init(&parser, &ast_arena, context->arena, &ident_storage, &preprocessor, &diagnostics);
 
-	ParsedAST parsed_ast = {};
+	preprocessor_release(&preprocessor);
+
+	AST parsed_ast = {};
 	parser_parse(&parser, &parsed_ast);
 
 	if (diagnostics.first) {
@@ -60,7 +63,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		panic("Failed to parse");
 	}
 
-	for (const ParsedNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind == AST_NODE_FUNCTION) {
 			if (node->function_def->body == NULL) {
 				continue;
@@ -68,6 +71,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 
 			Arena input_instr_array_allocator = arena_alloc_sub_arena(context->arena, 4096);
 			Arena symbol_arena = arena_alloc_sub_arena(context->arena, 1024);
+			Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
 
 			FunctionCompiler c = {};
 			c.function = node->function_def;
@@ -77,6 +81,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			c.input_instr_array_allocator = &input_instr_array_allocator;
 			c.pointer_type_layout = type_layout_new(8, 8);
 			c.func_ref_table.allocator = arena_allocator_new(&symbol_arena);
+			c.str_storage.allocator = arena_allocator_new(&strings_arena);
 
 			CompiledFunction func = function_compiler_compile(&c);
 			compiler_resolve_default_func_refs(&func.func_ref_table);
@@ -86,17 +91,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			}
 
 			instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
-			instr_print_all(func.instr_buffer, context->temp_arena);
-
-			uint16_t allowed_registers = UINT16_MAX;
-			allowed_registers &= ~(1 << X64_REG_SP);
-			allowed_registers &= ~(1 << X64_REG_BP);
-
-			// HACK: Some times the register allocator might allocate the whole register
-			//       to some instruction and also it's high part to the other, thus any
-			//       writes by any of the two instructions will be reflected in two places.
-			allowed_registers &= ~(1 << X64_REG_SI);
-			allowed_registers &= ~(1 << X64_REG_DI);
 
 			X64CodeGenerator gen = {};
 			gen.instr_buffer = func.instr_buffer;
@@ -104,8 +98,8 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func.func_ref_table;
+			gen.string_consts = str_storage_to_array(&c.str_storage);
 
-			x64_alloc_registers(&gen, allowed_registers);
 			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 			return machine_code;
 		}
@@ -786,4 +780,87 @@ void test_char_to_upper(TestContext* context) {
 	}
 
 	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_return_file_path(TestContext* context) {
+	String source_code = STR_LIT(
+			"const char* main() {\n"
+			"	return __FILE__;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef const char*(*Function)();
+	Function executable_function = (Function)machine_code.code;
+
+	const char* file_path = executable_function();
+	assert(strcmp(file_path, DEFAULT_SOURCE_FILE_PATH) == 0);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_encode_mov_indirect_addr(TestContext* context) {
+	uint8_t expected[] = { 0x48, 0x8b, 0x02 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode_2(&buffer,
+			MNEMONIC_MOV,
+			operand_reg(X64_REG_A, 64),
+			operand_mem(X64_REG_D, 64));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov rax, [rdx]");
+}
+
+void test_encode_mov_const_32_to_extended_register(TestContext* context) {
+	uint8_t expected[] = { 0x41, 0xb8, 0x6d, 0x0, 0x0, 0x0 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode_2(&buffer,
+			MNEMONIC_MOV,
+			operand_reg(X64_REG_8, 32),
+			operand_imm(0x6d, 32));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov r8d, 0x6d");
+}
+
+void test_encode_push_extended_register(TestContext* context) {
+	// NOTE: REX.W seems to be ignored here, however the encoding algorithm prefers to set it, so
+	//       test for that.
+	//
+	//       Without REX.W set the encoded bytes should be 0x41, 0x50
+	uint8_t expected[] = { 0x49, 0x50 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode_1(&buffer,
+			MNEMONIC_PUSH,
+			operand_reg(X64_REG_8, 64));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "push r8");
+}
+
+void test_encode_pop_extended_register(TestContext* context) {
+	// NOTE: REX.W seems to be ignored here, however the encoding algorithm prefers to set it, so
+	//       test for that.
+	//
+	//       Without REX.W set the encoded bytes should be 0x41, 0x58
+	uint8_t expected[] = { 0x49, 0x58 };
+
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	encode_1(&buffer,
+			MNEMONIC_POP,
+			operand_reg(X64_REG_8, 64));
+
+	assert(buffer.size == array_size(expected));
+	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "pop r8");
 }

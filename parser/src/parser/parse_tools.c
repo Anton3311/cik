@@ -322,3 +322,169 @@ bool parse_int_literal(Token token, Diagnostics* diagnostics, IntLiteral* out_re
 			out_result->format,
 			&out_result->value);
 }
+
+static void _report_escape_sequence_error(String string,
+		const SourceFile* file,
+		Diagnostics* diagnostics,
+		String message) {
+
+	SourceRange sequence_start_range = source_string_to_range((SourceString) {
+		.string = string,
+		.source_file = file,
+	});
+
+	diagnostics_report_error(diagnostics,
+			sequence_start_range,
+			message,
+			NULL);
+}
+
+EscapedChar parse_escaped_char(String string,
+		const SourceFile* file,
+		Diagnostics* diagnostics) {
+	assert(string.length >= 2);
+	assert(string.v[0] == '\\');
+
+	switch (string.v[1]) {
+	case '\'':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\'', 2 };
+	case '\"':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\"', 2 };
+	case '\?':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\?', 2 };
+	case '\\':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\\', 2 };
+	case 'a':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\a', 2 };
+	case 'b':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\b', 2 };
+	case 'f':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\f', 2 };
+	case 'n':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\n', 2 };
+	case 'r':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\r', 2 };
+	case 't':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\t', 2 };
+	case 'v':
+		return (EscapedChar) { ESCAPED_CHAR_VALID, '\v', 2 };
+	case 'x': {
+		size_t length = 0;
+		uint32_t value = 0;
+
+		for (size_t i = 2; i < string.length; i += 1) {
+			char c = string.v[i];
+			if (c >= '0' && c <= '9') {
+				value *= 16;
+				value += c - '0';
+				length += 1;
+			} else if (c >= 'a' && c <= 'f') {
+				value *= 16;
+				value += c - 'a' + 10;
+				length += 1;
+			} else if (c >= 'A' && c <= 'F') {
+				value *= 16;
+				value += c - 'A' + 10;
+				length += 1;
+			} else {
+				break;
+			}
+		}
+
+		if (length == 0) {
+			_report_escape_sequence_error(sub_str(string, 0, 2),
+					file,
+					diagnostics,
+					STR_LIT("Used without the following hex digits"));
+
+			return (EscapedChar) { ESCAPED_CHAR_INVALID };
+		}
+
+		if (value > UINT8_MAX || length > 2) {
+			_report_escape_sequence_error(sub_str(string, 0, length + 2),
+					file,
+					diagnostics,
+					STR_LIT("Hex escape sequence is out of range"));
+
+			return (EscapedChar) { ESCAPED_CHAR_INVALID };
+		}
+
+		return (EscapedChar) { ESCAPED_CHAR_VALID, value, length + 2 };
+	}
+	default: {
+		if (!(string.v[1] >= '0' && string.v[1] <= '7')) {
+			break;
+		}
+
+		size_t length = 0;
+		uint32_t value = 0;
+		for (size_t i = 1; i < string.length; i += 1) {
+			if (string.v[i] >= '0' && string.v[i] <= '7') {
+				value *= 8;
+				value += string.v[i] - '0';
+				length += 1;
+			} else {
+				break;
+			}
+
+			if (length == 3) {
+				break;
+			}
+		}
+
+		assert(length >= 1);
+
+		if (value > UINT8_MAX) {
+			_report_escape_sequence_error(sub_str(string, 0, length + 1),
+					file,
+					diagnostics,
+					STR_LIT("Octal escape sequence is out of range"));
+
+			return (EscapedChar) { ESCAPED_CHAR_INVALID };
+		}
+
+		return (EscapedChar) { ESCAPED_CHAR_VALID, value, length + 1 };
+	}
+	}
+
+	_report_escape_sequence_error(sub_str(string, 0, 2),
+			file,
+			diagnostics,
+			STR_LIT("Unknown escape sequence"));
+
+	return (EscapedChar) { ESCAPED_CHAR_INVALID };
+}
+
+void parse_escaped_string(StringBuilder* builder,
+		String string,
+		const SourceFile* file,
+		Diagnostics* diagnostics) {
+	while (string.length > 0) {
+		const char* char_ptr = memchr(string.v, '\\', string.length);
+		if (char_ptr) {
+			size_t char_index = char_ptr - string.v;
+			str_builder_append(builder, sub_str(string, 0, char_index));
+			string.v += char_index;
+			string.length -= char_index;
+
+			assert(string.length >= 2);
+
+			EscapedChar escaped_char = parse_escaped_char(string, file, diagnostics);
+			if (escaped_char.result == ESCAPED_CHAR_INVALID) {
+				string.v += 1;
+				string.length -= 1;
+			} else if (escaped_char.result == ESCAPED_CHAR_VALID) {
+				string.v += escaped_char.escape_sequence_length;
+				string.length -= escaped_char.escape_sequence_length;
+				
+				str_builder_append_char(builder, escaped_char.char_value);
+			} else {
+				unreachable();
+			}
+		} else {
+			str_builder_append(builder, string);
+			break;
+		}
+	}
+}
+

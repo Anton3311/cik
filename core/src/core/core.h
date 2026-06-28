@@ -283,6 +283,12 @@ inline String str_duplicate_from_cstr(const char* str, Arena* allocator) {
 	return (String) { .v = string, .length = length };
 }
 
+inline String str_duplicate(String string, Arena* allocator) {
+	char* copy = arena_alloc_array(allocator, char, string.length);
+	memcpy(copy, string.v, string.length);
+	return (String) { .v = copy, .length = string.length };
+}
+
 inline char* str_to_cstr(String string, Arena* allocator) {
 	char* cstring = arena_alloc_array(allocator, char, string.length + 1);
 	memcpy(cstring, string.v, string.length);
@@ -408,6 +414,12 @@ typedef struct {
 
 bool line_iterator_next(LineIterator* iter, String* out_line);
 StringArray string_to_lines(String string, Arena* allocator);
+
+//
+// Environment
+//
+
+String env_get(const char* var_name, Arena* allocator);
 
 //
 // File System

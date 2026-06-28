@@ -388,6 +388,29 @@ StringArray string_to_lines(String string, Arena* allocator) {
 }
 
 //
+// Environment
+//
+
+String env_get(const char* var_name, Arena* allocator) {
+	DWORD buffer_size = GetEnvironmentVariable(var_name, NULL, 0);
+	if (buffer_size == 0) {
+		return (String) {};
+	}
+
+	ArenaRegion temp = arena_begin_temp(allocator);
+
+	char* buffer = arena_alloc_array(allocator, char, buffer_size);
+	DWORD result = GetEnvironmentVariable(var_name, buffer, buffer_size);
+	if (result + 1 != buffer_size) {
+		arena_end_temp(temp);
+		return (String) {};
+	}
+
+	// buffer_size includes null-terminator
+	return (String) { .v = buffer, .length = buffer_size - 1 };
+}
+
+//
 // File System
 //
 

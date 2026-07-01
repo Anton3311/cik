@@ -106,27 +106,41 @@ void _emit_include(StringBuilder* builder, String include_path) {
 void _emit_enum_to_string_mapping(GenContext* context,
 		StringBuilder* builder,
 		String mapping_name,
+		String enum_type_name,
 		const Enum* enum_def,
 		bool skip_last,
 		size_t prefix_length) {
 
-	str_builder_append(builder, STR_LIT("static String "));
+	str_builder_append(builder, STR_LIT(
+				"String "));
 	str_builder_append(builder, mapping_name);
-	str_builder_append(builder, STR_LIT("[] = {\n"));
+	str_builder_append_char(builder, '(');
+	str_builder_append(builder, enum_type_name);
+	str_builder_append(builder, STR_LIT(
+				" variant) {\n"
+				"    switch (variant) {\n"));
 
 	size_t variant_count = skip_last ? (enum_def->variant_count - 1) : enum_def->variant_count;
 	for (size_t i = 0; i < variant_count; i += 1) {
 		String variant_name = enum_def->variants[i].name.string;
 		String simple_name = sub_str(variant_name, prefix_length, variant_name.length - prefix_length);
 
-		str_builder_append(builder, STR_LIT("    ["));
+		str_builder_append(builder, STR_LIT("    case "));
 		str_builder_append(builder, variant_name);
-		str_builder_append(builder, STR_LIT("] = STR_LIT(\""));
+		str_builder_append(builder, STR_LIT(": return STR_LIT(\""));
 		str_builder_append(builder, str_to_lower(simple_name, context->temp_allocator));
-		str_builder_append(builder, STR_LIT("\"),\n"));
+		str_builder_append(builder, STR_LIT("\");\n"));
 	}
 
-	str_builder_append(builder, STR_LIT("};\n"));
+	// Finish switch scope
+	str_builder_append(builder, STR_LIT("    }\n"));
+
+	str_builder_append(builder, STR_LIT(
+				"    unreachable();\n"
+				"    return (String) {};\n"));
+
+	// Finish function scope
+	str_builder_append(builder, STR_LIT("}\n"));
 }
 
 //
@@ -280,34 +294,24 @@ bool _generate_instr(GenContext* context) {
 
 	_emit_enum_to_string_mapping(context,
 			&builder,
-			STR_LIT("s_instr_kind_to_string"),
+			STR_LIT("instr_name"),
+			STR_LIT("InstrKind"),
 			instr_kind_enum,
 			true, instr_name_prefix_length);
 	_emit_enum_to_string_mapping(context,
 			&builder,
-			STR_LIT("s_instr_bin_op_kind_to_string"),
+			STR_LIT("instr_bin_op_name"),
+			STR_LIT("InstrBinOp"),
 			instr_bin_op_enum,
 			false,
 			sizeof("INSTR_BIN_") - 1);
 	_emit_enum_to_string_mapping(context,
 			&builder,
-			STR_LIT("s_instr_compare_kind_to_string"),
+			STR_LIT("instr_compare_kind_name"),
+			STR_LIT("InstrCompareKind"),
 			compare_kind_enum,
 			false,
 			sizeof("INSTR_CMP_") - 1);
-
-	str_builder_append(&builder, STR_LIT(
-				"String instr_name(InstrKind instr_kind) {\n"
-				"	return s_instr_kind_to_string[instr_kind];\n"
-				"}\n"));
-	str_builder_append(&builder, STR_LIT(
-				"String instr_bin_op_name(InstrBinOp op_kind) {\n"
-				"	return s_instr_bin_op_kind_to_string[op_kind];\n"
-				"}\n"));
-	str_builder_append(&builder, STR_LIT(
-				"String instr_compare_kind_name(InstrCompareKind kind) {\n"
-				"	return s_instr_compare_kind_to_string[kind];\n"
-				"}\n"));
 
 	// `instr_enumerate_uses` is reponsible for pushing every use (input) 
 	// of the current instruction onto the stack,

@@ -8,6 +8,12 @@
 #include <string.h>
 #include <ctype.h>
 
+#if defined(_MSC_VER)
+	#define COMPILER_MSVC
+#elif defined(__clang__)
+	#define COMPILER_CLANG
+#endif
+
 typedef uint8_t bool;
 typedef uint8_t bool8;
 typedef uint32_t char32_t;
@@ -79,8 +85,17 @@ size_t align_to_page_size(size_t bytes);
 // Bit Operations
 //
 
-#define count_leading_zeros(a) __builtin_clz(a)
-#define count_trailing_zeros(a) __builtin_ctz(a)
+#if defined(COMPILER_CLANG)
+	#define count_leading_zeros(a) __builtin_clz(a)
+	#define count_trailing_zeros(a) __builtin_ctz(a)
+#elif defined(COMPILER_MSVC)
+	#define count_leading_zeros(a) __lzcnt64(a)
+
+	inline uint64_t count_trailing_zeros(uint64_t a) {
+		uint64_t result;
+		return _BitScanReverse64(&result, a) ? result : 64;
+	}
+#endif
 
 //
 // Allocator

@@ -5,7 +5,19 @@ typedef struct {
 	String llvm_lib_path;
 } ClangCompilerInfo;
 
+typedef struct {
+	String cl_path;
+	String link_path;
+} MsvcCompilerInfo;
+
+typedef enum {
+	COMPILER_CLANG,
+	COMPILER_MSVC,
+} CompilerKind;
+
 static ClangCompilerInfo s_clang_info;
+static MsvcCompilerInfo s_msvc_compiler_path;
+static CompilerKind s_current_compiler;
 
 inline BuildUnit* _get_unit(BuildContext* context, BuildUnitId id) {
 	assert((size_t)id.value < context->unit_count);
@@ -517,8 +529,32 @@ static bool _try_resolve_clang_exes(String dir,
 	return result;
 }
 
-static bool _find_compiler_in_path(ClangCompilerInfo* out_info,
-		String paths,
+static bool _try_resolve_msvc_exes(String dir,
+		MsvcCompilerInfo* out_info,
+		Arena* allocator) {
+	ArenaRegion temp = arena_begin_temp(allocator);
+
+	bool result = false;
+
+	String cl_path = path_append(dir, STR_LIT("cl.exe"), allocator);
+	String link_path = path_append(dir, STR_LIT("link.exe"), allocator);
+
+	bool cl_exists = path_exists(allocator, cl_path);
+	bool link_exists = path_exists(allocator, link_path);
+	result = cl_exists && link_exists;
+
+	if (result) {
+		out_info->cl_path = cl_path;
+		out_info->link_path= link_path;
+	} else {
+		// Undo allocations
+		arena_end_temp(temp);
+	}
+
+	return result;
+}
+
+static bool _find_compiler_in_path(String paths,
 		Arena* allocator,
 		Arena* temp_allocator) {
 
@@ -536,8 +572,16 @@ static bool _find_compiler_in_path(ClangCompilerInfo* out_info,
 			}
 		}
 
-		if (_try_resolve_clang_exes(path, out_info, allocator)) {
-			result = true;
+		switch (s_current_compiler) {
+		case COMPILER_MSVC:
+			result = _try_resolve_msvc_exes(path, &s_msvc_compiler_path, allocator);
+			break;
+		case COMPILER_CLANG:
+			result = _try_resolve_clang_exes(path, &s_clang_info, allocator);
+			break;
+		}
+
+		if (result) {
 			break;
 		}
 
@@ -596,9 +640,12 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 			}
 
 			String compiler_paths_prefix = STR_LIT("--compiler-paths=");
+			String compiler_kind_prefix = STR_LIT("--cc=");
+
+			s_current_compiler = COMPILER_CLANG;
 
 			String compiler_search_paths = {};
-			if (arg_index < argc) {
+			while (arg_index < argc) {
 				String arg = str_from_cstr(argv[arg_index]);
 				if (str_starts_with(arg, compiler_paths_prefix)) {
 					compiler_search_paths = sub_str(arg,
@@ -607,6 +654,21 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 
 					if (compiler_search_paths.length == 0) {
 						fprintf(stderr, "Empty --compiler-paths\n");
+						return EXIT_FAILURE;
+					}
+
+					arg_index += 1;
+				} else if (str_starts_with(arg, compiler_kind_prefix)) {
+					String compiler_name = sub_str(arg,
+							compiler_kind_prefix.length,
+							arg.length - compiler_kind_prefix.length);
+
+					if (str_equal(compiler_name, STR_LIT("clang"))) {
+						s_current_compiler = COMPILER_CLANG;
+					} else if (str_equal(compiler_name, STR_LIT("cl"))) {
+						s_current_compiler = COMPILER_MSVC;
+					} else {
+						fprintf(stderr, "Unknown compiler '%.*s'\n", STR_FMT(compiler_name));
 						return EXIT_FAILURE;
 					}
 
@@ -621,11 +683,10 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 				compiler_search_paths = env_get("PATH", context->allocator);
 			}
 
-			if (!_find_compiler_in_path(&s_clang_info,
-						compiler_search_paths,
+			if (!_find_compiler_in_path(compiler_search_paths,
 						context->allocator,
 						context->unit_allocator)) {
-				fprintf(stderr, "Clang compiler not found in the search path");
+				fprintf(stderr, "Compiler not found in the search path");
 				return EXIT_FAILURE;
 			}
 

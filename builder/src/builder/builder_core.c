@@ -270,6 +270,48 @@ static void _clang_gen_exe_link_cmd(BuildContext* context,
 	str_builder_append(builder, STR_LIT(" -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib"));
 }
 
+static void _msvc_gen_file_compile_cmd(BuildContext* context,
+		StringBuilder* cmd_builder,
+		const BuildUnit* unit) {
+
+	str_builder_append(cmd_builder, STR_LIT("/nologo /c "));
+	str_builder_append(cmd_builder, unit->path);
+	str_builder_append_char(cmd_builder, ' ');
+
+	switch (context->target_arch) {
+	case ARCH_X64:
+		break;
+	}
+
+	switch (context->language) {
+	case LANG_C99:
+		break;
+	case LANG_C11:
+		str_builder_append(cmd_builder, STR_LIT("/std:c11 "));
+		break;
+	}
+
+	FileBuildOptions options = unit->file_build_options;
+	if (has_flag(options, FILE_OPTION_GENERATE_DEBUG_INFO)) {
+		str_builder_append(cmd_builder, STR_LIT("/Zi "));
+	}
+
+	if (has_flag(options, FILE_OPTION_WARNINGS_ALL)) {
+		str_builder_append(cmd_builder, STR_LIT("/Wall "));
+	}
+
+	str_builder_append(cmd_builder, STR_LIT("/Fo: "));
+	_format_output_file_path(cmd_builder, unit, false);
+	str_builder_append_char(cmd_builder, ' ');
+
+	StringArray include_dirs = unit->include_dirs;
+	for (size_t i = 0; i < include_dirs.count; i += 1) {
+		str_builder_append(cmd_builder, STR_LIT("\"/I"));
+		str_builder_append(cmd_builder, include_dirs.values[i]);
+		str_builder_append(cmd_builder, STR_LIT("\" "));
+	}
+}
+
 typedef enum {
 	UNIT_STATUS_NONE,
 	UNIT_STATUS_DONE,
@@ -438,11 +480,23 @@ static bool _run_build_process(BuildContext* context,
 		}
 		case OUTPUT_OBJ: {
 			step_name = STR_LIT("compile");
-			exe_path = s_clang_info.clang_path;
 
-			str_builder_append(&cmd_builder, path_get_file_name(exe_path));
-			str_builder_append_char(&cmd_builder, ' ');
-			_clang_gen_file_compile_cmd(context, &cmd_builder, unit, FILE_OPTION_GENERATE_DEBUG_INFO);
+			switch (s_current_compiler) {
+			case COMPILER_CLANG:
+				exe_path = s_clang_info.clang_path;
+
+				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+				str_builder_append_char(&cmd_builder, ' ');
+				_clang_gen_file_compile_cmd(context, &cmd_builder, unit, FILE_OPTION_GENERATE_DEBUG_INFO);
+				break;
+			case COMPILER_MSVC:
+				exe_path = s_msvc_compiler_path.cl_path;
+
+				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+				str_builder_append_char(&cmd_builder, ' ');
+				_msvc_gen_file_compile_cmd(context, &cmd_builder, unit);
+				break;
+			}
 			break;
 		}
 		case OUTPUT_NONE:

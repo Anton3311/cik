@@ -2,112 +2,6 @@
 
 #include <ctype.h>
 
-static String s_token_kind_to_string[TOKEN_COUNT] = {
-	[TOKEN_EOF] = STR_LIT("<eof>"),
-
-	[TOKEN_IDENT] = STR_LIT("<identifier>"),
-	[TOKEN_STRING] = STR_LIT("<string>"),
-	[TOKEN_CHAR] = STR_LIT("<char>"),
-
-	[TOKEN_HASH] = STR_LIT("#"),
-	[TOKEN_DOUBLE_HASH] = STR_LIT("##"),
-	[TOKEN_COMMA] = STR_LIT(","),
-	[TOKEN_DOT] = STR_LIT("."),
-	[TOKEN_COLON] = STR_LIT(":"),
-	[TOKEN_SEMICOLON] = STR_LIT(";"),
-	[TOKEN_AMPERSAND] = STR_LIT("&"),
-	[TOKEN_PIPE] = STR_LIT("|"),
-	[TOKEN_EXCLAMATION_MARK] = STR_LIT("!"),
-	[TOKEN_QUESTION_MARK] = STR_LIT("?"),
-	[TOKEN_FORWARD_SLASH] = STR_LIT("/"),
-	[TOKEN_BACKWARD_SLASH] = STR_LIT("\\"),
-	[TOKEN_ARROW] = STR_LIT("->"),
-	[TOKEN_ELLIPSES] = STR_LIT("..."),
-
-	// Parens & friends
-	[TOKEN_LEFT_PAREN] = STR_LIT("("),
-	[TOKEN_RIGHT_PAREN] = STR_LIT(")"),
-
-	[TOKEN_LEFT_BRACE] = STR_LIT("{"),
-	[TOKEN_RIGHT_BRACE] = STR_LIT("}"),
-
-	[TOKEN_LEFT_BRACKET] = STR_LIT("["),
-	[TOKEN_RIGHT_BRACKET] = STR_LIT("]"),
-
-	// Arithmetics
-	[TOKEN_PLUS] = STR_LIT("+"),
-	[TOKEN_MINUS] = STR_LIT("-"),
-	[TOKEN_ASTERISK] = STR_LIT("*"),
-	[TOKEN_PERCENT] = STR_LIT("%"),
-
-	[TOKEN_DOUBLE_PLUS] = STR_LIT("++"),
-	[TOKEN_DOUBLE_MINUS] = STR_LIT("--"),
-
-	[TOKEN_ASSIGNMENT_BY_SUM] = STR_LIT("+="),
-	[TOKEN_ASSIGNMENT_BY_DIFFERENCE] = STR_LIT("-="),
-	[TOKEN_ASSIGNMENT_BY_PRODUCT] = STR_LIT("*="),
-	[TOKEN_ASSIGNMENT_BY_QUOTIENT] = STR_LIT("/="),
-	[TOKEN_ASSIGNMENT_BY_REMAINDER] = STR_LIT("%="),
-
-	[TOKEN_ASSIGNMENT_BY_BITWISE_AND] = STR_LIT("&="),
-	[TOKEN_ASSIGNMENT_BY_BITWISE_OR] = STR_LIT("|="),
-	[TOKEN_ASSIGNMENT_BY_BITWISE_XOR] = STR_LIT("^="),
-	[TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT] = STR_LIT("<<="),
-	[TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT] = STR_LIT(">>="),
-
-	// Comparison
-	[TOKEN_LESS] = STR_LIT("<"),
-	[TOKEN_GREATER] = STR_LIT(">"),
-	[TOKEN_LESS_OR_EQUAL] = STR_LIT("<="),
-	[TOKEN_GREATER_OR_EQUAL] = STR_LIT(">="),
-	[TOKEN_EQUAL] = STR_LIT("="),
-	[TOKEN_NOT_EQUAL] = STR_LIT("!="),
-	[TOKEN_DOUBLE_EQUAL] = STR_LIT("=="),
-
-	// Logic
-	[TOKEN_LOGIC_AND] = STR_LIT("&&"),
-	[TOKEN_LOGIC_OR] = STR_LIT("||"),
-
-	// Bitwise
-	[TOKEN_BITWISE_XOR] = STR_LIT("^"),
-	[TOKEN_BITWISE_NOT] = STR_LIT("~"),
-	[TOKEN_BITWISE_SHIFT_LEFT] = STR_LIT("<<"),
-	[TOKEN_BITWISE_SHIFT_RIGHT] = STR_LIT(">>"),
-
-	// Keywords
-	[TOKEN_KEYWORD_TYPEDEF] = STR_LIT("typedef"),
-	[TOKEN_KEYWORD_STRUCT] = STR_LIT("struct"),
-	[TOKEN_KEYWORD_UNION] = STR_LIT("union"),
-	[TOKEN_KEYWORD_ENUM] = STR_LIT("enum"),
-	[TOKEN_KEYWORD_CONST] = STR_LIT("const"),
-	[TOKEN_KEYWORD_RETURN] = STR_LIT("return"),
-	[TOKEN_KEYWORD_INLINE] = STR_LIT("inline"),
-	[TOKEN_KEYWORD_EXTERN] = STR_LIT("extern"),
-	[TOKEN_KEYWORD_STATIC] = STR_LIT("static"),
-	[TOKEN_KEYWORD_IF] = STR_LIT("if"),
-	[TOKEN_KEYWORD_ELSE] = STR_LIT("else"),
-
-	[TOKEN_KEYWORD_VOID] = STR_LIT("void"),
-	[TOKEN_KEYWORD_SIZE_T] = STR_LIT("size_t"),
-
-	[TOKEN_KEYWORD_FLOAT] = STR_LIT("float"),
-	[TOKEN_KEYWORD_DOUBLE] = STR_LIT("double"),
-
-	[TOKEN_KEYWORD_CHAR] = STR_LIT("char"),
-	[TOKEN_KEYWORD_SHORT] = STR_LIT("short"),
-	[TOKEN_KEYWORD_INT] = STR_LIT("int"),
-	[TOKEN_KEYWORD_LONG] = STR_LIT("long"),
-	[TOKEN_KEYWORD_SIGNED] = STR_LIT("signed"),
-	[TOKEN_KEYWORD_UNSIGNED] = STR_LIT("unsigned"),
-
-	[TOKEN_KEYWORD_INT8] = STR_LIT("__int8"),
-	[TOKEN_KEYWORD_INT16] = STR_LIT("__int16"),
-	[TOKEN_KEYWORD_INT32] = STR_LIT("__int32"),
-	[TOKEN_KEYWORD_INT64] = STR_LIT("__int64"),
-
-	[TOKEN_DECLSPEC] = STR_LIT("__declspec"),
-};
-
 void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file) {
 	assert(source_file);
 
@@ -117,7 +11,114 @@ void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file) {
 }
 
 String token_kind_to_string(TokenKind kind) {
-	return s_token_kind_to_string[kind];
+	switch (kind) {
+	case TOKEN_EOF: return STR_LIT("<eof>");
+
+	case TOKEN_IDENT: return STR_LIT("<identifier>");
+	case TOKEN_STRING: return STR_LIT("<string>");
+	case TOKEN_CHAR: return STR_LIT("<char>");
+
+	case TOKEN_HASH: return STR_LIT("#");
+	case TOKEN_DOUBLE_HASH: return STR_LIT("##");
+	case TOKEN_COMMA: return STR_LIT(",");
+	case TOKEN_DOT: return STR_LIT(".");
+	case TOKEN_COLON: return STR_LIT(":");
+	case TOKEN_SEMICOLON: return STR_LIT(";");
+	case TOKEN_AMPERSAND: return STR_LIT("&");
+	case TOKEN_PIPE: return STR_LIT("|");
+	case TOKEN_EXCLAMATION_MARK: return STR_LIT("!");
+	case TOKEN_QUESTION_MARK: return STR_LIT("?");
+	case TOKEN_FORWARD_SLASH: return STR_LIT("/");
+	case TOKEN_BACKWARD_SLASH: return STR_LIT("\\");
+	case TOKEN_ARROW: return STR_LIT("->");
+	case TOKEN_ELLIPSES: return STR_LIT("...");
+
+	// Parens & friends
+	case TOKEN_LEFT_PAREN: return STR_LIT("(");
+	case TOKEN_RIGHT_PAREN: return STR_LIT(")");
+
+	case TOKEN_LEFT_BRACE: return STR_LIT("{");
+	case TOKEN_RIGHT_BRACE: return STR_LIT("}");
+
+	case TOKEN_LEFT_BRACKET: return STR_LIT("[");
+	case TOKEN_RIGHT_BRACKET: return STR_LIT("]");
+
+	// Arithmetics
+	case TOKEN_PLUS: return STR_LIT("+");
+	case TOKEN_MINUS: return STR_LIT("-");
+	case TOKEN_ASTERISK: return STR_LIT("*");
+	case TOKEN_PERCENT: return STR_LIT("%");
+
+	case TOKEN_DOUBLE_PLUS: return STR_LIT("++");
+	case TOKEN_DOUBLE_MINUS: return STR_LIT("--");
+
+	case TOKEN_ASSIGNMENT_BY_SUM: return STR_LIT("+=");
+	case TOKEN_ASSIGNMENT_BY_DIFFERENCE: return STR_LIT("-=");
+	case TOKEN_ASSIGNMENT_BY_PRODUCT: return STR_LIT("*=");
+	case TOKEN_ASSIGNMENT_BY_QUOTIENT: return STR_LIT("/=");
+	case TOKEN_ASSIGNMENT_BY_REMAINDER: return STR_LIT("%=");
+
+	case TOKEN_ASSIGNMENT_BY_BITWISE_AND: return STR_LIT("&=");
+	case TOKEN_ASSIGNMENT_BY_BITWISE_OR: return STR_LIT("|=");
+	case TOKEN_ASSIGNMENT_BY_BITWISE_XOR: return STR_LIT("^=");
+	case TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT: return STR_LIT("<<=");
+	case TOKEN_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT: return STR_LIT(">>=");
+
+	// Comparison
+	case TOKEN_LESS: return STR_LIT("<");
+	case TOKEN_GREATER: return STR_LIT(">");
+	case TOKEN_LESS_OR_EQUAL: return STR_LIT("<=");
+	case TOKEN_GREATER_OR_EQUAL: return STR_LIT(">=");
+	case TOKEN_EQUAL: return STR_LIT("=");
+	case TOKEN_NOT_EQUAL: return STR_LIT("!=");
+	case TOKEN_DOUBLE_EQUAL: return STR_LIT("==");
+
+	// Logic
+	case TOKEN_LOGIC_AND: return STR_LIT("&&");
+	case TOKEN_LOGIC_OR: return STR_LIT("||");
+
+	// Bitwise
+	case TOKEN_BITWISE_XOR: return STR_LIT("^");
+	case TOKEN_BITWISE_NOT: return STR_LIT("~");
+	case TOKEN_BITWISE_SHIFT_LEFT: return STR_LIT("<<");
+	case TOKEN_BITWISE_SHIFT_RIGHT: return STR_LIT(">>");
+
+	// Keywords
+	case TOKEN_KEYWORD_TYPEDEF: return STR_LIT("typedef");
+	case TOKEN_KEYWORD_STRUCT: return STR_LIT("struct");
+	case TOKEN_KEYWORD_UNION: return STR_LIT("union");
+	case TOKEN_KEYWORD_ENUM: return STR_LIT("enum");
+	case TOKEN_KEYWORD_CONST: return STR_LIT("const");
+	case TOKEN_KEYWORD_RETURN: return STR_LIT("return");
+	case TOKEN_KEYWORD_INLINE: return STR_LIT("inline");
+	case TOKEN_KEYWORD_EXTERN: return STR_LIT("extern");
+	case TOKEN_KEYWORD_STATIC: return STR_LIT("static");
+	case TOKEN_KEYWORD_IF: return STR_LIT("if");
+	case TOKEN_KEYWORD_ELSE: return STR_LIT("else");
+
+	case TOKEN_KEYWORD_VOID: return STR_LIT("void");
+	case TOKEN_KEYWORD_SIZE_T: return STR_LIT("size_t");
+
+	case TOKEN_KEYWORD_FLOAT: return STR_LIT("float");
+	case TOKEN_KEYWORD_DOUBLE: return STR_LIT("double");
+
+	case TOKEN_KEYWORD_CHAR: return STR_LIT("char");
+	case TOKEN_KEYWORD_SHORT: return STR_LIT("short");
+	case TOKEN_KEYWORD_INT: return STR_LIT("int");
+	case TOKEN_KEYWORD_LONG: return STR_LIT("long");
+	case TOKEN_KEYWORD_SIGNED: return STR_LIT("signed");
+	case TOKEN_KEYWORD_UNSIGNED: return STR_LIT("unsigned");
+
+	case TOKEN_KEYWORD_INT8: return STR_LIT("__int8");
+	case TOKEN_KEYWORD_INT16: return STR_LIT("__int16");
+	case TOKEN_KEYWORD_INT32: return STR_LIT("__int32");
+	case TOKEN_KEYWORD_INT64: return STR_LIT("__int64");
+
+	case TOKEN_DECLSPEC: return STR_LIT("__declspec");
+	}
+
+	unreachable();
+	return (String) {};
 }
 
 bool _tokenizer_try_skip_comment(Tokenizer* tokenizer);

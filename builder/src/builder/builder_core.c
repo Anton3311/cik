@@ -7,6 +7,7 @@ typedef struct {
 
 typedef struct {
 	String cl_path;
+	String lib_path;
 	String link_path;
 } MsvcCompilerInfo;
 
@@ -177,7 +178,14 @@ static void _format_output_file_path(StringBuilder* builder,
 
 	switch (unit->output_type) {
 	case OUTPUT_OBJ:
-		str_builder_append(builder, STR_LIT(".o"));
+		switch (s_current_compiler) {
+		case COMPILER_CLANG:
+			str_builder_append(builder, STR_LIT(".o"));
+			break;
+		case COMPILER_MSVC:
+			str_builder_append(builder, STR_LIT(".obj"));
+			break;
+		}
 		break;
 	case OUTPUT_EXE:
 		str_builder_append(builder, STR_LIT(".exe"));
@@ -310,6 +318,40 @@ static void _msvc_gen_file_compile_cmd(BuildContext* context,
 		str_builder_append(cmd_builder, include_dirs.values[i]);
 		str_builder_append(cmd_builder, STR_LIT("\" "));
 	}
+}
+
+static void _msvc_gen_static_lib_link_cmd(BuildContext* context,
+		StringBuilder* builder,
+		const BuildUnit* unit) {
+
+	str_builder_append(builder, STR_LIT("/nologo /OUT:"));
+	_format_output_file_path(builder, unit, true);
+
+	for (size_t i = 0; i < unit->dependency_count; i += 1) {
+		str_builder_append_char(builder, ' ');
+		_format_output_file_path(builder, _get_unit(context, unit->dependencies[i]), true);
+	}
+}
+
+static void _msvc_gen_exe_link_cmd(BuildContext* context,
+		StringBuilder* builder,
+		const BuildUnit* unit) {
+	assert(unit->output_type == OUTPUT_EXE);
+
+	// TODO: For debug configs link against LIBCMTD.lib, for release LIBCMT.lib
+	str_builder_append(builder, STR_LIT("/nologo /DEBUG LIBCMTD.lib "));
+
+	str_builder_append(builder, STR_LIT("/OUT:"));
+	_format_output_file_path(builder, unit, true);
+
+	for (size_t i = 0; i < unit->dependency_count; i += 1) {
+		str_builder_append_char(builder, ' ');
+
+		BuildUnit* dependency = _get_unit(context, unit->dependencies[i]);
+		_format_output_file_path(builder, dependency, true);
+	}
+
+	str_builder_append(builder, STR_LIT(" Dbghelp.lib Shlwapi.lib Pathcch.lib Advapi32.lib"));
 }
 
 typedef enum {
@@ -462,20 +504,45 @@ static bool _run_build_process(BuildContext* context,
 		switch (unit->output_type) {
 		case OUTPUT_EXE: {
 			step_name = STR_LIT("link");
-			exe_path = s_clang_info.clang_path;
 
-			str_builder_append(&cmd_builder, path_get_file_name(exe_path));
-			str_builder_append_char(&cmd_builder, ' ');
-			_clang_gen_exe_link_cmd(context, &cmd_builder, unit);
+			switch (s_current_compiler) {
+			case COMPILER_CLANG:
+				exe_path = s_clang_info.clang_path;
+
+				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+				str_builder_append_char(&cmd_builder, ' ');
+				_clang_gen_exe_link_cmd(context, &cmd_builder, unit);
+				break;
+			case COMPILER_MSVC:
+				exe_path = s_msvc_compiler_path.link_path;
+
+				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+				str_builder_append_char(&cmd_builder, ' ');
+				_msvc_gen_exe_link_cmd(context, &cmd_builder, unit);
+				break;
+			}
 			break;
 		}
 		case OUTPUT_LIB: {
 			step_name = STR_LIT("link");
-			exe_path = s_clang_info.llvm_lib_path;
 
-			str_builder_append(&cmd_builder, path_get_file_name(exe_path));
-			str_builder_append_char(&cmd_builder, ' ');
-			_clang_gen_static_lib_link_cmd(context, &cmd_builder, unit);
+			switch (s_current_compiler) {
+			case COMPILER_CLANG:
+				exe_path = s_clang_info.llvm_lib_path;
+
+				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+				str_builder_append_char(&cmd_builder, ' ');
+				_clang_gen_static_lib_link_cmd(context, &cmd_builder, unit);
+				break;
+			case COMPILER_MSVC:
+				exe_path = s_msvc_compiler_path.lib_path;
+
+				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
+				str_builder_append_char(&cmd_builder, ' ');
+				_msvc_gen_static_lib_link_cmd(context, &cmd_builder, unit);
+				break;
+			}
+
 			break;
 		}
 		case OUTPUT_OBJ: {
@@ -523,7 +590,7 @@ static bool _run_build_process(BuildContext* context,
 			result = false;
 		}
 
-		_print_result(status[unit_id.value] == UNIT_STATUS_DONE, step_name, unit->path);
+		_print_result(status[unit_id.value] == UNIT_STATUS_DONE, step_name, unit->name);
 
 		arena_end_temp(temp);
 	}
@@ -592,14 +659,18 @@ static bool _try_resolve_msvc_exes(String dir,
 
 	String cl_path = path_append(dir, STR_LIT("cl.exe"), allocator);
 	String link_path = path_append(dir, STR_LIT("link.exe"), allocator);
+	String lib_path = path_append(dir, STR_LIT("lib.exe"), allocator);
 
 	bool cl_exists = path_exists(allocator, cl_path);
 	bool link_exists = path_exists(allocator, link_path);
-	result = cl_exists && link_exists;
+	bool lib_exists = path_exists(allocator, lib_path);
+
+	result = cl_exists && link_exists && lib_exists;
 
 	if (result) {
 		out_info->cl_path = cl_path;
-		out_info->link_path= link_path;
+		out_info->link_path = link_path;
+		out_info->lib_path = lib_path;
 	} else {
 		// Undo allocations
 		arena_end_temp(temp);

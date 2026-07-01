@@ -247,7 +247,7 @@ void test_compare_equal_two_uint64(TestContext* context) {
 
 	typedef uint64_t(*Function)(uint64_t a, uint64_t b);
 
-	const size_t SAMPLE_COUNT = 16;
+#define SAMPLE_COUNT 16
 
 	uint64_t array_a[SAMPLE_COUNT];
 	uint64_t array_b[SAMPLE_COUNT];
@@ -278,7 +278,7 @@ void test_compare_equal_less_for_uint64(TestContext* context) {
 
 	typedef uint64_t(*Function)(uint64_t a, uint64_t b);
 
-	const size_t SAMPLE_COUNT = 16;
+#define SAMPLE_COUNT 16
 
 	uint64_t array_a[SAMPLE_COUNT];
 	uint64_t array_b[SAMPLE_COUNT];
@@ -309,7 +309,7 @@ void test_compare_equal_greater_for_uint64(TestContext* context) {
 
 	typedef uint64_t(*Function)(uint64_t a, uint64_t b);
 
-	const size_t SAMPLE_COUNT = 16;
+#define SAMPLE_COUNT 16
 
 	uint64_t array_a[SAMPLE_COUNT];
 	uint64_t array_b[SAMPLE_COUNT];

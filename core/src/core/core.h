@@ -8,10 +8,10 @@
 #include <string.h>
 #include <ctype.h>
 
-#if defined(_MSC_VER)
-	#define COMPILER_MSVC
-#elif defined(__clang__)
+#if defined(__clang__)
 	#define COMPILER_CLANG
+#elif defined(_MSC_VER)
+	#define COMPILER_MSVC
 #endif
 
 typedef uint8_t bool;
@@ -92,8 +92,8 @@ size_t align_to_page_size(size_t bytes);
 	#define count_leading_zeros(a) __lzcnt64(a)
 
 	inline uint64_t count_trailing_zeros(uint64_t a) {
-		uint64_t result;
-		return _BitScanReverse64(&result, a) ? result : 64;
+		unsigned long result;
+		return _BitScanReverse64(&result, a) ? (uint64_t)result : 64;
 	}
 #endif
 

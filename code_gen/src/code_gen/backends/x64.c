@@ -1745,7 +1745,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		size_t block_size = gen->per_region_code_buffer[region_id].size;
 		size_t block_offset = code_block_offsets[region_id];
 
-		memcpy(executable_memory + block_offset,
+		memcpy((uint8_t*)executable_memory + block_offset,
 				gen->per_region_code_buffer[region_id].buffer,
 				block_size);
 

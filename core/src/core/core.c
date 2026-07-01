@@ -34,10 +34,10 @@ bool try_print_stack_trace(size_t skipped_frame_count) {
 		return false;
 	}
 
-	const size_t STACK_TRACE_BUFFER_SIZE = 64;
+#define STACK_TRACE_BUFFER_SIZE 64
 	void* stack_trace_buffer[STACK_TRACE_BUFFER_SIZE];
 
-	const size_t MAX_NAME_LENGTH = 256;
+#define MAX_NAME_LENGTH 256
 	alignas(8) char symbol_buffer[sizeof(SYMBOL_INFO) + (MAX_NAME_LENGTH - 1) * sizeof(TCHAR)];
 
 	size_t frame_count = CaptureStackBackTrace(
@@ -113,7 +113,7 @@ static void* _heap_allocator_procedure(void* allocator_data,
 
 	switch (op) {
 	case ALLOC_OP_ALLOC:
-		assert_msg(alignment <= alignof(max_align_t), "Cannot guarantee given alignment");
+		assert_msg(alignment <= HEAP_ALLOCATOR_MAX_ALIGN, "Cannot guarantee given alignment");
 		return malloc(size);
 	case ALLOC_OP_FREE:
 		free(ptr);

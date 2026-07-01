@@ -73,7 +73,7 @@ inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_n
 	size_t key_size = sizeof(String);
 	size_t entry_size = sizeof(IdentifierEntry*);
 	size_t buffer_size = (key_size + entry_size) * ident_namespace->capacity;
-	uint8_t* new_buffer = allocator_alloc_bytes(allocator, buffer_size, alignof(max_align_t));
+	uint8_t* new_buffer = allocator_alloc_array(allocator, uint8_t, buffer_size);
 
 	memset(new_buffer, 0, buffer_size);
 

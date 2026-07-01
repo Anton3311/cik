@@ -119,6 +119,8 @@ typedef struct {
 	uint16_t value;
 } InstrIndex;
 
+#define INVALID_INSTR_INDEX (InstrIndex) { UINT16_MAX }
+
 typedef struct {
 	InstrIndex* instr;
 	size_t count;
@@ -130,10 +132,6 @@ typedef struct {
 	uint16_t start;
 	uint16_t count;
 } InstrInputs;
-
-#ifndef CODE_GENERATION_PASS
-static const InstrIndex INVALID_INSTR_INDEX = (InstrIndex) { .value = UINT16_MAX };
-#endif // CODE_GENERATION_PASS
 
 struct Instr {
 	InstrKind kind;

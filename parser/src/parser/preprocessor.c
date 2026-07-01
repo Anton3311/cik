@@ -2203,7 +2203,7 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 		Arena* token_allocator,
 		TokenArray* out_tokens) {
 
-	const size_t paren_stack_capacity = 64;
+#define paren_stack_capacity 64
 	size_t paren_stack_size = 0;
 	TokenKind paren_stack[paren_stack_capacity];
 

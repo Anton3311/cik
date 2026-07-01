@@ -28,13 +28,13 @@ void print_assertion_stack_trace();
 #define array_size(array) ((sizeof(array)) / sizeof(*(array)))
 #define array_copy(dst, src, count) memcpy((dst), (src), sizeof(*(dst)) * (count))
 
-#define assert_msg(expression, fmt, ...) if (!(expression)) { \
+#define assert_msg(expression, ...) if (!(expression)) { \
 	print_assertion_stack_trace(); \
 	printf("%s:%u: \033[31;1mAssertion '%s' failed\033[0m: ", \
 			__FILE__, \
 			__LINE__, \
 	#expression); \
-	printf(fmt, __VA_ARGS__); \
+	printf(__VA_ARGS__); \
 	crash(); }
 
 #define assert(expression) if (!(expression)) { \
@@ -118,6 +118,8 @@ inline void allocator_release(Allocator allocator, void* ptr) {
 //
 // Heap Allocator
 //
+
+#define HEAP_ALLOCATOR_MAX_ALIGN 16
 
 inline void* heap_alloc_bytes(size_t count) {
 	return malloc(count);

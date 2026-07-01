@@ -160,46 +160,47 @@ uint32_t type_get_int_convertion_rank(const Type* type) {
 	return 0;
 }
 
-static String s_bin_op_kind_to_string[] = {
-	[BIN_OP_ADD] = STR_LIT("+"),
-	[BIN_OP_SUB] = STR_LIT("-"),
-	[BIN_OP_MUL] = STR_LIT("*"),
-	[BIN_OP_DIV] = STR_LIT("/"),
-	[BIN_OP_MOD] = STR_LIT("%"),
-
-	[BIN_OP_LOGICAL_AND] = STR_LIT("&&"),
-	[BIN_OP_LOGICAL_OR] = STR_LIT("||"),
-
-	[BIN_OP_LOGICAL_EQUAL] = STR_LIT("=="),
-	[BIN_OP_LOGICAL_NOT_EQUAL] = STR_LIT("!="),
-	[BIN_OP_LOGICAL_LESS] = STR_LIT("<"),
-	[BIN_OP_LOGICAL_GREATER] = STR_LIT(">"),
-	[BIN_OP_LOGICAL_LESS_OR_EQUAL] = STR_LIT("<="),
-	[BIN_OP_LOGICAL_GREATER_OR_EQUAL] = STR_LIT(">="),
-
-	[BIN_OP_BITWISE_AND] = STR_LIT("&"),
-	[BIN_OP_BITWISE_OR] = STR_LIT("|"),
-	[BIN_OP_BITWISE_XOR] = STR_LIT("^"),
-	[BIN_OP_BITWISE_SHIFT_LEFT] = STR_LIT("<<"),
-	[BIN_OP_BITWISE_SHIFT_RIGHT] = STR_LIT(">>"),
-
-	[BIN_OP_ASSIGNMENT] = STR_LIT("="),
-
-	[BIN_OP_ASSIGNMENT_BY_SUM] = STR_LIT("+="),
-	[BIN_OP_ASSIGNMENT_BY_DIFFERENCE] = STR_LIT("-="),
-	[BIN_OP_ASSIGNMENT_BY_PRODUCT] = STR_LIT("*="),
-	[BIN_OP_ASSIGNMENT_BY_QUOTIENT] = STR_LIT("/="),
-	[BIN_OP_ASSIGNMENT_BY_REMAINDER] = STR_LIT("%="),
-
-	[BIN_OP_ASSIGNMENT_BY_BITWISE_AND] = STR_LIT("&="),
-	[BIN_OP_ASSIGNMENT_BY_BITWISE_OR] = STR_LIT("|="),
-	[BIN_OP_ASSIGNMENT_BY_BITWISE_XOR] = STR_LIT("^="),
-	[BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT] = STR_LIT("<<="),
-	[BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT] = STR_LIT(">>="),
-};
-
 String bin_op_kind_to_string(BinOpKind op) {
-	return s_bin_op_kind_to_string[op];
+	switch (op) {
+	case BIN_OP_ADD: return STR_LIT("+");
+	case BIN_OP_SUB: return STR_LIT("-");
+	case BIN_OP_MUL: return STR_LIT("*");
+	case BIN_OP_DIV: return STR_LIT("/");
+	case BIN_OP_MOD: return STR_LIT("%");
+
+	case BIN_OP_LOGICAL_AND: return STR_LIT("&&");
+	case BIN_OP_LOGICAL_OR: return STR_LIT("||");
+
+	case BIN_OP_LOGICAL_EQUAL: return STR_LIT("==");
+	case BIN_OP_LOGICAL_NOT_EQUAL: return STR_LIT("!=");
+	case BIN_OP_LOGICAL_LESS: return STR_LIT("<");
+	case BIN_OP_LOGICAL_GREATER: return STR_LIT(">");
+	case BIN_OP_LOGICAL_LESS_OR_EQUAL: return STR_LIT("<=");
+	case BIN_OP_LOGICAL_GREATER_OR_EQUAL: return STR_LIT(">=");
+
+	case BIN_OP_BITWISE_AND: return STR_LIT("&");
+	case BIN_OP_BITWISE_OR: return STR_LIT("|");
+	case BIN_OP_BITWISE_XOR: return STR_LIT("^");
+	case BIN_OP_BITWISE_SHIFT_LEFT: return STR_LIT("<<");
+	case BIN_OP_BITWISE_SHIFT_RIGHT: return STR_LIT(">>");
+
+	case BIN_OP_ASSIGNMENT: return STR_LIT("=");
+
+	case BIN_OP_ASSIGNMENT_BY_SUM: return STR_LIT("+=");
+	case BIN_OP_ASSIGNMENT_BY_DIFFERENCE: return STR_LIT("-=");
+	case BIN_OP_ASSIGNMENT_BY_PRODUCT: return STR_LIT("*=");
+	case BIN_OP_ASSIGNMENT_BY_QUOTIENT: return STR_LIT("/=");
+	case BIN_OP_ASSIGNMENT_BY_REMAINDER: return STR_LIT("%=");
+
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_AND: return STR_LIT("&=");
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_OR: return STR_LIT("|=");
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_XOR: return STR_LIT("^=");
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT: return STR_LIT("<<=");
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT: return STR_LIT(">>=");
+	}
+
+	unreachable();
+	return (String) {};
 }
 
 String unary_op_kind_to_string(UnaryOpKind op) {
@@ -373,9 +374,6 @@ void parsed_node_list_append(NodeList* list, AstNode* node) {
 	}
 }
 
-static Type s_char_type = (Type) { .kind = TYPE_CHAR };
-static Type s_const_char_type = (Type) { .kind = TYPE_CHAR, .qualifiers = TYPE_QUALIFIER_CONST };
-
 void expr_get_type(Expr* expr, Type* out_type) {
 	switch (expr->kind) {
 	case EXPR_CALL: {
@@ -430,6 +428,10 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		return;
 	}
 	case EXPR_STRING_LITERAL:
+	   	static Type s_const_char_type;
+		s_const_char_type.kind = TYPE_CHAR;
+		s_const_char_type.qualifiers = TYPE_QUALIFIER_CONST;
+
 		out_type->kind = TYPE_POINTER;
 		out_type->array.element_type = &s_const_char_type;
 		out_type->array.size = expr->string_literal.array_size_expr;

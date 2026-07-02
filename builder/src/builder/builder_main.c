@@ -8,6 +8,7 @@ int main(int argc, char *argv[]) {
 	BuildContext context;
 	context.target_arch = ARCH_X64;
 	context.language = LANG_C11;
+	context.default_compile_options = FILE_OPTION_GENERATE_DEBUG_INFO;
 	build_init(&context, &unit_allocator, &dependency_allocator, &allocator);
 	
 	BuildUnitId core = build_begin_project(&context, STR_LIT("core"), OUTPUT_LIB);

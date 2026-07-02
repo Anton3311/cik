@@ -12,8 +12,8 @@ typedef struct {
 } MsvcCompilerInfo;
 
 typedef enum {
-	COMPILER_CLANG,
-	COMPILER_MSVC,
+	COMPILER_KIND_CLANG,
+	COMPILER_KIND_MSVC,
 } CompilerKind;
 
 static ClangCompilerInfo s_clang_info;
@@ -71,13 +71,15 @@ void build_add_src_file(BuildContext* context, String file_path) {
 		panic("Given file path doesn't exist");
 	}
 
+	BuildUnit* project = _get_unit(context, context->current_project);
+
 	BuildUnitId unit_id = _alloc_unit(context);
 	BuildUnit* unit = _get_unit(context, unit_id);
 	unit->name = path_trim_file_extension(path_get_file_name(file_path));
 	unit->path = file_path;
 	unit->output_type = OUTPUT_OBJ;
+	unit->file_build_options = project->file_build_options;
 
-	BuildUnit* project = _get_unit(context, context->current_project);
 	*arena_alloc(context->dependency_allocator, BuildUnitId) = unit_id;
 	project->dependency_count += 1;
 }
@@ -116,6 +118,7 @@ BuildUnitId build_begin_project(BuildContext* context, String name, BuildUnitOut
 	BuildUnit* unit = _get_unit(context, unit_id);
 	unit->name = name;
 	unit->output_type = output_type;
+	unit->file_build_options = context->default_compile_options;
 
 	context->current_project = unit_id;
 	return unit_id;
@@ -125,6 +128,14 @@ void build_end_project(BuildContext* context) {
 	assert(context->current_project.value != INVALID_BUILD_UNIT_ID);
 
 	context->current_project.value = INVALID_BUILD_UNIT_ID;
+}
+
+void build_set_compiler_options(BuildContext* context,
+		BuildUnitId unit_id,
+		FileBuildOptions options) {
+	BuildUnit* project = _get_unit(context, context->current_project);
+	BuildUnit* unit = _get_unit(context, unit_id);
+	unit->file_build_options = options | project->file_build_options;
 }
 
 #if 0
@@ -170,7 +181,15 @@ static void _format_output_file_path(StringBuilder* builder,
 		unreachable();
 	}
 
+	char* formated_name = (char*)builder->string.v + builder->string.length;
 	str_builder_append(builder, unit->name);
+
+	// Repalce '.' with '_'
+	for (size_t i = 0; i < unit->name.length; i += 1) {
+		if (formated_name[i] == '.') {
+			formated_name[i] = '_';
+		}
+	}
 	
 	if (!include_file_ext) {
 		return;
@@ -179,10 +198,10 @@ static void _format_output_file_path(StringBuilder* builder,
 	switch (unit->output_type) {
 	case OUTPUT_OBJ:
 		switch (s_current_compiler) {
-		case COMPILER_CLANG:
+		case COMPILER_KIND_CLANG:
 			str_builder_append(builder, STR_LIT(".o"));
 			break;
-		case COMPILER_MSVC:
+		case COMPILER_KIND_MSVC:
 			str_builder_append(builder, STR_LIT(".obj"));
 			break;
 		}
@@ -339,19 +358,23 @@ static void _msvc_gen_exe_link_cmd(BuildContext* context,
 	assert(unit->output_type == OUTPUT_EXE);
 
 	// TODO: For debug configs link against LIBCMTD.lib, for release LIBCMT.lib
-	str_builder_append(builder, STR_LIT("/nologo /DEBUG LIBCMTD.lib "));
-
-	str_builder_append(builder, STR_LIT("/OUT:"));
-	_format_output_file_path(builder, unit, true);
+	str_builder_append(builder, STR_LIT("/nologo "));
 
 	for (size_t i = 0; i < unit->dependency_count; i += 1) {
 		str_builder_append_char(builder, ' ');
 
 		BuildUnit* dependency = _get_unit(context, unit->dependencies[i]);
 		_format_output_file_path(builder, dependency, true);
+		str_builder_append_char(builder, ' ');
 	}
 
-	str_builder_append(builder, STR_LIT(" Dbghelp.lib Shlwapi.lib Pathcch.lib Advapi32.lib"));
+	str_builder_append(builder, STR_LIT("/OUT:"));
+	_format_output_file_path(builder, unit, true);
+	str_builder_append_char(builder, ' ');
+
+	str_builder_append(builder, STR_LIT("/DEBUG LIBCMTD.lib "));
+
+	str_builder_append(builder, STR_LIT("Dbghelp.lib Shlwapi.lib Pathcch.lib Advapi32.lib"));
 }
 
 typedef enum {
@@ -506,14 +529,14 @@ static bool _run_build_process(BuildContext* context,
 			step_name = STR_LIT("link");
 
 			switch (s_current_compiler) {
-			case COMPILER_CLANG:
+			case COMPILER_KIND_CLANG:
 				exe_path = s_clang_info.clang_path;
 
 				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
 				str_builder_append_char(&cmd_builder, ' ');
 				_clang_gen_exe_link_cmd(context, &cmd_builder, unit);
 				break;
-			case COMPILER_MSVC:
+			case COMPILER_KIND_MSVC:
 				exe_path = s_msvc_compiler_path.link_path;
 
 				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
@@ -527,14 +550,14 @@ static bool _run_build_process(BuildContext* context,
 			step_name = STR_LIT("link");
 
 			switch (s_current_compiler) {
-			case COMPILER_CLANG:
+			case COMPILER_KIND_CLANG:
 				exe_path = s_clang_info.llvm_lib_path;
 
 				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
 				str_builder_append_char(&cmd_builder, ' ');
 				_clang_gen_static_lib_link_cmd(context, &cmd_builder, unit);
 				break;
-			case COMPILER_MSVC:
+			case COMPILER_KIND_MSVC:
 				exe_path = s_msvc_compiler_path.lib_path;
 
 				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
@@ -549,14 +572,14 @@ static bool _run_build_process(BuildContext* context,
 			step_name = STR_LIT("compile");
 
 			switch (s_current_compiler) {
-			case COMPILER_CLANG:
+			case COMPILER_KIND_CLANG:
 				exe_path = s_clang_info.clang_path;
 
 				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
 				str_builder_append_char(&cmd_builder, ' ');
 				_clang_gen_file_compile_cmd(context, &cmd_builder, unit, FILE_OPTION_GENERATE_DEBUG_INFO);
 				break;
-			case COMPILER_MSVC:
+			case COMPILER_KIND_MSVC:
 				exe_path = s_msvc_compiler_path.cl_path;
 
 				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
@@ -698,10 +721,10 @@ static bool _find_compiler_in_path(String paths,
 		}
 
 		switch (s_current_compiler) {
-		case COMPILER_MSVC:
+		case COMPILER_KIND_MSVC:
 			result = _try_resolve_msvc_exes(path, &s_msvc_compiler_path, allocator);
 			break;
-		case COMPILER_CLANG:
+		case COMPILER_KIND_CLANG:
 			result = _try_resolve_clang_exes(path, &s_clang_info, allocator);
 			break;
 		}
@@ -767,7 +790,7 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 			String compiler_paths_prefix = STR_LIT("--compiler-paths=");
 			String compiler_kind_prefix = STR_LIT("--cc=");
 
-			s_current_compiler = COMPILER_CLANG;
+			s_current_compiler = COMPILER_KIND_CLANG;
 
 			String compiler_search_paths = {};
 			while (arg_index < argc) {
@@ -789,9 +812,9 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 							arg.length - compiler_kind_prefix.length);
 
 					if (str_equal(compiler_name, STR_LIT("clang"))) {
-						s_current_compiler = COMPILER_CLANG;
+						s_current_compiler = COMPILER_KIND_CLANG;
 					} else if (str_equal(compiler_name, STR_LIT("cl"))) {
-						s_current_compiler = COMPILER_MSVC;
+						s_current_compiler = COMPILER_KIND_MSVC;
 					} else {
 						fprintf(stderr, "Unknown compiler '%.*s'\n", STR_FMT(compiler_name));
 						return EXIT_FAILURE;

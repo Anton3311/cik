@@ -6,8 +6,8 @@
 // CodeBuffer
 //
 
-static const size_t CODE_BUFFER_ALLOCATION_STEP = 64;
-static const size_t CODE_BUFFER_ALLOCATION_STEP_MASK = CODE_BUFFER_ALLOCATION_STEP - 1;
+#define CODE_BUFFER_ALLOCATION_STEP 64
+#define CODE_BUFFER_ALLOCATION_STEP_MASK (CODE_BUFFER_ALLOCATION_STEP - 1)
 
 void code_buffer_init(CodeBuffer* buffer, Arena* allocator) {
 	buffer->allocator = allocator;
@@ -90,98 +90,7 @@ typedef struct {
 
 #define OP_RM OP_REG | OP_MEM
 
-static Encoding s_encodings[] = {
-	// add
-	{ MNEMONIC_ADD, ENC_NONE, 0x00, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
-	{ MNEMONIC_ADD, ENC_NONE, 0x01, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
-	{ MNEMONIC_ADD, ENC_NONE, 0x02, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
-	{ MNEMONIC_ADD, ENC_NONE, 0x03, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
-
-	{ MNEMONIC_ADD, ENC_NONE, 0x81, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } },
-
-	// sub
-	{ MNEMONIC_SUB, ENC_NONE, 0x28, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
-	{ MNEMONIC_SUB, ENC_NONE, 0x29, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
-	{ MNEMONIC_SUB, ENC_NONE, 0x2a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
-	{ MNEMONIC_SUB, ENC_NONE, 0x2b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
-
-	{ MNEMONIC_SUB, ENC_NONE, 0x81, 0x5, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } },
-
-	// cmp
-	{ MNEMONIC_CMP, ENC_NONE, 0x38, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
-	{ MNEMONIC_CMP, ENC_NONE, 0x39, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
-	{ MNEMONIC_CMP, ENC_NONE, 0x3a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
-	{ MNEMONIC_CMP, ENC_NONE, 0x3b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
-
-	// push
-	{ MNEMONIC_PUSH, ENC_ADD_REG_TO_OPCODE, 0x50, 0x0, { { OP_RM, 16 | 64 } } },
-
-	// pop
-	{ MNEMONIC_POP,  ENC_ADD_REG_TO_OPCODE, 0x58, 0x0, { { OP_RM, 16 | 64 } } },
-
-	// j[0,b,nb,z,nz,be,nbe,s,ns,p,np,l,nl,le,nle]
-	{ MNEMONIC_JO,   ENC_HAS_0F_PREFIX, 0x80, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNO,  ENC_HAS_0F_PREFIX, 0x81, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JB,   ENC_HAS_0F_PREFIX, 0x82, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNB,  ENC_HAS_0F_PREFIX, 0x83, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JZ,   ENC_HAS_0F_PREFIX, 0x84, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNZ,  ENC_HAS_0F_PREFIX, 0x85, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JBE,  ENC_HAS_0F_PREFIX, 0x86, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNBE, ENC_HAS_0F_PREFIX, 0x87, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JS,   ENC_HAS_0F_PREFIX, 0x88, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNS,  ENC_HAS_0F_PREFIX, 0x89, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JP,   ENC_HAS_0F_PREFIX, 0x8a, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNP,  ENC_HAS_0F_PREFIX, 0x8b, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JL,   ENC_HAS_0F_PREFIX, 0x8c, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNL,  ENC_HAS_0F_PREFIX, 0x8d, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JLE,  ENC_HAS_0F_PREFIX, 0x8e, 0x0, { { OP_REL, 16 | 32 } } },
-	{ MNEMONIC_JNLE, ENC_HAS_0F_PREFIX, 0x8f, 0x0, { { OP_REL, 16 | 32 } } },
-
-	// test
-	{ MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, { { OP_RM, 8 },            { OP_REG, 8 } } },
-	{ MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
-
-	// set[z,nz,be,nbe,s,ns,p,no,l,nl,nle]
-	{ MNEMONIC_SETZ,   ENC_HAS_0F_PREFIX, 0x94, 0x0, { { OP_RM, 8 } } }, 
-	{ MNEMONIC_SETNZ,  ENC_HAS_0F_PREFIX, 0x95, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETBE,  ENC_HAS_0F_PREFIX, 0x96, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETNBE, ENC_HAS_0F_PREFIX, 0x97, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETS,   ENC_HAS_0F_PREFIX, 0x98, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETNS,  ENC_HAS_0F_PREFIX, 0x99, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETP,   ENC_HAS_0F_PREFIX, 0x9a, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETNP,  ENC_HAS_0F_PREFIX, 0x9b, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETL,   ENC_HAS_0F_PREFIX, 0x9c, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETNL,  ENC_HAS_0F_PREFIX, 0x9d, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETLE,  ENC_HAS_0F_PREFIX, 0x9e, 0x0, { { OP_RM, 8 } } },
-	{ MNEMONIC_SETNLE, ENC_HAS_0F_PREFIX, 0x9f, 0x0, { { OP_RM, 8 } } },
-
-	// mov
-	{ MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } },
-	{ MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } },
-	{ MNEMONIC_MOV, ENC_NONE, 0x8a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } },
-	{ MNEMONIC_MOV, ENC_NONE, 0x8b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } },
-
-	{ MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, { { OP_REG, 8 },            { OP_IMM, 8 } } },
-	{ MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_IMM, 16 | 32 | 64 } } },
-
-	// movzx
-	{ MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } },
-	{ MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, { { OP_RM, 16 }, { OP_REG, 16 | 32 | 64 } } },
-
-	// shl
-	{ MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } },
-
-	// jmp
-	{ MNEMONIC_JMP, ENC_NONE, 0xe9, 0x0, { { OP_REL, 16 | 32 } } },
-
-	// neg
-	{ MNEMONIC_NEG, ENC_NONE, 0xf6, 0x3, { { OP_RM, 8 } } },
-	{ MNEMONIC_NEG, ENC_NONE, 0xf7, 0x3, { { OP_RM, 16 | 32 | 64 } } },
-
-	// call
-	{ MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 16 | 32 } } },
-	{ MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 64 } } },
-};
+static Encoding s_encodings[60];
 
 static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
 static bool s_encoding_initialized = false;
@@ -193,6 +102,102 @@ void encoding_init() {
 	}
 
 	profile_scope_start(__func__);
+
+	typedef Encoding E;
+	Encoding* e = s_encodings;
+
+	// add
+	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x00, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x01, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x02, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
+	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x03, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x81, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+
+	// sub
+	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x28, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x29, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x2a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
+	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x2b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x81, 0x5, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+
+	// cmp
+	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x38, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x39, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x3a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
+	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x3b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	// push
+	*(e++) = (E) { MNEMONIC_PUSH, ENC_ADD_REG_TO_OPCODE, 0x50, 0x0, { { OP_RM, 16 | 64 } } };
+
+	// pop
+	*(e++) = (E) { MNEMONIC_POP,  ENC_ADD_REG_TO_OPCODE, 0x58, 0x0, { { OP_RM, 16 | 64 } } };
+
+	// j[0,b,nb,z,nz,be,nbe,s,ns,p,np,l,nl,le,nle]
+	*(e++) = (E) { MNEMONIC_JO,   ENC_HAS_0F_PREFIX, 0x80, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNO,  ENC_HAS_0F_PREFIX, 0x81, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JB,   ENC_HAS_0F_PREFIX, 0x82, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNB,  ENC_HAS_0F_PREFIX, 0x83, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JZ,   ENC_HAS_0F_PREFIX, 0x84, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNZ,  ENC_HAS_0F_PREFIX, 0x85, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JBE,  ENC_HAS_0F_PREFIX, 0x86, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNBE, ENC_HAS_0F_PREFIX, 0x87, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JS,   ENC_HAS_0F_PREFIX, 0x88, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNS,  ENC_HAS_0F_PREFIX, 0x89, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JP,   ENC_HAS_0F_PREFIX, 0x8a, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNP,  ENC_HAS_0F_PREFIX, 0x8b, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JL,   ENC_HAS_0F_PREFIX, 0x8c, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNL,  ENC_HAS_0F_PREFIX, 0x8d, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JLE,  ENC_HAS_0F_PREFIX, 0x8e, 0x0, { { OP_REL, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_JNLE, ENC_HAS_0F_PREFIX, 0x8f, 0x0, { { OP_REL, 16 | 32 } } };
+
+	// test
+	*(e++) = (E) { MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, { { OP_RM, 8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_TEST, ENC_NONE, 0x84, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+
+	// set[z,nz,be,nbe,s,ns,p,no,l,nl,nle]
+	*(e++) = (E) { MNEMONIC_SETZ,   ENC_HAS_0F_PREFIX, 0x94, 0x0, { { OP_RM, 8 } } }; 
+	*(e++) = (E) { MNEMONIC_SETNZ,  ENC_HAS_0F_PREFIX, 0x95, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETBE,  ENC_HAS_0F_PREFIX, 0x96, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETNBE, ENC_HAS_0F_PREFIX, 0x97, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETS,   ENC_HAS_0F_PREFIX, 0x98, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETNS,  ENC_HAS_0F_PREFIX, 0x99, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETP,   ENC_HAS_0F_PREFIX, 0x9a, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETNP,  ENC_HAS_0F_PREFIX, 0x9b, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETL,   ENC_HAS_0F_PREFIX, 0x9c, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETNL,  ENC_HAS_0F_PREFIX, 0x9d, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETLE,  ENC_HAS_0F_PREFIX, 0x9e, 0x0, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_SETNLE, ENC_HAS_0F_PREFIX, 0x9f, 0x0, { { OP_RM, 8 } } };
+
+	// mov
+	*(e++) = (E) { MNEMONIC_MOV, ENC_NONE, 0x88, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_MOV, ENC_NONE, 0x89, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_MOV, ENC_NONE, 0x8a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
+	*(e++) = (E) { MNEMONIC_MOV, ENC_NONE, 0x8b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, { { OP_REG, 8 },            { OP_IMM, 8 } } };
+	*(e++) = (E) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_IMM, 16 | 32 | 64 } } };
+
+	// movzx
+	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, { { OP_RM, 16 }, { OP_REG, 16 | 32 | 64 } } };
+
+	// shl
+	*(e++) = (E) { MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
+
+	// jmp
+	*(e++) = (E) { MNEMONIC_JMP, ENC_NONE, 0xe9, 0x0, { { OP_REL, 16 | 32 } } };
+
+	// neg
+	*(e++) = (E) { MNEMONIC_NEG, ENC_NONE, 0xf6, 0x3, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_NEG, ENC_NONE, 0xf7, 0x3, { { OP_RM, 16 | 32 | 64 } } };
+
+	// call
+	*(e++) = (E) { MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_CALL, ENC_NONE, 0xff, 0x2, { { OP_RM, 64 } } };
+
+	assert(e == s_encodings + array_size(s_encodings));
 
 	{
 		MnemonicKind current_mnemonic = s_encodings[0].mnemonic;

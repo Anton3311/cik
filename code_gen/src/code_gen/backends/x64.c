@@ -7,66 +7,77 @@ inline uint8_t _bit_count_from_index(uint8_t i) {
 	return (1 << i) * 8;
 }
 
-X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT] = {
-	[INSTR_NO_OP]                  = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+static bool s_instr_storage_requiremenets_initialized = false;
+X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT];
 
-	[INSTR_CONST_8]                = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_CONST_16]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_CONST_32]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_CONST_64]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+static void _init_storage_requiremenets() {
+	if (s_instr_storage_requiremenets_initialized) {
+		return;
+	}
 
-	[INSTR_CONST_STRING]           = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	X64InstrStorageRequirement* s = s_instr_storage_requiremenets;
+	typedef X64InstrStorageRequirement T;
+	s[INSTR_NO_OP]                  = (T) { .allowed_registers = 0, .reg_size = 0 };
 
-	[INSTR_BIN_OP_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_BIN_OP_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_BIN_OP_32]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_BIN_OP_64]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	s[INSTR_CONST_8]                = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_CONST_16]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_CONST_32]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_CONST_64]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_LOGICAL_SHIFT_LEFT_8]   = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_LOGICAL_SHIFT_LEFT_16]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_LOGICAL_SHIFT_LEFT_32]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_LOGICAL_SHIFT_LEFT_64]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	s[INSTR_CONST_STRING]           = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_LOGICAL_SHIFT_RIGHT_8]  = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_LOGICAL_SHIFT_RIGHT_16] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_LOGICAL_SHIFT_RIGHT_32] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_LOGICAL_SHIFT_RIGHT_64] = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	s[INSTR_BIN_OP_8]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_BIN_OP_16]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_BIN_OP_32]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_BIN_OP_64]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_COMPARE_8]              = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
-	[INSTR_COMPARE_16]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
-	[INSTR_COMPARE_32]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
-	[INSTR_COMPARE_64]             = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	s[INSTR_LOGICAL_SHIFT_LEFT_8]   = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_LOGICAL_SHIFT_LEFT_16]  = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_LOGICAL_SHIFT_LEFT_32]  = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_LOGICAL_SHIFT_LEFT_64]  = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_BOOL_TO_INT]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	s[INSTR_LOGICAL_SHIFT_RIGHT_8]  = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_LOGICAL_SHIFT_RIGHT_16] = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_LOGICAL_SHIFT_RIGHT_32] = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_LOGICAL_SHIFT_RIGHT_64] = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_NEGATE_8]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_NEGATE_16]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_NEGATE_32]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_NEGATE_64]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
+	s[INSTR_COMPARE_8]              = (T) { .allowed_registers = 0, .reg_size = 0 };
+	s[INSTR_COMPARE_16]             = (T) { .allowed_registers = 0, .reg_size = 0 };
+	s[INSTR_COMPARE_32]             = (T) { .allowed_registers = 0, .reg_size = 0 };
+	s[INSTR_COMPARE_64]             = (T) { .allowed_registers = 0, .reg_size = 0 };
 
-	[INSTR_CAST_TO_8]              = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_CAST_TO_16]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_CAST_TO_32]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_CAST_TO_64]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	s[INSTR_BOOL_TO_INT]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 
-	[INSTR_PTR_LOAD_8]             = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 8 },
-	[INSTR_PTR_LOAD_16]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 16 },
-	[INSTR_PTR_LOAD_32]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 32 },
-	[INSTR_PTR_LOAD_64]            = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	s[INSTR_NEGATE_8]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_NEGATE_16]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_NEGATE_32]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_NEGATE_64]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 
-	[INSTR_LOAD_ARG]               = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	s[INSTR_CAST_TO_8]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_CAST_TO_16]             = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_CAST_TO_32]             = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_CAST_TO_64]             = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_BRANCH]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
-	[INSTR_JUMP]                   = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	s[INSTR_PTR_LOAD_8]             = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_PTR_LOAD_16]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_PTR_LOAD_32]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_PTR_LOAD_64]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_RETURN_VALUE]           = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	s[INSTR_LOAD_ARG]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
-	[INSTR_CALL_INTERNAL]          = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+	s[INSTR_BRANCH]                 = (T) { .allowed_registers = 0, .reg_size = 0 };
+	s[INSTR_JUMP]                   = (T) { .allowed_registers = 0, .reg_size = 0 };
 
-	[INSTR_REGION]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	s[INSTR_RETURN_VALUE]           = (T) { .allowed_registers = 0, .reg_size = 0 };
 
-	[INSTR_PHI]                    = (X64InstrStorageRequirement) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
-	[INSTR_SELECT]                 = (X64InstrStorageRequirement) { .allowed_registers = 0, .reg_size = 0 },
+	s[INSTR_CALL_INTERNAL]          = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
+
+	s[INSTR_REGION]                 = (T) { .allowed_registers = 0, .reg_size = 0 };
+
+	s[INSTR_PHI]                    = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
+	s[INSTR_SELECT]                 = (T) { .allowed_registers = 0, .reg_size = 0 };
+
+	s_instr_storage_requiremenets_initialized = true;
 };
 
 static const char* X64_REG_BASE_NAMES[] = {
@@ -1618,6 +1629,8 @@ static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrInd
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
 	profile_scope_start(__func__);
 
+	_init_storage_requiremenets();
+
 	encoding_init();
 	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
@@ -1708,13 +1721,6 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		for (size_t j = 0; j < scheduled.count; j += 1) {
 			_x64_generate_code(gen, scheduled.instr[j], code_buffer);
 		}
-	}
-
-	uint16_t* blocks_in_dfs_order = arena_alloc_array(gen->allocator, uint16_t, scheduled_regions.count);
-	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
-		InstrBuffer* instr_buffer = &gen->instr_buffer;
-		const Instr* instr = instr_buffer_at(instr_buffer, scheduled_regions.instr[i]);
-		blocks_in_dfs_order[i] = instr->region.id;
 	}
 
 	size_t final_code_size = 0;

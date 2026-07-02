@@ -56,6 +56,8 @@ struct BuildContext {
 	TargetArch target_arch;
 	Language language;
 
+	FileBuildOptions default_compile_options;
+
 	BuildUnitId current_project;
 
 	BuildUnit* units;
@@ -74,6 +76,10 @@ void build_end_project(BuildContext* context);
 
 void build_output_library(BuildContext* context, String output_dir_path);
 void build_output_executable(BuildContext* context, String output_dir_path);
+
+void build_set_compiler_options(BuildContext* context,
+		BuildUnitId unit_id,
+		FileBuildOptions options);
 
 int32_t build_run(BuildContext* context, char* argv[], size_t argc);
 

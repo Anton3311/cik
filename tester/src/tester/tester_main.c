@@ -9,140 +9,6 @@
 
 #include "parser/preprocessor.h"
 
-static TestCase source_info_tests[] = {
-	test(test_text_start_position_to_source_location),
-	test(test_last_line_postion_to_source_location),
-	test(test_line_range_of_one_line_source_code),
-};
-
-static TestCase tokenizer_tests[] = { 
-	test(test_tokenizer_generates_expected_token),
-	test(test_token_has_valid_string_represenation),
-	test(test_token_source_range_matches_token_string),
-	test(test_mutli_line_comment_with_asterisk_on_line_starts),
-	test(test_token_has_valid_source_file),
-};
-
-static TestCase preprocessor_tests[] = {
-	test(test_non_function_style_macro_expansion),
-	test(test_expand_function_style_macro_with_two_params),
-	test(test_expand_function_style_macro_without_params),
-	test(test_expand_empty_function_style_macro),
-	test(test_expand_empty_style_macro),
-	test(test_macro_call_with_not_enough_args_fails),
-	test(test_nested_macro),
-	test(test_nested_macro_2),
-	test(test_builtin_line_macro_expantion),
-	test(test_assert_macro_expantion),
-	test(test_macro_string_operator),
-	test(test_macro_string_operator_with_invalid_param_name_fails),
-	test(test_simple_if_elif_directives),
-	test(test_parsing_of_non_function_style_macro_with_paren_as_first_token_in_stream),
-	test(test_error_directive),
-	test(test_multi_line_define),
-	test(test_token_insertion_operator),
-	test(test_va_args_macro),
-	test(test_processor_next_returns_eof_when_include_stack_is_empty)
-};
-
-static TestCase parser_tests[] = {
-	test(test_parse_type_def_of_primitive_type),
-	test(test_parse_type_def_of_struct_def),
-	test(test_parse_type_def_of_struct_def_with_fields),
-	test(test_aliased_type_resolution),
-	test(test_parse_enum_def),
-	test(test_parse_function_def),
-	test(test_parse_forward_declared_struct),
-	test(test_parse_forward_declared_struct_followed_by_definition),
-	test(test_parse_forward_declared_enum),
-	test(test_parse_forward_declared_enum_followed_by_definition),
-	test(test_parse_forward_declared_function),
-	test(test_parse_forward_declared_function_followed_by_definition),
-	test(test_parse_function_ref_expr),
-	test(test_parse_primitive_integer_types),
-	test(test_parse_variable_declaration),
-	test(test_parse_simple_bin_expr),
-	test(test_bin_op_precedence),
-	test(test_parse_variable_ref_expr),
-	test(test_parse_return_stmt),
-	test(test_parse_return_stmt_without_value),
-	test(test_multi_part_string_merging),
-	test(test_parse_expr_inside_parens),
-	test(test_allow_variable_shadowing_in_nested_blocks),
-	test(test_allow_variable_shadowing_in_if_statements),
-	test(test_allow_variable_shadowing_in_else_branch_if_statements),
-	test(test_parse_recursive_function),
-	test(test_parse_function_param_in_expr),
-	test(test_register_unnamed_function_param),
-	test(test_inner_struct_decl_is_anonymous),
-	test(test_inner_enum_decl_is_anonymous),
-	test(test_map_current_struct_fields),
-	test(test_map_current_and_inner_anonymous_struct_fields),
-	test(test_fields_not_mapped_for_struct_defined_inline_with_the_named_field),
-	test(test_parse_union_def),
-	test(test_parse_int_literal_sufixes),
-	test(test_parse_int_literal_sufixes_with_bit_count),
-	test(test_invalid_int_literal_sufixes),
-	test(test_parse_type_of_int_literal_with_sufix),
-	test(test_simple_escape_sequences),
-	test(test_invalid_escape_sequences),
-	test(test_octal_escape_sequence),
-	test(test_hex_escape_sequence),
-	test(test_out_of_range_octal_sequence),
-	test(test_out_of_range_hex_sequence),
-	test(test_hex_escape_sequence_without_following_digits_fails),
-	test(test_parse_empty_char_fails),
-	test(test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long),
-	test(test_parse_char_const_with_multiple_chars_is_tool_long),
-};
-
-static TestCase compiler_tests[] = {
-	test(test_reassigning_to_an_old_value_does_not_place_phi),
-};
-
-static TestCase x64_tests[] = {
-	test(test_return_uint64_zero),
-	test(test_add_uint64_consts),
-	test(test_return_first_arg),
-	test(test_return_sum_of_first_two_args),
-	test(test_deref_function_arg),
-	test(test_index_arary_with_pointer_arithmetics),
-	test(test_index_arary_with_pointer_arithmetics_2),
-	test(test_compare_equal_two_uint64),
-	test(test_compare_equal_less_for_uint64),
-	test(test_compare_equal_greater_for_uint64),
-	test(test_mutate_argument),
-	test(test_call_inside_inner_scope),
-	test(test_conditional_call_1),
-	test(test_conditional_call_2),
-	test(test_conditional_call_between_two_calls_1),
-	test(test_conditional_call_between_two_calls_2),
-	test(test_return_one_phi_node_1),
-	test(test_return_one_phi_node_2),
-	test(test_return_sum_of_phi_node_values),
-	test(test_phi_in_nested_if_else),
-	test(test_phi_in_if_without_else),
-	test(test_phi_in_nested_if_without_else),
-	test(test_phi_placement_during_conditional_function_arg_assignment),
-	test(test_min),
-	test(test_char_to_lower),
-	test(test_char_to_upper),
-	test(test_return_file_path),
-	test(test_encode_mov_indirect_addr),
-	test(test_encode_mov_const_32_to_extended_register),
-	test(test_encode_push_extended_register),
-	test(test_encode_pop_extended_register),
-};
-
-static TestSuite s_test_suites[] = {
-	test_suite(source_info_tests),
-	test_suite(tokenizer_tests),
-	test_suite(preprocessor_tests),
-	test_suite(parser_tests),
-	test_suite(compiler_tests),
-	test_suite(x64_tests),
-};
-
 bool arg_parse_uint64(const char* string, uint64_t* out) {
 	errno = 0;
 	char* end = NULL;
@@ -229,6 +95,140 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 
 int main(int argc, char* argv[]) {
 	srand(2153);
+
+	TestCase source_info_tests[] = {
+		test(test_text_start_position_to_source_location),
+		test(test_last_line_postion_to_source_location),
+		test(test_line_range_of_one_line_source_code),
+	};
+
+	TestCase tokenizer_tests[] = { 
+		test(test_tokenizer_generates_expected_token),
+		test(test_token_has_valid_string_represenation),
+		test(test_token_source_range_matches_token_string),
+		test(test_mutli_line_comment_with_asterisk_on_line_starts),
+		test(test_token_has_valid_source_file),
+	};
+
+	TestCase preprocessor_tests[] = {
+		test(test_non_function_style_macro_expansion),
+		test(test_expand_function_style_macro_with_two_params),
+		test(test_expand_function_style_macro_without_params),
+		test(test_expand_empty_function_style_macro),
+		test(test_expand_empty_style_macro),
+		test(test_macro_call_with_not_enough_args_fails),
+		test(test_nested_macro),
+		test(test_nested_macro_2),
+		test(test_builtin_line_macro_expantion),
+		test(test_assert_macro_expantion),
+		test(test_macro_string_operator),
+		test(test_macro_string_operator_with_invalid_param_name_fails),
+		test(test_simple_if_elif_directives),
+		test(test_parsing_of_non_function_style_macro_with_paren_as_first_token_in_stream),
+		test(test_error_directive),
+		test(test_multi_line_define),
+		test(test_token_insertion_operator),
+		test(test_va_args_macro),
+		test(test_processor_next_returns_eof_when_include_stack_is_empty)
+	};
+
+	TestCase parser_tests[] = {
+		test(test_parse_type_def_of_primitive_type),
+		test(test_parse_type_def_of_struct_def),
+		test(test_parse_type_def_of_struct_def_with_fields),
+		test(test_aliased_type_resolution),
+		test(test_parse_enum_def),
+		test(test_parse_function_def),
+		test(test_parse_forward_declared_struct),
+		test(test_parse_forward_declared_struct_followed_by_definition),
+		test(test_parse_forward_declared_enum),
+		test(test_parse_forward_declared_enum_followed_by_definition),
+		test(test_parse_forward_declared_function),
+		test(test_parse_forward_declared_function_followed_by_definition),
+		test(test_parse_function_ref_expr),
+		test(test_parse_primitive_integer_types),
+		test(test_parse_variable_declaration),
+		test(test_parse_simple_bin_expr),
+		test(test_bin_op_precedence),
+		test(test_parse_variable_ref_expr),
+		test(test_parse_return_stmt),
+		test(test_parse_return_stmt_without_value),
+		test(test_multi_part_string_merging),
+		test(test_parse_expr_inside_parens),
+		test(test_allow_variable_shadowing_in_nested_blocks),
+		test(test_allow_variable_shadowing_in_if_statements),
+		test(test_allow_variable_shadowing_in_else_branch_if_statements),
+		test(test_parse_recursive_function),
+		test(test_parse_function_param_in_expr),
+		test(test_register_unnamed_function_param),
+		test(test_inner_struct_decl_is_anonymous),
+		test(test_inner_enum_decl_is_anonymous),
+		test(test_map_current_struct_fields),
+		test(test_map_current_and_inner_anonymous_struct_fields),
+		test(test_fields_not_mapped_for_struct_defined_inline_with_the_named_field),
+		test(test_parse_union_def),
+		test(test_parse_int_literal_sufixes),
+		test(test_parse_int_literal_sufixes_with_bit_count),
+		test(test_invalid_int_literal_sufixes),
+		test(test_parse_type_of_int_literal_with_sufix),
+		test(test_simple_escape_sequences),
+		test(test_invalid_escape_sequences),
+		test(test_octal_escape_sequence),
+		test(test_hex_escape_sequence),
+		test(test_out_of_range_octal_sequence),
+		test(test_out_of_range_hex_sequence),
+		test(test_hex_escape_sequence_without_following_digits_fails),
+		test(test_parse_empty_char_fails),
+		test(test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long),
+		test(test_parse_char_const_with_multiple_chars_is_tool_long),
+	};
+
+	TestCase compiler_tests[] = {
+		test(test_reassigning_to_an_old_value_does_not_place_phi),
+	};
+
+	TestCase x64_tests[] = {
+		test(test_return_uint64_zero),
+		test(test_add_uint64_consts),
+		test(test_return_first_arg),
+		test(test_return_sum_of_first_two_args),
+		test(test_deref_function_arg),
+		test(test_index_arary_with_pointer_arithmetics),
+		test(test_index_arary_with_pointer_arithmetics_2),
+		test(test_compare_equal_two_uint64),
+		test(test_compare_equal_less_for_uint64),
+		test(test_compare_equal_greater_for_uint64),
+		test(test_mutate_argument),
+		test(test_call_inside_inner_scope),
+		test(test_conditional_call_1),
+		test(test_conditional_call_2),
+		test(test_conditional_call_between_two_calls_1),
+		test(test_conditional_call_between_two_calls_2),
+		test(test_return_one_phi_node_1),
+		test(test_return_one_phi_node_2),
+		test(test_return_sum_of_phi_node_values),
+		test(test_phi_in_nested_if_else),
+		test(test_phi_in_if_without_else),
+		test(test_phi_in_nested_if_without_else),
+		test(test_phi_placement_during_conditional_function_arg_assignment),
+		test(test_min),
+		test(test_char_to_lower),
+		test(test_char_to_upper),
+		test(test_return_file_path),
+		test(test_encode_mov_indirect_addr),
+		test(test_encode_mov_const_32_to_extended_register),
+		test(test_encode_push_extended_register),
+		test(test_encode_pop_extended_register),
+	};
+
+	TestSuite s_test_suites[] = {
+		test_suite(source_info_tests),
+		test_suite(tokenizer_tests),
+		test_suite(preprocessor_tests),
+		test_suite(parser_tests),
+		test_suite(compiler_tests),
+		test_suite(x64_tests),
+	};
 
 	if (argc > 1) {
 		TestCommandKind cmd = TEST_CMD_COUNT;

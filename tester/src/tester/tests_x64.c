@@ -53,10 +53,10 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	Parser parser = {};
 	parser_init(&parser, &ast_arena, context->arena, &ident_storage, &preprocessor, &diagnostics);
 
-	preprocessor_release(&preprocessor);
-
 	AST parsed_ast = {};
 	parser_parse(&parser, &parsed_ast);
+
+	preprocessor_release(&preprocessor);
 
 	if (diagnostics.first) {
 		diagnostics_print(&diagnostics);

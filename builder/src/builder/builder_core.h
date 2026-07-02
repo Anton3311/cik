@@ -29,6 +29,7 @@ typedef enum {
 	FILE_OPTION_NONE                = 0,
 	FILE_OPTION_GENERATE_DEBUG_INFO = 1 << 0,
 	FILE_OPTION_WARNINGS_ALL        = 1 << 1,
+	FILE_OPTION_SANITIZE_ADDRESS    = 1 << 2,
 } FileBuildOptions;
 
 struct BuildUnitId {

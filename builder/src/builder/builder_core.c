@@ -327,6 +327,10 @@ static void _msvc_gen_file_compile_cmd(BuildContext* context,
 		str_builder_append(cmd_builder, STR_LIT("/Wall "));
 	}
 
+	if (has_flag(options, FILE_OPTION_SANITIZE_ADDRESS)) {
+		str_builder_append(cmd_builder, STR_LIT("/fsanitize=address "));
+	}
+
 	str_builder_append(cmd_builder, STR_LIT("/Fo: "));
 	_format_output_file_path(cmd_builder, unit, false);
 	str_builder_append_char(cmd_builder, ' ');

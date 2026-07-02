@@ -320,7 +320,7 @@ static void _msvc_gen_file_compile_cmd(BuildContext* context,
 
 	FileBuildOptions options = unit->file_build_options;
 	if (has_flag(options, FILE_OPTION_GENERATE_DEBUG_INFO)) {
-		str_builder_append(cmd_builder, STR_LIT("/Zi "));
+		str_builder_append(cmd_builder, STR_LIT("/Z7 "));
 	}
 
 	if (has_flag(options, FILE_OPTION_WARNINGS_ALL)) {

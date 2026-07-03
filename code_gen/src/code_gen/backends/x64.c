@@ -1132,6 +1132,19 @@ static void _collect_phis(X64CodeGenerator* gen, Arena* allocator) {
 		}
 	}
 
+	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
+		for (uint16_t region_id = 0; region_id < instr_buffer->region_count; region_id += 1) {
+			uint16_t phi_count = phi_variant_counts_per_region[region_id];
+			printf("%u -> %u:\n", (uint32_t)region_id, (uint32_t)phi_count);
+
+			for (uint16_t i = 0; i < phi_count; i += 1) {
+				printf("phi: %u variant: %u\n",
+						(uint32_t)phi_node_of_variant[region_id][i].value,
+						(uint32_t)phi_variants_per_region[region_id].instr[i].value);
+			}
+		}
+	}
+
 	gen->phi_variant_counts_per_region = phi_variant_counts_per_region;
 	gen->phi_variants_per_region = phi_variants_per_region;
 	gen->phi_node_of_variant = phi_node_of_variant;

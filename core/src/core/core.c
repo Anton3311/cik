@@ -191,12 +191,8 @@ size_t align_to_page_size(size_t bytes) {
 	return align(bytes, s_sys_mem_spec.page_size);
 }
 
-void _arena_reserve(Arena* arena, size_t initial_size) {
-	assert(initial_size < arena->capacity);
+void _arena_reserve(Arena* arena) {
 	_query_system_memory_spec();
-
-	size_t aligned_allocation = align(initial_size, s_sys_mem_spec.page_size);
-	aligned_allocation = max(s_sys_mem_spec.page_size, aligned_allocation);
 
 	arena->base = (uint8_t*)VirtualAlloc(NULL,
 			(SIZE_T)align(arena->capacity, s_sys_mem_spec.page_size),
@@ -204,10 +200,6 @@ void _arena_reserve(Arena* arena, size_t initial_size) {
 			PAGE_READWRITE);
 
 	assert(arena->base != NULL);
-
-	assert(VirtualAlloc(arena->base, (SIZE_T)aligned_allocation, MEM_COMMIT, PAGE_READWRITE) != NULL);
-
-	arena->commited = aligned_allocation;
 }
 
 void _arena_commit(Arena* arena, size_t size) {
@@ -224,6 +216,8 @@ void _arena_commit(Arena* arena, size_t size) {
 			PAGE_READWRITE);
 
 	assert(result != NULL);
+
+	asan_poison_memory_region(arena->base + arena->commited, commit_size);
 
 	arena->commited += commit_size;
 }

@@ -14,6 +14,10 @@
 	#define COMPILER_MSVC
 #endif
 
+#if _WIN32
+	#define PLATFORM_WINDOWS
+#endif
+
 typedef uint8_t bool;
 typedef uint8_t bool8;
 typedef uint32_t char32_t;
@@ -80,6 +84,37 @@ inline bool is_power_of_2(size_t value) {
 
 uint64_t hardware_timer_get_frequency();
 size_t align_to_page_size(size_t bytes);
+
+//
+// Asan
+//
+
+#if defined(__has_feature)
+	#if __has_feature(address_sanitizer)
+		#define FEATURE_ASAN
+	#endif
+#elif defined(__SANITIZE_ADDRESS__)
+	#define FEATURE_ASAN
+#endif
+
+#ifdef FEATURE_ASAN
+	#ifdef PLATFORM_WINDOWS
+		#define SANITIZER_CDECL __cdecl
+	#else
+		#define SANITIZER_CDECL
+	#endif
+
+	void SANITIZER_CDECL __asan_poison_memory_region(void const volatile *addr, size_t size);
+	void SANITIZER_CDECL __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+
+	#define asan_poison_memory_region(addr, size) __asan_poison_memory_region((addr), (size))
+	#define asan_unpoison_memory_region(addr, size) __asan_unpoison_memory_region((addr), (size))
+#else
+	#define asan_poison_memory_region(addr, size) ((void)(addr), (void)(size))
+	#define asan_unpoison_memory_region(addr, size) ((void)(addr), (void)(size))
+#endif
+
+
 
 //
 // Bit Operations
@@ -169,7 +204,7 @@ typedef struct {
 
 Allocator arena_allocator_new(Arena* arena);
 
-void _arena_reserve(Arena* arena, size_t initial_size);
+void _arena_reserve(Arena* arena);
 void _arena_commit(Arena* arena, size_t size);
 
 inline void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment) {
@@ -177,12 +212,15 @@ inline void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment) {
 	size_t new_allocated_ptr = allocation_base + size;
 
 	if (arena->base == NULL) {
-		_arena_reserve(arena, size);
-	} else if (new_allocated_ptr > arena->commited) {
+		_arena_reserve(arena);
+	}
+
+	if (new_allocated_ptr > arena->commited) {
 		_arena_commit(arena, new_allocated_ptr - arena->allocated);
 	}
 
 	void* allocation = arena->base + allocation_base;
+	asan_unpoison_memory_region(allocation, size);
 	arena->allocated = new_allocated_ptr;
 	return allocation;
 }

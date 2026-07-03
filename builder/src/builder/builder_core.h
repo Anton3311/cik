@@ -6,6 +6,7 @@
 typedef struct BuildContext BuildContext;
 typedef struct BuildUnit BuildUnit;
 typedef struct BuildUnitId BuildUnitId;
+typedef struct BuildFlag BuildFlag;
 
 typedef enum {
 	OUTPUT_NONE,
@@ -49,6 +50,12 @@ struct BuildUnit {
 	StringArray include_dirs;
 };
 
+struct BuildFlag {
+	String string;
+	uint32_t value;
+	String description;
+};
+
 struct BuildContext {
 	Arena* unit_allocator;
 	Arena* allocator;
@@ -63,9 +70,23 @@ struct BuildContext {
 
 	BuildUnit* units;
 	size_t unit_count;
+
+	BuildFlag* custom_flag_defs;
+	size_t custom_flag_def_count;
+	uint32_t custom_flags;
+
+	bool command_log_enabled;
+
+	// The name of the project, that should be build, or empty if all projects should be built
+	String target_project_name;
 };
 
-void build_init(BuildContext* context, Arena* unit_allocator, Arena* dependency_allocator, Arena* allocator);
+void build_init(BuildContext* context,
+		const char** argv,
+		size_t argc,
+		Arena* unit_allocator,
+		Arena* dependency_allocator,
+		Arena* allocator);
 
 void build_add_src_dir(BuildContext* context, String dir_path);
 void build_add_src_file(BuildContext* context, String file_path);
@@ -82,6 +103,6 @@ void build_set_compiler_options(BuildContext* context,
 		BuildUnitId unit_id,
 		FileBuildOptions options);
 
-int32_t build_run(BuildContext* context, char* argv[], size_t argc);
+int32_t build_run(BuildContext* context);
 
 #endif

@@ -1,15 +1,30 @@
 #include "builder/builder_core.h"
 
+typedef enum {
+	FLAG_ASAN = 1 << 0,
+} CustomBuildFlags;
+
 int main(int argc, char *argv[]) {
 	Arena allocator = { .capacity = 16 * 4096 };
 	Arena unit_allocator = { .capacity = 16 * 4096 };
 	Arena dependency_allocator = { .capacity = 16 * 4096 };
 
-	BuildContext context;
+	BuildFlag flags[] = {
+		(BuildFlag) { STR_LIT("--asan"), FLAG_ASAN, STR_LIT("compile with asan") },
+	};
+
+	BuildContext context = {};
+	context.custom_flag_defs = flags;
+	context.custom_flag_def_count = array_size(flags);
+	build_init(&context, (const char**)argv, argc, &unit_allocator, &dependency_allocator, &allocator);
+
 	context.target_arch = ARCH_X64;
 	context.language = LANG_C11;
-	context.default_compile_options = COMPILE_OPTION_GENERATE_DEBUG_INFO | COMPILE_OPTION_SANITIZE_ADDRESS;
-	build_init(&context, &unit_allocator, &dependency_allocator, &allocator);
+	context.default_compile_options = COMPILE_OPTION_GENERATE_DEBUG_INFO;
+
+	if (has_flag(context.custom_flags, FLAG_ASAN)) {
+		context.default_compile_options |= COMPILE_OPTION_SANITIZE_ADDRESS;
+	}
 	
 	BuildUnitId core = build_begin_project(&context, STR_LIT("core"), OUTPUT_LIB);
 	build_add_src_dir(&context, STR_LIT("core/src/core/"));
@@ -88,5 +103,5 @@ int main(int argc, char *argv[]) {
 	// NOTE: No need to release arenas, as the memory will be cleaned by the OS
 	//       after the process termination
 
-	return build_run(&context, argv, argc);
+	return build_run(&context);
 }

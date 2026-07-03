@@ -35,17 +35,6 @@ inline BuildUnitId _alloc_unit(BuildContext* context) {
 	return unit_id;
 }
 
-void build_init(BuildContext* context, Arena* unit_allocator, Arena* dependency_allocator, Arena* allocator) {
-	context->allocator = allocator;
-	context->unit_allocator = unit_allocator;
-	context->dependency_allocator = dependency_allocator;
-
-	context->units = arena_alloc_array(context->unit_allocator, BuildUnit, 0);
-	context->unit_count = 0;
-
-	context->current_project.value = INVALID_BUILD_UNIT_ID;
-}
-
 void build_add_src_dir(BuildContext* context, String dir_path) {
 	assert(context->current_project.value != INVALID_BUILD_UNIT_ID);
 	if (!path_exists(context->unit_allocator, dir_path)) {
@@ -763,38 +752,72 @@ static const char* s_help_message =
 	"\n"
 	"    help                  show help message\n";
 
-int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
+int32_t build_run(BuildContext* context) {
+	BuildResult result = {};
+	int32_t exit_code = _run_build_process(context,
+			context->target_project_name,
+			context->command_log_enabled,
+			&result)
+		? EXIT_SUCCESS
+		: EXIT_FAILURE;
+
+	if (context->command_log_enabled) {
+		const char* build_all_path = "scripts/build_all.bat";
+		bool written = write_str_to_file(build_all_path, result.cmd_log);
+		_print_result(written, str_from_cstr(build_all_path), (String) {});
+
+		if (!written) {
+			exit_code = EXIT_FAILURE;
+		}
+	}
+
+	return exit_code;
+}
+
+void build_init(BuildContext* context,
+		const char** argv,
+		size_t argc,
+		Arena* unit_allocator,
+		Arena* dependency_allocator,
+		Arena* allocator) {
+	context->allocator = allocator;
+	context->unit_allocator = unit_allocator;
+	context->dependency_allocator = dependency_allocator;
+
+	context->units = arena_alloc_array(context->unit_allocator, BuildUnit, 0);
+	context->unit_count = 0;
+
+	context->current_project.value = INVALID_BUILD_UNIT_ID;
+
 	if (argc <= 1) {
 		printf("\033[1;31mNot enough arguments\033[0m\n");
 		printf("%s", s_help_message);
-		return EXIT_FAILURE;
+		exit(EXIT_FAILURE);
 	}
 
+	s_current_compiler = COMPILER_KIND_CLANG;
 	s_clang_info = (ClangCompilerInfo) {};
+	s_msvc_compiler_path = (MsvcCompilerInfo) {};
 
 	size_t arg_index = 1;
 	while (arg_index < argc) {
 		if (strcmp(argv[arg_index], "build") == 0) {
 			arg_index += 1;
 
-			String project_name = {};
-			bool cmd_log_enabled = false;
 			if (arg_index < argc) {
 				String arg = str_from_cstr(argv[arg_index]);
 				if (!str_starts_with(arg, STR_LIT("--"))) {
-					project_name = str_from_cstr(argv[arg_index]);
+					context->target_project_name = str_from_cstr(argv[arg_index]);
 					arg_index += 1;
 				}
 			}
 
-			if (project_name.length == 0) {
-				cmd_log_enabled = true;
+			if (context->target_project_name.length == 0) {
+				context->command_log_enabled = true;
 			}
 
 			String compiler_paths_prefix = STR_LIT("--compiler-paths=");
 			String compiler_kind_prefix = STR_LIT("--cc=");
-
-			s_current_compiler = COMPILER_KIND_CLANG;
 
 			String compiler_search_paths = {};
 			while (arg_index < argc) {
@@ -806,7 +829,7 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 
 					if (compiler_search_paths.length == 0) {
 						fprintf(stderr, "Empty --compiler-paths\n");
-						return EXIT_FAILURE;
+						exit(EXIT_FAILURE);
 					}
 
 					arg_index += 1;
@@ -821,13 +844,25 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 						s_current_compiler = COMPILER_KIND_MSVC;
 					} else {
 						fprintf(stderr, "Unknown compiler '%.*s'\n", STR_FMT(compiler_name));
-						return EXIT_FAILURE;
+						exit(EXIT_FAILURE);
 					}
 
 					arg_index += 1;
 				} else {
-					fprintf(stderr, "Unknown build argument: %.*s\n", STR_FMT(arg));
-					return EXIT_FAILURE;
+					bool resolved = false;
+					for (size_t i = 0; i < context->custom_flag_def_count; i += 1) {
+						if (str_equal(context->custom_flag_defs[i].string, arg)) {
+							arg_index += 1;
+							context->custom_flags |= context->custom_flag_defs[i].value;
+							resolved = true;
+							break;
+						}
+					}
+
+					if (!resolved) {
+						fprintf(stderr, "Unknown build argument: %.*s\n", STR_FMT(arg));
+						exit(EXIT_FAILURE);
+					}
 				}
 			}
 
@@ -839,37 +874,17 @@ int32_t build_run(BuildContext* context, char* argv[], size_t argc) {
 						context->allocator,
 						context->unit_allocator)) {
 				fprintf(stderr, "Compiler not found in the search path");
-				return EXIT_FAILURE;
+				exit(EXIT_FAILURE);
 			}
-
-			BuildResult result = {};
-			int32_t exit_code = _run_build_process(context, project_name, cmd_log_enabled, &result)
-				? EXIT_SUCCESS
-				: EXIT_FAILURE;
-
-			if (cmd_log_enabled) {
-				const char* build_all_path = "scripts/build_all.bat";
-				bool written = write_str_to_file(build_all_path, result.cmd_log);
-				_print_result(written, str_from_cstr(build_all_path), (String) {});
-
-				if (!written) {
-					exit_code = EXIT_FAILURE;
-				}
-			}
-
-			return exit_code;
 		} else if (strcmp(argv[arg_index], "help") == 0) {
 			printf("%s", s_help_message);
-			return EXIT_SUCCESS;
+			exit(EXIT_SUCCESS);
 		} else if (strcmp(argv[arg_index], "list") == 0) {
 			_print_all_targets(context);
-			return EXIT_SUCCESS;
+			exit(EXIT_SUCCESS);
 		} else {
 			fprintf(stderr, "\033[1;31mUnknown argument: '%s'\033[0m", argv[arg_index]);
-			return EXIT_FAILURE;
+			exit(EXIT_FAILURE);
 		}
 	}
-
-	unreachable();
-	return EXIT_FAILURE;
 }

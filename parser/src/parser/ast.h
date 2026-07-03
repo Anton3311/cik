@@ -157,7 +157,7 @@ bool type_equal(const Type* a, const Type* b);
 void type_array_to_pointer(const Type* type, Type* out_type);
 
 inline bool type_kind_is_int(TypeKind kind) {
-	TypeKind kind_without_sign_flags = kind & ~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED);
+	TypeKind kind_without_sign_flags = kind & (TypeKind)(~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
 	return (kind_without_sign_flags >= TYPE_CHAR
 		&& kind_without_sign_flags <= TYPE_INT64)
 		|| kind == TYPE_SIZE_T;

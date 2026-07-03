@@ -1052,7 +1052,7 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 	}
 
 	if (type_kind != TYPE_VOID) {
-		out_type->kind = type_kind | type_flags;
+		out_type->kind = type_kind | (TypeKind)type_flags;
 		return PARSE_TYPE_PARSED;
 	}
 
@@ -1496,7 +1496,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 						int_type = TYPE_INT;
 					}
 
-					int_type |= TYPE_FLAG_UNSIGNED;
+					int_type |= (TypeKind)TYPE_FLAG_UNSIGNED;
 					break;
 				}
 				case INT_SUFIX_L:

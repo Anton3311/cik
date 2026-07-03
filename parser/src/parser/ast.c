@@ -19,8 +19,8 @@ bool type_is_enum(const Type* type, const Enum* enum_def) {
 }
 
 bool type_equal(const Type* a, const Type* b) {
-	TypeKind a_without_signed = a->kind & (~TYPE_FLAG_SIGNED);
-	TypeKind b_without_signed = b->kind & (~TYPE_FLAG_SIGNED);
+	TypeKind a_without_signed = a->kind & (TypeKind)(~TYPE_FLAG_SIGNED);
+	TypeKind b_without_signed = b->kind & (TypeKind)(~TYPE_FLAG_SIGNED);
 
 	if (a_without_signed != b_without_signed) {
 		return false;
@@ -324,9 +324,9 @@ void bin_expr_select_result_type(const Type* left_type,
 	if (left_convertion_rank == right_convertion_rank) {
 		if (left_type->kind == TYPE_SIZE_T || right_type->kind == TYPE_SIZE_T) {
 			out_type->kind = TYPE_SIZE_T;
-		} else if (has_flag(left_type->kind, TYPE_FLAG_UNSIGNED)) {
+		} else if (has_flag(left_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
 			*out_type = *left_type;
-		} else if (has_flag(right_type->kind, TYPE_FLAG_UNSIGNED)) {
+		} else if (has_flag(right_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
 			*out_type = *right_type;
 		} else {
 			*out_type = *left_type;
@@ -815,13 +815,13 @@ void print_type(PrinterState* printer, const Type* type) {
 	case TYPE_UNSIGNED_INT16:
 	case TYPE_UNSIGNED_INT32:
 	case TYPE_UNSIGNED_INT64: {
-		TypeKind base_kind = type->kind & (~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
+		TypeKind base_kind = type->kind & (TypeKind)(~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));
 		const char* prefix = "";
 		const char* base_type_name = "";
 
-		if (has_flag(type->kind, TYPE_FLAG_SIGNED)) {
+		if (has_flag(type->kind, (TypeKind)TYPE_FLAG_SIGNED)) {
 			prefix = "signed ";
-		} else if (has_flag(type->kind, TYPE_FLAG_UNSIGNED)) {
+		} else if (has_flag(type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
 			prefix = "unsigned ";
 		}
 

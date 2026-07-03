@@ -1205,7 +1205,7 @@ void test_parse_primitive_integer_types(TestContext* context) {
 		for (size_t flag_index = 0; flag_index < array_size(type_flags); flag_index += 1) {
 			for (size_t type_index = 0; type_index < array_size(type_kinds); type_index += 1) {
 				const StructField* field = &struct_def->fields[field_index];
-				TypeKind type_kind = type_kinds[type_index] | type_flags[flag_index];
+				TypeKind type_kind = type_kinds[type_index] | (TypeKind)type_flags[flag_index];
 
 				assert(field->type.kind == type_kind);
 

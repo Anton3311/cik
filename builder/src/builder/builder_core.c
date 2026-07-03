@@ -78,7 +78,7 @@ void build_add_src_file(BuildContext* context, String file_path) {
 	unit->name = path_trim_file_extension(path_get_file_name(file_path));
 	unit->path = file_path;
 	unit->output_type = OUTPUT_OBJ;
-	unit->file_build_options = project->file_build_options;
+	unit->compile_options = project->compile_options;
 
 	*arena_alloc(context->dependency_allocator, BuildUnitId) = unit_id;
 	project->dependency_count += 1;
@@ -118,7 +118,7 @@ BuildUnitId build_begin_project(BuildContext* context, String name, BuildUnitOut
 	BuildUnit* unit = _get_unit(context, unit_id);
 	unit->name = name;
 	unit->output_type = output_type;
-	unit->file_build_options = context->default_compile_options;
+	unit->compile_options = context->default_compile_options;
 
 	context->current_project = unit_id;
 	return unit_id;
@@ -135,7 +135,7 @@ void build_set_compiler_options(BuildContext* context,
 		FileBuildOptions options) {
 	BuildUnit* project = _get_unit(context, context->current_project);
 	BuildUnit* unit = _get_unit(context, unit_id);
-	unit->file_build_options = options | project->file_build_options;
+	unit->compile_options = options | project->compile_options;
 }
 
 #if 0
@@ -219,8 +219,7 @@ static void _format_output_file_path(StringBuilder* builder,
 
 void _clang_gen_file_compile_cmd(BuildContext* context,
 		StringBuilder* cmd_builder,
-		const BuildUnit* unit,
-		FileBuildOptions options) {
+		const BuildUnit* unit) {
 
 	str_builder_append(cmd_builder, STR_LIT("-c "));
 	str_builder_append(cmd_builder, unit->path);
@@ -241,11 +240,12 @@ void _clang_gen_file_compile_cmd(BuildContext* context,
 		break;
 	}
 
-	if (has_flag(options, FILE_OPTION_GENERATE_DEBUG_INFO)) {
+	FileBuildOptions options = unit->compile_options;
+	if (has_flag(options, COMPILE_OPTION_GENERATE_DEBUG_INFO)) {
 		str_builder_append(cmd_builder, STR_LIT("-g "));
 	}
 
-	if (has_flag(options, FILE_OPTION_WARNINGS_ALL)) {
+	if (has_flag(options, COMPILE_OPTION_WARNINGS_ALL)) {
 		str_builder_append(cmd_builder, STR_LIT("-Wall "));
 	}
 
@@ -318,16 +318,16 @@ static void _msvc_gen_file_compile_cmd(BuildContext* context,
 		break;
 	}
 
-	FileBuildOptions options = unit->file_build_options;
-	if (has_flag(options, FILE_OPTION_GENERATE_DEBUG_INFO)) {
+	FileBuildOptions options = unit->compile_options;
+	if (has_flag(options, COMPILE_OPTION_GENERATE_DEBUG_INFO)) {
 		str_builder_append(cmd_builder, STR_LIT("/Z7 "));
 	}
 
-	if (has_flag(options, FILE_OPTION_WARNINGS_ALL)) {
+	if (has_flag(options, COMPILE_OPTION_WARNINGS_ALL)) {
 		str_builder_append(cmd_builder, STR_LIT("/Wall "));
 	}
 
-	if (has_flag(options, FILE_OPTION_SANITIZE_ADDRESS)) {
+	if (has_flag(options, COMPILE_OPTION_SANITIZE_ADDRESS)) {
 		str_builder_append(cmd_builder, STR_LIT("/fsanitize=address "));
 	}
 
@@ -581,7 +581,7 @@ static bool _run_build_process(BuildContext* context,
 
 				str_builder_append(&cmd_builder, path_get_file_name(exe_path));
 				str_builder_append_char(&cmd_builder, ' ');
-				_clang_gen_file_compile_cmd(context, &cmd_builder, unit, FILE_OPTION_GENERATE_DEBUG_INFO);
+				_clang_gen_file_compile_cmd(context, &cmd_builder, unit);
 				break;
 			case COMPILER_KIND_MSVC:
 				exe_path = s_msvc_compiler_path.cl_path;

@@ -26,10 +26,10 @@ typedef enum {
 } Language;
 
 typedef enum {
-	FILE_OPTION_NONE                = 0,
-	FILE_OPTION_GENERATE_DEBUG_INFO = 1 << 0,
-	FILE_OPTION_WARNINGS_ALL        = 1 << 1,
-	FILE_OPTION_SANITIZE_ADDRESS    = 1 << 2,
+	COMPILE_OPTION_NONE                = 0,
+	COMPILE_OPTION_GENERATE_DEBUG_INFO = 1 << 0,
+	COMPILE_OPTION_WARNINGS_ALL        = 1 << 1,
+	COMPILE_OPTION_SANITIZE_ADDRESS    = 1 << 2,
 } FileBuildOptions;
 
 struct BuildUnitId {
@@ -41,7 +41,7 @@ struct BuildUnit {
 	String path;
 	BuildUnitOutputType output_type;
 
-	FileBuildOptions file_build_options;
+	FileBuildOptions compile_options;
 
 	BuildUnitId* dependencies;
 	size_t dependency_count;

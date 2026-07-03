@@ -242,6 +242,7 @@ inline Arena arena_alloc_sub_arena(Arena* arena, size_t size) {
 }
 
 inline void arena_reset(Arena* arena) {
+	asan_poison_memory_region(arena->base, arena->allocated);
 	arena->allocated = 0;
 }
 

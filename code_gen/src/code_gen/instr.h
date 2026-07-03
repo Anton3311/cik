@@ -364,6 +364,10 @@ inline void instr_buffer_init(InstrBuffer* buffer, Arena* allocator) {
 inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 	assert(buffer->count <= UINT16_MAX);
 
+	const uint8_t* arena_end = (const uint8_t*)allocator->base + allocator->allocated;
+	const Instr* buffer_end = buffer->instr + buffer->count;
+	assert((const void*)arena_end == (const void*)buffer_end);
+
 	Instr* instr = arena_alloc(allocator, Instr);
 	(void)instr;
 

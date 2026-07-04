@@ -195,6 +195,7 @@ struct Instr {
 
 		struct {
 			InstrIndex ptr;
+			InstrIndex io_state;
 		} ptr_load;
 
 		struct {

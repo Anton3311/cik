@@ -907,6 +907,39 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	}
 }
 
+static uint64_t _internal_store(uint64_t* out) {
+	*out = 10;
+	return 0;
+}
+
+static void _resolve_memory_operation_symbols(FunctionRefTable* table, void* data) {
+	func_ref_table_resolve_ref_to(table, STR_LIT("store"), _internal_store);
+}
+
+void test_memory_operations_are_synchronized_with_calls(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t store(uint64_t* out);\n"
+			"uint64_t main(uint64_t* out) {\n"
+			"    uint64_t value = *out;\n"
+			"    store(out);\n"
+			"    return value;\n"
+			"}\n");
+	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
+			source_code,
+			_resolve_memory_operation_symbols,
+			NULL);
+
+	typedef uint64_t(*Function)(uint64_t*);
+
+	Function function = (Function)machine_code.code;
+
+	uint64_t input = 100;
+	assert(function(&input) == 100);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
 void test_encode_mov_indirect_addr(TestContext* context) {
 	uint8_t expected[] = { 0x48, 0x8b, 0x02 };
 

@@ -181,15 +181,19 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         break;
     case INSTR_PTR_LOAD_8:
         instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.io_state);
         break;
     case INSTR_PTR_LOAD_16:
         instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.io_state);
         break;
     case INSTR_PTR_LOAD_32:
         instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.io_state);
         break;
     case INSTR_PTR_LOAD_64:
         instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_load.io_state);
         break;
     case INSTR_LOAD_ARG:
         break;
@@ -332,16 +336,16 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         printf("value: \033[33;1m%u\033[0m ", (uint32_t)instr->cast.value.value);
         break;
     case INSTR_PTR_LOAD_8:
-        printf("ptr: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value);
+        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_PTR_LOAD_16:
-        printf("ptr: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value);
+        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_PTR_LOAD_32:
-        printf("ptr: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value);
+        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_PTR_LOAD_64:
-        printf("ptr: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value);
+        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_LOAD_ARG:
         printf("index: %u ", (uint32_t)instr->load_arg.index);

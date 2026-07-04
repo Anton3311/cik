@@ -216,6 +216,7 @@ int main(int argc, char* argv[]) {
 		test(test_char_to_upper),
 		test(test_return_file_path),
 		test(test_sub_instr_code_gen_for_different_reg_configurations),
+		test(test_memory_operations_are_synchronized_with_calls),
 		test(test_encode_mov_indirect_addr),
 		test(test_encode_mov_const_32_to_extended_register),
 		test(test_encode_push_extended_register),

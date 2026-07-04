@@ -402,6 +402,9 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
 			instr->ptr_load.ptr = operand_instr;
+			instr->ptr_load.io_state = compiler->io_state;
+
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, instr_index);
 
 			TypeLayout layout = _type_get_layout(compiler, base_type);
 			switch (layout.size) {
@@ -991,10 +994,16 @@ static uint64_t _internal_identity(uint64_t value) {
 	return value;
 }
 
+static uint64_t _internal_store_u64(uint64_t* out) {
+	*out = 16;
+	return 0;
+}
+
 void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
 	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
 	func_ref_table_resolve_ref_to(table, STR_LIT("printf"), printf);
 	func_ref_table_resolve_ref_to(table, STR_LIT("panic"), _internal_panic);
 	func_ref_table_resolve_ref_to(table, STR_LIT("identity"), _internal_identity);
+	func_ref_table_resolve_ref_to(table, STR_LIT("store_u64"), _internal_identity);
 }

@@ -1339,6 +1339,7 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
 	case INSTR_PTR_LOAD_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.io_state);
 		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.ptr);
 		break;
 	case INSTR_LOAD_ARG:

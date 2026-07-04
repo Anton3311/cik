@@ -33,6 +33,7 @@ static InstrIndexArray _gather_instr_with_storage_requirement(const InstrBuffer*
 }
 
 // Returned array stores an array of edges for each instruction in `instr_with_storage_requirement`
+//
 // The array must be indexed using an element index of the `instr_with_storage_requirement`
 static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_storage_requirement,
 		const InstrUsageRange* live_ranges,
@@ -58,7 +59,18 @@ static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_s
 			uint16_t max_start = max(live_range_a.first_usage.value, live_range_b.first_usage.value);
 			uint16_t min_end = min(live_range_a.last_usage.value, live_range_b.last_usage.value);
 
-			bool overlap = min_end > max_start;
+			// Check whether live ranges overlap.
+			bool overlap = min_end >= max_start;
+
+			// If the ranges only overlaps at their ends, then don't consider them overlapping
+			if (live_range_a.last_usage.value == live_range_b.first_usage.value) {
+				overlap = false;
+			}
+
+			if (live_range_a.first_usage.value == live_range_b.last_usage.value) {
+				overlap = false;
+			}
+
 			if (overlap) {
 				arena_alloc(allocator, InstrIndex);
 				edges->values[edges->count] = (uint16_t)j;
@@ -71,7 +83,8 @@ static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_s
 }
 
 // Writes storage locations into `instr_storage` array.
-// This array must be of size `instr_buffer.count`
+//
+// This array is expected to be of size `instr_buffer.count`
 static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		InstrIndexArray instr_with_storage_requirement,
 		UInt16Array* interference_graph,

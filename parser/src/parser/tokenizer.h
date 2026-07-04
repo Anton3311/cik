@@ -147,27 +147,10 @@ inline SourceString source_string_from_token(Token token) {
 	};
 }
 
-inline bool tokenizer_is_end(const Tokenizer* tokenizer) {
-	return tokenizer->read_position == tokenizer->source_code.length;
-}
-
-inline char32_t tokenizer_get_char(const Tokenizer* tokenizer) {
-	assert(!tokenizer_is_end(tokenizer));
-	return (char32_t)tokenizer->source_code.v[tokenizer->read_position];
-}
-
-inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
-	if (tokenizer_is_end(tokenizer)) {
-		return false;
-	}
-
-	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
-}
-
 void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file);
 void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer);
 
-StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
+StringTokenizerResult tokenizer_try_create_string_token(Tokenizer* tokenizer,
 		char32_t string_opening_char,
 		char32_t string_closing_char,
 		Token* out_token);
@@ -179,6 +162,10 @@ inline Token tokenizer_view_next(Tokenizer* tokenizer) {
 	Token next_token = tokenizer_next_token(tokenizer);
 	*tokenizer = saved_tokenizer;
 	return next_token;
+}
+
+inline bool tokenizer_is_end(const Tokenizer* tokenizer) {
+	return tokenizer->read_position == tokenizer->source_code.length;
 }
 
 inline void tokenizer_reset_to_token(Tokenizer* tokenizer, Token token) {

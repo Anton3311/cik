@@ -10,6 +10,19 @@ void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file) {
 	tokenizer->read_position = 0;
 }
 
+inline char32_t _tokenizer_get_char(const Tokenizer* tokenizer) {
+	assert(!tokenizer_is_end(tokenizer));
+	return (char32_t)tokenizer->source_code.v[tokenizer->read_position];
+}
+
+inline bool _tokenizer_has_next_char(Tokenizer* tokenizer, char32_t next_char) {
+	if (tokenizer_is_end(tokenizer)) {
+		return false;
+	}
+
+	return tokenizer->source_code.v[tokenizer->read_position + 1] == next_char;
+}
+
 String token_kind_to_string(TokenKind kind) {
 	switch (kind) {
 	case TOKEN_EOF: return STR_LIT("<eof>");
@@ -147,7 +160,7 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 			break;
 		}
 
-		char32_t current_char = tokenizer_get_char(tokenizer);
+		char32_t current_char = _tokenizer_get_char(tokenizer);
 		if ((current_char >= 'a' && current_char <= 'z')
 				|| (current_char >= 'A' && current_char <= 'Z')
 				|| (current_char >= '0' && current_char <= '9')
@@ -248,7 +261,7 @@ void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer) {
 			}
 		}
 
-		char32_t current_char = tokenizer_get_char(tokenizer);
+		char32_t current_char = _tokenizer_get_char(tokenizer);
 		if (!isspace(current_char)) {
 			break;
 		} else {
@@ -258,12 +271,12 @@ void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer) {
 }
 
 // NOTE: Returnd token includes quotation marks
-StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
+StringTokenizerResult tokenizer_try_create_string_token(Tokenizer* tokenizer,
 		char32_t string_opening_char,
 		char32_t string_closing_char,
 		Token* out_token) {
 	size_t string_start = tokenizer->read_position;
-	char32_t opening_char = tokenizer_get_char(tokenizer);
+	char32_t opening_char = _tokenizer_get_char(tokenizer);
 
 	// NOTE: This shouldn't be triggerable by the user code,
 	//       only by missuse of this function.
@@ -275,7 +288,7 @@ StringTokenizerResult _tokenizer_try_create_string_token(Tokenizer* tokenizer,
 			return STR_TOKEN_RESULT_EOF_REACHED;
 		}
 
-		char32_t current_char = tokenizer_get_char(tokenizer);
+		char32_t current_char = _tokenizer_get_char(tokenizer);
 		if (current_char == '\\') {
 			tokenizer->read_position += 1;
 			if (tokenizer_is_end(tokenizer)) {
@@ -320,12 +333,12 @@ Token _tokenizer_try_create_double_char_token(Tokenizer* tokenizer,
 		TokenKind single_type,
 		TokenKind double_type) {
 	size_t token_start = tokenizer->read_position;
-	char32_t c = tokenizer_get_char(tokenizer);
+	char32_t c = _tokenizer_get_char(tokenizer);
 	tokenizer->read_position += 1;
 	assert(c == first_char);
 
 	if (!tokenizer_is_end(tokenizer)) {
-		char32_t c2 = tokenizer_get_char(tokenizer);
+		char32_t c2 = _tokenizer_get_char(tokenizer);
 		if (c2 == second_char) {
 			tokenizer->read_position += 1;
 			return (Token) {
@@ -355,7 +368,7 @@ Token _tokenizer_try_create_double_char_token(Tokenizer* tokenizer,
    Skips both single-line and multi-line comments.
 */
 bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
-	char32_t current_char = tokenizer_get_char(tokenizer);
+	char32_t current_char = _tokenizer_get_char(tokenizer);
 	if (current_char != '/') {
 		return false;
 	}
@@ -375,7 +388,7 @@ bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
 
 		// Single line comments ends at newline
 		while (!tokenizer_is_end(tokenizer)) {
-			char32_t c = tokenizer_get_char(tokenizer);
+			char32_t c = _tokenizer_get_char(tokenizer);
 			if (c == '\n') {
 				tokenizer->read_position += 1; // consume newline
 				return true;
@@ -391,7 +404,7 @@ bool _tokenizer_try_skip_comment(Tokenizer* tokenizer) {
 				break;
 			}
 
-			char32_t c = tokenizer_get_char(tokenizer);
+			char32_t c = _tokenizer_get_char(tokenizer);
 			if (c == '*' && _tokenizer_has_next_char(tokenizer, '/')) {
 				tokenizer->read_position += 2; // consume */
 				return true;
@@ -436,7 +449,7 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 			}
 		}
 
-		current_char = tokenizer_get_char(tokenizer);
+		current_char = _tokenizer_get_char(tokenizer);
 		if (!isspace(current_char)) {
 			break;
 		} else {
@@ -722,13 +735,13 @@ Token tokenizer_next_token(Tokenizer* tokenizer) {
 		return _tokenizer_create_single_char_token(tokenizer, TOKEN_LESS);
 	case '"': {
 		Token string_token = {};
-		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '"', '"', &string_token);
+		StringTokenizerResult result = tokenizer_try_create_string_token(tokenizer, '"', '"', &string_token);
 		assert(result == STR_TOKEN_RESULT_NONE);
 		return string_token;
 	}
 	case '\'': {
 		Token char_token = {};
-		StringTokenizerResult result = _tokenizer_try_create_string_token(tokenizer, '\'', '\'', &char_token);
+		StringTokenizerResult result = tokenizer_try_create_string_token(tokenizer, '\'', '\'', &char_token);
 		assert(result == STR_TOKEN_RESULT_NONE);
 		char_token.kind = TOKEN_CHAR;
 		return char_token;

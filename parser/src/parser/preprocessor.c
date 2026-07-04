@@ -1423,12 +1423,12 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 		IncludeEvent include_event = {};
 		if (opening_quote == '<') {
-			StringTokenizerResult result = _tokenizer_try_create_string_token(state->tokenizer, '<', '>', &string_token);
+			StringTokenizerResult result = tokenizer_try_create_string_token(state->tokenizer, '<', '>', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
 
 			include_event.path_token = string_token;
 		} else if (opening_quote == '"') {
-			StringTokenizerResult result = _tokenizer_try_create_string_token(state->tokenizer, '"', '"', &string_token);
+			StringTokenizerResult result = tokenizer_try_create_string_token(state->tokenizer, '"', '"', &string_token);
 			assert(result == STR_TOKEN_RESULT_NONE);
 
 			include_event.path_token = string_token;

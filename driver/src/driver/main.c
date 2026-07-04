@@ -87,6 +87,12 @@ int main(int argc, char *argv[]) {
 			String arg = str_from_cstr(argv[i]);
 			if (arg.length >= 2 && arg.v[0] == '-' && arg.v[1] == 'I') {
 				String include_path = sub_str(arg, 2, arg.length - 2);
+				
+				if (include_path.length == 0) {
+					fprintf(stderr, "Include path at argument index %zu is empty", i);
+					return EXIT_FAILURE;
+				}
+
 				assert(include_path.length > 0);
 				str_array_append(&include_dirs, &arena, include_path);
 			} else if (str_equal(arg, STR_LIT("--no-win-sdk"))) {

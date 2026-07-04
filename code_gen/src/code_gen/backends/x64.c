@@ -63,6 +63,11 @@ static void _init_storage_requiremenets() {
 	s[INSTR_PTR_LOAD_32]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
 	s[INSTR_PTR_LOAD_64]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
+	s[INSTR_PTR_STORE_8]            = (T) { .allowed_registers = 0, .reg_size = 8 };
+	s[INSTR_PTR_STORE_16]           = (T) { .allowed_registers = 0, .reg_size = 16 };
+	s[INSTR_PTR_STORE_32]           = (T) { .allowed_registers = 0, .reg_size = 32 };
+	s[INSTR_PTR_STORE_64]           = (T) { .allowed_registers = 0, .reg_size = 64 };
+
 	s[INSTR_LOAD_ARG]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
 	s[INSTR_BRANCH]                 = (T) { .allowed_registers = 0, .reg_size = 0 };
@@ -570,6 +575,23 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 				MNEMONIC_MOV,
 				operand_reg(dst_loc.reg, bit_count),
 				operand_mem(ptr_loc.reg, bit_count));
+		return;
+	}
+
+	case INSTR_PTR_STORE_8:
+	case INSTR_PTR_STORE_16:
+	case INSTR_PTR_STORE_32:
+	case INSTR_PTR_STORE_64: {
+		const InstrStorageLocation ptr_loc = gen->instr_storage[instr->ptr_store.ptr.value];
+		const InstrStorageLocation value_loc = gen->instr_storage[instr->ptr_store.value.value];
+		assert(ptr_loc.kind == INSTR_STORAGE_REG);
+		assert(value_loc.kind == INSTR_STORAGE_REG);
+
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_STORE_8);
+		encode_2(buffer,
+				MNEMONIC_MOV,
+				operand_mem(ptr_loc.reg, bit_count),
+				operand_reg(value_loc.reg, bit_count));
 		return;
 	}
 
@@ -1341,6 +1363,14 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_PTR_LOAD_64:
 		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.io_state);
 		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.ptr);
+		break;
+	case INSTR_PTR_STORE_8:
+	case INSTR_PTR_STORE_16:
+	case INSTR_PTR_STORE_32:
+	case INSTR_PTR_STORE_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.ptr);
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.value);
 		break;
 	case INSTR_LOAD_ARG:
 		break;

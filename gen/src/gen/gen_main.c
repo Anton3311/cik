@@ -163,6 +163,8 @@ static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 		return STR_LIT("negate");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_LOAD_"))) {
 		return STR_LIT("ptr_load");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_PTR_STORE_"))) {
+		return STR_LIT("ptr_store");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_LEFT_"))) {
 		return STR_LIT("logical_shift");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOGICAL_SHIFT_RIGHT_"))) {

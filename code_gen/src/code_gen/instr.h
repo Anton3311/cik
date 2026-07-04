@@ -70,6 +70,11 @@ typedef enum {
 	INSTR_PTR_LOAD_32,
 	INSTR_PTR_LOAD_64,
 
+	INSTR_PTR_STORE_8,
+	INSTR_PTR_STORE_16,
+	INSTR_PTR_STORE_32,
+	INSTR_PTR_STORE_64,
+
 	INSTR_LOAD_ARG,
 
 	INSTR_BRANCH,
@@ -197,6 +202,12 @@ struct Instr {
 			InstrIndex ptr;
 			InstrIndex io_state;
 		} ptr_load;
+
+		struct {
+			InstrIndex ptr;
+			InstrIndex value;
+			InstrIndex io_state;
+		} ptr_store;
 
 		struct {
 			uint8_t index;

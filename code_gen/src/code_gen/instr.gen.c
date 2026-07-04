@@ -43,6 +43,10 @@ String instr_name(InstrKind variant) {
     case INSTR_PTR_LOAD_16: return STR_LIT("ptr_load_16");
     case INSTR_PTR_LOAD_32: return STR_LIT("ptr_load_32");
     case INSTR_PTR_LOAD_64: return STR_LIT("ptr_load_64");
+    case INSTR_PTR_STORE_8: return STR_LIT("ptr_store_8");
+    case INSTR_PTR_STORE_16: return STR_LIT("ptr_store_16");
+    case INSTR_PTR_STORE_32: return STR_LIT("ptr_store_32");
+    case INSTR_PTR_STORE_64: return STR_LIT("ptr_store_64");
     case INSTR_LOAD_ARG: return STR_LIT("load_arg");
     case INSTR_BRANCH: return STR_LIT("branch");
     case INSTR_JUMP: return STR_LIT("jump");
@@ -195,6 +199,26 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
         instr_queue_push_back(out_dependencies, instr->ptr_load.io_state);
         break;
+    case INSTR_PTR_STORE_8:
+        instr_queue_push_back(out_dependencies, instr->ptr_store.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.value);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.io_state);
+        break;
+    case INSTR_PTR_STORE_16:
+        instr_queue_push_back(out_dependencies, instr->ptr_store.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.value);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.io_state);
+        break;
+    case INSTR_PTR_STORE_32:
+        instr_queue_push_back(out_dependencies, instr->ptr_store.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.value);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.io_state);
+        break;
+    case INSTR_PTR_STORE_64:
+        instr_queue_push_back(out_dependencies, instr->ptr_store.ptr);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.value);
+        instr_queue_push_back(out_dependencies, instr->ptr_store.io_state);
+        break;
     case INSTR_LOAD_ARG:
         break;
     case INSTR_BRANCH:
@@ -346,6 +370,18 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_PTR_LOAD_64:
         printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
+        break;
+    case INSTR_PTR_STORE_8:
+        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
+        break;
+    case INSTR_PTR_STORE_16:
+        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
+        break;
+    case INSTR_PTR_STORE_32:
+        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
+        break;
+    case INSTR_PTR_STORE_64:
+        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
         break;
     case INSTR_LOAD_ARG:
         printf("index: %u ", (uint32_t)instr->load_arg.index);

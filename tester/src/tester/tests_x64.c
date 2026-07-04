@@ -940,6 +940,53 @@ void test_memory_operations_are_synchronized_with_calls(TestContext* context) {
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
+void test_ptr_store_instr(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t main(uint64_t* out) {\n"
+			"    *out = 100;\n"
+			"    return 0;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile(context, source_code);
+
+	typedef uint64_t(*Function)(uint64_t*);
+
+	Function function = (Function)machine_code.code;
+
+	uint64_t input = 40;
+	function(&input);
+	assert(input == 100);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_ptr_store_synced_with_calls(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef unsigned long long uint64_t;\n"
+			"uint64_t store(uint64_t* out);\n"
+			"uint64_t main(uint64_t* out) {\n"
+			"    store(out);\n"
+			"    *out = 100;\n"
+			"    return 0;\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
+			source_code,
+			_resolve_memory_operation_symbols,
+			NULL);
+
+	typedef uint64_t(*Function)(uint64_t*);
+
+	Function function = (Function)machine_code.code;
+
+	uint64_t input = 40;
+	function(&input);
+	assert(input == 100);
+
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
 void test_encode_mov_indirect_addr(TestContext* context) {
 	uint8_t expected[] = { 0x48, 0x8b, 0x02 };
 

@@ -165,6 +165,54 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 
 			compiler->arg_states[arg_index] = value;
 			return value;
+		} else if (target->kind == EXPR_UNARY) {
+			InstrIndex operand_instr = _compile_expr(compiler, target->unary.operand);
+			Type operand_type;
+			expr_get_type(target->unary.operand, &operand_type);
+
+			switch (target->unary.op) {
+			case UNARY_OP_DEREFERENCE: {
+				const Type* base_type = NULL;
+				if (operand_type.kind == TYPE_POINTER) {
+					base_type = operand_type.pointer_base_type;
+				} else if (operand_type.kind == TYPE_ARRAY) {
+					base_type = operand_type.array.element_type;
+				} else {
+					panic("todo: report error");
+				}
+
+				InstrIndex value_instr = _compile_expr(compiler, expr->binary.right);
+
+				InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+				instr->ptr_store.ptr = operand_instr;
+				instr->ptr_store.value = value_instr;
+				instr->ptr_store.io_state = compiler->io_state;
+
+				compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, instr_index);
+
+				TypeLayout layout = _type_get_layout(compiler, base_type);
+				switch (layout.size) {
+				case 1:
+					instr->kind = INSTR_PTR_STORE_8;
+					break;
+				case 2:
+					instr->kind = INSTR_PTR_STORE_16;
+					break;
+				case 4:
+					instr->kind = INSTR_PTR_STORE_32;
+					break;
+				case 8:
+					instr->kind = INSTR_PTR_STORE_64;
+					break;
+				default:
+					panic("Only up to 8 byte sizes are supported for dereferencing");
+				}
+
+				return instr_index;
+			}
+			}
 		} else {
 			panic("Assignment to this expression kind is not supported");
 		}

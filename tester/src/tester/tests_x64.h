@@ -38,6 +38,7 @@ void test_min(TestContext* context);
 void test_char_to_lower(TestContext* context);
 void test_char_to_upper(TestContext* context);
 void test_return_file_path(TestContext* context);
+void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* context);
 
 // Encoding
 void test_encode_mov_indirect_addr(TestContext* context);

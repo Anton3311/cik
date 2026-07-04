@@ -516,27 +516,39 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					operand_reg(right_reg, bit_count));
 			break;
 		case INSTR_BIN_SUB: {
-			bool should_save_right = dst_loc.reg == right_loc.reg;
-
-			if (should_save_right) {
+			if (dst_loc.reg == right_loc.reg) {
 				// NOTE: When saving the register, push/pop the whole 64-bit register
 				encode_1(buffer,
 						MNEMONIC_PUSH,
 						operand_reg(right_loc.reg, 64));
-			}
 
-			encode_2(buffer,
-					MNEMONIC_SUB,
-					operand_reg(left_reg, bit_count),
-					operand_reg(right_reg, bit_count));
+				encode_2(buffer,
+						MNEMONIC_SUB,
+						operand_reg(left_reg, bit_count),
+						operand_reg(right_reg, bit_count));
 
-			if (should_save_right) {
 				_emit_mov_regs(buffer, left_loc.reg, right_loc.reg, bit_count);
 
 				encode_1(buffer,
 						MNEMONIC_POP,
 						operand_reg(right_loc.reg, 64));
+			} else if (dst_loc.reg == left_loc.reg) {
+				encode_2(buffer,
+						MNEMONIC_SUB,
+						operand_reg(left_reg, bit_count),
+						operand_reg(right_reg, bit_count));
+			} else {
+				encode_2(buffer,
+						MNEMONIC_MOV,
+						operand_reg(dst_loc.reg, bit_count),
+						operand_reg(left_reg, bit_count));
+
+				encode_2(buffer,
+						MNEMONIC_SUB,
+						operand_reg(dst_loc.reg, bit_count),
+						operand_reg(right_reg, bit_count));
 			}
+
 			break;
 		}
 		}
@@ -1716,7 +1728,9 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 	assert_msg(scheduling_is_valid, "Instruction scheduler failed to produce a valid result");
 
-	_run_reg_allocator(gen);
+	if (!has_flag(gen->flags, X64_SKIP_REG_ALLOC)) {
+		_run_reg_allocator(gen);
+	}
 
 	uint16_t region_count = gen->instr_buffer.region_count;
 	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,

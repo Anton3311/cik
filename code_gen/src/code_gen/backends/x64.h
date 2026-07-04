@@ -37,6 +37,7 @@ typedef enum {
 	X64_PRINT_SCHEDULED_IR         = 1 << 0,
 	X64_DEBUG_LOG                  = 1 << 1,
 	X64_PRINT_ASSIGNED_STORAGE_LOC = 1 << 2,
+	X64_SKIP_REG_ALLOC             = 1 << 3,
 } X64BackendFlags;
 
 typedef struct {

@@ -128,6 +128,64 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 			result_layout.size * 8);
 }
 
+// Generates a sequence of instructions that compute the address of an array element
+static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, Expr* expr) {
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	Type array_type;
+	Type index_type;
+
+	expr_get_type(expr->array_index.array, &array_type);
+	expr_get_type(expr->array_index.index, &index_type);
+
+	InstrIndex array = _compile_expr(compiler, expr->array_index.array);
+	InstrIndex index = _compile_expr(compiler, expr->array_index.index);
+
+	if (_type_get_layout(compiler, &index_type).size != compiler->pointer_type_layout.size) {
+		index = instr_new_cast(instr_buffer,
+				instr_allocator,
+				index,
+				compiler->pointer_type_layout.size * 8);
+	}
+
+	Type* element_type = type_extract_pointer_base_type(&array_type);
+	TypeLayout element_layout = _type_get_layout(compiler, element_type);
+
+	assert(element_layout.size > 0);
+	assert(is_power_of_2(element_layout.size));
+
+	size_t shift_count = count_trailing_zeros(element_layout.size);
+	InstrIndex scaled_index = instr_new_logical_shift_left_by(instr_buffer,
+			instr_allocator,
+			index,
+			(uint8_t)shift_count);
+
+	InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
+	add_instr->bin_op.left = array;
+	add_instr->bin_op.right = scaled_index;
+
+	switch (element_layout.size) {
+	case 1:
+		add_instr->kind = INSTR_BIN_OP_8;
+		break;
+	case 2:
+		add_instr->kind = INSTR_BIN_OP_16;
+		break;
+	case 4:
+		add_instr->kind = INSTR_BIN_OP_32;
+		break;
+	case 8:
+		add_instr->kind = INSTR_BIN_OP_64;
+		break;
+	default:
+		panic("Unsupported element size");
+	}
+
+	return add_instr_index;
+}
+
 // Compiles a binary expression without casting compare operations to an interger
 static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -210,9 +268,45 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 					panic("Only up to 8 byte sizes are supported for dereferencing");
 				}
 
-				return instr_index;
+				return value_instr;
 			}
 			}
+		} else if (target->kind == EXPR_ARRAY_INDEX) {
+			Type array_type;
+			expr_get_type(target->array_index.array, &array_type);
+
+			Type* element_type = type_extract_pointer_base_type(&array_type);
+			TypeLayout element_layout = _type_get_layout(compiler, element_type);
+
+			InstrIndex element_addr = _compile_address_of_array_element(compiler, target);
+			InstrIndex value_instr = _compile_expr(compiler, expr->binary.right);
+
+			InstrIndex store_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* store_instr = instr_buffer_at(instr_buffer, store_instr_index);
+			store_instr->ptr_store.ptr = element_addr;
+			store_instr->ptr_store.value = value_instr;
+			store_instr->ptr_store.io_state = compiler->io_state;
+
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_instr_index);
+
+			switch (element_layout.size) {
+			case 1:
+				store_instr->kind = INSTR_PTR_STORE_8;
+				break;
+			case 2:
+				store_instr->kind = INSTR_PTR_STORE_16;
+				break;
+			case 4:
+				store_instr->kind = INSTR_PTR_STORE_32;
+				break;
+			case 8:
+				store_instr->kind = INSTR_PTR_STORE_64;
+				break;
+			default:
+				panic("Unsupported element size");
+			}
+
+			return value_instr;
 		} else {
 			panic("Assignment to this expression kind is not supported");
 		}
@@ -516,57 +610,28 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 	}
 	case EXPR_ARRAY_INDEX: {
 		Type array_type;
-		Type index_type;
-
 		expr_get_type(expr->array_index.array, &array_type);
-		expr_get_type(expr->array_index.index, &index_type);
-
-		InstrIndex array = _compile_expr(compiler, expr->array_index.array);
-		InstrIndex index = _compile_expr(compiler, expr->array_index.index);
-
-		if (_type_get_layout(compiler, &index_type).size != compiler->pointer_type_layout.size) {
-			index = instr_new_cast(instr_buffer,
-					instr_allocator,
-					index,
-					compiler->pointer_type_layout.size * 8);
-		}
 
 		Type* element_type = type_extract_pointer_base_type(&array_type);
 		TypeLayout element_layout = _type_get_layout(compiler, element_type);
 
-		assert(element_layout.size > 0);
-		assert(is_power_of_2(element_layout.size));
-
-		size_t shift_count = count_trailing_zeros(element_layout.size);
-		InstrIndex scaled_index = instr_new_logical_shift_left_by(instr_buffer,
-				instr_allocator,
-				index,
-				(uint8_t)shift_count);
-
-		InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
-		add_instr->bin_op.left = array;
-		add_instr->bin_op.right = scaled_index;
+		InstrIndex element_addr = _compile_address_of_array_element(compiler, expr);
 
 		InstrIndex load_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* load_instr = instr_buffer_at(instr_buffer, load_instr_index);
-		load_instr->ptr_load.ptr = add_instr_index;
+		load_instr->ptr_load.ptr = element_addr;
 
 		switch (element_layout.size) {
 		case 1:
-			add_instr->kind = INSTR_BIN_OP_8;
 			load_instr->kind = INSTR_PTR_LOAD_8;
 			break;
 		case 2:
-			add_instr->kind = INSTR_BIN_OP_16;
 			load_instr->kind = INSTR_PTR_LOAD_16;
 			break;
 		case 4:
-			add_instr->kind = INSTR_BIN_OP_32;
 			load_instr->kind = INSTR_PTR_LOAD_32;
 			break;
 		case 8:
-			add_instr->kind = INSTR_BIN_OP_64;
 			load_instr->kind = INSTR_PTR_LOAD_64;
 			break;
 		default:

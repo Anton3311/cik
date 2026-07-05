@@ -16,7 +16,7 @@
 
 This is a compiler for a subset of C99, written fully in C.
 
-It implements a preprocessor, a parser, a compiler and an x64 code generation backend.
+It implements a preprocessor, a parser, a compiler and a x64 code generation backend.
 
 > [!IMPORTANT]
 > Not standard complient
@@ -76,11 +76,14 @@ When building with `MSVC` it is possible to compile with address sanitization, b
 
 ### Profiling
 
-`Cik` uses `Tracy 0.10.0` as the profiler.
+`Cik` uses [Tracy 0.10.0](https://github.com/wolfpld/tracy/releases#release-v0.10) as the profiler.
 
 Building with the profiler support requires only passing the `--profiler` flag to the build tool.
 
 All the required `Tracy` client code is already included in the repository, so it doesn't require any extra steps.
+
+> [!NOTE]
+> Tracy is not required to build and use the compiler, unless you want to compile with profiling support.
 
 # Running the compiler
 

@@ -41,7 +41,7 @@ The build process produces multiple executables:
 
 ### Build using batch script
 
-Just run the following script to compile everything using clang:
+Just run the following script to compile everything using `clang`:
 
 ```
 scripts/build_all.bat
@@ -52,7 +52,13 @@ scripts/build_all.bat
 To build the project using the build tool, first you need to compile the build tool by running the next script:
 
 ```
-scripts/build_bb.bat
+scripts/build_bb.bat clang
+```
+
+or using `MSVC`:
+
+```
+scripts/build_bb.bat cl
 ```
 
 The build tool uses `clang` by default and exepects it to be in the `PATH`. To compile using `clang` just run:
@@ -69,21 +75,23 @@ By default the build tool looks for the selected compiler in the `PATH`, however
 
 ### Asan
 
-When building with `MSVC` it is possible to compile with address sanitization, by specify `--asan` flag.
+When building with `MSVC` it is possible to compile with address sanitization, by passing `--asan` flag to the build tool.
 
 > [!NOTE]
 > `Asan` is `MSVC` only, since `clang`'s implementation is rather buggy.
 
 ### Profiling
 
-`Cik` uses [Tracy 0.10.0](https://github.com/wolfpld/tracy/releases#release-v0.10) as the profiler.
+`Cik` uses `Tracy 0.10.0` as the profiler.
 
 Building with the profiler support requires only passing the `--profiler` flag to the build tool.
 
-All the required `Tracy` client code is already included in the repository, so it doesn't require any extra steps.
-
 > [!NOTE]
-> Tracy is not required to build and use the compiler, unless you want to compile with profiling support.
+> All the required `Tracy` client code is already included in the repository, so it doesn't require any extra steps.
+> 
+> Compiling with profiler support will work even if you don't have `Tracy` installed, however you will need it to view the profiling results.
+> 
+> Tracy 0.10.0 release can be found here: https://github.com/wolfpld/tracy/releases#release-v0.10
 
 # Running the compiler
 

@@ -117,36 +117,32 @@ int main(int argc, char *argv[]) {
 	build_add_dependency(&context, parser);
 	build_end_project(&context);
 
-	BuildUnitId tester = build_begin_project(&context, STR_LIT("tester"), OUTPUT_EXE);
-	(void)tester;
-	build_add_src_file(&context, STR_LIT("tester/src/tester/tester_main.c"));
-	build_add_src_file(&context, STR_LIT("tester/src/tester/tests.c"));
-	build_add_src_file(&context, STR_LIT("tester/src/tester/tests_x64.c"));
-	build_add_src_file(&context, STR_LIT("tester/src/tester/tests_compiler.c"));
-	build_add_include(&context, STR_LIT("core/src/"));
-	build_add_include(&context, STR_LIT("tester/src/"));
-	build_add_include(&context, STR_LIT("parser/src/"));
-	build_add_include(&context, STR_LIT("compiler/src/"));
-	build_add_include(&context, STR_LIT("code_gen/src/"));
-	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
-		build_add_include(&context, STR_LIT("vendor/Tracy/"));
-	}
-	build_add_dependency(&context, core);
-	build_add_dependency(&context, parser);
-	build_add_dependency(&context, compiler);
-	build_add_dependency(&context, code_gen);
-	build_end_project(&context);
+	if (!has_flag(context.custom_flags, FLAG_PROFILER)) {
+		BuildUnitId tester = build_begin_project(&context, STR_LIT("tester"), OUTPUT_EXE);
+		(void)tester;
+		build_add_src_file(&context, STR_LIT("tester/src/tester/tester_main.c"));
+		build_add_src_file(&context, STR_LIT("tester/src/tester/tests.c"));
+		build_add_src_file(&context, STR_LIT("tester/src/tester/tests_x64.c"));
+		build_add_src_file(&context, STR_LIT("tester/src/tester/tests_compiler.c"));
+		build_add_include(&context, STR_LIT("core/src/"));
+		build_add_include(&context, STR_LIT("tester/src/"));
+		build_add_include(&context, STR_LIT("parser/src/"));
+		build_add_include(&context, STR_LIT("compiler/src/"));
+		build_add_include(&context, STR_LIT("code_gen/src/"));
+		build_add_dependency(&context, core);
+		build_add_dependency(&context, parser);
+		build_add_dependency(&context, compiler);
+		build_add_dependency(&context, code_gen);
+		build_end_project(&context);
 
-	BuildUnitId test_runner = build_begin_project(&context, STR_LIT("test_runner"), OUTPUT_EXE);
-	(void)test_runner;
-	build_add_src_file(&context, STR_LIT("tester/src/tester/test_runner.c"));
-	build_add_dependency(&context, core);
-	build_add_include(&context, STR_LIT("core/src/"));
-	build_add_include(&context, STR_LIT("tester/src/"));
-	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
-		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+		BuildUnitId test_runner = build_begin_project(&context, STR_LIT("test_runner"), OUTPUT_EXE);
+		(void)test_runner;
+		build_add_src_file(&context, STR_LIT("tester/src/tester/test_runner.c"));
+		build_add_dependency(&context, core);
+		build_add_include(&context, STR_LIT("core/src/"));
+		build_add_include(&context, STR_LIT("tester/src/"));
+		build_end_project(&context);
 	}
-	build_end_project(&context);
 
 	// NOTE: No need to release arenas, as the memory will be cleaned by the OS
 	//       after the process termination

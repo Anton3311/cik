@@ -16,7 +16,7 @@
 
 This is a compiler for a subset of C99, written fully in C.
 
-It preprocesses, parses and compiles C source into x64 machine code.
+It implements a preprocessor, a parser, a compiler and an x64 code generation backend.
 
 > [!IMPORTANT]
 > Not standard complient
@@ -27,10 +27,10 @@ It preprocesses, parses and compiles C source into x64 machine code.
 # Building
 
 > [!NOTE]
-> The project is Windows only and can only be built using Clang.
+> The project is Windows only and can be built using both Clang and MSVC.
 
 There are two ways to build the project:
-1. [Using an auto-generated batch script](#building-using-batch-script)
+1. [Using an auto-generated batch script](#building-using-batch-script) (Clang only)
 2. [Using a build tool](#building-using-the-build-tool)
 
 The build process produces multiple executables:
@@ -55,29 +55,53 @@ To build the project using the build tool, first you need to compile the build t
 scripts/build_bb.bat
 ```
 
-After successful compilation run:
+The build tool uses `clang` by default and exepects it to be in the `PATH`. To compile using `clang` just run:
 ```
 bin/bb.exe build
 ```
 
-# Running a compiler
+If you want to use `MSVC` as the compiler, then you can do this from the `Developer PowerShell` or `Developer Command Prompt` by running the following command:
+```
+bin/bb.exe build --cc=cl
+```
+
+By default the build tool looks for the selected compiler in the `PATH`, however it is also possible to override the search path, by specifying a `;` separated list of paths with the `--compiler-paths=<search-paths>` option.
+
+### Asan
+
+When building with `MSVC` it is possible to compile with address sanitization, by specify `--asan` flag.
+
+> [!NOTE]
+> `Asan` is `MSVC` only, since `clang`'s implementation is rather buggy.
+
+### Profiling
+
+`Cik` uses `Tracy 0.10.0` as the profiler.
+
+Building with the profiler support requires only passing the `--profiler` flag to the build tool.
+
+All the required `Tracy` client code is already included in the repository, so it doesn't require any extra steps.
+
+# Running the compiler
 
 ```
 bin/c.exe <path-to-your-c-file>
 ```
 
 ```
-Usage:
-  c.exe <path-to-c-file>
+  Usage:
+    c.exe <path-to-c-file>
 
-Compiler flags:
-  --no-win-sdk           don't add Win SDK to include path
-  -I<include-path>       specify an include path
-  --show-ast             print AST after parsing
+  Compiler flags:
+    --no-win-sdk           don't add Win SDK to include path
+    -I<include-path>       specify an include path
+    --show-ast             print AST after parsing
 
-Backend flags:
-  --keep-dead-instr      don't eliminate dead instructions
-  --show-ir              print IR instructions before lowering to machine code
+  Backend flags:
+    --keep-dead-instr      don't eliminate dead instructions
+    --show-ir              print generated IR instructions
+    --x64-debug-log        log results of intermediate operations for debugging
+    --x64-show-instr-loc   print which storage locations were assigned to each instruction
 ```
 
 # Running tests
@@ -110,8 +134,8 @@ There are more detailed explanations for parts of the project. These are located
 
 1. Preprocessor macros: regular and function-like
 1. Conditional preprocessor directives
-1. #include, #error, #undef directives
-1. #pragma once
+1. `#include`, `#error`, `#undef` directives
+1. `#pragma once`
 1. Builtin macros: `__LINE__`, `__FILE__` and `__STDC__`
 1. Macros with variable number of arguments (`__VA_ARGS__`)
 
@@ -127,7 +151,9 @@ There are more detailed explanations for parts of the project. These are located
 
 1. `x64` machine code generation
 2. Partially supported `cdecl` calling convetion. (Only implemented for trivial register sized types like ints or pointers. Bigger types are not supported).
-2. Works only with the `main` function. **Doesn't support calling other defined functions.**
-3. Calling of external functions. These are provided as function pointers to the compiler.
-4. Integer and pointer arithmetics
+2. Works only with the `main` function. **Calling other defined functions is not supported**
+3. Calling of external functions. These are provided as function pointers by the compiler.
+4. Integer and pointer arithmetics, dereferencing and assignment
 5. Conditional branches and comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`
+6. String constants
+7. Array indexing and element assignment

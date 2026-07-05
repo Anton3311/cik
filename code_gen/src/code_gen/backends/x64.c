@@ -178,6 +178,7 @@ static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 		InstrIndex initial_region,
 		Arena* allocator,
 		Arena* temp_allocator) {
+	profile_scope_start(__func__);
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	BitArray visited_regions = bit_array_alloc(temp_allocator, instr_buffer->region_count);
@@ -281,6 +282,7 @@ static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 
 	arena_end_temp(temp);
 
+	profile_scope_end();
 	return tree;
 }
 
@@ -306,6 +308,7 @@ static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 		uint16_t region_a_id,
 		uint16_t region_b_id,
 		Arena* temp_allocator) {
+	profile_scope_start(__func__);
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 	BitArray visited_regions = bit_array_alloc(temp_allocator, tree->region_count);
 	bit_array_clear(&visited_regions);
@@ -327,6 +330,7 @@ static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 
 		if (bit_array_get(&visited_regions, region_id.value)) {
 			arena_end_temp(temp);
+			profile_scope_end();
 			return region_id.value;
 		}
 
@@ -335,6 +339,7 @@ static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 	}
 
 	unreachable();
+	profile_scope_end();
 	return UINT16_MAX;
 }
 
@@ -405,6 +410,7 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 }
 
 static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
+	profile_scope_start(__func__);
 	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
 	const InstrIndex* phi_nodes = gen->phi_node_of_variant[region_id];
 
@@ -425,6 +431,8 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 		uint8_t value_bit_size = s_instr_storage_requiremenets[value->kind].reg_size;
 		_emit_mov_regs(code_buffer, value_storage.reg, phi_storage.reg, value_bit_size);
 	}
+
+	profile_scope_end();
 }
 
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
@@ -1335,6 +1343,7 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		InstrIndex instr_index,
 		InstrSchedulingContext* context) {
+	profile_scope_start(__func__);
 	const InstrBuffer* instr_buffer = context->instr_buffer;
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
@@ -1455,6 +1464,8 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_COUNT:
 		unreachable();
 	}
+
+	profile_scope_end();
 }
 
 typedef struct {
@@ -1615,11 +1626,14 @@ static void _schedule_regions(const InstrBuffer* instr_buffer,
 		Arena* allocator,
 		BitArray* visited_regions,
 		InstrIndexArray* out_scheduled) {
+	profile_scope_start(__func__);
+
 	const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
 	assert(instr->kind == INSTR_REGION);
 
 	uint16_t region_id = instr->region.id;
 	if (bit_array_get(visited_regions, region_id)) {
+		profile_scope_end();
 		return;
 	}
 
@@ -1655,9 +1669,13 @@ static void _schedule_regions(const InstrBuffer* instr_buffer,
 
 	*arena_alloc(allocator, InstrIndex) = region_instr_index;
 	out_scheduled->count += 1;
+
+	profile_scope_end();
 }
 
 static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrIndex initial_region) {
+	profile_scope_start(__func__);
+	
 	BitArray visited_regions = bit_array_alloc(gen->temp_allocator, gen->instr_buffer.region_count);
 	bit_array_clear(&visited_regions);
 
@@ -1679,6 +1697,7 @@ static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrInd
 		regions.instr[j] = temp;
 	}
 
+	profile_scope_end();
 	return regions;
 }
 

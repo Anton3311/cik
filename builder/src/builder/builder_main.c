@@ -1,7 +1,8 @@
 #include "builder/builder_core.h"
 
 typedef enum {
-	FLAG_ASAN = 1 << 0,
+	FLAG_ASAN       = 1 << 0,
+	FLAG_PROFILER   = 1 << 1,
 } CustomBuildFlags;
 
 int main(int argc, char *argv[]) {
@@ -11,6 +12,7 @@ int main(int argc, char *argv[]) {
 
 	BuildFlag flags[] = {
 		(BuildFlag) { STR_LIT("--asan"), FLAG_ASAN, STR_LIT("compile with asan") },
+		(BuildFlag) { STR_LIT("--profiler"), FLAG_PROFILER, STR_LIT("compile with profiler") },
 	};
 
 	BuildContext context = {};
@@ -25,16 +27,44 @@ int main(int argc, char *argv[]) {
 	if (has_flag(context.custom_flags, FLAG_ASAN)) {
 		context.default_compile_options |= COMPILE_OPTION_SANITIZE_ADDRESS;
 	}
+
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		context.default_compile_options |= COMPILE_OPTION_OPTIMIZE;
+
+		MacroDefine defines[] = {
+			{ STR_LIT("FEATURE_PROFILER"), STR_LIT("") },
+			{ STR_LIT("TRACY_ENABLE"), STR_LIT("") },
+		};
+
+		context.defines = defines;
+		context.define_count = array_size(defines);
+	}
+
+	BuildUnitId tracy = {};
+
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		tracy = build_begin_project(&context, STR_LIT("tracy"), OUTPUT_LIB);
+		build_add_src_file(&context, STR_LIT("vendor/Tracy/TracyClient.cpp"));
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+		build_end_project(&context);
+	}
 	
 	BuildUnitId core = build_begin_project(&context, STR_LIT("core"), OUTPUT_LIB);
 	build_add_src_dir(&context, STR_LIT("core/src/core/"));
 	build_add_include(&context, STR_LIT("core/src/"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+		build_add_dependency(&context, tracy);
+	}
 	build_end_project(&context);
 
 	BuildUnitId parser = build_begin_project(&context, STR_LIT("parser"), OUTPUT_LIB);
 	build_add_src_dir(&context, STR_LIT("parser/src/parser/"));
 	build_add_include(&context, STR_LIT("core/src/"));
 	build_add_include(&context, STR_LIT("parser/src/"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+	}
 	build_add_dependency(&context, core);
 	build_end_project(&context);
 
@@ -43,6 +73,9 @@ int main(int argc, char *argv[]) {
 	build_add_src_dir(&context, STR_LIT("code_gen/src/code_gen/backends"));
 	build_add_include(&context, STR_LIT("code_gen/src"));
 	build_add_include(&context, STR_LIT("core/src/"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+	}
 	build_add_dependency(&context, core);
 	build_end_project(&context);
 
@@ -51,6 +84,9 @@ int main(int argc, char *argv[]) {
 	build_add_include(&context, STR_LIT("core/src/"));
 	build_add_include(&context, STR_LIT("code_gen/src"));
 	build_add_include(&context, STR_LIT("parser/src"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+	}
 	build_end_project(&context);
 
 	BuildUnitId driver = build_begin_project(&context, STR_LIT("c"), OUTPUT_EXE);
@@ -60,6 +96,9 @@ int main(int argc, char *argv[]) {
 	build_add_include(&context, STR_LIT("parser/src"));
 	build_add_include(&context, STR_LIT("compiler/src"));
 	build_add_include(&context, STR_LIT("code_gen/src"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+	}
 	build_add_dependency(&context, core);
 	build_add_dependency(&context, parser);
 	build_add_dependency(&context, compiler);
@@ -71,6 +110,9 @@ int main(int argc, char *argv[]) {
 	build_add_src_dir(&context, STR_LIT("gen/src/gen"));
 	build_add_include(&context, STR_LIT("core/src"));
 	build_add_include(&context, STR_LIT("parser/src"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+	}
 	build_add_dependency(&context, core);
 	build_add_dependency(&context, parser);
 	build_end_project(&context);
@@ -86,6 +128,9 @@ int main(int argc, char *argv[]) {
 	build_add_include(&context, STR_LIT("parser/src/"));
 	build_add_include(&context, STR_LIT("compiler/src/"));
 	build_add_include(&context, STR_LIT("code_gen/src/"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+	}
 	build_add_dependency(&context, core);
 	build_add_dependency(&context, parser);
 	build_add_dependency(&context, compiler);
@@ -98,6 +143,9 @@ int main(int argc, char *argv[]) {
 	build_add_dependency(&context, core);
 	build_add_include(&context, STR_LIT("core/src/"));
 	build_add_include(&context, STR_LIT("tester/src/"));
+	if (has_flag(context.custom_flags, FLAG_PROFILER)) {
+		build_add_include(&context, STR_LIT("vendor/Tracy/"));
+	}
 	build_end_project(&context);
 
 	// NOTE: No need to release arenas, as the memory will be cleaned by the OS

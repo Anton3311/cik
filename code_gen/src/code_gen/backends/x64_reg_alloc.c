@@ -8,6 +8,7 @@ extern X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT];
 static InstrIndexArray _gather_instr_with_storage_requirement(const InstrBuffer* instr_buffer,
 		const InstrUsageRange* live_ranges,
 		Arena* allocator) {
+	profile_scope_start(__func__);
 
 	InstrIndexArray result;
 	result.count = 0;
@@ -29,6 +30,7 @@ static InstrIndexArray _gather_instr_with_storage_requirement(const InstrBuffer*
 		result.count += 1;
 	}
 
+	profile_scope_end();
 	return result;
 }
 
@@ -38,6 +40,8 @@ static InstrIndexArray _gather_instr_with_storage_requirement(const InstrBuffer*
 static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_storage_requirement,
 		const InstrUsageRange* live_ranges,
 		Arena* allocator) {
+
+	profile_scope_start(__func__);
 
 	// Each array stores indices into `instr_with_storage_requirement`
 	UInt16Array* graph_edges = arena_alloc_array_zeroed(allocator,
@@ -79,6 +83,7 @@ static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_s
 		}
 	}
 
+	profile_scope_end();
 	return graph_edges;
 }
 

@@ -7,6 +7,7 @@ typedef struct BuildContext BuildContext;
 typedef struct BuildUnit BuildUnit;
 typedef struct BuildUnitId BuildUnitId;
 typedef struct BuildFlag BuildFlag;
+typedef struct MacroDefine MacroDefine;
 
 typedef enum {
 	OUTPUT_NONE,
@@ -31,6 +32,7 @@ typedef enum {
 	COMPILE_OPTION_GENERATE_DEBUG_INFO = 1 << 0,
 	COMPILE_OPTION_WARNINGS_ALL        = 1 << 1,
 	COMPILE_OPTION_SANITIZE_ADDRESS    = 1 << 2,
+	COMPILE_OPTION_OPTIMIZE            = 1 << 3,
 } FileBuildOptions;
 
 struct BuildUnitId {
@@ -56,6 +58,11 @@ struct BuildFlag {
 	String description;
 };
 
+struct MacroDefine {
+	String name;
+	String value;
+};
+
 struct BuildContext {
 	Arena* unit_allocator;
 	Arena* allocator;
@@ -70,6 +77,9 @@ struct BuildContext {
 
 	BuildUnit* units;
 	size_t unit_count;
+
+	MacroDefine* defines;
+	size_t define_count;
 
 	BuildFlag* custom_flag_defs;
 	size_t custom_flag_def_count;

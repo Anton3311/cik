@@ -4,6 +4,8 @@
 
 #include "parser/parse_tools.h"
 
+#define PROFILE_COLOR 0xfffd0a0a
+
 //
 // IdentifierStorage
 //
@@ -32,6 +34,7 @@ inline bool _ident_storage_remove_entry_at(IdentifierNamespace* ident_namespace,
 }
 
 static size_t _ident_storage_try_find_entry(IdentifierNamespace* ident_namespace, String name) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(ident_namespace != NULL);
 	assert(name.length > 0);
 
@@ -39,20 +42,24 @@ static size_t _ident_storage_try_find_entry(IdentifierNamespace* ident_namespace
 	while (true) {
 		String key = ident_namespace->keys[entry_index];
 		if (key.v == NULL) {
+			profile_scope_end();
 			return SIZE_MAX;
 		}
 
 		if (str_equal(key, name)) {
+			profile_scope_end();
 			return entry_index;
 		}
 
 		entry_index = (entry_index + 1) % ident_namespace->capacity;
 	}
 
+	profile_scope_end();
 	return SIZE_MAX;
 }
 
 static size_t _ident_storage_try_find_empty_entry(IdentifierNamespace* ident_namespace, String name) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(ident_namespace != NULL);
 	assert(name.length > 0);
 
@@ -60,16 +67,20 @@ static size_t _ident_storage_try_find_empty_entry(IdentifierNamespace* ident_nam
 	while (true) {
 		String key = ident_namespace->keys[entry_index];
 		if (key.v == NULL || key.v == REMOVED_SLOT_FLAG) {
+			profile_scope_end();
 			return entry_index;
 		}
 
 		entry_index = (entry_index + 1) % ident_namespace->capacity;
 	}
 
+	profile_scope_end();
 	return SIZE_MAX;
 }
 
 inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_namespace, Allocator allocator) {
+	profile_func_colored(PROFILE_COLOR);
+
 	size_t key_size = sizeof(String);
 	size_t entry_size = sizeof(IdentifierEntry*);
 	size_t buffer_size = (key_size + entry_size) * ident_namespace->capacity;
@@ -79,10 +90,12 @@ inline void _ident_storage_alloc_namespace_hash_map(IdentifierNamespace* ident_n
 
 	ident_namespace->keys = (String*)new_buffer;
 	ident_namespace->entries = (IdentifierEntry**)(new_buffer + key_size * ident_namespace->capacity);
+
+	profile_scope_end();
 }
 
 static void _ident_storage_grow_namespace(IdentifierNamespace* ident_namespace, Allocator allocator) {
-	profile_scope_start("_ident_storage_grow_namespace");
+	profile_func_colored(PROFILE_COLOR);
 
 	assert(ident_namespace);
 
@@ -118,18 +131,22 @@ inline bool _ident_storage_try_insert(IdentifierNamespace* ident_namespace,
 		String name,
 		IdentifierEntry* entry) {
 
+	profile_func_colored(PROFILE_COLOR);
+
 	if (ident_namespace->count + 1 == ident_namespace->capacity / 2) {
 		_ident_storage_grow_namespace(ident_namespace, allocator);
 	}
 	
 	size_t empty_slot = _ident_storage_try_find_empty_entry(ident_namespace, name);
 	if (empty_slot == SIZE_MAX) {
+		profile_scope_end();
 		return false;
 	}
 
 	ident_namespace->keys[empty_slot] = name;
 	ident_namespace->entries[empty_slot] = entry;
 	ident_namespace->count += 1;
+	profile_scope_end();
 	return true;
 }
 
@@ -137,10 +154,12 @@ IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
 		IdentifierFindOption option,
 		String name) {
+	profile_func_colored(PROFILE_COLOR);
 
 	IdentifierNamespace* ident_namespace = _ident_storage_get_namespace(storage, namespace_kind);
 	size_t index = _ident_storage_try_find_entry(ident_namespace, name);
 	if (index == SIZE_MAX) {
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -148,15 +167,18 @@ IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 	switch (option) {
 	case IDENT_FIND_IN_CURRENT_SCOPE:
 		if (entry->owner_scope == storage->current_scope) {
+			profile_scope_end();
 			return entry;
 		}
 
 		return NULL;
 	case IDENT_FIND_IN_ALL_PARENT_SCOPES:
+		profile_scope_end();
 		return entry;
 	}
 
 	unreachable();
+	profile_scope_end();
 	return NULL;
 }
 
@@ -164,6 +186,7 @@ void _ident_storage_init_namespace(IdentifierNamespace* ident_namespace) {
 }
 
 void ident_storage_init(IdentifierStorage* storage, Allocator namespace_allocator, Arena* allocator) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(storage != NULL);
 
 	storage->allocator = allocator;
@@ -184,9 +207,13 @@ void ident_storage_init(IdentifierStorage* storage, Allocator namespace_allocato
 	storage->next_scope_id = 1;
 	storage->next_free_entry = NULL;
 	storage->next_free_scope = NULL;
+
+	profile_scope_end();
 }
 
 void ident_storage_release(IdentifierStorage* storage) {
+	profile_func_colored(PROFILE_COLOR);
+
 	for (size_t i = 0; i < IDENT_NAMESPACE_COUNT; i += 1) {
 		IdentifierNamespace* ident_namespace = &storage->namespaces[i];
 
@@ -201,6 +228,7 @@ void ident_storage_release(IdentifierStorage* storage) {
 		}
 	}
 	
+	profile_scope_end();
 }
 
 static IdentifierEntry* _ident_storage_alloc_entry(IdentifierStorage* storage) {
@@ -223,6 +251,7 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
 		IdentifierEntryKind entry_kind,
 		SourceString name) {
+	profile_func_colored(PROFILE_COLOR);
 
 	assert(storage != NULL);
 	assert(name.string.length > 0);
@@ -272,12 +301,15 @@ IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		current_scope->entry_count[entry_kind_index] += 1;
 	}
 
+	profile_scope_end();
 	return entry;
 }
 
 void ident_storage_remove(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
 		SourceString name) {
+
+	profile_func_colored(PROFILE_COLOR);
 
 	assert(storage != NULL);
 	assert(name.string.length > 0);
@@ -287,6 +319,7 @@ void ident_storage_remove(IdentifierStorage* storage,
 
 	size_t existing_entry_index = _ident_storage_try_find_entry(ident_namespace, name.string);
 	if (existing_entry_index == SIZE_MAX) {
+		profile_scope_end();
 		return;
 	}
 
@@ -301,6 +334,8 @@ void ident_storage_remove(IdentifierStorage* storage,
 
 	entry->next_in_scope = storage->next_free_entry;
 	storage->next_free_entry = entry;
+
+	profile_scope_end();
 }
 
 IdentifierScope* ident_storage_begin_scope(IdentifierStorage* storage) {
@@ -384,6 +419,8 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 //
 
 void _parser_skip_until_semicolon(Parser* parser) {
+	profile_func_colored(PROFILE_COLOR);
+
 	while (true) {
 		Token token = preprocessor_next_token(parser->preprocessor);
 		if (token.kind == TOKEN_SEMICOLON) {
@@ -392,6 +429,8 @@ void _parser_skip_until_semicolon(Parser* parser) {
 			break;
 		}
 	}
+
+	profile_scope_end();
 }
 
 inline bool _parser_try_consume_token(Parser* parser, TokenKind expected_kind) {
@@ -421,6 +460,7 @@ bool _parser_expect_semicolon(Parser* parser, String error_message) {
 // TODO: Don't reset `ast_allocator` because, during testing that same `ast_allocator`
 //       is used for diagnostics and reseting it corrupts diagnostics state
 static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count, StructField** out_fields) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(out_field_count != NULL);
 	assert(out_fields != NULL);
 
@@ -448,12 +488,14 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 		if (!_parser_parse_type(parser, &field->type, true)) {
 			arena_end_temp(ast_temp);
 			arena_end_temp(temp);
+			profile_scope_end();
 			return false;
 		}
 
 		if (!_parser_parse_pre_declaration_modifiers(parser, &field->type, &field->type, true)) {
 			arena_end_temp(ast_temp);
 			arena_end_temp(temp);
+			profile_scope_end();
 			return false;
 		}
 
@@ -475,6 +517,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 					expected_tokens,
 					array_size(expected_tokens));
 			arena_end_temp(temp);
+			profile_scope_end();
 			return false;
 		}
 	}
@@ -488,6 +531,7 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 	}
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return true;
 }
 
@@ -504,6 +548,7 @@ typedef struct {
 
 static void _parser_gather_named_field_locations_of_anonymous_type_defs(const Struct* struct_def,
 		NamedFieldLocationArray* out_field_locations) {
+	profile_func_colored(PROFILE_COLOR);
 
 	for (size_t i = 0; i < struct_def->field_count; i += 1) {
 		const StructField* field = &struct_def->fields[i];
@@ -524,13 +569,14 @@ static void _parser_gather_named_field_locations_of_anonymous_type_defs(const St
 			out_field_locations->count += 1;
 		}
 	}
+
+	profile_scope_end();
 }
 
 static void _parser_initialize_struct_fields_namespace(Struct* struct_def,
 		Arena* allocator,
 		Arena* temp_allocator) {
-
-	profile_scope_start(__func__);
+	profile_func_colored(PROFILE_COLOR);
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 	NamedFieldLocationArray named_field_locations = {};
@@ -585,6 +631,7 @@ static void _parser_initialize_struct_fields_namespace(Struct* struct_def,
 }
 
 bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_anonymous) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(out_struct_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -614,6 +661,7 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 	if (token.kind == TOKEN_LEFT_BRACE) {
 		is_forward_declared = false;
 		if (!_parser_parse_struct_fields(parser, &field_count, &fields)) {
+			profile_scope_end();
 			return false;
 		}
 	}
@@ -644,6 +692,7 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 						source_string_to_range(struct_name),
 						STR_LIT("Previously defined here"),
 						error);
+				profile_scope_end();
 				return false;
 			}
 			
@@ -667,6 +716,7 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
+				profile_scope_end();
 				return false;
 			}
 		} else {
@@ -706,10 +756,12 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 	}
 
 	*out_struct_def = struct_def;
+	profile_scope_end();
 	return true;
 }
 
 bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, EnumVariant** out_variants) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(out_variant_count != NULL);
 	assert(out_variants != NULL);
 
@@ -790,6 +842,7 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Enum
 
 	if (!result) {
 		arena_end_temp(temp);
+		profile_scope_end();
 		return false;
 	}
 
@@ -803,10 +856,12 @@ bool _parser_parse_enum_variants(Parser* parser, size_t* out_variant_count, Enum
 	}
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return true;
 }
 
 void _parser_register_enum_variants(Parser* parser, Enum* enum_def) {
+	profile_func_colored(PROFILE_COLOR);
 	for (size_t i = 0; i < enum_def->variant_count; i += 1) {
 		EnumVariant variant = enum_def->variants[i];
 		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
@@ -839,9 +894,12 @@ void _parser_register_enum_variants(Parser* parser, Enum* enum_def) {
 			entry->enum_constant.variant_index = i;
 		}
 	}
+
+	profile_scope_end();
 }
 
 bool _parser_parse_enum_def(Parser* parser, Enum** out_enum_def, bool is_anonymous) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(out_enum_def != NULL);
 
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -863,6 +921,7 @@ bool _parser_parse_enum_def(Parser* parser, Enum** out_enum_def, bool is_anonymo
 	if (token.kind == TOKEN_LEFT_BRACE) {
 		is_forward_declared = false;
 		if (!_parser_parse_enum_variants(parser, &variant_count, &variants)) {
+			profile_scope_end();
 			return false;
 		}
 	}
@@ -894,6 +953,7 @@ bool _parser_parse_enum_def(Parser* parser, Enum** out_enum_def, bool is_anonymo
 						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
+				profile_scope_end();
 				return false;
 			}
 
@@ -915,6 +975,7 @@ bool _parser_parse_enum_def(Parser* parser, Enum** out_enum_def, bool is_anonymo
 						source_string_to_range(entry->name),
 						STR_LIT("Previously defined here"),
 						error);
+				profile_scope_end();
 				return false;
 			}
 		} else {
@@ -950,6 +1011,7 @@ bool _parser_parse_enum_def(Parser* parser, Enum** out_enum_def, bool is_anonymo
 	}
 
 	*out_enum_def = enum_def;
+	profile_scope_end();
 	return true;
 }
 
@@ -981,24 +1043,29 @@ typedef enum {
 } ParseTypeResult;
 
 ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(out_type != NULL);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_KEYWORD_VOID) {
 		preprocessor_next_token(parser->preprocessor);
 		out_type->kind = TYPE_VOID;
+		profile_scope_end();
 		return PARSE_TYPE_PARSED;
 	} else if (token.kind == TOKEN_KEYWORD_FLOAT) {
 		preprocessor_next_token(parser->preprocessor);
 		out_type->kind = TYPE_FLOAT;
+		profile_scope_end();
 		return PARSE_TYPE_PARSED;
 	} else if (token.kind == TOKEN_KEYWORD_DOUBLE) {
 		preprocessor_next_token(parser->preprocessor);
 		out_type->kind = TYPE_DOUBLE;
+		profile_scope_end();
 		return PARSE_TYPE_PARSED;
 	} else if (token.kind == TOKEN_KEYWORD_SIZE_T) {
 		preprocessor_next_token(parser->preprocessor);
 		out_type->kind = TYPE_SIZE_T;
+		profile_scope_end();
 		return PARSE_TYPE_PARSED;
 	}
 
@@ -1053,19 +1120,23 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 
 	if (type_kind != TYPE_VOID) {
 		out_type->kind = type_kind | (TypeKind)type_flags;
+		profile_scope_end();
 		return PARSE_TYPE_PARSED;
 	}
 
+	profile_scope_end();
 	return PARSE_TYPE_NOT_PARSED;
 }
 
 ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type, bool is_anonymous) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(out_type != NULL);
 
 	ParseTypeResult primitive_parse_result = _parser_try_parse_primitive_type(parser, out_type);
 	switch (primitive_parse_result) {
 	case PARSE_TYPE_ERROR:
 	case PARSE_TYPE_PARSED:
+		profile_scope_end();
 		return primitive_parse_result;
 	case PARSE_TYPE_NOT_PARSED:
 		break;
@@ -1074,6 +1145,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_IDENT) {
 		if (is_digit(token.string.v[0])) {
+			profile_scope_end();
 			return PARSE_TYPE_NOT_PARSED;
 		}
 
@@ -1082,6 +1154,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 				IDENT_FIND_DEFAULT,
 				token.string);
 		if (entry == NULL) {
+			profile_scope_end();
 			return PARSE_TYPE_NOT_PARSED;
 		}
 
@@ -1095,6 +1168,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 
 			*out_type = entry->type_def->aliased_type;
 			out_type->alias_definition = entry->type_def;
+			profile_scope_end();
 			return PARSE_TYPE_PARSED;
 		case IDENT_FUNCTION:
 		case IDENT_VARIABLE:
@@ -1111,6 +1185,7 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 	} else if (token.kind == TOKEN_KEYWORD_STRUCT || token.kind == TOKEN_KEYWORD_UNION) {
 		Struct* struct_def = {};
 		if (!_parser_parse_struct_def(parser, &struct_def, is_anonymous)) {
+			profile_scope_end();
 			return PARSE_TYPE_ERROR;
 		}
 
@@ -1123,18 +1198,22 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 			out_type->union_def = struct_def;
 		}
 
+		profile_scope_end();
 		return PARSE_TYPE_PARSED;
 	} else if (token.kind == TOKEN_KEYWORD_ENUM) {
 		Enum* enum_def = {};
 		if (!_parser_parse_enum_def(parser, &enum_def, is_anonymous)) {
+			profile_scope_end();
 			return PARSE_TYPE_ERROR;
 		}
 
 		out_type->kind = TYPE_ENUM;
 		out_type->enum_def = enum_def;
+		profile_scope_end();
 		return PARSE_TYPE_PARSED;
 	}
 
+	profile_scope_end();
 	return PARSE_TYPE_NOT_PARSED;
 }
 
@@ -1193,15 +1272,18 @@ static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous
 }
 
 AstNode* _parser_parse_type_def(Parser* parser) {
+	profile_func_colored(PROFILE_COLOR);
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
 	assert(keyword_token.kind == TOKEN_KEYWORD_TYPEDEF);
 
 	Type aliased_type = {};
 	if (!_parser_parse_type(parser, &aliased_type, false)) {
+		profile_scope_end();
 		return NULL;
 	}
 
 	if (!_parser_parse_pre_declaration_modifiers(parser, &aliased_type, &aliased_type, true)) {
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -1215,6 +1297,7 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 				new_name,
 				expected_tokens,
 				array_size(expected_tokens));
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -1228,6 +1311,7 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 				semicolon,
 				expected_tokens,
 				array_size(expected_tokens));
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -1253,6 +1337,7 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	node->kind = AST_NODE_TYPE_DEF;
 	node->type_def = type_def;
+	profile_scope_end();
 	return node;
 }
 
@@ -1260,6 +1345,7 @@ static bool _parser_parse_function_params(Parser* parser,
 		FunctionParam** out_params,
 		size_t* out_param_count,
 		bool* out_has_va_args) {
+	profile_func_colored(PROFILE_COLOR);
 
 	Token left_paren = preprocessor_next_token(parser->preprocessor);
 	assert(left_paren.kind == TOKEN_LEFT_PAREN);
@@ -1291,6 +1377,7 @@ static bool _parser_parse_function_params(Parser* parser,
 
 					arena_end_temp(ast_temp);
 					arena_end_temp(temp);
+					profile_scope_end();
 					return false;
 				}
 
@@ -1304,12 +1391,14 @@ static bool _parser_parse_function_params(Parser* parser,
 		if (!_parser_parse_type(parser, &param->type, true)) {
 			arena_end_temp(temp);
 			arena_end_temp(ast_temp);
+			profile_scope_end();
 			return false;
 		}
 
 		if (!_parser_parse_pre_declaration_modifiers(parser, &param->type, &param->type, true)) {
 			arena_end_temp(temp);
 			arena_end_temp(ast_temp);
+			profile_scope_end();
 			return false;
 		}
 
@@ -1324,6 +1413,7 @@ static bool _parser_parse_function_params(Parser* parser,
 		if (!_parser_parse_post_declaration_modifiers(parser, &param->type, &param->type, true)) {
 			arena_end_temp(temp);
 			arena_end_temp(ast_temp);
+			profile_scope_end();
 			return false;
 		}
 
@@ -1349,6 +1439,7 @@ static bool _parser_parse_function_params(Parser* parser,
 	*out_has_va_args = has_va_args;
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return true;
 }
 
@@ -1426,6 +1517,7 @@ bool _token_kind_to_unary_pre_op(TokenKind kind, UnaryOpKind* out_op) {
 }
 
 void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
+	profile_func_colored(PROFILE_COLOR);
 	StringBuilder builder = { .arena = parser->ast_allocator };
 
 	while (true) {
@@ -1451,9 +1543,11 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 	out_literal->full_string = builder.string;
 	out_literal->array_size_expr = size_expr;
 
+	profile_scope_end();
 }
 
 static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(Parser* parser, Expr* out_expr) {
+	profile_func_colored(PROFILE_COLOR);
 	Token token = preprocessor_view_next(parser->preprocessor);
 
 	UnaryOpKind unary_op;
@@ -1464,7 +1558,9 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		out_expr->unary.operand = arena_alloc(parser->ast_allocator, Expr);
 		out_expr->unary.op = unary_op;
 
-		return _parser_try_parse_bin_expr_operand(parser, out_expr->unary.operand);
+		ExprParseResult result = _parser_try_parse_bin_expr_operand(parser, out_expr->unary.operand);
+		profile_scope_end();
+		return result;
 	}
 	
 	if (token.kind == TOKEN_IDENT) {
@@ -1476,6 +1572,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			IntLiteral literal = {};
 			bool literal_parsed = parse_int_literal(token, parser->diagnostics, &literal);
 			if (!literal_parsed) {
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -1527,6 +1624,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				.value = literal.value,
 			};
 
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		}
 
@@ -1539,6 +1637,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 					token.source_range,
 					STR_LIT("Use of undeclared identifier"),
 					NULL);
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
@@ -1546,10 +1645,12 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		case IDENT_FUNCTION:
 			out_expr->kind = EXPR_FUNCTION_REFERENCE;
 			out_expr->function_ref = entry->function_def;
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_VARIABLE:
 			out_expr->kind = EXPR_VARIABLE_REFERENCE;
 			out_expr->variable_ref = entry->variable;
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_TYPE_DEF:
 		case IDENT_STRUCT:
@@ -1560,11 +1661,13 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			out_expr->kind = EXPR_ENUM_CONSTANT;
 			out_expr->enum_constant.enum_def = entry->enum_constant.enum_def;
 			out_expr->enum_constant.variant_index = entry->enum_constant.variant_index;
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_FUNCTION_PARAM:
 			out_expr->kind = EXPR_FUNCTION_PARAM;
 			out_expr->function_param.function_def = entry->function_param.function_def;
 			out_expr->function_param.param_index = entry->function_param.param_index;
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_KIND_MAX:
 			unreachable();
@@ -1575,6 +1678,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		// we have a string literal
 		_parser_parse_string_literal(parser, &out_expr->string_literal);
 		out_expr->kind = EXPR_STRING_LITERAL;
+		profile_scope_end();
 		return EXPR_PARSE_OK;
 	} else if (token.kind == TOKEN_CHAR) {
 		// we have a char literal
@@ -1590,6 +1694,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 					NULL);
 
 			preprocessor_next_token(parser->preprocessor);
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
@@ -1626,6 +1731,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			out_expr->kind = EXPR_CHAR_LITERAL;
 			out_expr->char_literal.value = (uint32_t)token.string.v[1];
 			preprocessor_next_token(parser->preprocessor);
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case CHAR_STATE_TOO_LONG:
 			diagnostics_report_error(parser->diagnostics,
@@ -1634,6 +1740,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 					NULL);
 
 			preprocessor_next_token(parser->preprocessor);
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
@@ -1653,6 +1760,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 						right_paren,
 						expected_tokens,
 						array_size(expected_tokens));
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -1666,16 +1774,19 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 					parser,
 					out_expr->cast.expr);
 
+			profile_scope_end();
 			return expr_result;
 		}
 		case PARSE_TYPE_NOT_PARSED:
 			break;
 		case PARSE_TYPE_ERROR:
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
 		ExprParseResult result = _parser_try_parse_expr(parser, out_expr);
 		if (result != EXPR_PARSE_OK) {
+			profile_scope_end();
 			return result;
 		}
 
@@ -1687,16 +1798,21 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 					right_paren,
 					expected_tokens,
 					array_size(expected_tokens));
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
+		profile_scope_end();
 		return EXPR_PARSE_OK;
 	}
 
+	profile_scope_end();
 	return EXPR_PARSE_NOT_PARSED;
 }
 
 static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_expr_array) {
+	profile_func_colored(PROFILE_COLOR);
+
 	Token left_paren = preprocessor_next_token(parser->preprocessor);
 	assert(left_paren.kind == TOKEN_LEFT_PAREN);
 
@@ -1717,6 +1833,7 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 		ExprParseResult result = _parser_try_parse_expr(parser, arg);
 		if (result != EXPR_PARSE_OK) {
 			arena_end_temp(temp);
+			profile_scope_end();
 			return result;
 		}
 
@@ -1737,6 +1854,7 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 					array_size(expected_tokens));
 			
 			arena_end_temp(temp);
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 	}
@@ -1746,14 +1864,18 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 	memcpy(out_expr_array->exprs, args.exprs, sizeof(*args.exprs) * args.count);
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return EXPR_PARSE_OK;
 }
 
 // Tries to parse an expression operand + any post fix operators,
 // like increment, decrement, array access, member access or a call
 static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* out_expr) {
+	profile_func_colored(PROFILE_COLOR);
+
 	ExprParseResult result = _parser_try_parse_expr_operand_without_post_fix_operator(parser, out_expr);
 	if (result != EXPR_PARSE_OK) {
+		profile_scope_end();
 		return result;
 	}
 
@@ -1765,6 +1887,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			ExprArray args;
 			ExprParseResult result = _parser_parse_arg_list(parser, &args);
 			if (result != EXPR_PARSE_OK) {
+				profile_scope_end();
 				return result;
 			}
 
@@ -1783,6 +1906,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			Expr* index = arena_alloc(parser->ast_allocator, Expr);
 			ExprParseResult result = _parser_try_parse_expr(parser, index);
 			if (result != EXPR_PARSE_OK) {
+				profile_scope_end();
 				return result;
 			}
 
@@ -1797,6 +1921,8 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						closing_bracket,
 						expected_tokens,
 						array_size(expected_tokens));
+				
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 		} else {
@@ -1804,12 +1930,16 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 		}
 	}
 
+	profile_scope_end();
 	return EXPR_PARSE_OK;
 }
 
 ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
+	profile_func_colored(PROFILE_COLOR);
+
 	ExprParseResult left_operand_result = _parser_try_parse_bin_expr_operand(parser, out_expr);
 	if (left_operand_result != EXPR_PARSE_OK) {
+		profile_scope_end();
 		return left_operand_result;
 	}
 
@@ -1830,6 +1960,8 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 						first_operand_token.source_range,
 						STR_LIT("Expected binary expression operand"),
 						NULL);
+
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -1883,6 +2015,7 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 		}
 	}
 
+	profile_scope_end();
 	return EXPR_PARSE_OK;
 }
 
@@ -1925,6 +2058,8 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 		Type* base_type,
 		Type* out_type,
 		bool duplicate_base_type) {
+	profile_func_colored(PROFILE_COLOR);
+
 	if (base_type == out_type) {
 		assert(duplicate_base_type);
 	}
@@ -1948,6 +2083,7 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 							next_token.source_range,
 							STR_LIT("Expected array size experession"),
 							NULL);
+					profile_scope_end();
 					return false;
 				}
 			}
@@ -1959,6 +2095,7 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 						closing_bracket,
 						expected_tokens,
 						array_size(expected_tokens));
+				profile_scope_end();
 				return false;
 			}
 
@@ -1977,10 +2114,12 @@ bool _parser_parse_post_declaration_modifiers(Parser* parser,
 		}
 	}
 
+	profile_scope_end();
 	return true;
 }
 
 bool _check_for_var_redefinition(Parser* parser, SourceString var_name) {
+	profile_func_colored(PROFILE_COLOR);
 	IdentifierEntry* existing_identifier = ident_storage_find(parser->ident_storage,
 			IDENT_NAMESPACE_DEFAULT,
 			IDENT_FIND_IN_CURRENT_SCOPE,
@@ -2001,13 +2140,16 @@ bool _check_for_var_redefinition(Parser* parser, SourceString var_name) {
 				source_string_to_range(existing_identifier->name),
 				STR_LIT("Previously defined here"),
 				error);
+		profile_scope_end();
 		return false;
 	} 
 
+	profile_scope_end();
 	return true;
 }
 
 static void _parser_register_function_param_identifiers(Parser* parser, Function* function_def) {
+	profile_func_colored(PROFILE_COLOR);
 	assert(!function_def->is_forward_declared);
 
 	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
@@ -2046,6 +2188,8 @@ static void _parser_register_function_param_identifiers(Parser* parser, Function
 			entry->function_param.param_index = i;
 		}
 	}
+
+	profile_scope_end();
 }
 
 static AstNode* _parser_parse_function_declaration(Parser* parser,
@@ -2054,6 +2198,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier,
 		FunctionCallingConvention call_conv) {
+	profile_func_colored(PROFILE_COLOR);
 	Token token = preprocessor_view_next(parser->preprocessor);
 	assert(token.kind == TOKEN_LEFT_PAREN);
 
@@ -2061,6 +2206,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 	size_t param_count = 0;
 	bool has_va_args = false;
 	if (!_parser_parse_function_params(parser, &params, &param_count, &has_va_args)) {
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -2086,6 +2232,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 					source_string_to_range(entry->name),
 					STR_LIT("Previously defined here"),
 					error);
+			profile_scope_end();
 			return NULL;
 		}
 
@@ -2103,6 +2250,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 					source_string_to_range(entry->name),
 					STR_LIT("Previously defined here"),
 					error);
+			profile_scope_end();
 			return NULL;
 		} else {
 			FunctionParam* prev_def_param = function_def->parameters;
@@ -2121,6 +2269,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 							source_string_to_range(prev_def_param->name),
 							STR_LIT("Previously defined here"),
 							error);
+					profile_scope_end();
 					return NULL;
 				}
 				
@@ -2166,6 +2315,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 				left_brace_or_semicolon,
 				expected_tokens,
 				array_size(expected_tokens));
+		profile_scope_end();
 		return NULL;
 	}
 	}
@@ -2186,6 +2336,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 				source_string_to_range(entry->name),
 				STR_LIT("Previously defined here"),
 				error);
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -2210,6 +2361,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 		ident_storage_end_scope(parser->ident_storage);
 
 		if (!result) {
+			profile_scope_end();
 			return NULL;
 		}
 
@@ -2220,6 +2372,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	node->kind = AST_NODE_FUNCTION;
 	node->function_def = function_def;
+	profile_scope_end();
 	return node;
 }
 
@@ -2227,10 +2380,12 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		Type* type,
 		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier) {
+	profile_func_colored(PROFILE_COLOR);
 
 	assert(type != NULL);
 
 	if (!_parser_parse_pre_declaration_modifiers(parser, type, type, true)) {
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -2244,6 +2399,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 				expected_tokens,
 				array_size(expected_tokens));
 		
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -2259,6 +2415,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 					expected_tokens,
 					array_size(expected_tokens));
 			
+			profile_scope_end();
 			return NULL;
 		}
 	}
@@ -2267,6 +2424,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_LEFT_PAREN) {
+		profile_scope_end();
 		return _parser_parse_function_declaration(parser, name, type, decl_spec, storage_specifier, call_conv);
 	}
 
@@ -2275,6 +2433,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		//       Just extract function handling into a separate function,
 		//       and simplify the logic
 		if (!_parser_parse_post_declaration_modifiers(parser, type, type, true)) {
+			profile_scope_end();
 			return NULL;
 		}
 
@@ -2291,20 +2450,24 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		case EXPR_PARSE_OK:
 			break;
 		case EXPR_PARSE_ERROR:
+			profile_scope_end();
 			return NULL;
 		case EXPR_PARSE_NOT_PARSED:
 			diagnostics_report_error(parser->diagnostics,
 					token.source_range,
 					STR_LIT("Expected variable value after the '='"),
 					NULL);
+			profile_scope_end();
 			return NULL;
 		}
 
 		if (!_parser_expect_semicolon(parser, STR_LIT("Expected semicolon after the variable definition"))) {
+			profile_scope_end();
 			return NULL;
 		}
 
 		if (!_check_for_var_redefinition(parser, name)) {
+			profile_scope_end();
 			return NULL;
 		}
 
@@ -2324,6 +2487,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 				node->variable.name);
 
 		entry->variable = &node->variable;
+		profile_scope_end();
 		return node;
 	} else if (token.kind == TOKEN_SEMICOLON) {
 		preprocessor_next_token(parser->preprocessor);
@@ -2331,6 +2495,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		assert(decl_spec == NULL);
 
 		if (!_check_for_var_redefinition(parser, name)) {
+			profile_scope_end();
 			return NULL;
 		}
 
@@ -2353,6 +2518,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 				name);
 
 		entry->variable = &node->variable;
+		profile_scope_end();
 		return node;
 	} else {
 		TokenKind expected_tokens[] = {
@@ -2366,10 +2532,12 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 				token,
 				expected_tokens,
 				array_size(expected_tokens));
+		profile_scope_end();
 		return NULL;
 	}
 
 	unreachable();
+	profile_scope_end();
 	return NULL;
 }
 
@@ -2527,6 +2695,8 @@ static DeclSpec* _parser_parse_decl_spec(Parser* parser) {
 }
 
 static AstNode* _parser_parse_if_stmt(Parser* parser) {
+	profile_func_colored(PROFILE_COLOR);
+
 	Token if_token = preprocessor_next_token(parser->preprocessor);
 	assert(if_token.kind == TOKEN_KEYWORD_IF);
 
@@ -2537,11 +2707,13 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 				left_paren,
 				expected_tokens,
 				array_size(expected_tokens));
+		profile_scope_end();
 		return NULL;
 	}
 
 	Expr condition = {};
 	if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
+		profile_scope_end();
 		return NULL;
 	}
 	
@@ -2552,6 +2724,7 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 				right_paren,
 				expected_tokens,
 				array_size(expected_tokens));
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -2571,6 +2744,7 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 				true_node_token.source_range,
 				STR_LIT("Expected a statement if condition"),
 				NULL);
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -2591,6 +2765,7 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 					false_node_token.source_range,
 					STR_LIT("Expected a statement after else"),
 					NULL);
+			profile_scope_end();
 			return NULL;
 		}
 	}
@@ -2600,6 +2775,7 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 	if_stmt_node->if_stmt.condition = condition;
 	if_stmt_node->if_stmt.true_node = true_node;
 	if_stmt_node->if_stmt.false_node = false_node;
+	profile_scope_end();
 	return if_stmt_node;
 }
 
@@ -2727,6 +2903,8 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 }
 
 bool _parser_parse_scope(Parser* parser, Scope* out_scope) {
+	profile_func_colored(PROFILE_COLOR);
+
 	ident_storage_begin_scope(parser->ident_storage);
 	out_scope->id = parser->ident_storage->current_scope->id;
 
@@ -2742,6 +2920,7 @@ bool _parser_parse_scope(Parser* parser, Scope* out_scope) {
 					NULL);
 
 			ident_storage_end_scope(parser->ident_storage);
+			profile_scope_end();
 			return false;
 		} else if (token.kind == TOKEN_RIGHT_BRACE) {
 			preprocessor_next_token(parser->preprocessor);
@@ -2762,6 +2941,7 @@ bool _parser_parse_scope(Parser* parser, Scope* out_scope) {
 
 	ident_storage_end_scope(parser->ident_storage);
 
+	profile_scope_end();
 	return true;
 }
 
@@ -2779,6 +2959,8 @@ void parser_init(Parser* parser,
 }
 
 void parser_parse(Parser* parser, AST* ast) {
+	profile_func_colored(PROFILE_COLOR);
+
 	ast->root_nodes = (NodeList) {};
 
 	bool run = true;
@@ -2802,4 +2984,6 @@ void parser_parse(Parser* parser, AST* ast) {
 			preprocessor_next_token(parser->preprocessor);
 		}
 	}
+
+	profile_scope_end();
 }

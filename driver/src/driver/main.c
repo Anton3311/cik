@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <threads.h>
 
 #include "core/core.h"
 #include "core/profiler.h"
@@ -41,10 +42,6 @@ static const char* s_help_menu =
 	"    --x64-show-instr-loc   print which storage locations were assigned to each instruction";
 
 int main(int argc, char *argv[]) {
-	profile_init(1000 * 1000);
-
-	profile_scope_start("main");
-
 	Arena arena = {};
 	arena.capacity = align_to_page_size(512 * 8 * 4096);
 
@@ -238,8 +235,10 @@ int main(int argc, char *argv[]) {
 	arena_release(&diagnostics_arena);
 	arena_release(&temp_arena);
 
-	profile_scope_end();
+#ifdef FEATURE_PROFILER
+	// Wait until the profiler connects to upload all the measurements
+	profiler_wait_for_connection();
+#endif
 
-	profile_finish();
 	return EXIT_SUCCESS;
 }

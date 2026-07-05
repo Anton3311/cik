@@ -1,5 +1,7 @@
 #include "tokenizer.h"
 
+#include "core/profiler.h"
+
 #include <ctype.h>
 
 void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file) {
@@ -153,6 +155,7 @@ inline Token _tokenizer_create_single_char_token(Tokenizer* tokenizer, TokenKind
 }
 
 bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
+	profile_scope_start(__func__);
 	size_t token_start = tokenizer->read_position;
 
 	while (true) {
@@ -175,6 +178,7 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 
 	size_t string_length = tokenizer->read_position - token_start;
 	if (string_length == 0) {
+		profile_scope_end();
 		return false;
 	}
 
@@ -245,6 +249,8 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		.string = token_string,
 		.kind = token_kind,
 	};
+
+	profile_scope_end();
 	return true;
 }
 

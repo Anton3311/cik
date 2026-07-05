@@ -220,13 +220,15 @@ void _clang_gen_file_compile_cmd(BuildContext* context,
 		break;
 	}
 
-	switch (context->language) {
-	case LANG_C99:
-		str_builder_append(cmd_builder, STR_LIT("-std=c99 "));
-		break;
-	case LANG_C11:
-		str_builder_append(cmd_builder, STR_LIT("-std=c11 "));
-		break;
+	if (!str_equal(path_get_file_extension(unit->path), STR_LIT(".cpp"))) {
+		switch (context->language) {
+		case LANG_C99:
+			str_builder_append(cmd_builder, STR_LIT("-std=c99 "));
+			break;
+		case LANG_C11:
+			str_builder_append(cmd_builder, STR_LIT("-std=c11 "));
+			break;
+		}
 	}
 
 	FileBuildOptions options = unit->compile_options;
@@ -238,6 +240,10 @@ void _clang_gen_file_compile_cmd(BuildContext* context,
 		str_builder_append(cmd_builder, STR_LIT("-Wall "));
 	}
 
+	if (has_flag(options, COMPILE_OPTION_OPTIMIZE)) {
+		str_builder_append(cmd_builder, STR_LIT("-O3 "));
+	}
+
 	str_builder_append(cmd_builder, STR_LIT("-o "));
 	_format_output_file_path(cmd_builder, unit, true);
 	str_builder_append_char(cmd_builder, ' ');
@@ -246,6 +252,19 @@ void _clang_gen_file_compile_cmd(BuildContext* context,
 	for (size_t i = 0; i < include_dirs.count; i += 1) {
 		str_builder_append(cmd_builder, STR_LIT("\"-I"));
 		str_builder_append(cmd_builder, include_dirs.values[i]);
+		str_builder_append(cmd_builder, STR_LIT("\" "));
+	}
+
+	for (size_t i = 0; i < context->define_count; i += 1) {
+		MacroDefine def = context->defines[i];
+		str_builder_append(cmd_builder, STR_LIT("\"-D"));
+		str_builder_append(cmd_builder, def.name);
+
+		if (def.value.length > 0) {
+			str_builder_append_char(cmd_builder, '=');
+			str_builder_append(cmd_builder, def.value);
+		}
+
 		str_builder_append(cmd_builder, STR_LIT("\" "));
 	}
 }
@@ -320,6 +339,10 @@ static void _msvc_gen_file_compile_cmd(BuildContext* context,
 		str_builder_append(cmd_builder, STR_LIT("/fsanitize=address "));
 	}
 
+	if (has_flag(options, COMPILE_OPTION_OPTIMIZE)) {
+		str_builder_append(cmd_builder, STR_LIT("/O2 "));
+	}
+
 	str_builder_append(cmd_builder, STR_LIT("/Fo: "));
 	_format_output_file_path(cmd_builder, unit, false);
 	str_builder_append_char(cmd_builder, ' ');
@@ -328,6 +351,19 @@ static void _msvc_gen_file_compile_cmd(BuildContext* context,
 	for (size_t i = 0; i < include_dirs.count; i += 1) {
 		str_builder_append(cmd_builder, STR_LIT("\"/I"));
 		str_builder_append(cmd_builder, include_dirs.values[i]);
+		str_builder_append(cmd_builder, STR_LIT("\" "));
+	}
+
+	for (size_t i = 0; i < context->define_count; i += 1) {
+		MacroDefine def = context->defines[i];
+		str_builder_append(cmd_builder, STR_LIT("\"/D"));
+		str_builder_append(cmd_builder, def.name);
+
+		if (def.value.length > 0) {
+			str_builder_append_char(cmd_builder, '=');
+			str_builder_append(cmd_builder, def.value);
+		}
+
 		str_builder_append(cmd_builder, STR_LIT("\" "));
 	}
 }

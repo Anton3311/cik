@@ -7,20 +7,25 @@
 #define REMOVED_MACRO_FLAG (void*)0x1
 
 static size_t _macro_table_find_empty_slot(MacroTable* table, String key) {
+	profile_scope_start(__func__);
+
 	size_t hash = hash_string(key);
 	for (size_t i = 0; i < table->capacity; i += 1) {
 		size_t index = (hash + i) % table->capacity;
 		String macro_name = table->macros[index].name.string;
 
 		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
+			profile_scope_end();
 			return index;
 		}
 	}
 
+	profile_scope_end();
 	return SIZE_MAX;
 }
 
 static void _macro_table_grow(MacroTable* table) {
+	profile_scope_start(__func__);
 	size_t new_capacity = max(MACRO_TABLE_INITIAL_CAPACITY, table->capacity * 2);
 
 	MacroDefinition* old_macros = table->macros;
@@ -44,9 +49,12 @@ static void _macro_table_grow(MacroTable* table) {
 
 		table->macros[empty_slot] = old_macros[i];
 	}
+
+	profile_scope_end();
 }
 
 void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
+	profile_scope_start(__func__);
 	if (table->count * 2 >= table->capacity) {
 		_macro_table_grow(table);
 	}
@@ -56,38 +64,50 @@ void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
 
 	table->macros[slot] = *macro;
 	table->count += 1;
+
+	profile_scope_end();
 }
 
 bool macro_table_remove(MacroTable* table, String name) {
+	profile_scope_start(__func__);
+
 	size_t hash = hash_string(name);
 	for (size_t i = 0; i < table->capacity; i += 1) {
 		size_t index = (hash + i) % table->capacity;
 		String macro_name = table->macros[index].name.string;
 
 		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
+			profile_scope_end();
 			return false;
 		} else if (str_equal(macro_name, name)) {
 			table->macros[index].name.string.v = REMOVED_MACRO_FLAG;
+			profile_scope_end();
 			return true;
 		}
 	}
 
+	profile_scope_end();
 	return false;
 }
 
 const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
+	profile_scope_start(__func__);
+
 	size_t hash = hash_string(name);
 	for (size_t i = 0; i < table->capacity; i += 1) {
 		size_t index = (hash + i) % table->capacity;
 		String macro_name = table->macros[index].name.string;
 
 		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
+			profile_scope_end();
 			return NULL;
 		} else if (str_equal(macro_name, name)) {
+			profile_scope_end();
 			return &table->macros[index];
 		}
 	}
 
+	profile_scope_end();
 	return NULL;
 }
 
@@ -96,6 +116,7 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 //
 
 const SourceFile** _include_history_find_entry(IncludeHistory* history, const SourceFile* source_file) {
+	profile_scope_start(__func__);
 	assert(source_file);
 
 	size_t index = hash_ptr(source_file) % history->capacity;
@@ -103,33 +124,43 @@ const SourceFile** _include_history_find_entry(IncludeHistory* history, const So
 		index = (index + 1) % history->capacity;
 	}
 
+	profile_scope_end();
 	return &history->entries[index];
 }
 
 bool include_history_contains(IncludeHistory* history, const SourceFile* source_file) {
+	profile_scope_start(__func__);
+
 	size_t index = hash_ptr(source_file) % history->capacity;
 	const SourceFile** it = history->entries + index;
 	const SourceFile** end = history->entries + history->capacity;
 	while (it != end) {
 		if (*it == source_file) {
+			profile_scope_end();
 			return true;
 		} else if (*it == NULL) {
+			profile_scope_end();
 			return false;
 		}
 
 		it += 1;
 	}
 
+	profile_scope_end();
 	return false;
 }
 
 bool include_history_try_insert(IncludeHistory* history, const SourceFile* source_file) {
+	profile_scope_start(__func__);
+
 	if (history->size >= history->capacity) {
+		profile_scope_end();
 		return false;
 	}
 
 	const SourceFile** entry = _include_history_find_entry(history, source_file);
 	if (entry == NULL) {
+		profile_scope_end();
 		return false;
 	}
 	
@@ -137,6 +168,7 @@ bool include_history_try_insert(IncludeHistory* history, const SourceFile* sourc
 
 	*entry = source_file;
 	history->size += 1;
+	profile_scope_end();
 	return true;
 }
 
@@ -305,7 +337,7 @@ void _preprocessor_pop_file(Preprocessor* state) {
 	assert(stack->depth > 0);
 
 	const SourceFile* included_file = stack->includes[stack->depth - 1].source_file;
-	debug_log_info("end of include %.*s", STR_FMT(included_file->path));
+	// debug_log_info("end of include %.*s", STR_FMT(included_file->path));
 
 	stack->depth -= 1;
 
@@ -1408,6 +1440,8 @@ inline void _pop_branch_region(Preprocessor* state) {
 }
 
 bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directive) {
+	profile_scope_start(__func__);
+
 	const SourceFile* source_file = _preprocessor_current_file(state);
 	const LineInfo* line_info = &source_file->line_info;
 
@@ -1438,6 +1472,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					next_token.source_range,
 					STR_LIT("Expected include path"),
 					NULL);
+			profile_scope_end();
 			return false;
 		}
 
@@ -1461,7 +1496,8 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 						builder.string,
 						NULL);
 
-				debug_log_error("line: %u include %.*s failed", directive_line, STR_FMT(path_string));
+				// debug_log_error("line: %u include %.*s failed", directive_line, STR_FMT(path_string));
+				profile_scope_end();
 				return false;
 			}
 
@@ -1473,19 +1509,20 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			}
 
 			if (include_history_contains(&state->include_history, included_file)) {
-				debug_log_info("lone: %u include %.*s found in include history and was skipped",
-						directive_line,
-						STR_FMT(included_file->path));
+				// debug_log_info("lone: %u include %.*s found in include history and was skipped",
+						// directive_line,
+						// STR_FMT(included_file->path));
 			} else {
 				if (!_preprocessor_push_file(state, included_file)) {
 					diagnostics_report_error(state->diagnostics,
 							directive.source_range,
 							STR_LIT("Include stack overflow"),
 							NULL);
+					profile_scope_end();
 					return false;
 				}
 
-				debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
+				// debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
 			}
 		}
 
@@ -1501,19 +1538,20 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			tokenizer_reset_to_token(state->tokenizer, token);
 
 			bool inserted = include_history_try_insert(&state->include_history, _preprocessor_current_file(state));
-			debug_log_info("inserted file in include history");
+			// debug_log_info("inserted file in include history");
 			assert(inserted);
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
 
+		profile_scope_end();
 		return true;
 	}
 	case DIRECTIVE_DEFINE: {
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
 			if (_is_current_region_enabled(state)) {
-				debug_log_info("line: %u define %.*s", directive_line, STR_FMT(macro.name.string));
+				// debug_log_info("line: %u define %.*s", directive_line, STR_FMT(macro.name.string));
 				macro_table_append(&state->macro_table, &macro);
 			}
 		}
@@ -1528,14 +1566,15 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 						macro_name,
 						expected_tokens,
 						array_size(expected_tokens));
+				profile_scope_end();
 				return false;
 			}
 
 			bool result = macro_table_remove(&state->macro_table, macro_name.string);
 			if (result) {
-				debug_log_info("line: %u undef %.*s", directive_line, STR_FMT(macro_name.string));
+				// debug_log_info("line: %u undef %.*s", directive_line, STR_FMT(macro_name.string));
 			} else {
-				debug_log_warn("line: %u undef %.*s failed", directive_line, STR_FMT(macro_name.string));
+				// debug_log_warn("line: %u undef %.*s failed", directive_line, STR_FMT(macro_name.string));
 			}
 		}
 		break;
@@ -1547,13 +1586,14 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		bool predicate = false;
 		if (_is_parent_region_enabled(state)) {
 			if (!_preprocessor_parse_condition(state, &predicate, directive)) {
+				profile_scope_end();
 				return false;
 			}
 
 			branch_state->alternative_branch_is_taken = predicate;
 			branch_state->is_enabled = predicate;
 
-			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			// debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
@@ -1573,6 +1613,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 						macro_name,
 						expected_tokens,
 						array_size(expected_tokens));
+				profile_scope_end();
 				return false;
 			}
 			
@@ -1583,7 +1624,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->alternative_branch_is_taken = predicate;
 			branch_state->is_enabled = predicate;
 
-			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			// debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
@@ -1596,6 +1637,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					directive.source_range,
 					STR_LIT("#else has no matching #if directive"),
 					NULL);
+			profile_scope_end();
 			return false;
 		}
 
@@ -1620,13 +1662,14 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					branch_state->current_directive.source_range,
 					STR_LIT("Previous directive here"),
 					error);
+			profile_scope_end();
 			return false;
 		}
 		}
 
 		if (_is_parent_region_enabled(state)) {
 			branch_state->is_enabled = !branch_state->alternative_branch_is_taken;
-			debug_log_info("line: %u else %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			// debug_log_info("line: %u else %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		}
 
 		branch_state->current_directive = directive;
@@ -1638,6 +1681,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					directive.source_range,
 					STR_LIT("#elif has no matching #if directive"),
 					NULL);
+			profile_scope_end();
 			return false;
 		}
 
@@ -1662,6 +1706,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					branch_state->current_directive.source_range,
 					STR_LIT("Previous directive here"),
 					error);
+			profile_scope_end();
 			return false;
 		}
 		}
@@ -1669,6 +1714,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		if (_is_parent_region_enabled(state)) {
 			bool current_predicate_value = false;
 			if (!_preprocessor_parse_condition(state, &current_predicate_value, directive)) {
+				profile_scope_end();
 				return false;
 			}
 
@@ -1676,7 +1722,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->is_enabled = is_taken;
 			branch_state->alternative_branch_is_taken |= is_taken;
 
-			debug_log_info("line: %u elif %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			// debug_log_info("line: %u elif %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
@@ -1690,6 +1736,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					directive.source_range,
 					STR_LIT("#endif used without #if"),
 					NULL);
+			profile_scope_end();
 			return false;
 		}
 
@@ -1740,10 +1787,12 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					error_message,
 					NULL);
 		}
+		profile_scope_end();
 		return false;
 	}
 	}
 
+	profile_scope_end();
 	return true;
 }
 
@@ -1788,6 +1837,8 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 }
 
 void _preprocessor_skip_until_newline(Preprocessor* state) {
+	profile_scope_start(__func__);
+
 	const SourceFile* source_file = _preprocessor_current_file(state);
 	const LineInfo* line_info = &source_file->line_info;
 
@@ -1807,19 +1858,27 @@ void _preprocessor_skip_until_newline(Preprocessor* state) {
 			tokenizer_reset_to_token(state->tokenizer, token);
 		}
 	}
+
+	profile_scope_end();
 }
 
 void _preprocessor_skip_directive(Preprocessor* state) {
+	profile_scope_start(__func__);
+
 	ParsedDirective directive = {};
 	if (!_preprocessor_parse_directive_statement(state, &directive)) {
 		_preprocessor_skip_until_newline(state);
+		profile_scope_end();
 		return;
 	}
 
 	if (!_preprocessor_parse_directive(state, directive)) {
 		_preprocessor_skip_until_newline(state);
+		profile_scope_end();
 		return;
 	}
+
+	profile_scope_end();
 }
 
 //
@@ -1832,6 +1891,8 @@ void _preprocessor_skip_directive(Preprocessor* state) {
 bool _preprocessor_apply_token_insert_operator(Arena* generated_tokens_allocator,
 		MacroCall* macro_call,
 		Token* out_token) {
+
+	profile_scope_start(__func__);
 
 	const MacroDefinition* macro = macro_call->macro;
 	assert(macro->style == MACRO_STYLE_FUNCTION);
@@ -1876,6 +1937,7 @@ bool _preprocessor_apply_token_insert_operator(Arena* generated_tokens_allocator
 	};
 
 	*out_token = token;
+	profile_scope_end();
 	return true;
 }
 
@@ -1884,6 +1946,7 @@ inline bool _macro_call_finished(const MacroCall* call) {
 }
 
 bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, Token* out_token, MacroCall* call) {
+	profile_scope_start(__func__);
 	const MacroDefinition* macro = call->macro;
 
 	assert(!_macro_call_finished(call));
@@ -1892,6 +1955,7 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 	// NOTE: Loop until we get a token
 	while (true) {
 		if (_macro_call_finished(call)) {
+			profile_scope_end();
 			return false;
 		}
 		
@@ -1909,6 +1973,7 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 			case MACRO_TOKEN_HINT_NONE:
 				*out_token = next_token;
 				call->token_index += 1;
+				profile_scope_end();
 				return true;
 			case MACRO_TOKEN_HINT_PARAMETER: {
 				call->state = MACRO_CALL_ARGUMENT_EXPANSION;
@@ -1948,9 +2013,11 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 				call->token_index += 1;
 
 				*out_token = token;
+				profile_scope_end();
 				return true;
 			}
 			case MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR:
+				profile_scope_end();
 				return _preprocessor_apply_token_insert_operator(generated_tokens_allocator, call, out_token);
 			case MACRO_TOKEN_HINT_VA_ARGS:
 				call->state = MACRO_CALL_VA_ARGS_EXPANSION;
@@ -1980,6 +2047,8 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 
 			*out_token = argument_tokens.tokens[expansion->arg_token_index];
 			expansion->arg_token_index += 1;
+
+			profile_scope_end();
 			return true;
 		}
 		case MACRO_CALL_VA_ARGS_EXPANSION: {
@@ -2015,6 +2084,7 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 						.source_range = va_args_token.source_range,
 					};
 
+					profile_scope_end();
 					return true;
 				}
 			}
@@ -2024,12 +2094,14 @@ bool _preprocessor_expand_user_defined_macro(Arena* generated_tokens_allocator, 
 
 			*out_token = argument_tokens.tokens[expansion->arg_token_index];
 			expansion->arg_token_index += 1;
+			profile_scope_end();
 			return true;
 		}
 		}
 	}
 
 	unreachable();
+	profile_scope_end();
 	return false;
 }
 
@@ -2038,6 +2110,7 @@ bool _preprocessor_expand_builtin_macro(const SourceFile* source_file,
 		Arena* generated_tokens_allocator,
 		Token* out_token,
 		MacroCall* call) {
+	profile_scope_start(__func__);
 	const MacroDefinition* macro = call->macro;
 
 	assert(!_macro_call_finished(call));
@@ -2066,6 +2139,7 @@ bool _preprocessor_expand_builtin_macro(const SourceFile* source_file,
 		call->token_index = macro->token_count;
 
 		*out_token = generated_token;
+		profile_scope_end();
 		return true;
 	}
 	case BUILTIN_MACRO_FILE: {
@@ -2086,6 +2160,7 @@ bool _preprocessor_expand_builtin_macro(const SourceFile* source_file,
 		call->token_index = macro->token_count;
 
 		*out_token = generated_token;
+		profile_scope_end();
 		return true;
 	}
 	case BUILTIN_MACRO_STDC: {
@@ -2103,11 +2178,13 @@ bool _preprocessor_expand_builtin_macro(const SourceFile* source_file,
 		call->token_index = macro->token_count;
 
 		*out_token = generated_token;
+		profile_scope_end();
 		return true;
 	}
 	}
 
 	unreachable();
+	profile_scope_end();
 	return false;
 }
 
@@ -2202,6 +2279,7 @@ typedef enum {
 ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider token_provider,
 		Arena* token_allocator,
 		TokenArray* out_tokens) {
+	profile_scope_start(__func__);
 
 #define paren_stack_capacity 64
 	size_t paren_stack_size = 0;
@@ -2211,13 +2289,16 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 		Token token = token_provider_next(token_provider);
 
 		if (token.kind == TOKEN_EOF) {
+			profile_scope_end();
 			return PARSE_MACRO_ARG_EOF;
 		}
 
 		if (paren_stack_size == 0) {
 			if (token.kind == TOKEN_COMMA) {
+				profile_scope_end();
 				return PARSE_MACRO_ARG_EXPECT_ONE_MORE;
 			} else if (token.kind == TOKEN_RIGHT_PAREN) {
+				profile_scope_end();
 				return PARSE_MACRO_ARG_END;
 			}
 		}
@@ -2262,6 +2343,7 @@ ParseMacroArgResult _preprocessor_parse_single_macro_call_arg(TokenProvider toke
 	}
 
 	unreachable();
+	profile_scope_end();
 	return PARSE_MACRO_ARG_EOF;
 }
 
@@ -2271,6 +2353,8 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 		Arena* temp_allocator,
 		ParsedMacroCallArgs* out_args) {
 
+	profile_scope_start(__func__);
+
 	Token maybe_left_paren = token_provider_next(token_provider);
 
 	if (maybe_left_paren.kind != TOKEN_LEFT_PAREN) {
@@ -2279,6 +2363,7 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 				maybe_left_paren,
 				expected_tokens,
 				array_size(expected_tokens));
+		profile_scope_end();
 		return false;
 	}
 
@@ -2321,6 +2406,7 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 		case PARSE_MACRO_ARG_EOF:
 			arena_end_temp(args_region);
 			arena_end_temp(streams_region);
+			profile_scope_end();
 			return false;
 		case PARSE_MACRO_ARG_EXPECT_ONE_MORE:
 			arg_is_expected = true;
@@ -2338,6 +2424,7 @@ bool _preprocessor_parse_macro_call_args(Diagnostics* diagnostics,
 	memcpy(out_args->token_streams, token_streams, sizeof(*token_streams) * token_stream_count);
 
 	arena_end_temp(args_region);
+	profile_scope_end();
 	return true;
 }
 
@@ -2346,6 +2433,8 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 		TokenProvider token_provider,
 		const MacroDefinition* macro,
 		Token macro_call_ident) {
+
+	profile_scope_start(__func__);
 
 	ParsedMacroCallArgs args = {};
 	SourceRange call_source_range = macro_call_ident.source_range;
@@ -2360,6 +2449,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 					state->allocator,
 					state->temp_allocator,
 					&args)) {
+			profile_scope_end();
 			return NULL;
 		}
 		
@@ -2380,6 +2470,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 					NULL);
 
 			_preprocessor_macro_call_stack_to_diagnostics(state, error);
+			profile_scope_end();
 			return NULL;
 		} else if (args.count > macro->parameter_count && !macro->has_va_args) {
 			// Too many macro arguments
@@ -2398,6 +2489,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 					NULL);
 
 			_preprocessor_macro_call_stack_to_diagnostics(state, error);
+			profile_scope_end();
 			return NULL;
 		}
 	}
@@ -2415,6 +2507,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 				NULL);
 
 		_preprocessor_macro_call_stack_to_diagnostics(state, overflow_error);
+		profile_scope_end();
 		return NULL;
 	}
 
@@ -2439,6 +2532,7 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 
 	assert(macro_call->arena_size_after_call >= macro_call->arena_size_before_call);
 
+	profile_scope_end();
 	return macro_call;
 }
 
@@ -2475,18 +2569,22 @@ Token preprocessor_view_next(Preprocessor* state) {
 }
 
 Token preprocessor_next_token(Preprocessor* state) {
+	profile_scope_start(__func__);
+
 	if (state->has_pending_next_token) {
 		state->has_pending_next_token = false;
 
 		Token token = state->pending_next_token;
 		state->pending_next_token = (Token) {};
 		assert(token.source_range.source_file);
+		profile_scope_end();
 		return token;
 	}
 
 	while (true) {
 		if (state->include_stack.depth == 0) {
 			assert(state->tokenizer == NULL);
+			profile_scope_end();
 			return _preprocessor_return_eof(state);
 		}
 
@@ -2497,6 +2595,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 				_preprocessor_skip_directive(state);
 				break;
 			case TOKEN_EOF:
+				profile_scope_end();
 				return token;
 			default:
 				tokenizer_reset_to_token(state->tokenizer, token);
@@ -2540,6 +2639,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 		if (next_token.kind == TOKEN_IDENT) {
 			const MacroDefinition* macro = macro_table_find(&state->macro_table, next_token.string);
 			if (macro == NULL) {
+				profile_scope_end();
 				return next_token;
 			}
 
@@ -2569,6 +2669,7 @@ Token preprocessor_next_token(Preprocessor* state) {
 				continue;
 			}
 
+			profile_scope_end();
 			return next_token;
 		}
 	}

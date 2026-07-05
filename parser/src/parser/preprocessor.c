@@ -337,7 +337,7 @@ void _preprocessor_pop_file(Preprocessor* state) {
 	assert(stack->depth > 0);
 
 	const SourceFile* included_file = stack->includes[stack->depth - 1].source_file;
-	// debug_log_info("end of include %.*s", STR_FMT(included_file->path));
+	debug_log_info("end of include %.*s", STR_FMT(included_file->path));
 
 	stack->depth -= 1;
 
@@ -1496,7 +1496,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 						builder.string,
 						NULL);
 
-				// debug_log_error("line: %u include %.*s failed", directive_line, STR_FMT(path_string));
+				debug_log_error("line: %u include %.*s failed", directive_line, STR_FMT(path_string));
 				profile_scope_end();
 				return false;
 			}
@@ -1509,9 +1509,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			}
 
 			if (include_history_contains(&state->include_history, included_file)) {
-				// debug_log_info("lone: %u include %.*s found in include history and was skipped",
-						// directive_line,
-						// STR_FMT(included_file->path));
+				debug_log_info("lone: %u include %.*s found in include history and was skipped",
+						directive_line,
+						STR_FMT(included_file->path));
 			} else {
 				if (!_preprocessor_push_file(state, included_file)) {
 					diagnostics_report_error(state->diagnostics,
@@ -1522,7 +1522,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					return false;
 				}
 
-				// debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
+				debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
 			}
 		}
 
@@ -1538,7 +1538,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			tokenizer_reset_to_token(state->tokenizer, token);
 
 			bool inserted = include_history_try_insert(&state->include_history, _preprocessor_current_file(state));
-			// debug_log_info("inserted file in include history");
+			debug_log_info("inserted file in include history");
 			assert(inserted);
 		} else {
 			_preprocessor_skip_until_newline(state);
@@ -1551,7 +1551,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
 			if (_is_current_region_enabled(state)) {
-				// debug_log_info("line: %u define %.*s", directive_line, STR_FMT(macro.name.string));
+				debug_log_info("line: %u define %.*s", directive_line, STR_FMT(macro.name.string));
 				macro_table_append(&state->macro_table, &macro);
 			}
 		}
@@ -1572,9 +1572,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 			bool result = macro_table_remove(&state->macro_table, macro_name.string);
 			if (result) {
-				// debug_log_info("line: %u undef %.*s", directive_line, STR_FMT(macro_name.string));
+				debug_log_info("line: %u undef %.*s", directive_line, STR_FMT(macro_name.string));
 			} else {
-				// debug_log_warn("line: %u undef %.*s failed", directive_line, STR_FMT(macro_name.string));
+				debug_log_warn("line: %u undef %.*s failed", directive_line, STR_FMT(macro_name.string));
 			}
 		}
 		break;
@@ -1593,7 +1593,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->alternative_branch_is_taken = predicate;
 			branch_state->is_enabled = predicate;
 
-			// debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
@@ -1624,7 +1624,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->alternative_branch_is_taken = predicate;
 			branch_state->is_enabled = predicate;
 
-			// debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
@@ -1669,7 +1669,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 		if (_is_parent_region_enabled(state)) {
 			branch_state->is_enabled = !branch_state->alternative_branch_is_taken;
-			// debug_log_info("line: %u else %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			debug_log_info("line: %u else %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		}
 
 		branch_state->current_directive = directive;
@@ -1722,7 +1722,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->is_enabled = is_taken;
 			branch_state->alternative_branch_is_taken |= is_taken;
 
-			// debug_log_info("line: %u elif %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+			debug_log_info("line: %u elif %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}

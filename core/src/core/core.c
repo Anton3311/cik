@@ -23,6 +23,11 @@ HANDLE _duplicate_process_handle(HANDLE process_handle)
 }
 
 bool try_print_stack_trace(size_t skipped_frame_count) {
+	// NOTE: Call stack reporting is disabled when running with Tracy.
+	// 
+	// TODO: Tracy also uses `dbghelp`, and using it here would need syncronization since `dbghelp`
+	//       is not thread-safe.
+#ifndef FEATURE_PROFILER
 	HANDLE process_handle = _duplicate_process_handle(GetCurrentProcess());
 	if (process_handle == NULL) {
 		return false;
@@ -67,6 +72,7 @@ bool try_print_stack_trace(size_t skipped_frame_count) {
 		// NOTE: SymCleanup failed, but we got the stack trace
 	}
 
+#endif
 	return true;
 }
 

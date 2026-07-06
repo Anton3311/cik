@@ -165,23 +165,7 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
 	add_instr->bin_op.left = array;
 	add_instr->bin_op.right = scaled_index;
-
-	switch (element_layout.size) {
-	case 1:
-		add_instr->kind = INSTR_BIN_OP_8;
-		break;
-	case 2:
-		add_instr->kind = INSTR_BIN_OP_16;
-		break;
-	case 4:
-		add_instr->kind = INSTR_BIN_OP_32;
-		break;
-	case 8:
-		add_instr->kind = INSTR_BIN_OP_64;
-		break;
-	default:
-		panic("Unsupported element size");
-	}
+	add_instr->kind = INSTR_BIN_OP_64;
 
 	return add_instr_index;
 }

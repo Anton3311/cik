@@ -222,6 +222,7 @@ int main(int argc, char* argv[]) {
 		test(test_array_element_assignment),
 		test(test_encode_mov_indirect_addr),
 		test(test_encode_mov_const_32_to_extended_register),
+		test(test_encode_addressing_of_r13_and_bp),
 		test(test_encode_push_extended_register),
 		test(test_encode_pop_extended_register),
 	};

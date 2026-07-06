@@ -1023,6 +1023,68 @@ void test_encode_mov_indirect_addr(TestContext* context) {
 	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov rax, [rdx]");
 }
 
+void test_encode_addressing_of_r13_and_bp(TestContext* context) {
+	{
+		uint8_t expected[] = { 0x4D, 0x89, 0x65, 0x00 };
+
+		CodeBuffer buffer;
+		code_buffer_init(&buffer, context->arena);
+
+		encode_2(&buffer,
+				MNEMONIC_MOV,
+				operand_mem(X64_REG_13, 64),
+				operand_reg(X64_REG_12, 64));
+
+		assert(buffer.size == array_size(expected));
+		assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov [r13], r12");
+	}
+
+	{
+		uint8_t expected[] = { 0x4D, 0x8B, 0x65, 0x00 };
+
+		CodeBuffer buffer;
+		code_buffer_init(&buffer, context->arena);
+
+		encode_2(&buffer,
+				MNEMONIC_MOV,
+				operand_reg(X64_REG_12, 64),
+				operand_mem(X64_REG_13, 64));
+
+		assert(buffer.size == array_size(expected));
+		assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov r12, [r13]");
+	}
+
+	{
+		uint8_t expected[] = { 0x4C, 0x89, 0x65, 0x00 };
+
+		CodeBuffer buffer;
+		code_buffer_init(&buffer, context->arena);
+
+		encode_2(&buffer,
+				MNEMONIC_MOV,
+				operand_mem(X64_REG_BP, 64),
+				operand_reg(X64_REG_12, 64));
+
+		assert(buffer.size == array_size(expected));
+		assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov [rbp], r12");
+	}
+
+	{
+		uint8_t expected[] = { 0x4C, 0x8B, 0x65, 0x00 };
+
+		CodeBuffer buffer;
+		code_buffer_init(&buffer, context->arena);
+
+		encode_2(&buffer,
+				MNEMONIC_MOV,
+				operand_reg(X64_REG_12, 64),
+				operand_mem(X64_REG_BP, 64));
+
+		assert(buffer.size == array_size(expected));
+		assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov r12, [rbp]");
+	}
+}
+
 void test_encode_mov_const_32_to_extended_register(TestContext* context) {
 	uint8_t expected[] = { 0x41, 0xb8, 0x6d, 0x0, 0x0, 0x0 };
 

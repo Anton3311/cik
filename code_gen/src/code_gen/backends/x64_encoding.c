@@ -54,8 +54,8 @@ typedef uint8_t EncodingFlags;
 
 enum ModRM {
 	MOD_RM_ADDRESS_RM         = 0b00000000,
-	MOD_RM_ADDRESS_RM_DISP_8  = 0b00000000,
-	MOD_RM_ADDRESS_RM_DISP_32 = 0b00000000,
+	MOD_RM_ADDRESS_RM_DISP_8  = 0b01000000,
+	MOD_RM_ADDRESS_RM_DISP_32 = 0b10000000,
 	MOD_RM_RM                 = 0b11000000,
 };
 
@@ -280,7 +280,14 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 		Operand op = operands[i];
 
 		if (op.kind == OP_MEM) {
-			fields.mod = MOD_RM_ADDRESS_RM;
+			// NOTE: [bp] and [r13] with MOD_RM_ADDRESS_RM are used for addressing relative to
+			//       instruction pointer. If we want to address bp/r13, we need to use a different
+			//       addressing mode (with 8-bit zero displacement).
+			if (op.reg == 5 || op.reg == 13) {
+				fields.mod = MOD_RM_ADDRESS_RM_DISP_8;
+			} else {
+				fields.mod = MOD_RM_ADDRESS_RM;
+			}
 		}
 
 		uint8_t reg = 0;
@@ -419,6 +426,13 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		encoding_size += 1;
 	}
 
+	// disaplacement
+	if (fields.mod == MOD_RM_ADDRESS_RM_DISP_8) {
+		encoding_size += 1;	
+	} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
+		encoding_size += 4;	
+	}
+
 	// imm sizes
 	for (size_t i = 0; i < operand_count; i += 1) {
 		if (operands[i].kind == OP_IMM) {
@@ -467,8 +481,18 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 
 		// morm byte
 		if (s_encoding_extra[encoding_index].has_mod_rm) {
-			*write_ptr = ((fields.reg & 0b111)<< 3) | (fields.rm & 0b111) | fields.mod;
+			*write_ptr = ((fields.reg & 0b111) << 3) | (fields.rm & 0b111) | fields.mod;
 			write_ptr += 1;
+		}
+
+		// disaplacement
+		if (fields.mod == MOD_RM_ADDRESS_RM_DISP_8) {
+			*write_ptr = 0;
+			write_ptr += 1;
+		} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
+			uint32_t disaplacement = 0;
+			memcpy(write_ptr, &disaplacement, 4);
+			write_ptr += 4;
 		}
 
 		// write imm

@@ -174,6 +174,13 @@ typedef struct {
 	uint16_t* immediate_dominators;
 } CFGDominatorTree;
 
+static bool _is_region_dominated_by(const CFGDominatorTree* tree,
+		uint16_t dominated_region_id,
+		uint16_t dominated_by_region_id) {
+	const BitArray* dominated_regions = &tree->dominates[dominated_by_region_id];
+	return bit_array_get(dominated_regions, dominated_region_id);
+}
+
 static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffer,
 		InstrIndex initial_region,
 		Arena* allocator,
@@ -242,10 +249,14 @@ static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 			assert(successor->kind == INSTR_REGION);
 
 			if (bit_array_get(&visited_regions, successor->region.id)) {
+				if (_is_region_dominated_by(&tree, instr->region.id, successor->region.id)) {
+					continue;
+				}
+
 				bit_array_and(&tree.dominates[instr->region.id],
 						&tree.dominates[successor->region.id],
 						&tree.dominates[successor->region.id]);
-				 bit_array_set(&tree.dominates[successor->region.id], successor->region.id, true);
+				bit_array_set(&tree.dominates[successor->region.id], successor->region.id, true);
 			} else {
 				bit_array_or(&tree.dominates[instr->region.id],
 						&tree.dominates[successor->region.id],
@@ -341,13 +352,6 @@ static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 	unreachable();
 	profile_scope_end();
 	return UINT16_MAX;
-}
-
-static bool _is_region_dominated_by(const CFGDominatorTree* tree,
-		uint16_t dominated_region_id,
-		uint16_t dominated_by_region_id) {
-	const BitArray* dominated_regions = &tree->dominates[dominated_by_region_id];
-	return bit_array_get(dominated_regions, dominated_region_id);
 }
 
 //

@@ -390,6 +390,11 @@ inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 
 #define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[index.value]
 
+inline bool instr_is_control(const InstrBuffer* instr_buffer, InstrIndex instr_index) {
+	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+	return has_flag(INSTR_FEATURES[instr->kind], INSTR_FEATURE_CONTROL);
+}
+
 InstrIndex instr_new_int_const(InstrBuffer* buffer,
 		Arena* allocator,
 		uint64_t value,
@@ -412,6 +417,22 @@ inline InstrIndex instr_new_jump(InstrBuffer* buffer, Arena* allocator, InstrInd
 	instr->jump.target_region = target;
 	instr->jump.io_state = io_state;
 	return i;
+}
+
+inline void instr_set_jump_target(InstrBuffer* buffer, InstrIndex jump, InstrIndex target) {
+	Instr* instr = instr_buffer_at(buffer, jump);
+	instr->jump.target_region = target;
+}
+
+inline void instr_region_set_last(InstrBuffer* buffer,
+		InstrIndex region_index,
+		InstrIndex control_instr_index) {
+	assert(instr_is_control(buffer, control_instr_index));
+
+	Instr* region = instr_buffer_at(buffer, region_index);
+	assert(region->kind == INSTR_REGION);
+	
+	region->region.last_instr = control_instr_index;
 }
 
 inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, InstrIndex value, InstrIndex io_state) {

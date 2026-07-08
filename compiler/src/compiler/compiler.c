@@ -723,6 +723,126 @@ typedef struct {
 	InstrIndex final_region;
 } CompiledBlockRegions;
 
+static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
+		AstNode* first_node);
+
+static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
+		InstrIndex current_region,
+		AstNode* node) {
+	assert(node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	Instr* region_instr = instr_buffer_at(instr_buffer, current_region);
+
+	InstrIndex pre_loop_region_index;
+
+	// Jump to `pre_loop_region`
+	{
+		InstrIndex jump_to_pre_loop = instr_new_jump(instr_buffer,
+				instr_allocator,
+				INVALID_INSTR_INDEX,
+				compiler->io_state);
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
+		pre_loop_region_index = instr_new_region(instr_buffer, instr_allocator);
+		instr_set_jump_target(instr_buffer, jump_to_pre_loop, pre_loop_region_index);
+
+		region_instr->region.last_instr = jump_to_pre_loop;
+	}
+
+	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
+
+	// Now setup phi node for all variables and function arguments
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		compiler->var_values[i] = _create_phi_of_2_variants(compiler,
+				compiler->var_values[i],
+				pre_loop_region_index,
+				INVALID_INSTR_INDEX,
+				INVALID_INSTR_INDEX);
+	}
+
+	InstrIndex* original_var_values = compiler->var_values;
+	InstrIndex* original_arg_values = compiler->arg_states;
+
+	// Create copies of variable value arrays
+	size_t arg_count = compiler->function->parameter_count;
+	InstrIndex* var_values_for_body = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			compiler->var_count);
+	InstrIndex* arg_values_for_body = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			arg_count);
+
+	array_copy(var_values_for_body, original_var_values, compiler->var_count);
+	array_copy(arg_values_for_body, original_arg_values, arg_count);
+
+	compiler->var_values = var_values_for_body;
+	compiler->arg_states = arg_values_for_body;
+
+	// Compile the condition
+	InstrIndex jump_to_condition = instr_new_jump(instr_buffer,
+			instr_allocator,
+			INVALID_INSTR_INDEX,
+			compiler->io_state);
+
+	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
+	InstrIndex condition_region = instr_new_region(instr_buffer, instr_allocator);
+	instr_set_jump_target(instr_buffer, jump_to_condition, condition_region);
+	instr_region_set_last(instr_buffer, pre_loop_region_index, jump_to_condition);
+
+	InstrIndex branch_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* branch = instr_buffer_at(instr_buffer, branch_index);
+	branch->kind = INSTR_BRANCH;
+	branch->branch.condition = _compile_expr_to_bool(compiler, &node->while_loop.condition);
+	branch->branch.io_state = compiler->io_state;
+
+	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
+	instr_region_set_last(instr_buffer, condition_region, branch_index);
+
+	// Compile the body
+	AstNode* body = node->while_loop.body;
+	CompiledBlockRegions body_block = _compile_block_to_region(compiler, body);
+
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		const Instr* phi = instr_buffer_at(instr_buffer, original_var_values[i]);
+		assert(phi->kind == INSTR_PHI);
+		assert(phi->phi.variants.count == 2);
+
+		InstrInputs variants = phi->phi.variants;
+		InstrIndex second_variant_index = instr_buffer->inputs_buffer[variants.start + 1];
+		Instr* second_variant = instr_buffer_at(instr_buffer, second_variant_index);
+		assert(second_variant->kind == INSTR_SELECT);
+
+		second_variant->select.value = compiler->var_values[i];
+		second_variant->select.region = body_block.final_region;
+	}
+
+	// Now the post loop staff
+	InstrIndex post_loop_jump = instr_new_jump(instr_buffer,
+			instr_allocator,
+			condition_region,
+			compiler->io_state);
+
+	instr_region_set_last(instr_buffer, body_block.final_region, post_loop_jump);
+
+	compiler->io_state = instr_new_io_state(instr_buffer,
+			instr_allocator,
+			INVALID_INSTR_INDEX);
+
+	InstrIndex post_loop_region_index = instr_new_region(instr_buffer, instr_allocator);
+
+	branch->branch.true_region = body_block.initial_region;
+	branch->branch.false_region = post_loop_region_index;
+
+	arena_end_temp(temp);
+	return post_loop_region_index;
+}
+
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, AstNode* first_node) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -980,7 +1100,10 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			}
 			break;
 		}
-		case AST_NODE_EXPR:
+		case AST_NODE_WHILE_LOOP:
+			region_instr_index = _compile_while_loop(compiler, region_instr_index, node);
+			break;
+		case AST_NODE_EXPR: 
 			_compile_expr(compiler, &node->expr);
 			break;
 		}

@@ -839,6 +839,9 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	branch->branch.true_region = body_block.initial_region;
 	branch->branch.false_region = post_loop_region_index;
 
+	compiler->var_values = original_var_values;
+	compiler->arg_states = original_arg_values;
+
 	arena_end_temp(temp);
 	return post_loop_region_index;
 }

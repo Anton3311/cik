@@ -110,6 +110,9 @@ String token_kind_to_string(TokenKind kind) {
 	case TOKEN_KEYWORD_STATIC: return STR_LIT("static");
 	case TOKEN_KEYWORD_IF: return STR_LIT("if");
 	case TOKEN_KEYWORD_ELSE: return STR_LIT("else");
+	case TOKEN_KEYWORD_WHILE: return STR_LIT("while");
+	case TOKEN_KEYWORD_DO: return STR_LIT("do");
+	case TOKEN_KEYWORD_FOR: return STR_LIT("for");
 
 	case TOKEN_KEYWORD_VOID: return STR_LIT("void");
 	case TOKEN_KEYWORD_SIZE_T: return STR_LIT("size_t");
@@ -210,6 +213,12 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_IF;
 	} else if (str_equal(token_string, STR_LIT("else"))) {
 		token_kind = TOKEN_KEYWORD_ELSE;
+	} else if (str_equal(token_string, STR_LIT("while"))) {
+		token_kind = TOKEN_KEYWORD_WHILE;
+	} else if (str_equal(token_string, STR_LIT("do"))) {
+		token_kind = TOKEN_KEYWORD_DO;
+	} else if (str_equal(token_string, STR_LIT("for"))) {
+		token_kind = TOKEN_KEYWORD_FOR;
 	} else if (str_equal(token_string, STR_LIT("void"))) {
 		token_kind = TOKEN_KEYWORD_VOID;
 	} else if (str_equal(token_string, STR_LIT("size_t"))) {

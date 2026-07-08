@@ -1053,6 +1053,23 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 
 		printer_end_struct(printer);
 		break;
+	case AST_NODE_WHILE_LOOP:
+		printer_begin_struct(printer, "while");
+
+		printer_field(printer, "condition");
+		print_expr(printer, &node->while_loop.condition);
+
+		printer_string_field(printer,
+				"condition_kind",
+				node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION
+					? STR_LIT("pre")
+					: STR_LIT("post"));
+
+		printer_field(printer, "body");
+		print_single_node(printer, node->while_loop.body);
+
+		printer_end_struct(printer);
+		break;
 	}
 }
 

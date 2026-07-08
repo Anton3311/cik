@@ -2779,6 +2779,61 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 	return if_stmt_node;
 }
 
+static AstNode* _parser_parse_while_loop(Parser* parser) {
+	Token while_token = preprocessor_next_token(parser->preprocessor);
+	assert(while_token.kind == TOKEN_KEYWORD_WHILE);
+
+	Token left_paren = preprocessor_next_token(parser->preprocessor);
+	if (left_paren.kind != TOKEN_LEFT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				left_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		return NULL;
+	}
+
+	Expr condition = {};
+	if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
+		return NULL;
+	}
+	
+	Token right_paren = preprocessor_next_token(parser->preprocessor);
+	if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				right_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		return NULL;
+	}
+
+	AstNode* body = NULL;
+
+	Token body_token = preprocessor_view_next(parser->preprocessor);
+
+	{
+		ident_storage_begin_scope(parser->ident_storage);
+		body = _parser_parse_single_node(parser, body_token);
+		ident_storage_end_scope(parser->ident_storage);
+	}
+
+	if (body == NULL) {
+		diagnostics_report_error(parser->diagnostics,
+				body_token.source_range,
+				STR_LIT("Expected a while loop body"),
+				NULL);
+		return NULL;
+	}
+
+	AstNode* loop = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+	loop->kind = AST_NODE_WHILE_LOOP;
+	loop->while_loop.condition = condition;
+	loop->while_loop.condition_kind = WHILE_LOOP_PRE_CONDITION;
+	loop->while_loop.body = body;
+	return loop;
+}
+
 AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
 	case TOKEN_LEFT_BRACE: {
@@ -2878,9 +2933,10 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		node->return_stmt.value = return_value;
 		return node;
 	}
-	case TOKEN_KEYWORD_IF: {
+	case TOKEN_KEYWORD_IF:
 		return _parser_parse_if_stmt(parser);
-	}
+	case TOKEN_KEYWORD_WHILE:
+		return _parser_parse_while_loop(parser);
 	default: {
 		DeclSpec* decl_spec = _parser_parse_decl_spec(parser);
 		StorageSpecifier storage_specifier = STORAGE_SPEC_NONE;

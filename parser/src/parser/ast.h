@@ -30,6 +30,7 @@ typedef struct IntegerLiteral IntegerLiteral;
 typedef struct ReturnStmt ReturnStmt;
 typedef struct DeclSpec DeclSpec;
 typedef struct IfStmt IfStmt;
+typedef struct WhileLoop WhileLoop;
 typedef struct ArrayIndex ArrayIndex;
 
 //
@@ -47,6 +48,7 @@ typedef enum {
 	AST_NODE_RETURN,
 	AST_NODE_BLOCK,
 	AST_NODE_IF,
+	AST_NODE_WHILE_LOOP,
 } AstNodeKind;
 
 typedef enum {
@@ -559,6 +561,21 @@ struct IfStmt {
 };
 
 //
+// Loops
+//
+
+typedef enum {
+	WHILE_LOOP_PRE_CONDITION,
+	WHILE_LOOP_POST_CONDITION,
+} WhileLoopConditionKind;
+
+struct WhileLoop {
+	WhileLoopConditionKind condition_kind;
+	Expr condition;
+	AstNode* body;
+};
+
+//
 // Node
 //
 
@@ -579,6 +596,7 @@ struct AstNode {
 		ReturnStmt return_stmt;
 		Scope block;
 		IfStmt if_stmt;
+		WhileLoop while_loop;
 	};
 };
 

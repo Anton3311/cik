@@ -726,6 +726,36 @@ typedef struct {
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		AstNode* first_node);
 
+// Compiles a while loop.
+//
+// A while loop in compiled form looks like this:
+// 
+// `pre_loop_region`:
+//   here we assign the initial values to all the variables
+//   then jump to `condition_region`
+//
+// `condition_region`:
+//   here we check the condition
+//   then jump to either `body_region` or `post_loop_region`
+// 
+// `body_region`:
+//   the actual body of the loop
+//   then jump back to `condition_region`
+//
+// `post_loop_region`:
+//   the region after the loop, where the program executes further.
+//
+// --- Phi Nodes ---
+//
+// On each iteration of the loop we need to decide which value for each variable to use:
+// 1. The initial value
+// 2. The one from the last iteration
+//
+// This functions creates a phi node for each variable. And these phi nodes select an initial value
+// from `pre_loop_region` or the value of the last iteration from `body_region`.
+//
+// NOTE: Phi nodes are created for all variables and function arguments, since we don't really know
+//       which variables will be modified inside the loop, without doing extra `Ast` traversals.
 static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
 		AstNode* node) {

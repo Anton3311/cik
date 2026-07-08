@@ -249,6 +249,10 @@ static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 			assert(successor->kind == INSTR_REGION);
 
 			if (bit_array_get(&visited_regions, successor->region.id)) {
+				// NOTE: If the current region is dominated by the `successor` which means we have
+				//       already visited this path, and this path is a cycle (caused by for/while
+				//       loop), so since we've already visited it once, we can stop here, to avoid
+				//       an infinite loop.
 				if (_is_region_dominated_by(&tree, instr->region.id, successor->region.id)) {
 					continue;
 				}

@@ -1135,3 +1135,141 @@ void test_encode_pop_extended_register(TestContext* context) {
 	assert(buffer.size == array_size(expected));
 	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "pop r8");
 }
+
+
+void test_parallel_moves_produces_no_moves_if_input_locs_equal_expected_locs(TestContext* context) {
+	X64Register expected_locs[] = { X64_REG_A, X64_REG_8, X64_REG_C, X64_REG_D };
+	InstrStorageLocation input_locs[array_size(expected_locs)];
+
+	for (size_t i = 0; i < array_size(expected_locs); i += 1) {
+		input_locs[i].kind = INSTR_STORAGE_REG;
+		input_locs[i].reg = expected_locs[i];
+	}
+
+	RegisterMoveArray moves = _parallel_move_values(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			0,
+			context->arena,
+			context->temp_arena);
+
+	assert(moves.count == 0);
+}
+
+static void _validate_parallel_moves(InstrStorageLocation* input_locs,
+		X64Register* expected_locs,
+		size_t loc_count,
+		RegisterMoveArray moves,
+		Arena* temp_allocator) {
+	uint16_t* state = arena_alloc_array(temp_allocator, uint16_t, loc_count);
+	memset(state, 0xff, sizeof(*state) * loc_count);
+
+	// Initial state
+	for (size_t i = 0; i < loc_count; i += 1) {
+		assert(input_locs[i].kind == INSTR_STORAGE_REG);
+		state[input_locs[i].reg] = (uint16_t)i;
+	}
+
+	// Simulate the moves
+	for (size_t i = 0; i < moves.count; i += 1) {
+		RegisterMove move = moves.moves[i];
+		
+		state[move.dst] = state[move.src];
+	}
+
+	// Assert that all the inputs are in the corresponding expected location
+	bool result = true;
+	for (size_t i = 0; i < loc_count; i += 1) {
+		if (state[expected_locs[i]] != (uint16_t)i) {
+			printf("Expected input '%u' to be at location '%u'",
+					(uint32_t)i,
+					(uint32_t)expected_locs[i]);
+			result = false;
+		}
+	}
+
+	assert(result);
+}
+
+void test_parallel_moves_is_correct_for_input_in_shifted_locations(TestContext* context) {
+	X64Register expected_locs[X64_REG_COUNT];
+	InstrStorageLocation input_locs[array_size(expected_locs)];
+
+	for (size_t i = 0; i < array_size(expected_locs); i += 1) {
+		expected_locs[i] = i;
+
+		input_locs[i].kind = INSTR_STORAGE_REG;
+		input_locs[i].reg = expected_locs[i];
+	}
+
+	RegisterMoveArray moves = _parallel_move_values(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			0,
+			context->arena,
+			context->temp_arena);
+
+	_validate_parallel_moves(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			moves,
+			context->temp_arena);
+}
+
+void test_parallel_moves_cycle(TestContext* context) {
+	X64Register expected_locs[] = { X64_REG_A, X64_REG_8 };
+	InstrStorageLocation input_locs[array_size(expected_locs)];
+
+	input_locs[0].kind = INSTR_STORAGE_REG;
+	input_locs[0].reg = expected_locs[1];
+
+	input_locs[1].kind = INSTR_STORAGE_REG;
+	input_locs[1].reg = expected_locs[0];
+
+	RegisterMoveArray moves = _parallel_move_values(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			(1 << X64_REG_C),
+			context->arena,
+			context->temp_arena);
+
+	assert(moves.count == 3);
+
+	_validate_parallel_moves(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			moves,
+			context->temp_arena);
+}
+
+void test_parallel_moves_multiple_cycles(TestContext* context) {
+	X64Register expected_locs[] = { X64_REG_A, X64_REG_8, X64_REG_C, X64_REG_D };
+	InstrStorageLocation input_locs[array_size(expected_locs)];
+
+	input_locs[0].kind = INSTR_STORAGE_REG;
+	input_locs[0].reg = expected_locs[1];
+
+	input_locs[1].kind = INSTR_STORAGE_REG;
+	input_locs[1].reg = expected_locs[0];
+
+	input_locs[2].kind = INSTR_STORAGE_REG;
+	input_locs[2].reg = expected_locs[3];
+
+	input_locs[3].kind = INSTR_STORAGE_REG;
+	input_locs[3].reg = expected_locs[2];
+
+	RegisterMoveArray moves = _parallel_move_values(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			(1 << X64_REG_13),
+			context->arena,
+			context->temp_arena);
+
+	assert(moves.count == 6);
+
+	_validate_parallel_moves(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			moves,
+			context->temp_arena);
+}

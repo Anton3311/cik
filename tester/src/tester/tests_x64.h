@@ -51,4 +51,10 @@ void test_encode_addressing_of_r13_and_bp(TestContext* context);
 void test_encode_push_extended_register(TestContext* context);
 void test_encode_pop_extended_register(TestContext* context);
 
+// Parallel Moves
+void test_parallel_moves_produces_no_moves_if_input_locs_equal_expected_locs(TestContext* context);
+void test_parallel_moves_is_correct_for_input_in_shifted_locations(TestContext* context);
+void test_parallel_moves_cycle(TestContext* context);
+void test_parallel_moves_multiple_cycles(TestContext* context);
+
 #endif

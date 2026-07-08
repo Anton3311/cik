@@ -435,6 +435,205 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 	profile_scope_end();
 }
 
+typedef struct {
+	X64Register* regs;
+	size_t count;
+} RegisterArray;
+
+RegisterMoveArray _parallel_move_values(
+		const InstrStorageLocation* input_instr_storage,
+		const X64Register* expected_locs,
+		size_t expected_loc_count,
+		uint16_t allowed_temp_registers,
+		Arena* allocator,
+		Arena* temp_allocator) {
+	profile_scope_start(__func__);
+
+	// Validate that none of the expected and inputs locs overlap with temp registers
+	//
+	// In case we have a cycle, we need to save one of the registers to a temporary, same way when
+	// we need to swap values of two variables:
+	//
+	// temp = a
+	// a = b
+	// b = temp
+	//
+	// However if the bit mask of allowed temporary registers contains the ones that are assigned to
+	// `expected_locs` or `input_instr_storage`, saving to a temporary register might override one
+	// of the values we're trying to parallel move into expected locations.
+	for (size_t i = 0; i < expected_loc_count; i += 1) {
+		assert_msg(!has_flag(allowed_temp_registers, 1 << expected_locs[i]),
+				"Expected location overlaps with temporary registers");
+
+		assert(input_instr_storage[i].kind == INSTR_STORAGE_REG);
+		assert_msg(!has_flag(allowed_temp_registers, 1 << input_instr_storage[i].reg),
+				"Expected location overlaps with temporary registers");
+	}
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	X64Register* map = arena_alloc_array(temp_allocator,
+			X64Register,
+			X64_REG_COUNT);
+
+	const X64Register INVALID_REGISTER = -1;
+	memset(map, 0xff, sizeof(*map) * X64_REG_COUNT);
+
+	for (uint16_t i = 0; i < expected_loc_count; i += 1) {
+		const InstrStorageLocation input_storage_loc = input_instr_storage[i];
+		assert(input_storage_loc.kind == INSTR_STORAGE_REG);
+
+		map[expected_locs[i]] = input_storage_loc.reg;
+	}
+
+	BitArray is_move_target = bit_array_alloc(temp_allocator, X64_REG_COUNT);
+	bit_array_clear(&is_move_target);
+
+	for (size_t i = 0; i < X64_REG_COUNT; i += 1) {
+		if (map[i] != INVALID_REGISTER) {
+			bit_array_set(&is_move_target, map[i], true);
+		}
+	}
+
+	BitArray resolved_slots = bit_array_alloc(temp_allocator, X64_REG_COUNT);
+	bit_array_clear(&resolved_slots);
+
+	BitArray visited = bit_array_alloc(temp_allocator, X64_REG_COUNT);
+
+	RegisterMoveArray result;
+	result.moves = arena_alloc_array(allocator, RegisterMove, 0);
+	result.count = 0;
+
+	for (size_t reg_index = 0; reg_index < expected_loc_count; reg_index += 1) {
+		X64Register reg = expected_locs[reg_index];
+		if (bit_array_get(&resolved_slots, reg)) {
+			continue;
+		}
+
+		if (bit_array_get(&is_move_target, reg)) {
+			continue;
+		}
+
+		bit_array_clear(&visited);
+		X64Register current_reg = reg;
+		RegisterArray move_path;
+		move_path.regs = arena_alloc_array(temp_allocator, X64Register, 0);
+		move_path.count = 0;
+
+		while (true) {
+			assert_msg(bit_array_get(&visited, current_reg) == false, "Expected no cycles");
+			assert(bit_array_get(&resolved_slots, current_reg) == false);
+
+			bit_array_set(&visited, current_reg, true);
+			bit_array_set(&resolved_slots, current_reg, true);
+
+			arena_alloc(temp_allocator, X64Register);
+			move_path.regs[move_path.count] = current_reg;
+			move_path.count += 1;
+
+			if (map[current_reg] == INVALID_REGISTER) {
+				// No edge -> stop
+				break;
+			}
+
+			current_reg = map[current_reg];
+		}
+
+		for (size_t i = 0; i + 1 < move_path.count; i += 1) {
+			X64Register src = move_path.regs[i + 1];
+			X64Register dst = move_path.regs[i];
+
+			if (src == dst) {
+				continue;
+			}
+
+			arena_alloc(allocator, RegisterMove);
+			result.moves[result.count] = (RegisterMove) { .src = src, .dst = dst, };
+			result.count += 1;
+		}
+	}
+
+	for (size_t reg_index = 0; reg_index < expected_loc_count; reg_index += 1) {
+		X64Register reg = expected_locs[reg_index];
+		if (bit_array_get(&resolved_slots, reg)) {
+			continue;
+		}
+
+		bit_array_clear(&visited);
+		X64Register current_reg = reg;
+		RegisterArray move_path;
+		move_path.regs = arena_alloc_array(temp_allocator, X64Register, 0);
+		move_path.count = 0;
+
+		while (true) {
+			if (bit_array_get(&visited, current_reg)) {
+				// found a cycle -> stop
+				break;
+			}
+
+			assert(bit_array_get(&resolved_slots, current_reg) == false);
+
+			bit_array_set(&visited, current_reg, true);
+			bit_array_set(&resolved_slots, current_reg, true);
+
+			arena_alloc(temp_allocator, X64Register);
+			move_path.regs[move_path.count] = current_reg;
+			move_path.count += 1;
+
+			if (map[current_reg] == INVALID_REGISTER) {
+				// No edge -> stop
+				break;
+			}
+
+			current_reg = map[current_reg];
+		}
+
+		if (move_path.count == 1) {
+			// The input is already at the expected location
+			continue;
+		}
+
+		assert_msg(allowed_temp_registers != 0, "Found a cycle, but there are no available temp"
+				" registers to save one of the registers in the cycle");
+
+		X64Register temp_save_register = count_trailing_zeros(allowed_temp_registers);
+
+		arena_alloc(allocator, RegisterMove);
+		result.moves[result.count] = (RegisterMove) {
+			.src = move_path.regs[0],
+			.dst = temp_save_register,
+		};
+		result.count += 1;
+
+		for (size_t i = 0; i + 1 < move_path.count; i += 1) {
+			X64Register src = move_path.regs[i + 1];
+			X64Register dst = move_path.regs[i];
+
+			if (src == dst) {
+				continue;
+			}
+
+			arena_alloc(allocator, RegisterMove);
+			result.moves[result.count] = (RegisterMove) { .src = src, .dst = dst, };
+			result.count += 1;
+		}
+
+		arena_alloc(allocator, RegisterMove);
+		result.moves[result.count] = (RegisterMove) {
+			.src = temp_save_register,
+			.dst = move_path.regs[move_path.count - 1],
+		};
+		result.count += 1;
+	}
+
+	for (size_t i = 0; i < expected_loc_count; i += 1) {
+		assert(bit_array_get(&resolved_slots, expected_locs[i]));
+	}
+
+	arena_end_temp(temp);
+	profile_scope_end();
+	return result;
+}
+
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
@@ -831,8 +1030,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			X64_REG_11,
 		};
 
-		assert(instr->call_internal.args.count <= 1);
-
 		InstrInputs args = instr->call_internal.args;
 
 		// Push saved registers
@@ -842,10 +1039,59 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					operand_reg(saved_registers[i], 64));
 		}
 
-		if (args.count == 1) {
-			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + 0];
-			const InstrStorageLocation arg_storage_loc = gen->instr_storage[arg_instr.value];
-			_emit_mov_regs(buffer, arg_storage_loc.reg, X64_REG_C, 64);
+		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
+
+		assert(args.count <= array_size(cdecl_arg_regs));
+
+		{
+			uint16_t allowed_temp_registers = UINT16_MAX;
+			allowed_temp_registers &= ~(1 << instr_storage.reg);
+
+			for (uint16_t i = 0; i < args.count; i += 1) {
+				InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
+				InstrStorageLocation loc = gen->instr_storage[arg_instr.value];
+
+				assert(loc.kind == INSTR_STORAGE_REG);
+				allowed_temp_registers &= ~(1 << loc.reg);
+			}
+
+			for (size_t i = 0; i < gen->instr_with_storage_requirement.count; i += 1) {
+				if (gen->instr_with_storage_requirement.instr[i].value != instr_index.value) {
+					continue;
+				}
+
+				UInt16Array edges = gen->interference_graph[i];
+				for (size_t j = 0; j < edges.count; j += 1) {
+					InstrIndex interfering_instr = gen->instr_with_storage_requirement.instr[edges.values[j]];
+					InstrStorageLocation loc = gen->instr_storage[interfering_instr.value];
+
+					assert(loc.kind == INSTR_STORAGE_REG);
+					allowed_temp_registers &= ~(1 << loc.reg);
+				}
+			}
+
+			ArenaRegion temp = arena_begin_temp(gen->allocator);
+
+			InstrStorageLocation input_instr_storage[array_size(cdecl_arg_regs)];
+			for (uint16_t i = 0; i < args.count; i += 1) {
+				InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
+				input_instr_storage[i] = gen->instr_storage[arg_instr.value];
+			}
+
+			RegisterMoveArray parallel_moves = _parallel_move_values(
+					input_instr_storage,
+					cdecl_arg_regs,
+					args.count,
+					0,
+					gen->allocator,
+					gen->temp_allocator);
+
+			for (size_t i = 0; i < parallel_moves.count; i += 1) {
+				RegisterMove move = parallel_moves.moves[i];
+				_emit_mov_regs(buffer, move.src, move.dst, 64);
+			}
+
+			arena_end_temp(temp);
 		}
 
 		uint16_t function_id = instr->call_internal.function_index;
@@ -1020,11 +1266,16 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 	allowed_registers &= ~(1 << X64_REG_SI);
 	allowed_registers &= ~(1 << X64_REG_DI);
 
-	gen->instr_storage = x64_alloc_regs(&gen->instr_buffer,
+	RegisterAllocationResult result;
+	result = x64_alloc_regs(&gen->instr_buffer,
 			gen->usage_ranges,
 			allowed_registers,
 			gen->allocator,
 			gen->temp_allocator);
+
+	gen->instr_with_storage_requirement = result.instr_with_storage_requirement;
+	gen->instr_storage = result.allocations;
+	gen->interference_graph = result.interference_graph;
 
 	if (has_flag(gen->flags, X64_PRINT_ASSIGNED_STORAGE_LOC)) {
 		printf("Assigned storage locations:\n");

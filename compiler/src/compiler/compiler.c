@@ -1103,4 +1103,10 @@ void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("panic"), _internal_panic);
 	func_ref_table_resolve_ref_to(table, STR_LIT("identity"), _internal_identity);
 	func_ref_table_resolve_ref_to(table, STR_LIT("store_u64"), _internal_identity);
+	func_ref_table_resolve_ref_to(table, STR_LIT("fopen"), fopen);
+	func_ref_table_resolve_ref_to(table, STR_LIT("fclose"), fclose);
+	func_ref_table_resolve_ref_to(table, STR_LIT("fread"), fread);
+	func_ref_table_resolve_ref_to(table, STR_LIT("fwrite"), fwrite);
+	func_ref_table_resolve_ref_to(table, STR_LIT("malloc"), malloc);
+	func_ref_table_resolve_ref_to(table, STR_LIT("free"), free);
 }

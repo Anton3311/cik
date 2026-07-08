@@ -26,6 +26,8 @@ typedef enum {
 	X64_REG_15,
 } X64Register;
 
+#define X64_REG_COUNT 16
+
 typedef enum {
 	INSTR_STORAGE_NONE,
 	INSTR_STORAGE_REG,
@@ -66,6 +68,15 @@ typedef struct {
 
 	const FunctionRefTable* ref_table;
 
+	// Temporary structures
+	InstrIndexArray instr_with_storage_requirement;
+
+	// Produced by the register allocator.
+	//
+	// For each instruction in `instr_with_storage_requirement` stores an array instructions that
+	// interfere with it.
+	UInt16Array* interference_graph;
+
 	uint16_t* phi_variant_counts_per_region;
 	InstrIndexArray* phi_variants_per_region;
 
@@ -92,5 +103,27 @@ typedef struct {
 } MachineCodeBuffer;
 
 MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
+
+//
+// Internal
+//
+
+typedef struct {
+	X64Register src;
+	X64Register dst;
+} RegisterMove;
+
+typedef struct {
+	RegisterMove* moves;
+	size_t count;
+} RegisterMoveArray;
+
+RegisterMoveArray _parallel_move_values(
+		const InstrStorageLocation* input_instr_storage,
+		const X64Register* expected_locs,
+		size_t expected_loc_count,
+		uint16_t allowed_temp_register,
+		Arena* allocator,
+		Arena* temp_allocator);
 
 #endif

@@ -225,6 +225,11 @@ int main(int argc, char* argv[]) {
 		test(test_encode_addressing_of_r13_and_bp),
 		test(test_encode_push_extended_register),
 		test(test_encode_pop_extended_register),
+		// Parallel moves
+		test(test_parallel_moves_produces_no_moves_if_input_locs_equal_expected_locs),
+		test(test_parallel_moves_is_correct_for_input_in_shifted_locations),
+		test(test_parallel_moves_cycle),
+		test(test_parallel_moves_multiple_cycles),
 	};
 
 	TestSuite s_test_suites[] = {

@@ -634,6 +634,32 @@ RegisterMoveArray _parallel_move_values(
 	return result;
 }
 
+static uint8_t _get_instr_value_size(const InstrBuffer* instr_buffer, InstrIndex instr_index) {
+	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+	if (instr->kind == INSTR_PHI) {
+		uint8_t value_size = 0;
+
+		InstrInputs variants = instr->phi.variants;
+		for (uint16_t i = 0; i < variants.count; i += 1) {
+			InstrIndex variant_index = instr_buffer->inputs_buffer[variants.start + i];
+			const Instr* variant = instr_buffer_at(instr_buffer, variant_index);
+			assert(variant->kind == INSTR_SELECT);
+
+			uint8_t variant_size = _get_instr_value_size(instr_buffer, variant->select.value);
+			if (value_size == 0) {
+				value_size = variant_size;
+			} else {
+				assert(variant_size == value_size);
+			}
+		}
+
+		return value_size;
+	} else {
+		return s_instr_storage_requiremenets[instr->kind].reg_size;
+	}
+}
+
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
@@ -918,7 +944,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
 
-		uint8_t operand_size = s_instr_storage_requiremenets[value->kind].reg_size;
+		uint8_t operand_size = _get_instr_value_size(instr_buffer, instr->cast.value);
 		uint8_t output_size = 8 << (instr->kind - INSTR_CAST_TO_8);
 
 		assert_msg(operand_size != 16, "16-bit not yet implemented");

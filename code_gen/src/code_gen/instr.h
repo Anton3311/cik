@@ -381,7 +381,7 @@ inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 	assert((const void*)arena_end == (const void*)buffer_end);
 
 	Instr* instr = arena_alloc(allocator, Instr);
-	(void)instr;
+	memset(instr, 0xff, sizeof(*instr));
 
 	InstrIndex i = { .value = buffer->count };
 	buffer->count += 1;

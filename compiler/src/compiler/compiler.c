@@ -730,6 +730,54 @@ typedef struct {
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		AstNode* first_node);
 
+// Replaces each value in the array with a phi node, that has two variants:
+// 1. The value, that was initial in the array
+// 2. Invalid instruction, ment to be later replaced
+//
+// This is a helper used to prepare variables for the loop compilation.
+static void _replace_values_with_phis(FunctionCompiler* compiler,
+		InstrIndex* values,
+		size_t value_count,
+		InstrIndex region) {
+	for (size_t i = 0; i < value_count; i += 1) {
+		values[i] = _create_phi_of_2_variants(compiler,
+				values[i],
+				region,
+				INVALID_INSTR_INDEX,
+				INVALID_INSTR_INDEX);
+	}
+}
+
+// Fills the mppty region of each phi node produced by `_replace_values_with_phis`, with a provided
+// `variant_region` and the corresponding variant from the `variants` array.
+//
+// * `variants` is expected to be of size `phi_count`
+// * all variants will be selected from the same `variant_region`
+static void _replace_empty_variants(InstrBuffer* instr_buffer,
+		const InstrIndex* phis,
+		size_t phi_count,
+		const InstrIndex* variants,
+		InstrIndex variant_region) {
+
+	for (size_t i = 0; i < phi_count; i += 1) {
+		const Instr* phi = instr_buffer_at(instr_buffer, phis[i]);
+		assert(phi->kind == INSTR_PHI);
+
+		InstrInputs phi_variants = phi->phi.variants;
+		assert(phi_variants.count == 2);
+
+		InstrIndex second_variant_index = instr_buffer->inputs_buffer[phi_variants.start + 1];
+		Instr* second_variant = instr_buffer_at(instr_buffer, second_variant_index);
+		assert(second_variant->kind == INSTR_SELECT);
+
+		assert(second_variant->select.value.value == INVALID_INSTR_INDEX.value);
+		assert(second_variant->select.region.value == INVALID_INSTR_INDEX.value);
+
+		second_variant->select.value = variants[i];
+		second_variant->select.region = variant_region;
+	}
+}
+
 // Compiles a while loop.
 //
 // A while loop in compiled form looks like this:
@@ -765,6 +813,7 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 		AstNode* node) {
 	assert(node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION);
 
+	size_t arg_count = compiler->function->parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -790,19 +839,20 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
 	// Now setup phi node for all variables and function arguments
-	for (size_t i = 0; i < compiler->var_count; i += 1) {
-		compiler->var_values[i] = _create_phi_of_2_variants(compiler,
-				compiler->var_values[i],
-				pre_loop_region_index,
-				INVALID_INSTR_INDEX,
-				INVALID_INSTR_INDEX);
-	}
+	_replace_values_with_phis(compiler,
+			compiler->var_values,
+			compiler->var_count,
+			pre_loop_region_index);
+
+	_replace_values_with_phis(compiler,
+			compiler->arg_states,
+			arg_count,
+			pre_loop_region_index);
 
 	InstrIndex* original_var_values = compiler->var_values;
 	InstrIndex* original_arg_values = compiler->arg_states;
 
 	// Create copies of variable value arrays
-	size_t arg_count = compiler->function->parameter_count;
 	InstrIndex* var_values_for_body = arena_alloc_array(compiler->temp_allocator,
 			InstrIndex,
 			compiler->var_count);
@@ -842,19 +892,20 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	AstNode* body = node->while_loop.body;
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, body);
 
-	for (size_t i = 0; i < compiler->var_count; i += 1) {
-		const Instr* phi = instr_buffer_at(instr_buffer, original_var_values[i]);
-		assert(phi->kind == INSTR_PHI);
-		assert(phi->phi.variants.count == 2);
+	// Now fill the empty variant with the value produced inside the loop body.
+	// 
+	// This allows phis to select values from the previous loop iteration.
+	_replace_empty_variants(instr_buffer,
+			original_var_values,
+			compiler->var_count,
+			compiler->var_values,
+			body_block.final_region);
 
-		InstrInputs variants = phi->phi.variants;
-		InstrIndex second_variant_index = instr_buffer->inputs_buffer[variants.start + 1];
-		Instr* second_variant = instr_buffer_at(instr_buffer, second_variant_index);
-		assert(second_variant->kind == INSTR_SELECT);
-
-		second_variant->select.value = compiler->var_values[i];
-		second_variant->select.region = body_block.final_region;
-	}
+	_replace_empty_variants(instr_buffer,
+			original_arg_values,
+			arg_count,
+			compiler->arg_states,
+			body_block.final_region);
 
 	// Now the post loop staff
 	InstrIndex post_loop_jump = instr_new_jump(instr_buffer,

@@ -337,7 +337,6 @@ InstrIndexArray _instr_gather_regions_in_dfs_order(const InstrBuffer instr_buffe
 	return dfs_order;
 }
 
-
 String instr_format_input_instrs(const InstrIndex* input_instr_buffer,
 		InstrInputs inputs,
 		Arena* temp_allocator) {
@@ -346,7 +345,9 @@ String instr_format_input_instrs(const InstrIndex* input_instr_buffer,
 	str_builder_append_char(&builder, '[');
 	for (uint16_t i = 0; i < inputs.count; i += 1) {
 		InstrIndex input = input_instr_buffer[inputs.start + i];
+		str_builder_append(&builder, STR_LIT("\033[33;1m%"));
 		str_builder_append_int(&builder, input.value);
+		str_builder_append(&builder, STR_LIT("\033[0m"));
 
 		if (i != inputs.count - 1) {
 			str_builder_append(&builder, STR_LIT(", "));

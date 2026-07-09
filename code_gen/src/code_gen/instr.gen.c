@@ -285,133 +285,133 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         printf("string_id: %u ", (uint32_t)instr->const_string.string_id);
         break;
     case INSTR_BIN_OP_8:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
         break;
     case INSTR_BIN_OP_16:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
         break;
     case INSTR_BIN_OP_32:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
         break;
     case INSTR_BIN_OP_64:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_bin_op_name(instr->bin_op.kind)), (uint32_t)instr->bin_op.left.value, (uint32_t)instr->bin_op.right.value);
         break;
     case INSTR_NEGATE_8:
-        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->negate.operand.value);
         break;
     case INSTR_NEGATE_16:
-        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->negate.operand.value);
         break;
     case INSTR_NEGATE_32:
-        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->negate.operand.value);
         break;
     case INSTR_NEGATE_64:
-        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->negate.operand.value);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_16:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_32:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_64:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_8:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_16:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_32:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_LOGICAL_SHIFT_RIGHT_64:
-        printf("operand: \033[33;1m%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
+        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_COMPARE_8:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
         break;
     case INSTR_COMPARE_16:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
         break;
     case INSTR_COMPARE_32:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
         break;
     case INSTR_COMPARE_64:
-        printf("kind: %.*s left: \033[33;1m%u\033[0m right: \033[33;1m%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
+        printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);
         break;
     case INSTR_BOOL_TO_INT:
-        printf("operand: \033[33;1m%u\033[0m ", (uint32_t)instr->bool_to_int.operand.value);
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->bool_to_int.operand.value);
         break;
     case INSTR_CAST_TO_8:
-        printf("value: \033[33;1m%u\033[0m ", (uint32_t)instr->cast.value.value);
+        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
         break;
     case INSTR_CAST_TO_16:
-        printf("value: \033[33;1m%u\033[0m ", (uint32_t)instr->cast.value.value);
+        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
         break;
     case INSTR_CAST_TO_32:
-        printf("value: \033[33;1m%u\033[0m ", (uint32_t)instr->cast.value.value);
+        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
         break;
     case INSTR_CAST_TO_64:
-        printf("value: \033[33;1m%u\033[0m ", (uint32_t)instr->cast.value.value);
+        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
         break;
     case INSTR_PTR_LOAD_8:
-        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_PTR_LOAD_16:
-        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_PTR_LOAD_32:
-        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_PTR_LOAD_64:
-        printf("ptr: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);
         break;
     case INSTR_PTR_STORE_8:
-        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m value: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
         break;
     case INSTR_PTR_STORE_16:
-        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m value: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
         break;
     case INSTR_PTR_STORE_32:
-        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m value: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
         break;
     case INSTR_PTR_STORE_64:
-        printf("ptr: \033[33;1m%u\033[0m value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
+        printf("ptr: \033[33;1m%%%u\033[0m value: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_store.ptr.value, (uint32_t)instr->ptr_store.value.value, (uint32_t)instr->ptr_store.io_state.value);
         break;
     case INSTR_LOAD_ARG:
         printf("index: %u ", (uint32_t)instr->load_arg.index);
         break;
     case INSTR_BRANCH:
-        printf("condition: \033[33;1m%u\033[0m true_region: \033[33;1m%u\033[0m false_region: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->branch.condition.value, (uint32_t)instr->branch.true_region.value, (uint32_t)instr->branch.false_region.value, (uint32_t)instr->branch.io_state.value);
+        printf("condition: \033[33;1m%%%u\033[0m true_region: \033[33;1m%%%u\033[0m false_region: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->branch.condition.value, (uint32_t)instr->branch.true_region.value, (uint32_t)instr->branch.false_region.value, (uint32_t)instr->branch.io_state.value);
         break;
     case INSTR_JUMP:
-        printf("target_region: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->jump.target_region.value, (uint32_t)instr->jump.io_state.value);
+        printf("target_region: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->jump.target_region.value, (uint32_t)instr->jump.io_state.value);
         break;
     case INSTR_RET:
-        printf("io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->ret.io_state.value);
+        printf("io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ret.io_state.value);
         break;
     case INSTR_RETURN_VALUE:
-        printf("value: \033[33;1m%u\033[0m io_state: \033[33;1m%u\033[0m ", (uint32_t)instr->return_value.value.value, (uint32_t)instr->return_value.io_state.value);
+        printf("value: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->return_value.value.value, (uint32_t)instr->return_value.io_state.value);
         break;
     case INSTR_IO_STATE:
-        printf("producer: \033[33;1m%u\033[0m ", (uint32_t)instr->io_state.producer.value);
+        printf("producer: \033[33;1m%%%u\033[0m ", (uint32_t)instr->io_state.producer.value);
         break;
     case INSTR_REGION:
-        printf("id: %u last_instr: \033[33;1m%u\033[0m ", (uint32_t)instr->region.id, (uint32_t)instr->region.last_instr.value);
+        printf("id: %u last_instr: \033[33;1m%%%u\033[0m ", (uint32_t)instr->region.id, (uint32_t)instr->region.last_instr.value);
         break;
     case INSTR_PHI:
         printf("variants: %.*s ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->phi.variants, temp_allocator)));
         break;
     case INSTR_SELECT:
-        printf("value: \033[33;1m%u\033[0m region: \033[33;1m%u\033[0m ", (uint32_t)instr->select.value.value, (uint32_t)instr->select.region.value);
+        printf("value: \033[33;1m%%%u\033[0m region: \033[33;1m%%%u\033[0m ", (uint32_t)instr->select.value.value, (uint32_t)instr->select.region.value);
         break;
     case INSTR_CALL_INTERNAL:
-        printf("args: %.*s io_state: \033[33;1m%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_internal.args, temp_allocator)), (uint32_t)instr->call_internal.io_state.value, (uint32_t)instr->call_internal.function_index);
+        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_internal.args, temp_allocator)), (uint32_t)instr->call_internal.io_state.value, (uint32_t)instr->call_internal.function_index);
         break;
     case INSTR_COUNT:
         unreachable();

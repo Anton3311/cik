@@ -524,6 +524,66 @@ StringArray fs_enumerate_entries_in_directory(String directory_path,
 // BitArray
 //
 
+bool bit_array_and(const BitArray* a, const BitArray* b, BitArray* out) {
+	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
+
+	size_t full_byte_count = a->bit_count / 8;
+	size_t total_byte_count = (a->bit_count + 7) / 8;
+
+	uint8_t change_mask = 0;
+	for (size_t i = 0; i < full_byte_count; i++) {
+		uint8_t new_byte = a->values[i] & b->values[i];
+		uint8_t changes = new_byte ^ out->values[i];
+		
+		change_mask |= changes;
+
+		out->values[i] = new_byte;
+	}
+
+	size_t rest_bit_count = a->bit_count - full_byte_count * 8;
+	if (rest_bit_count > 0) {
+		size_t last_index = total_byte_count - 1;
+		
+		uint8_t new_byte = a->values[last_index] & b->values[last_index];
+		uint8_t old_byte = out->values[last_index];
+
+		change_mask |= (new_byte ^ old_byte);
+		out->values[last_index] = new_byte;
+	}
+
+	return change_mask != 0;
+}
+
+bool bit_array_or(const BitArray* a, const BitArray* b, BitArray* out) {
+	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
+
+	size_t full_byte_count = a->bit_count / 8;
+	size_t total_byte_count = (a->bit_count + 7) / 8;
+
+	uint8_t change_mask = 0;
+	for (size_t i = 0; i < full_byte_count; i++) {
+		uint8_t new_byte = a->values[i] | b->values[i];
+		uint8_t changes = new_byte ^ out->values[i];
+		
+		change_mask |= changes;
+
+		out->values[i] = new_byte;
+	}
+
+	size_t rest_bit_count = a->bit_count - full_byte_count * 8;
+	if (rest_bit_count > 0) {
+		size_t last_index = total_byte_count - 1;
+		
+		uint8_t new_byte = a->values[last_index] | b->values[last_index];
+		uint8_t old_byte = out->values[last_index];
+
+		change_mask |= (new_byte ^ old_byte);
+		out->values[last_index] = new_byte;
+	}
+
+	return change_mask != 0;
+}
+
 bool bit_array_equal(const BitArray* a, const BitArray* b) {
 	if (a == b) {
 		return true;

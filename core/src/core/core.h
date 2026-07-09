@@ -612,23 +612,19 @@ inline void bit_array_set(const BitArray* array, size_t index, bool value) {
 	}
 }
 
-inline void bit_array_and(const BitArray* a, const BitArray* b, BitArray* out) {
-	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
+// Does `bitwise and` between corresponding bits of `a` and `b` array and stores the result in `out`
+//
+// `out` can also be the same array as either `a` or `b`.
+//
+// Returns `true` if any of the bits in the `out` array were updated.
+bool bit_array_and(const BitArray* a, const BitArray* b, BitArray* out);
 
-	size_t element_count = (a->bit_count + 7) / 8;
-	for (size_t i = 0; i < element_count; i++) {
-		out->values[i] = a->values[i] & b->values[i];
-	}
-}
-
-inline void bit_array_or(const BitArray* a, const BitArray* b, BitArray* out) {
-	assert(a->bit_count == b->bit_count && a->bit_count == out->bit_count);
-
-	size_t element_count = (a->bit_count + 7) / 8;
-	for (size_t i = 0; i < element_count; i++) {
-		out->values[i] = a->values[i] | b->values[i];
-	}
-}
+// Does `bitwise or` between corresponding bits of `a` and `b` array and stores the result in `out`
+//
+// `out` can also be the same array as either `a` or `b`.
+//
+// Returns `true` if any of the bits in the `out` array were updated.
+bool bit_array_or(const BitArray* a, const BitArray* b, BitArray* out);
 
 bool bit_array_equal(const BitArray* a, const BitArray* b);
 

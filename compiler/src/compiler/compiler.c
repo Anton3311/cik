@@ -604,6 +604,9 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		InstrIndex load_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* load_instr = instr_buffer_at(instr_buffer, load_instr_index);
 		load_instr->ptr_load.ptr = element_addr;
+		load_instr->ptr_load.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, load_instr_index);
 
 		switch (element_layout.size) {
 		case 1:

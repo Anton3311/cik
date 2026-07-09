@@ -248,28 +248,30 @@ static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 			const Instr* successor = instr_buffer_at(instr_buffer, successor_index);
 			assert(successor->kind == INSTR_REGION);
 
+			bool changed = false;
 			if (bit_array_get(&visited_regions, successor->region.id)) {
-				// NOTE: If the current region is dominated by the `successor` which means we have
-				//       already visited this path, and this path is a cycle (caused by for/while
-				//       loop), so since we've already visited it once, we can stop here, to avoid
-				//       an infinite loop.
-				if (_is_region_dominated_by(&tree, instr->region.id, successor->region.id)) {
-					continue;
-				}
+				// Reset bit corresponding to the current region, so it doesn't interfere with the
+				// `and` operation.
+				bit_array_set(&tree.dominates[successor->region.id], successor->region.id, false);
 
-				bit_array_and(&tree.dominates[instr->region.id],
+				changed |= bit_array_and(&tree.dominates[instr->region.id],
 						&tree.dominates[successor->region.id],
 						&tree.dominates[successor->region.id]);
+
 				bit_array_set(&tree.dominates[successor->region.id], successor->region.id, true);
 			} else {
-				bit_array_or(&tree.dominates[instr->region.id],
+				changed |= bit_array_or(&tree.dominates[instr->region.id],
 						&tree.dominates[successor->region.id],
 						&tree.dominates[successor->region.id]);
 
 				bit_array_set(&visited_regions, successor->region.id, true);
 			}
 
-			instr_queue_push_back(&stack, successor_index);
+			// If the set of regions dominated by the current one, was updated, we need to continue
+			// the traversal and propagate the updates to the successors.
+			if (changed) {
+				instr_queue_push_back(&stack, successor_index);
+			}
 		}
 	}
 

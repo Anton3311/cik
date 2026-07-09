@@ -163,7 +163,7 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 
 	InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 	Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
-	add_instr->bin_op.kind = BIN_OP_ADD;
+	add_instr->bin_op.kind = INSTR_BIN_ADD;
 	add_instr->bin_op.left = array;
 	add_instr->bin_op.right = scaled_index;
 	add_instr->kind = INSTR_BIN_OP_64;

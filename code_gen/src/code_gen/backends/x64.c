@@ -647,27 +647,35 @@ RegisterMoveArray _parallel_move_values(
 static uint8_t _get_instr_value_size(const InstrBuffer* instr_buffer, InstrIndex instr_index) {
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
+	uint8_t value_size = 0;
 	if (instr->kind == INSTR_PHI) {
-		uint8_t value_size = 0;
-
 		InstrInputs variants = instr->phi.variants;
 		for (uint16_t i = 0; i < variants.count; i += 1) {
 			InstrIndex variant_index = instr_buffer->inputs_buffer[variants.start + i];
 			const Instr* variant = instr_buffer_at(instr_buffer, variant_index);
 			assert(variant->kind == INSTR_SELECT);
 
-			uint8_t variant_size = _get_instr_value_size(instr_buffer, variant->select.value);
+			InstrIndex variant_value = variant->select.value;
+			
+			// This phi might have itself as one of the variants.
+			if (variant_value.value == instr_index.value) {
+				// NOTE: We have a recursive phi, do not overflow the stack!
+				continue;
+			}
+
+			uint8_t variant_size = _get_instr_value_size(instr_buffer, variant_value);
 			if (value_size == 0) {
 				value_size = variant_size;
 			} else {
 				assert(variant_size == value_size);
 			}
 		}
-
-		return value_size;
 	} else {
-		return s_instr_storage_requiremenets[instr->kind].reg_size;
+		value_size = s_instr_storage_requiremenets[instr->kind].reg_size;
 	}
+
+	assert(value_size > 0);
+	return value_size;
 }
 
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {

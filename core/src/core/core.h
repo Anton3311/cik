@@ -225,6 +225,27 @@ inline void* arena_alloc_aligned(Arena* arena, size_t size, size_t alignment) {
 	return allocation;
 }
 
+// Allocates a fixed size poisoned region of memory
+inline void arena_alloc_guard(Arena* arena) {
+#ifdef FEATURE_ASAN
+	size_t size = 8;
+	size_t alignment = 8;
+
+	size_t allocation_base = align(arena->allocated, alignment);
+	size_t new_allocated_ptr = allocation_base + size;
+
+	if (arena->base == NULL) {
+		_arena_reserve(arena);
+	}
+
+	if (new_allocated_ptr > arena->commited) {
+		_arena_commit(arena, new_allocated_ptr - arena->allocated);
+	}
+
+	arena->allocated = new_allocated_ptr;
+#endif
+}
+
 inline void* arena_alloc_zeroed_aligned(Arena* arena, size_t size, size_t alignment) {
 	void* ptr = arena_alloc_aligned(arena, size, alignment);
 	memset(ptr, 0, size);

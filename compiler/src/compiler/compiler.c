@@ -1010,9 +1010,14 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				InstrIndex* var_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
 						InstrIndex,
 						compiler->var_count);
+
+				arena_alloc_guard(compiler->temp_allocator);
+
 				InstrIndex* var_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
 						InstrIndex,
 						compiler->var_count);
+
+				arena_alloc_guard(compiler->temp_allocator);
 
 				array_copy(var_values_for_true_path, compiler->var_values, compiler->var_count);
 				array_copy(var_values_for_false_path, compiler->var_values, compiler->var_count);
@@ -1022,9 +1027,13 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 						InstrIndex,
 						arg_count);
 
+				arena_alloc_guard(compiler->temp_allocator);
+
 				InstrIndex* arg_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
 						InstrIndex,
 						arg_count);
+
+				arena_alloc_guard(compiler->temp_allocator);
 
 				array_copy(arg_values_for_true_path, compiler->arg_states, arg_count);
 				array_copy(arg_values_for_false_path, compiler->arg_states, arg_count);

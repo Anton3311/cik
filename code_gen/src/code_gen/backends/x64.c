@@ -829,7 +829,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_LOAD_8);
 		encode_2(buffer,
 				MNEMONIC_MOV,
-				operand_reg(dst_loc.reg, bit_count),
+				operand_reg(dst_loc.reg, 64),
 				operand_mem(ptr_loc.reg, bit_count));
 		return;
 	}
@@ -846,7 +846,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_STORE_8);
 		encode_2(buffer,
 				MNEMONIC_MOV,
-				operand_mem(ptr_loc.reg, bit_count),
+				operand_mem(ptr_loc.reg, 64),
 				operand_reg(value_loc.reg, bit_count));
 		return;
 	}

@@ -360,6 +360,13 @@ inline bool instr_usage_range_is_empty(const InstrUsageRange range) {
 	return range.value == UINT32_MAX;
 }
 
+inline InstrUsageRange instr_usage_range_merge(InstrUsageRange a, InstrUsageRange b) {
+	InstrUsageRange out = {};
+	out.first_usage.value = min(a.first_usage.value, b.first_usage.value);
+	out.last_usage.value = max(a.last_usage.value, b.last_usage.value);
+	return out;
+}
+
 // Returns a new range that includes the given instruction index
 inline InstrUsageRange instr_usage_range_extended(const InstrUsageRange range, InstrIndex instr_index) {
 	InstrUsageRange new_range;

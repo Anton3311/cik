@@ -297,13 +297,31 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 				const Instr* select = &buffer.instr[select_index.value];
 				assert(select->kind == INSTR_SELECT);
 
-				InstrUsageRange variant_usage_range = usage_ranges[select->select.value.value];
-				phi_usage_range.first_usage.value = min(
-						phi_usage_range.first_usage.value,
-						variant_usage_range.first_usage.value);
-				phi_usage_range.last_usage.value = max(
-						phi_usage_range.last_usage.value,
-						variant_usage_range.last_usage.value);
+				const Instr* region = &buffer.instr[select->select.region.value];
+				assert(region->kind == INSTR_REGION);
+
+				InstrUsageRange* variant_usage_range = &usage_ranges[select->select.value.value];
+
+				// NOTE: Extend the live range of the variant value to the end of the region, to
+				//       make sure it stays alive until the end of the region.
+				//
+				//       And in case this region is part of a loop that looks like this:
+				//       
+				//       region A:
+				//       1. phi
+				//       2. <variant value computation>
+				//       3. <other instructions>
+				//       4. jump to A
+				//
+				//       we need to make sure that once the variant value is computed (at index 2), 
+				//       it doesn't get override by other instructions (at index 3), until it
+				//       reaches a jump back to the start of the region, where the phi node is
+				//       placed.
+				*variant_usage_range = instr_usage_range_extended(
+						*variant_usage_range,
+						region->region.last_instr);
+
+				phi_usage_range = instr_usage_range_merge(phi_usage_range, *variant_usage_range);
 			}
 
 			usage_ranges[i] = phi_usage_range;

@@ -246,6 +246,11 @@ inline void arena_alloc_guard(Arena* arena) {
 #endif
 }
 
+inline bool arena_contains_memory_region(Arena* arena, const void* ptr, size_t size) {
+	return (const uint8_t*)ptr >= arena->base
+		&& ((const uint8_t*)ptr + size) <= arena->base + arena->allocated;
+}
+
 inline void* arena_alloc_zeroed_aligned(Arena* arena, size_t size, size_t alignment) {
 	void* ptr = arena_alloc_aligned(arena, size, alignment);
 	memset(ptr, 0, size);

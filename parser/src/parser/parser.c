@@ -2904,14 +2904,14 @@ static AstNode* _parser_parse_do_while_loop(Parser* parser) {
 AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
 	case TOKEN_LEFT_BRACE: {
-		Scope scope = {};
-		if (!_parser_parse_scope(parser, &scope)) {
+		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+		node->kind = AST_NODE_BLOCK;
+		node->block = (Scope) {};
+
+		if (!_parser_parse_scope(parser, &node->block)) {
 			return NULL;
 		}
 
-		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
-		node->kind = AST_NODE_BLOCK;
-		node->block = scope;
 		return node;
 	}
 	case TOKEN_KEYWORD_TYPEDEF: {
@@ -3029,6 +3029,12 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 
 bool _parser_parse_scope(Parser* parser, Scope* out_scope) {
 	profile_func_colored(PROFILE_COLOR);
+
+	assert_msg(arena_contains_memory_region(parser->ast_allocator, out_scope, sizeof(*out_scope)),
+			"`out_scope` must be allocated using the `ast_allocator`. This one wasn't. "
+			"Scope is not allowed to move in memory, because other `AstNode`s reference it through "
+			"the pointer. Any moves of the `Scope` would invalidate the references. To avoid the "
+			"moves, the `Scope` must be allocated using `ast_allocator` before ever being used");
 
 	ident_storage_begin_scope(parser->ident_storage);
 	out_scope->id = parser->ident_storage->current_scope->id;

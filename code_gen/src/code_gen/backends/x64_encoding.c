@@ -376,6 +376,7 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 
 	Encoding encoding = s_encodings[encoding_index];
 	uint8_t rex_prefix_bits = 0;
+	bool requires_empty_sib_byte = 0;
 
 	ModRMFields fields = {};
 	if (s_encoding_extra[encoding_index].has_mod_rm) {
@@ -383,6 +384,16 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 			fields = _encode_mod_rm(encoding, operands[0], operand_none());
 		} else if (operand_count == 2) {
 			fields = _encode_mod_rm(encoding, operands[0], operands[1]);
+
+			if (operands[0].kind == OP_MEM && operands[0].reg == 12) {
+				assert(operands[0].bit_count == 64);
+				requires_empty_sib_byte = true;
+			}
+
+			if (operands[1].kind == OP_MEM && operands[1].reg == 12) {
+				assert(operands[0].bit_count == 64);
+				requires_empty_sib_byte = true;
+			}
 		} else {
 			unreachable();
 		}
@@ -431,6 +442,11 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		encoding_size += 1;	
 	} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
 		encoding_size += 4;	
+	}
+
+	// sib byte
+	if (requires_empty_sib_byte) {
+		encoding_size += 1;
 	}
 
 	// imm sizes
@@ -493,6 +509,12 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 			uint32_t disaplacement = 0;
 			memcpy(write_ptr, &disaplacement, 4);
 			write_ptr += 4;
+		}
+
+		// sib byte
+		if (requires_empty_sib_byte) {
+			*write_ptr = 0x24;
+			write_ptr += 1;
 		}
 
 		// write imm

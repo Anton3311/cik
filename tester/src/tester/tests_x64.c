@@ -1023,7 +1023,7 @@ void test_encode_mov_indirect_addr(TestContext* context) {
 	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov rax, [rdx]");
 }
 
-void test_encode_addressing_of_r13_and_bp(TestContext* context) {
+void test_encode_addressing_of_r12_r13_and_bp(TestContext* context) {
 	{
 		uint8_t expected[] = { 0x4D, 0x89, 0x65, 0x00 };
 
@@ -1082,6 +1082,36 @@ void test_encode_addressing_of_r13_and_bp(TestContext* context) {
 
 		assert(buffer.size == array_size(expected));
 		assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov r12, [rbp]");
+	}
+
+	{
+		uint8_t expected[] = { 0x4D, 0x89, 0x0C, 0x24 };
+
+		CodeBuffer buffer;
+		code_buffer_init(&buffer, context->arena);
+
+		encode_2(&buffer,
+				MNEMONIC_MOV,
+				operand_mem(X64_REG_12, 64),
+				operand_reg(X64_REG_9, 64));
+
+		assert(buffer.size == array_size(expected));
+		assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov [r12], r9");
+	}
+
+	{
+		uint8_t expected[] = { 0x4D, 0x8B, 0x0C, 0x24 };
+
+		CodeBuffer buffer;
+		code_buffer_init(&buffer, context->arena);
+
+		encode_2(&buffer,
+				MNEMONIC_MOV,
+				operand_reg(X64_REG_9, 64),
+				operand_mem(X64_REG_12, 64));
+
+		assert(buffer.size == array_size(expected));
+		assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "mov r9, [r12]");
 	}
 }
 

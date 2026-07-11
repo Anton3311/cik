@@ -826,9 +826,7 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 		InstrIndex jump_to_pre_loop = instr_new_jump(instr_buffer,
 				instr_allocator,
 				INVALID_INSTR_INDEX,
-				compiler->io_state);
-
-		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+				&compiler->io_state);
 
 		pre_loop_region_index = instr_new_region(instr_buffer, instr_allocator);
 		instr_set_jump_target(instr_buffer, jump_to_pre_loop, pre_loop_region_index);
@@ -870,9 +868,7 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	InstrIndex jump_to_condition = instr_new_jump(instr_buffer,
 			instr_allocator,
 			INVALID_INSTR_INDEX,
-			compiler->io_state);
-
-	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+			&compiler->io_state);
 
 	InstrIndex condition_region = instr_new_region(instr_buffer, instr_allocator);
 	instr_set_jump_target(instr_buffer, jump_to_condition, condition_region);
@@ -911,13 +907,9 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	InstrIndex post_loop_jump = instr_new_jump(instr_buffer,
 			instr_allocator,
 			condition_region,
-			compiler->io_state);
+			&compiler->io_state);
 
 	instr_region_set_last(instr_buffer, body_block.final_region, post_loop_jump);
-
-	compiler->io_state = instr_new_io_state(instr_buffer,
-			instr_allocator,
-			INVALID_INSTR_INDEX);
 
 	InstrIndex post_loop_region_index = instr_new_region(instr_buffer, instr_allocator);
 
@@ -1048,9 +1040,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 					true_region->region.last_instr = instr_new_jump(instr_buffer,
 							instr_allocator,
 							post_branch_region_index,
-							compiler->io_state);
-
-					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+							&compiler->io_state);
 				}
 
 				{
@@ -1069,9 +1059,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 					false_region->region.last_instr = instr_new_jump(instr_buffer,
 							instr_allocator,
 							post_branch_region_index,
-							compiler->io_state);
-
-					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+							&compiler->io_state);
 				}
 
 				const Scope* if_parent_scope = node->parent_scope;
@@ -1146,9 +1134,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer,
 					instr_allocator,
 					INVALID_INSTR_INDEX,
-					compiler->io_state);
-
-			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+					&compiler->io_state);
 
 			CompiledBlockRegions inner_block = _compile_block_to_region(compiler, node->block.nodes.first);
 
@@ -1159,9 +1145,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer,
 					instr_allocator,
 					post_block_region,
-					compiler->io_state);
-
-			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+					&compiler->io_state);
 
 			region_instr->region.last_instr = jump_to_inner_region;
 
@@ -1181,17 +1165,14 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				region_instr->region.last_instr = instr_new_return_value(instr_buffer,
 						instr_allocator,
 						value,
-						compiler->io_state);
+						&compiler->io_state);
 				compiler->io_state = INVALID_INSTR_INDEX;
 			} else {
 				assert(node->return_stmt.value == NULL);
 
-				InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-				instr->kind = INSTR_RET;
-				instr->ret.io_state = compiler->io_state;
-
-				compiler->io_state = INVALID_INSTR_INDEX;
+				InstrIndex instr_index = instr_new_return(instr_buffer,
+						instr_allocator,
+						&compiler->io_state);
 
 				region_instr->region.last_instr = instr_index;
 			}
@@ -1264,13 +1245,9 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 					"which means the `io_state` must still be valid, util it "
 					"gets by a control instruction");
 
-			InstrIndex final_return_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* final_return = instr_buffer_at(instr_buffer, final_return_index);
-			final_return->kind = INSTR_RET;
-			final_return->ret.io_state = compiler->io_state;
-
-			// Consume the io_state
-			compiler->io_state = INVALID_INSTR_INDEX;
+			InstrIndex final_return_index = instr_new_return(instr_buffer,
+					instr_allocator,
+					&compiler->io_state);
 
 			region_instr->region.last_instr = final_return_index;
 		}

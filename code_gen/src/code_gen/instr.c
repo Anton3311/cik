@@ -118,6 +118,51 @@ InstrIndex instr_new_int_const(InstrBuffer* buffer,
 	return instr_index;
 }
 
+InstrIndex instr_new_jump(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex target,
+		InstrIndex* io_state) {
+
+	const Instr* io_state_instr = instr_buffer_at(buffer, *io_state);
+	assert(io_state_instr->kind == INSTR_IO_STATE);
+
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_JUMP;
+	instr->jump.target_region = target;
+	instr->jump.io_state = *io_state;
+
+	*io_state = instr_new_io_state(buffer, allocator, INVALID_INSTR_INDEX);
+	return i;
+}
+
+InstrIndex instr_new_return_value(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		InstrIndex* io_state) {
+
+	const Instr* io_state_instr = instr_buffer_at(buffer, *io_state);
+	assert(io_state_instr->kind == INSTR_IO_STATE);
+
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_RETURN_VALUE;
+	instr->return_value.value = value;
+	instr->return_value.io_state = *io_state;
+	return i;
+}
+
+InstrIndex instr_new_return(InstrBuffer* buffer, Arena* allocator, InstrIndex* io_state) {
+	const Instr* io_state_instr = instr_buffer_at(buffer, *io_state);
+	assert(io_state_instr->kind == INSTR_IO_STATE);
+
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_RET;
+	instr->ret.io_state = *io_state;
+	return i;
+}
+
 InstrIndex instr_new_cast(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex value,

@@ -388,7 +388,7 @@ inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 	return i;
 }
 
-#define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[index.value]
+#define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[(index).value]
 
 inline bool instr_is_control(const InstrBuffer* instr_buffer, InstrIndex instr_index) {
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
@@ -410,20 +410,6 @@ inline InstrIndex instr_new_region(InstrBuffer* buffer, Arena* allocator) {
 	return i;
 }
 
-inline InstrIndex instr_new_jump(InstrBuffer* buffer, Arena* allocator, InstrIndex target, InstrIndex io_state) {
-	InstrIndex i = instr_buffer_append(buffer, allocator);
-	Instr* instr = instr_buffer_at(buffer, i);
-	instr->kind = INSTR_JUMP;
-	instr->jump.target_region = target;
-	instr->jump.io_state = io_state;
-	return i;
-}
-
-inline void instr_set_jump_target(InstrBuffer* buffer, InstrIndex jump, InstrIndex target) {
-	Instr* instr = instr_buffer_at(buffer, jump);
-	instr->jump.target_region = target;
-}
-
 inline void instr_region_set_last(InstrBuffer* buffer,
 		InstrIndex region_index,
 		InstrIndex control_instr_index) {
@@ -435,17 +421,37 @@ inline void instr_region_set_last(InstrBuffer* buffer,
 	region->region.last_instr = control_instr_index;
 }
 
-inline InstrIndex instr_new_return_value(InstrBuffer* buffer, Arena* allocator, InstrIndex value, InstrIndex io_state) {
-	const Instr* io_state_instr = instr_buffer_at(buffer, io_state);
-	assert(io_state_instr->kind == INSTR_IO_STATE);
+// Creates a new `INSTR_JUMP` instruction
+//
+// Consumes the io state from `io_state`, and writes the new one back to `io_state`.
+InstrIndex instr_new_jump(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex target,
+		InstrIndex* io_state);
 
-	InstrIndex i = instr_buffer_append(buffer, allocator);
-	Instr* instr = instr_buffer_at(buffer, i);
-	instr->kind = INSTR_RETURN_VALUE;
-	instr->return_value.value = value;
-	instr->return_value.io_state = io_state;
-	return i;
+inline void instr_set_jump_target(InstrBuffer* buffer, InstrIndex jump, InstrIndex target) {
+	Instr* instr = instr_buffer_at(buffer, jump);
+	instr->jump.target_region = target;
 }
+
+// Creates a new `INSTR_RETURN_VALUE` instruction
+//
+// Consumes the io state from `io_state`.
+//
+// NOTE: Doens't create a new `io_state`
+InstrIndex instr_new_return_value(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		InstrIndex* io_state);
+
+// Creates a new `INSTR_RET` instruction
+//
+// Consumes the io state from `io_state`.
+//
+// NOTE: Doens't create a new `io_state`
+InstrIndex instr_new_return(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex* io_state);
 
 inline InstrIndex instr_new_io_state(InstrBuffer* buffer, Arena* allocator, InstrIndex producer) {
 	InstrIndex i = instr_buffer_append(buffer, allocator);

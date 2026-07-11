@@ -435,6 +435,11 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 		const InstrStorageLocation value_storage = gen->instr_storage[phi_variants.instr[i].value];
 		const InstrStorageLocation phi_storage = gen->instr_storage[phi_node_index.value];
 
+		if (phi_storage.kind == INSTR_STORAGE_NONE) {
+			// Phi node was never allocated. It means it is also never going to be used.
+			continue;
+		}
+
 		assert(value_storage.kind == INSTR_STORAGE_REG);
 		assert(phi_storage.kind == INSTR_STORAGE_REG);
 

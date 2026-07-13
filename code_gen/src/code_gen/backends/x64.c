@@ -826,6 +826,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 
+		assert(_get_instr_value_size(instr_buffer, instr->ptr_load.ptr) == 64);
+
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_LOAD_8);
 		encode_2(buffer,
 				MNEMONIC_MOV,
@@ -842,6 +844,8 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		const InstrStorageLocation value_loc = gen->instr_storage[instr->ptr_store.value.value];
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 		assert(value_loc.kind == INSTR_STORAGE_REG);
+
+		assert(_get_instr_value_size(instr_buffer, instr->ptr_store.ptr) == 64);
 
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_STORE_8);
 		encode_2(buffer,

@@ -420,7 +420,7 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 
 	for (size_t i = 0; i < operand_count; i += 1) {
 		Operand op = operands[i];
-		if (op.bit_count == 64 && (op.kind == OP_REG || op.kind == OP_MEM)) {
+		if (op.bit_count == 64 && (op.kind == OP_REG)) {
 			rex_prefix_bits |= 0b1000;
 		}
 	}

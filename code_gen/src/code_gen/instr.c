@@ -205,7 +205,8 @@ bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index) {
 	}
 
 	InstrKind last_instr_kind = buffer->instr[last_instr_in_region.value].kind;
-	return has_flag(INSTR_FEATURES[last_instr_kind], INSTR_FEATURE_CONTROL);
+	assert(has_flag(INSTR_FEATURES[last_instr_kind], INSTR_FEATURE_CONTROL));
+	return true;
 }
 
 void instr_push_input_dependencies(const InstrBuffer* buffer,

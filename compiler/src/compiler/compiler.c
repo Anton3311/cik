@@ -730,24 +730,6 @@ typedef struct {
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		AstNode* first_node);
 
-// Replaces each value in the array with a phi node, that has two variants:
-// 1. The value, that was initial in the array
-// 2. Invalid instruction, ment to be later replaced
-//
-// This is a helper used to prepare variables for the loop compilation.
-static void _replace_values_with_phis(FunctionCompiler* compiler,
-		InstrIndex* values,
-		size_t value_count,
-		InstrIndex region) {
-	for (size_t i = 0; i < value_count; i += 1) {
-		values[i] = _create_phi_of_2_variants(compiler,
-				values[i],
-				region,
-				INVALID_INSTR_INDEX,
-				INVALID_INSTR_INDEX);
-	}
-}
-
 static void _fill_phi_variants(FunctionCompiler* compiler,
 		InstrIndex phi_index,
 		InstrIndex variant_a,
@@ -783,36 +765,6 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 
 	phi->kind = INSTR_PHI;
 	phi->phi.variants = select_inputs_buffer;
-}
-
-// Fills the empty region of each phi node produced by `_replace_values_with_phis`, with a provided
-// `variant_region` and the corresponding variant from the `variants` array.
-//
-// * `variants` is expected to be of size `phi_count`
-// * all variants will be selected from the same `variant_region`
-static void _replace_empty_variants(InstrBuffer* instr_buffer,
-		const InstrIndex* phis,
-		size_t phi_count,
-		const InstrIndex* variants,
-		InstrIndex variant_region) {
-
-	for (size_t i = 0; i < phi_count; i += 1) {
-		const Instr* phi = instr_buffer_at(instr_buffer, phis[i]);
-		assert(phi->kind == INSTR_PHI);
-
-		InstrInputs phi_variants = phi->phi.variants;
-		assert(phi_variants.count == 2);
-
-		InstrIndex second_variant_index = instr_buffer->inputs_buffer[phi_variants.start + 1];
-		Instr* second_variant = instr_buffer_at(instr_buffer, second_variant_index);
-		assert(second_variant->kind == INSTR_SELECT);
-
-		assert(second_variant->select.value.value == INVALID_INSTR_INDEX.value);
-		assert(second_variant->select.region.value == INVALID_INSTR_INDEX.value);
-
-		second_variant->select.value = variants[i];
-		second_variant->select.region = variant_region;
-	}
 }
 
 // Compiles a while loop.
@@ -1012,18 +964,23 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	instr_region_set_last(instr_buffer, pre_loop_region, jump_to_first_iteration);
 
 	// 3. Now setup phi node for all variables and function arguments
-	_replace_values_with_phis(compiler,
-			compiler->var_values,
-			compiler->var_count,
-			pre_loop_region);
-
-	_replace_values_with_phis(compiler,
-			compiler->arg_states,
-			arg_count,
-			pre_loop_region);
-
 	InstrIndex* original_var_values = compiler->var_values;
 	InstrIndex* original_arg_values = compiler->arg_states;
+
+	InstrIndex* var_phis = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			compiler->var_count);
+	InstrIndex* arg_phis = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			arg_count);
+
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		var_phis[i] = instr_new_empty_phi(instr_buffer, instr_allocator);
+	}
+
+	for (size_t i = 0; i < arg_count; i += 1) {
+		arg_phis[i] = instr_new_empty_phi(instr_buffer, instr_allocator);
+	}
 
 	// 4. Create copies of variable value arrays
 	InstrIndex* var_values_for_body = arena_alloc_array(compiler->temp_allocator,
@@ -1033,8 +990,8 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 			InstrIndex,
 			arg_count);
 
-	array_copy(var_values_for_body, original_var_values, compiler->var_count);
-	array_copy(arg_values_for_body, original_arg_values, arg_count);
+	array_copy(var_values_for_body, var_phis, compiler->var_count);
+	array_copy(arg_values_for_body, arg_phis, arg_count);
 
 	compiler->var_values = var_values_for_body;
 	compiler->arg_states = arg_values_for_body;
@@ -1077,17 +1034,26 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	// 7. Now fill the empty variant with the value produced inside the loop body.
 
 	// This allows phis to select values from the previous loop iteration.
-	_replace_empty_variants(instr_buffer,
-			original_var_values,
-			compiler->var_count,
-			compiler->var_values,
-			body_block.final_region);
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		_fill_phi_variants(compiler,
+				var_phis[i],
+				original_var_values[i],
+				pre_loop_region,
+				compiler->var_values[i],
+				body_block.final_region);
+	}
 
-	_replace_empty_variants(instr_buffer,
-			original_arg_values,
-			arg_count,
-			compiler->arg_states,
-			body_block.final_region);
+	for (size_t i = 0; i < arg_count; i += 1) {
+		_fill_phi_variants(compiler,
+				arg_phis[i],
+				original_arg_values[i],
+				pre_loop_region,
+				compiler->arg_states[i],
+				body_block.final_region);
+	}
+
+	array_copy(original_var_values, var_phis, compiler->var_count);
+	array_copy(original_arg_values, arg_phis, arg_count);
 
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;

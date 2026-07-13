@@ -817,13 +817,13 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	{
 		Instr* left_operand = instr_buffer_at(instr_buffer, left_operand_index);
 		left_operand->kind = INSTR_CONST_32;
-		left_operand->const_32.u = 10;
+		left_operand->const_32.u = 100;
 	}
 
 	{
 		Instr* right_operand = instr_buffer_at(instr_buffer, right_operand_index);
 		right_operand->kind = INSTR_CONST_32;
-		right_operand->const_32.u = 5;
+		right_operand->const_32.u = 4;
 	}
 
 	{
@@ -903,7 +903,7 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		Function function = (Function)machine_code.code;
 		uint64_t result = function();
 
-		assert(result == 5);
+		assert(result == 96);
 	}
 }
 

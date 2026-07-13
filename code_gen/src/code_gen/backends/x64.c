@@ -781,7 +781,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 				// NOTE: When saving the register, push/pop the whole 64-bit register
 				encode_1(buffer,
 						MNEMONIC_PUSH,
-						operand_reg(right_loc.reg, 64));
+						operand_reg(left_loc.reg, 64));
 
 				encode_2(buffer,
 						MNEMONIC_SUB,
@@ -792,7 +792,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 				encode_1(buffer,
 						MNEMONIC_POP,
-						operand_reg(right_loc.reg, 64));
+						operand_reg(left_loc.reg, 64));
 			} else if (dst_loc.reg == left_loc.reg) {
 				encode_2(buffer,
 						MNEMONIC_SUB,

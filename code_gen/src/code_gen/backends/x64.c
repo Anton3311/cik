@@ -1863,13 +1863,22 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 	//
 	// To handle this correctly, during the first pass, control instructions are skipped, and later
 	// during the second pass they are added to the end of each region.
+	BitArray already_assigned = bit_array_alloc(temp_allocator, instr_buffer->count);
+	bit_array_clear(&already_assigned);
+
 	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
 		if (states[i].decided_region_id == UINT16_MAX) {
 			continue;
 		}
 
+		if (bit_array_get(&already_assigned, i)) {
+			continue;
+		}
+
+		const Instr* instr = &instr_buffer->instr[i];
+
 		bool skip = false;
-		switch (instr_buffer->instr[i].kind) {
+		switch (instr->kind) {
 		case INSTR_BRANCH:
 		case INSTR_JUMP:
 		case INSTR_RET:
@@ -1884,8 +1893,31 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 			continue;
 		}
 
-		InstrIndexArray* region_instr_array =
-			&scheduled_instr_per_region[states[i].decided_region_id];
+		uint16_t region_id = states[i].decided_region_id;
+		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];
+
+		if (instr->kind == INSTR_PHI) {
+			InstrInputs variants = instr->phi.variants;
+			for (uint16_t i = 0; i < variants.count; i += 1) {
+				InstrIndex select_index = instr_buffer->inputs_buffer[variants.start + i];
+
+				if (bit_array_get(&already_assigned, select_index.value)) {
+					continue;
+				}
+
+				uint16_t region_of_select = states[select_index.value].decided_region_id;
+				if (region_of_select != region_id) {
+					continue;
+				}
+
+				region_instr_array->instr[region_instr_array->count] = select_index;
+				region_instr_array->count += 1;
+
+				bit_array_set(&already_assigned, select_index.value, true);
+			}
+		}
+
+		bit_array_set(&already_assigned, i, true);
 
 		region_instr_array->instr[region_instr_array->count] = (InstrIndex) { i };
 		region_instr_array->count += 1;

@@ -49,6 +49,8 @@ typedef enum {
 	AST_NODE_BLOCK,
 	AST_NODE_IF,
 	AST_NODE_WHILE_LOOP,
+	AST_NODE_BREAK,
+	AST_NODE_CONTINUE,
 } AstNodeKind;
 
 typedef enum {

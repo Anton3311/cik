@@ -1070,6 +1070,12 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 
 		printer_end_struct(printer);
 		break;
+	case AST_NODE_BREAK:
+		printf("break\n");
+		break;
+	case AST_NODE_CONTINUE:
+		printf("continue\n");
+		break;
 	}
 }
 

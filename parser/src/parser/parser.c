@@ -3006,6 +3006,28 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		return _parser_parse_while_loop(parser);
 	case TOKEN_KEYWORD_DO:
 		return _parser_parse_do_while_loop(parser);
+	case TOKEN_KEYWORD_BREAK: {
+		preprocessor_next_token(parser->preprocessor);
+
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after break"))) {
+			return NULL;
+		}
+
+		AstNode* stmt = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+		stmt->kind = AST_NODE_BREAK;
+		return stmt;
+	}
+	case TOKEN_KEYWORD_CONTINUE: {
+		preprocessor_next_token(parser->preprocessor);
+
+		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after continue"))) {
+			return NULL;
+		}
+
+		AstNode* stmt = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+		stmt->kind = AST_NODE_CONTINUE;
+		return stmt;
+	}
 	default: {
 		DeclSpec* decl_spec = _parser_parse_decl_spec(parser);
 		StorageSpecifier storage_specifier = STORAGE_SPEC_NONE;

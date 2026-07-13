@@ -100,6 +100,39 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Type*
 	return (TypeLayout) {};
 }
 
+static LoopControlStmt* _alloc_loop_control_stmt(FunctionCompiler* compiler) {
+	if (compiler->free_loop_control_stmt) {
+		LoopControlStmt* stmt = compiler->free_loop_control_stmt;
+		compiler->free_loop_control_stmt = stmt->next;
+		stmt->next = NULL;
+		return stmt;
+	}
+
+	LoopControlStmt* stmt = heap_alloc(LoopControlStmt);
+	stmt->next = NULL;
+	return stmt;
+}
+
+static void _free_loop_control_stmt(FunctionCompiler* compiler, LoopControlStmt* stmt) {
+	assert(stmt != NULL);
+
+	LoopControlStmt* last = stmt;
+	for (; last->next != NULL; last = last->next) {}
+
+	last->next = compiler->free_loop_control_stmt;
+	compiler->free_loop_control_stmt = stmt;
+}
+
+static void _free_all_loop_control_stmts(FunctionCompiler* compiler) {
+	LoopControlStmt* stmt = compiler->free_loop_control_stmt;
+	while (stmt) {
+		LoopControlStmt* next = stmt->next;
+
+		heap_release(stmt);
+		stmt = next;
+	}
+}
+
 static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr);
 static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr);
 static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr);
@@ -735,10 +768,25 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 		InstrIndex variant_a,
 		InstrIndex region_a,
 		InstrIndex variant_b,
-		InstrIndex region_b) {
+		InstrIndex region_b,
+		size_t value_index,
+		bool is_var,
+		const LoopControlStmt* loop_control_stmts) {
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
+
+	Instr* phi = instr_buffer_at(instr_buffer, phi_index);
+	assert(phi->phi.variants.start == UINT16_MAX);
+	assert(phi->phi.variants.count == UINT16_MAX);
+
+	size_t loop_control_count = 0;
+	for (const LoopControlStmt* stmt = loop_control_stmts; stmt != NULL; stmt = stmt->next) {
+		loop_control_count += 1;
+	}
+
+	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
+			2 + loop_control_count, compiler->input_instr_array_allocator);
 
 	InstrIndex select_a_index = instr_buffer_append(instr_buffer, instr_allocator);
 	Instr* select_a = instr_buffer_at(instr_buffer, select_a_index);
@@ -752,16 +800,28 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	select_b->select.value = variant_b;
 	select_b->select.region = region_b;
 
-	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
-			2, compiler->input_instr_array_allocator);
-
 	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
 	select_inputs[0] = select_a_index;
 	select_inputs[1] = select_b_index;
 
-	Instr* phi = instr_buffer_at(instr_buffer, phi_index);
-	assert(phi->phi.variants.start == UINT16_MAX);
-	assert(phi->phi.variants.count == UINT16_MAX);
+	size_t loop_control_index = 0;
+	for (const LoopControlStmt* stmt = loop_control_stmts;
+			stmt != NULL;
+			stmt = stmt->next, loop_control_index += 1) {
+
+		InstrIndex select_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* select = instr_buffer_at(instr_buffer, select_index);
+		select->kind = INSTR_SELECT;
+		select->select.region = stmt->region;
+
+		if (is_var) {
+			select->select.value = stmt->var_values[value_index];
+		} else {
+			select->select.value = stmt->arg_values[value_index];
+		}
+
+		select_inputs[loop_control_index + 2] = select_index;
+	}
 
 	phi->kind = INSTR_PHI;
 	phi->phi.variants = select_inputs_buffer;
@@ -801,6 +861,13 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
 		AstNode* node) {
 	assert(node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION);
+
+	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
+
+	AstNode* previous_loop = compiler->current_loop;
+	LoopControlStmt* previous_loop_control_stmts = compiler->current_loop_control_stmts;
+	compiler->current_loop = node;
+	compiler->current_loop_control_stmts = NULL;
 
 	size_t arg_count = compiler->function->parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -890,7 +957,10 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 				original_var_values[i],
 				pre_loop_region_index,
 				compiler->var_values[i],
-				body_block.final_region);
+				body_block.final_region,
+				i,
+				true,
+				compiler->current_loop_control_stmts);
 	}
 
 	for (size_t i = 0; i < arg_count; i += 1) {
@@ -899,7 +969,10 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 				original_arg_values[i],
 				pre_loop_region_index,
 				compiler->arg_states[i],
-				body_block.final_region);
+				body_block.final_region,
+				i,
+				false,
+				compiler->current_loop_control_stmts);
 	}
 
 	array_copy(original_var_values, var_phis, compiler->var_count);
@@ -909,12 +982,14 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	compiler->arg_states = original_arg_values;
 
 	// Now the post loop staff
-	InstrIndex post_loop_jump = instr_new_jump(instr_buffer,
-			instr_allocator,
-			condition_region,
-			&compiler->io_state);
+	if (!instr_region_finished(instr_buffer, body_block.final_region)) {
+		InstrIndex post_loop_jump = instr_new_jump(instr_buffer,
+				instr_allocator,
+				condition_region,
+				&compiler->io_state);
 
-	instr_region_set_last(instr_buffer, body_block.final_region, post_loop_jump);
+		instr_region_set_last(instr_buffer, body_block.final_region, post_loop_jump);
+	}
 
 	InstrIndex post_loop_region_index = instr_new_region(instr_buffer, instr_allocator);
 
@@ -924,7 +999,36 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;
 
+	// Now fix the jumps inserted by `break` and `continue` statements.
+	for (LoopControlStmt* stmt = compiler->current_loop_control_stmts;
+			stmt != NULL;
+			stmt = stmt->next) {
+
+		const Instr* region = instr_buffer_at(instr_buffer, stmt->region);
+		assert(region->kind == INSTR_REGION);
+
+		Instr* jump = instr_buffer_at(instr_buffer, region->region.last_instr);
+		assert(jump->kind == INSTR_JUMP);
+		assert(jump->jump.target_region.value == INVALID_INSTR_INDEX.value);
+
+		if (stmt->kind == LOOP_CONTROL_BREAK) {
+			jump->jump.target_region = post_loop_region_index;
+		} else if (stmt->kind == LOOP_CONTROL_CONTINUE) {
+			jump->jump.target_region = condition_region;
+		} else {
+			unreachable();
+		}
+	}
+
 	arena_end_temp(temp);
+
+	if (compiler->current_loop_control_stmts) {
+		_free_loop_control_stmt(compiler, compiler->current_loop_control_stmts);
+	}
+
+	compiler->current_loop = previous_loop;
+	compiler->current_loop_control_stmts = previous_loop_control_stmts;
+
 	return post_loop_region_index;
 }
 
@@ -1040,7 +1144,10 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 				original_var_values[i],
 				pre_loop_region,
 				compiler->var_values[i],
-				body_block.final_region);
+				body_block.final_region,
+				i,
+				true,
+				compiler->current_loop_control_stmts);
 	}
 
 	for (size_t i = 0; i < arg_count; i += 1) {
@@ -1049,7 +1156,10 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 				original_arg_values[i],
 				pre_loop_region,
 				compiler->arg_states[i],
-				body_block.final_region);
+				body_block.final_region,
+				i,
+				false,
+				compiler->current_loop_control_stmts);
 	}
 
 	array_copy(original_var_values, var_phis, compiler->var_count);
@@ -1077,6 +1187,10 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 	InstrIndex region_instr_index = initial_region;
 
 	for (AstNode* node = first_node; node != NULL; node = node->next) {
+		if (instr_region_finished(instr_buffer, region_instr_index)) {
+			break;
+		}
+
 		Instr* region_instr = instr_buffer_at(instr_buffer, region_instr_index);
 
 		switch (node->kind) {
@@ -1176,12 +1290,12 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				array_copy(arg_values_for_true_path, compiler->arg_states, arg_count);
 				array_copy(arg_values_for_false_path, compiler->arg_states, arg_count);
 
-				{
-					compiler->var_values = var_values_for_true_path;
-					compiler->arg_states = arg_values_for_true_path;
+				compiler->var_values = var_values_for_true_path;
+				compiler->arg_states = arg_values_for_true_path;
 
-					true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
+				true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
 
+				if (!instr_region_finished(instr_buffer, true_block.final_region)) {
 					Instr* true_region = instr_buffer_at(instr_buffer, true_block.final_region);
 					true_region->region.last_instr = instr_new_jump(instr_buffer,
 							instr_allocator,
@@ -1189,18 +1303,18 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 							&compiler->io_state);
 				}
 
-				{
-					compiler->var_values = var_values_for_false_path;
-					compiler->arg_states = arg_values_for_false_path;
+				compiler->var_values = var_values_for_false_path;
+				compiler->arg_states = arg_values_for_false_path;
 
-					if (node->if_stmt.false_node) {
-						false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
-					} else {
-						InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);
-						false_block.initial_region = false_region_index;
-						false_block.final_region = false_region_index;
-					}
+				if (node->if_stmt.false_node) {
+					false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
+				} else {
+					InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);
+					false_block.initial_region = false_region_index;
+					false_block.final_region = false_region_index;
+				}
 
+				if (!instr_region_finished(instr_buffer, false_block.final_region)) {
 					Instr* false_region = instr_buffer_at(instr_buffer, false_block.final_region);
 					false_region->region.last_instr = instr_new_jump(instr_buffer,
 							instr_allocator,
@@ -1286,19 +1400,23 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 
 			Instr* jump_to_inner = instr_buffer_at(instr_buffer, jump_to_inner_region);
 			jump_to_inner->jump.target_region = inner_block.initial_region;
-
-			InstrIndex post_block_region = instr_new_region(instr_buffer, instr_allocator);
-			InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer,
-					instr_allocator,
-					post_block_region,
-					&compiler->io_state);
-
 			region_instr->region.last_instr = jump_to_inner_region;
 
-			Instr* inner_region_instr = instr_buffer_at(instr_buffer, inner_block.final_region);
-			inner_region_instr->region.last_instr = jump_to_post_block_region;
+			if (!instr_region_finished(instr_buffer, inner_block.final_region)) {
+				InstrIndex post_block_region = instr_new_region(instr_buffer, instr_allocator);
+				InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer,
+						instr_allocator,
+						post_block_region,
+						&compiler->io_state);
 
-			region_instr_index = post_block_region;
+				Instr* inner_region_instr = instr_buffer_at(instr_buffer, inner_block.final_region);
+				inner_region_instr->region.last_instr = jump_to_post_block_region;
+
+				region_instr_index = post_block_region;
+			} else {
+				region_instr_index = inner_block.final_region;
+			}
+
 			break;
 		}
 		case AST_NODE_RETURN: {
@@ -1333,6 +1451,41 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				unreachable();
 			}
 			break;
+		case AST_NODE_BREAK:
+		case AST_NODE_CONTINUE: {
+			assert_msg(compiler->current_loop,
+					"`break` or `continue` statement appears outside of the loop");
+
+			InstrIndex jump = instr_new_jump(instr_buffer,
+					instr_allocator,
+					INVALID_INSTR_INDEX,
+					&compiler->io_state);
+
+			region_instr->region.last_instr = jump;
+
+			LoopControlStmt* control = _alloc_loop_control_stmt(compiler);
+			control->kind = node->kind == AST_NODE_BREAK
+				? LOOP_CONTROL_BREAK
+				: LOOP_CONTROL_CONTINUE;
+			control->region = region_instr_index;
+
+			size_t arg_count = compiler->function->parameter_count;
+
+			control->var_values = arena_alloc_array(compiler->temp_allocator,
+					InstrIndex,
+					compiler->var_count);
+
+			control->arg_values = arena_alloc_array(compiler->temp_allocator,
+					InstrIndex,
+					arg_count);
+
+			array_copy(control->var_values, compiler->var_values, compiler->var_count);
+			array_copy(control->arg_values, compiler->arg_states, arg_count);
+
+			control->next = compiler->current_loop_control_stmts;
+			compiler->current_loop_control_stmts = control;
+			break;
+		}
 		case AST_NODE_EXPR: 
 			_compile_expr(compiler, &node->expr);
 			break;
@@ -1348,6 +1501,10 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	const Scope* body = compiler->function->body;
 	assert(body);
+
+	compiler->current_loop = NULL;
+	compiler->current_loop_control_stmts = NULL;
+	compiler->free_loop_control_stmt = NULL;
 
 	// Allocate var states buffer
 	compiler->var_count = compiler->function->var_count;
@@ -1386,6 +1543,13 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
+
+	assert(compiler->current_loop == NULL);
+	assert(compiler->current_loop_control_stmts == NULL);
+
+	// Free the loop cintrol staff, since it is no longer needed
+	_free_all_loop_control_stmts(compiler);
+
 	InstrIndex region = body_block.initial_region;
 
 	if (compiler->function->return_type.kind == TYPE_VOID) {

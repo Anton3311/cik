@@ -37,6 +37,25 @@ inline StringArray str_storage_to_array(StringStorage* storage) {
 // FunctionCompiler
 //
 
+typedef enum {
+	LOOP_CONTROL_BREAK,
+	LOOP_CONTROL_CONTINUE,
+} LoopControlKind;
+
+typedef struct LoopControlStmt LoopControlStmt;
+struct LoopControlStmt {
+	LoopControlKind kind;
+
+	// A region where this `break` or `continue` statement appears
+	InstrIndex region;
+	
+	// Var and arg values at the time of reaching the `break` or `continue` statement.
+	InstrIndex* var_values;
+	InstrIndex* arg_values;
+
+	LoopControlStmt* next;
+};
+
 typedef struct {
 	const Function* function;
 
@@ -61,6 +80,10 @@ typedef struct {
 
 	StringStorage str_storage;
 	FunctionRefTable func_ref_table;
+
+	AstNode* current_loop;
+	LoopControlStmt* current_loop_control_stmts;
+	LoopControlStmt* free_loop_control_stmt;
 } FunctionCompiler;
 
 typedef struct {

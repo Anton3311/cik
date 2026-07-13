@@ -460,6 +460,11 @@ InstrIndex instr_new_return(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex* io_state);
 
+// Creates an empty INSTR_PHI without any variants.
+//
+// Doesn't even reserve the array for variants.
+InstrIndex instr_new_empty_phi(InstrBuffer* buffer, Arena* allocator);
+
 inline InstrIndex instr_new_io_state(InstrBuffer* buffer, Arena* allocator, InstrIndex producer) {
 	InstrIndex i = instr_buffer_append(buffer, allocator);
 	Instr* instr = instr_buffer_at(buffer, i);

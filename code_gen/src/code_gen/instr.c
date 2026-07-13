@@ -163,6 +163,13 @@ InstrIndex instr_new_return(InstrBuffer* buffer, Arena* allocator, InstrIndex* i
 	return i;
 }
 
+InstrIndex instr_new_empty_phi(InstrBuffer* buffer, Arena* allocator) {
+	InstrIndex i = instr_buffer_append(buffer, allocator);
+	Instr* instr = instr_buffer_at(buffer, i);
+	instr->kind = INSTR_PHI;
+	return i;
+}
+
 InstrIndex instr_new_cast(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex value,

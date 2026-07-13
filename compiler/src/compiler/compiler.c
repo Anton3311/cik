@@ -748,7 +748,44 @@ static void _replace_values_with_phis(FunctionCompiler* compiler,
 	}
 }
 
-// Fills the mppty region of each phi node produced by `_replace_values_with_phis`, with a provided
+static void _fill_phi_variants(FunctionCompiler* compiler,
+		InstrIndex phi_index,
+		InstrIndex variant_a,
+		InstrIndex region_a,
+		InstrIndex variant_b,
+		InstrIndex region_b) {
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	InstrIndex select_a_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* select_a = instr_buffer_at(instr_buffer, select_a_index);
+	select_a->kind = INSTR_SELECT;
+	select_a->select.value = variant_a;
+	select_a->select.region = region_a;
+
+	InstrIndex select_b_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* select_b = instr_buffer_at(instr_buffer, select_b_index);
+	select_b->kind = INSTR_SELECT;
+	select_b->select.value = variant_b;
+	select_b->select.region = region_b;
+
+	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
+			2, compiler->input_instr_array_allocator);
+
+	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
+	select_inputs[0] = select_a_index;
+	select_inputs[1] = select_b_index;
+
+	Instr* phi = instr_buffer_at(instr_buffer, phi_index);
+	assert(phi->phi.variants.start == UINT16_MAX);
+	assert(phi->phi.variants.count == UINT16_MAX);
+
+	phi->kind = INSTR_PHI;
+	phi->phi.variants = select_inputs_buffer;
+}
+
+// Fills the empty region of each phi node produced by `_replace_values_with_phis`, with a provided
 // `variant_region` and the corresponding variant from the `variants` array.
 //
 // * `variants` is expected to be of size `phi_count`
@@ -834,23 +871,27 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 		region_instr->region.last_instr = jump_to_pre_loop;
 	}
 
-	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
-
-	// Now setup phi node for all variables and function arguments
-	_replace_values_with_phis(compiler,
-			compiler->var_values,
-			compiler->var_count,
-			pre_loop_region_index);
-
-	_replace_values_with_phis(compiler,
-			compiler->arg_states,
-			arg_count,
-			pre_loop_region_index);
-
+	// Arrays of original var & arg values before the loop
 	InstrIndex* original_var_values = compiler->var_values;
 	InstrIndex* original_arg_values = compiler->arg_states;
 
-	// Create copies of variable value arrays
+	// Create empty phis
+	InstrIndex* var_phis = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			compiler->var_count);
+	InstrIndex* arg_phis = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			arg_count);
+
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		var_phis[i] = instr_new_empty_phi(instr_buffer, instr_allocator);
+	}
+
+	for (size_t i = 0; i < arg_count; i += 1) {
+		arg_phis[i] = instr_new_empty_phi(instr_buffer, instr_allocator);
+	}
+
+	// Copy arrays with the replaced phis, for the inner loop body to modify them
 	InstrIndex* var_values_for_body = arena_alloc_array(compiler->temp_allocator,
 			InstrIndex,
 			compiler->var_count);
@@ -858,8 +899,8 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 			InstrIndex,
 			arg_count);
 
-	array_copy(var_values_for_body, original_var_values, compiler->var_count);
-	array_copy(arg_values_for_body, original_arg_values, arg_count);
+	array_copy(var_values_for_body, var_phis, compiler->var_count);
+	array_copy(arg_values_for_body, arg_phis, arg_count);
 
 	compiler->var_values = var_values_for_body;
 	compiler->arg_states = arg_values_for_body;
@@ -891,17 +932,29 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	// Now fill the empty variant with the value produced inside the loop body.
 	// 
 	// This allows phis to select values from the previous loop iteration.
-	_replace_empty_variants(instr_buffer,
-			original_var_values,
-			compiler->var_count,
-			compiler->var_values,
-			body_block.final_region);
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		_fill_phi_variants(compiler,
+				var_phis[i],
+				original_var_values[i],
+				pre_loop_region_index,
+				compiler->var_values[i],
+				body_block.final_region);
+	}
 
-	_replace_empty_variants(instr_buffer,
-			original_arg_values,
-			arg_count,
-			compiler->arg_states,
-			body_block.final_region);
+	for (size_t i = 0; i < arg_count; i += 1) {
+		_fill_phi_variants(compiler,
+				arg_phis[i],
+				original_arg_values[i],
+				pre_loop_region_index,
+				compiler->arg_states[i],
+				body_block.final_region);
+	}
+
+	array_copy(original_var_values, var_phis, compiler->var_count);
+	array_copy(original_arg_values, arg_phis, arg_count);
+
+	compiler->var_values = original_var_values;
+	compiler->arg_states = original_arg_values;
 
 	// Now the post loop staff
 	InstrIndex post_loop_jump = instr_new_jump(instr_buffer,

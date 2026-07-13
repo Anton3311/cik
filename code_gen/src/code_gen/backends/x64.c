@@ -277,12 +277,20 @@ static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 
 	// Now determine immediate dominators.
 	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
+		if (i == instr_region_id(instr_buffer, initial_region)) {
+			continue;
+		}
+
 		BitArray* dominance = &tree.dominates[i];
 		assert(bit_array_get(dominance, i));
 		bit_array_set(dominance, i, false);
 
 		bool found = false;
 		for (uint16_t j = 0; j < instr_buffer->region_count; j += 1) {
+			if (i == j) {
+				continue;
+			}
+
 			if (bit_array_equal(dominance, &tree.dominates[j])) {
 				tree.immediate_dominators[i] = j;
 				found = true;

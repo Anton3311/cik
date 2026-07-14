@@ -989,7 +989,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(src_loc.kind == INSTR_STORAGE_REG);
 
 		if (operand_size == output_size) {
-			// The cast is redundant
+			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, operand_size);
 			return;
 		}
 

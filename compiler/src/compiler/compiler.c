@@ -110,6 +110,11 @@ static LoopControlStmt* _alloc_loop_control_stmt(FunctionCompiler* compiler) {
 
 	LoopControlStmt* stmt = heap_alloc(LoopControlStmt);
 	stmt->next = NULL;
+
+	size_t arg_count = compiler->function->parameter_count;
+
+	stmt->var_values = heap_alloc_array(InstrIndex, compiler->var_count);
+	stmt->arg_values = heap_alloc_array(InstrIndex, arg_count);
 	return stmt;
 }
 
@@ -128,6 +133,8 @@ static void _free_all_loop_control_stmts(FunctionCompiler* compiler) {
 	while (stmt) {
 		LoopControlStmt* next = stmt->next;
 
+		heap_release(stmt->var_values);
+		heap_release(stmt->arg_values);
 		heap_release(stmt);
 		stmt = next;
 	}
@@ -725,6 +732,11 @@ static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 		InstrIndex region_a,
 		InstrIndex variant_b,
 		InstrIndex region_b) {
+	assert(variant_a.value != INVALID_INSTR_INDEX.value);
+	assert(region_a.value != INVALID_INSTR_INDEX.value);
+	assert(variant_b.value != INVALID_INSTR_INDEX.value);
+	assert(region_b.value != INVALID_INSTR_INDEX.value);
+
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -772,6 +784,11 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 		size_t value_index,
 		bool is_var,
 		const LoopControlStmt* loop_control_stmts) {
+	assert(phi_index.value != INVALID_INSTR_INDEX.value);
+	assert(variant_a.value != INVALID_INSTR_INDEX.value);
+	assert(region_a.value != INVALID_INSTR_INDEX.value);
+	assert(variant_b.value != INVALID_INSTR_INDEX.value);
+	assert(region_b.value != INVALID_INSTR_INDEX.value);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -788,6 +805,8 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
 			2 + loop_control_count, compiler->input_instr_array_allocator);
 
+	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
+
 	InstrIndex select_a_index = instr_buffer_append(instr_buffer, instr_allocator);
 	Instr* select_a = instr_buffer_at(instr_buffer, select_a_index);
 	select_a->kind = INSTR_SELECT;
@@ -800,7 +819,6 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	select_b->select.value = variant_b;
 	select_b->select.region = region_b;
 
-	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
 	select_inputs[0] = select_a_index;
 	select_inputs[1] = select_b_index;
 
@@ -819,6 +837,8 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 		} else {
 			select->select.value = stmt->arg_values[value_index];
 		}
+
+		assert(select->select.value.value != INVALID_INSTR_INDEX.value);
 
 		select_inputs[loop_control_index + 2] = select_index;
 	}
@@ -903,6 +923,10 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 			arg_count);
 
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		if (compiler->vars[i] == NULL) {
+			continue;
+		}
+
 		var_phis[i] = instr_new_empty_phi(instr_buffer, instr_allocator);
 	}
 
@@ -951,7 +975,21 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	// Now fill the empty variant with the value produced inside the loop body.
 	// 
 	// This allows phis to select values from the previous loop iteration.
+	const Scope* loop_parent_scope = node->parent_scope;
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		if (compiler->vars[i] == NULL) {
+			continue;
+		}
+
+		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+		if (var_parent_scope->id > loop_parent_scope->id) {
+			// The variable is defined deeper down the scopes hierarachy,
+			// so it must have been defined in the loop body.
+			//
+			// Which means phi placement doesn't apply here.
+			continue;
+		}
+
 		_fill_phi_variants(compiler,
 				var_phis[i],
 				original_var_values[i],
@@ -1079,6 +1117,10 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 			arg_count);
 
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		if (compiler->vars[i] == NULL) {
+			continue;
+		}
+
 		var_phis[i] = instr_new_empty_phi(instr_buffer, instr_allocator);
 	}
 
@@ -1138,7 +1180,21 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	// 7. Now fill the empty variant with the value produced inside the loop body.
 
 	// This allows phis to select values from the previous loop iteration.
+	const Scope* loop_parent_scope = node->parent_scope;
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		if (compiler->vars[i] == NULL) {
+			continue;
+		}
+
+		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+		if (var_parent_scope->id > loop_parent_scope->id) {
+			// The variable is defined deeper down the scopes hierarachy,
+			// so it must have been defined in the loop body.
+			//
+			// Which means phi placement doesn't apply here.
+			continue;
+		}
+
 		_fill_phi_variants(compiler,
 				var_phis[i],
 				original_var_values[i],
@@ -1470,14 +1526,6 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			control->region = region_instr_index;
 
 			size_t arg_count = compiler->function->parameter_count;
-
-			control->var_values = arena_alloc_array(compiler->temp_allocator,
-					InstrIndex,
-					compiler->var_count);
-
-			control->arg_values = arena_alloc_array(compiler->temp_allocator,
-					InstrIndex,
-					arg_count);
 
 			array_copy(control->var_values, compiler->var_values, compiler->var_count);
 			array_copy(control->arg_values, compiler->arg_states, arg_count);

@@ -825,20 +825,13 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 
 static void _fill_phi_variants(FunctionCompiler* compiler,
 		InstrIndex phi_index,
-		InstrIndex variant_a,
-		InstrIndex region_a,
-		InstrIndex variant_b,
-		InstrIndex region_b,
 		size_t value_index,
 		bool is_var,
-		const LoopControlStmt* loop_control_stmts) {
+		const LoopControlStmt* loop_control_stmts,
+		size_t loop_control_stmt_count) {
 	profile_scope_start(__func__);
 
 	assert(phi_index.value != INVALID_INSTR_INDEX.value);
-	assert(variant_a.value != INVALID_INSTR_INDEX.value);
-	assert(region_a.value != INVALID_INSTR_INDEX.value);
-	assert(variant_b.value != INVALID_INSTR_INDEX.value);
-	assert(region_b.value != INVALID_INSTR_INDEX.value);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
@@ -847,35 +840,18 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	assert(phi->phi.variants.start == UINT16_MAX);
 	assert(phi->phi.variants.count == UINT16_MAX);
 
-	size_t loop_control_count = 0;
-	for (const LoopControlStmt* stmt = loop_control_stmts; stmt != NULL; stmt = stmt->next) {
-		loop_control_count += 1;
-	}
-
 	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
-			2 + loop_control_count, compiler->input_instr_array_allocator);
+			loop_control_stmt_count,
+			compiler->input_instr_array_allocator);
 
 	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
-
-	InstrIndex select_a_index = instr_buffer_append(instr_buffer, instr_allocator);
-	Instr* select_a = instr_buffer_at(instr_buffer, select_a_index);
-	select_a->kind = INSTR_SELECT;
-	select_a->select.value = variant_a;
-	select_a->select.region = region_a;
-
-	InstrIndex select_b_index = instr_buffer_append(instr_buffer, instr_allocator);
-	Instr* select_b = instr_buffer_at(instr_buffer, select_b_index);
-	select_b->kind = INSTR_SELECT;
-	select_b->select.value = variant_b;
-	select_b->select.region = region_b;
-
-	select_inputs[0] = select_a_index;
-	select_inputs[1] = select_b_index;
 
 	size_t loop_control_index = 0;
 	for (const LoopControlStmt* stmt = loop_control_stmts;
 			stmt != NULL;
 			stmt = stmt->next, loop_control_index += 1) {
+
+		assert(loop_control_index < loop_control_stmt_count);
 
 		InstrIndex select_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* select = instr_buffer_at(instr_buffer, select_index);
@@ -890,11 +866,83 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 
 		assert(select->select.value.value != INVALID_INSTR_INDEX.value);
 
-		select_inputs[loop_control_index + 2] = select_index;
+		select_inputs[loop_control_index] = select_index;
 	}
 
 	phi->kind = INSTR_PHI;
 	phi->phi.variants = select_inputs_buffer;
+
+	profile_scope_end();
+}
+
+// This is a part of loop compilation process. This function is responsible for creating phi
+// variants, that merge values from before the loop, values assigned during the loop execution and
+// values assigned before encountering the `break` or `continue` statements.
+static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
+		InstrIndex* var_phis,
+		InstrIndex* arg_phis,
+		InstrIndex* original_var_values,
+		InstrIndex* original_arg_values,
+		InstrIndex pre_loop_region,
+		InstrIndex final_body_region) {
+	profile_scope_start(__func__);
+
+	assert(compiler->current_loop);
+
+	// Put the original (from before the loop) and inner (from inside the loop) values on the chain
+	// of control statements.
+	//
+	// Although these are not control statements, chaining them together makes everything flow
+	// through the same path in `_fill_phi_variants`, without the need to manually add
+	// `INSTR_SELECT` for the original value and the ones produced inside the loop.
+	LoopControlStmt original = {};
+	original.region = pre_loop_region;
+	original.var_values = original_var_values;
+	original.arg_values = original_arg_values;
+
+	LoopControlStmt inner = {};
+	inner.region = final_body_region;
+	inner.var_values = compiler->var_values;
+	inner.arg_values = compiler->arg_states;
+
+	original.next = &inner;
+	inner.next = compiler->current_loop_control_stmts;
+
+	LoopControlStmt* control_stmts = &original;
+
+	size_t control_stmt_count = 0;
+	for (LoopControlStmt* stmt = control_stmts; stmt != NULL; stmt = stmt->next) {
+		control_stmt_count += 1;
+	}
+
+	const Scope* loop_parent_scope = compiler->current_loop->parent_scope;
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		if (compiler->vars[i] == NULL) {
+			continue;
+		}
+
+		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+		if (var_parent_scope->id > loop_parent_scope->id) {
+			continue;
+		}
+
+		_fill_phi_variants(compiler,
+				var_phis[i],
+				i,
+				true,
+				control_stmts,
+				control_stmt_count);
+	}
+
+	size_t arg_count = compiler->function->parameter_count;
+	for (size_t i = 0; i < arg_count; i += 1) {
+		_fill_phi_variants(compiler,
+				arg_phis[i],
+				i,
+				false,
+				control_stmts,
+				control_stmt_count);
+	}
 
 	profile_scope_end();
 }
@@ -1054,46 +1102,13 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	AstNode* body = node->while_loop.body;
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, body);
 
-	// Now fill the empty variant with the value produced inside the loop body.
-	// 
-	// This allows phis to select values from the previous loop iteration.
-	const Scope* loop_parent_scope = node->parent_scope;
-	for (size_t i = 0; i < compiler->var_count; i += 1) {
-		if (compiler->vars[i] == NULL) {
-			continue;
-		}
-
-		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
-		if (var_parent_scope->id > loop_parent_scope->id) {
-			// The variable is defined deeper down the scopes hierarachy,
-			// so it must have been defined in the loop body.
-			//
-			// Which means phi placement doesn't apply here.
-			continue;
-		}
-
-		_fill_phi_variants(compiler,
-				var_phis[i],
-				original_var_values[i],
-				pre_loop_region_index,
-				compiler->var_values[i],
-				body_block.final_region,
-				i,
-				true,
-				compiler->current_loop_control_stmts);
-	}
-
-	for (size_t i = 0; i < arg_count; i += 1) {
-		_fill_phi_variants(compiler,
-				arg_phis[i],
-				original_arg_values[i],
-				pre_loop_region_index,
-				compiler->arg_states[i],
-				body_block.final_region,
-				i,
-				false,
-				compiler->current_loop_control_stmts);
-	}
+	_merge_pre_loop_and_inner_values(compiler,
+			var_phis,
+			arg_phis,
+			original_var_values,
+			original_arg_values,
+			pre_loop_region_index,
+			body_block.final_region);
 
 	array_copy(original_var_values, var_phis, compiler->var_count);
 	array_copy(original_arg_values, arg_phis, arg_count);
@@ -1261,44 +1276,13 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 
 	// 7. Now fill the empty variant with the value produced inside the loop body.
 
-	// This allows phis to select values from the previous loop iteration.
-	const Scope* loop_parent_scope = node->parent_scope;
-	for (size_t i = 0; i < compiler->var_count; i += 1) {
-		if (compiler->vars[i] == NULL) {
-			continue;
-		}
-
-		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
-		if (var_parent_scope->id > loop_parent_scope->id) {
-			// The variable is defined deeper down the scopes hierarachy,
-			// so it must have been defined in the loop body.
-			//
-			// Which means phi placement doesn't apply here.
-			continue;
-		}
-
-		_fill_phi_variants(compiler,
-				var_phis[i],
-				original_var_values[i],
-				pre_loop_region,
-				compiler->var_values[i],
-				body_block.final_region,
-				i,
-				true,
-				compiler->current_loop_control_stmts);
-	}
-
-	for (size_t i = 0; i < arg_count; i += 1) {
-		_fill_phi_variants(compiler,
-				arg_phis[i],
-				original_arg_values[i],
-				pre_loop_region,
-				compiler->arg_states[i],
-				body_block.final_region,
-				i,
-				false,
-				compiler->current_loop_control_stmts);
-	}
+	_merge_pre_loop_and_inner_values(compiler,
+			var_phis,
+			arg_phis,
+			original_var_values,
+			original_arg_values,
+			pre_loop_region,
+			body_block.final_region);
 
 	array_copy(original_var_values, var_phis, compiler->var_count);
 	array_copy(original_arg_values, arg_phis, arg_count);

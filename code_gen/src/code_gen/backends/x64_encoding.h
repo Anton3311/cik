@@ -146,6 +146,8 @@ inline Operand operand_reg(uint8_t reg_index, uint8_t bit_count) {
 	return op;
 }
 
+// NOTE: Here `bit_count` referes to the size of the value stored at the given address.
+//       The provided address in turn is stored in the register at `reg_index`
 inline Operand operand_mem(uint8_t reg_index, uint8_t bit_count) {
 	Operand op = {};
 	op.kind = OP_MEM;

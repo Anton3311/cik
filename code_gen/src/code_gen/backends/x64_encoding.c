@@ -386,12 +386,10 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 			fields = _encode_mod_rm(encoding, operands[0], operands[1]);
 
 			if (operands[0].kind == OP_MEM && operands[0].reg == 12) {
-				assert(operands[0].bit_count == 64);
 				requires_empty_sib_byte = true;
 			}
 
 			if (operands[1].kind == OP_MEM && operands[1].reg == 12) {
-				assert(operands[0].bit_count == 64);
 				requires_empty_sib_byte = true;
 			}
 		} else {

@@ -148,9 +148,17 @@ static void _free_all_loop_control_stmts(FunctionCompiler* compiler) {
 	}
 }
 
+typedef struct {
+	InstrIndex initial_region;
+	InstrIndex final_region;
+} CompiledBlockRegions;
+
 static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr);
 static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr);
 static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr);
+static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
+		AstNode* first_node);
+static void _compile_statement(FunctionCompiler* compiler, AstNode* node);
 
 static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const Type* int_type,
@@ -815,13 +823,17 @@ static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 	return phi_index;
 }
 
-typedef struct {
-	InstrIndex initial_region;
-	InstrIndex final_region;
-} CompiledBlockRegions;
+static const Scope* _loop_body_scope(const AstNode* loop) {
+	if (loop->kind == AST_NODE_FOR_LOOP) {
+		return loop->for_loop.body_scope;
+	} else if (loop->kind == AST_NODE_WHILE_LOOP) {
+		return loop->while_loop.body_scope;
+	} else {
+		unreachable();
+	}
 
-static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
-		AstNode* first_node);
+	return NULL;
+}
 
 static void _fill_phi_variants(FunctionCompiler* compiler,
 		InstrIndex phi_index,
@@ -915,14 +927,14 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 		control_stmt_count += 1;
 	}
 
-	const Scope* loop_parent_scope = compiler->current_loop->parent_scope;
+	const Scope* body_scope = _loop_body_scope(compiler->current_loop);
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
 			continue;
 		}
 
 		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
-		if (var_parent_scope->id > loop_parent_scope->id) {
+		if (var_parent_scope->id > body_scope->id) {
 			continue;
 		}
 
@@ -1044,7 +1056,6 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	InstrIndex* original_var_values = compiler->var_values;
 	InstrIndex* original_arg_values = compiler->arg_states;
 
-	// Create empty phis
 	InstrIndex* var_phis = arena_alloc_array(compiler->temp_allocator,
 			InstrIndex,
 			compiler->var_count);
@@ -1052,8 +1063,17 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 			InstrIndex,
 			arg_count);
 
+	// Replace current variable and argument with phis
+	const Scope* body_scope = _loop_body_scope(node);
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
+			// This variable hasn't been yet defined -> don't create a phi
+			continue;
+		}
+
+		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+		if (var_parent_scope->id > body_scope->id) {
+			// This variable is first defined after the loop, so it's irrelevant here.
 			continue;
 		}
 
@@ -1206,8 +1226,16 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 			InstrIndex,
 			arg_count);
 
+	const Scope* body_scope = _loop_body_scope(node);
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
+			// This variable hasn't been yet defined -> don't create a phi
+			continue;
+		}
+
+		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+		if (var_parent_scope->id > body_scope->id) {
+			// This variable is first defined after the loop, so it's irrelevant here.
 			continue;
 		}
 

@@ -2793,6 +2793,36 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 	return if_stmt_node;
 }
 
+typedef struct {
+	AstNode* node;
+	Scope* scope;
+} LoopBody;
+
+static LoopBody _parser_parse_loop_body(Parser* parser) {
+	AstNode* body = NULL;
+	Scope* scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+
+	Token body_token = preprocessor_view_next(parser->preprocessor);
+
+	ident_storage_begin_scope(parser->ident_storage);
+	scope->id = parser->ident_storage->current_scope->id;
+
+	if (body_token.kind != TOKEN_SEMICOLON) {
+		body = _parser_parse_single_node(parser, body_token);
+	}
+
+	ident_storage_end_scope(parser->ident_storage);
+
+	if (body) {
+		body->parent_scope = scope;
+	}
+
+	LoopBody result = {};
+	result.node = body;
+	result.scope = scope;
+	return result;
+}
+
 static AstNode* _parser_parse_while_loop(Parser* parser) {
 	assert(parser->inside_a_loop);
 
@@ -2809,44 +2839,42 @@ static AstNode* _parser_parse_while_loop(Parser* parser) {
 		return NULL;
 	}
 
+	Scope* loop_scope = NULL;
 	Expr condition = {};
-	if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
-		return NULL;
-	}
-	
-	Token right_paren = preprocessor_next_token(parser->preprocessor);
-	if (right_paren.kind != TOKEN_RIGHT_PAREN) {
-		TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				right_paren,
-				expected_tokens,
-				array_size(expected_tokens));
-		return NULL;
-	}
-
-	AstNode* body = NULL;
-
-	Token body_token = preprocessor_view_next(parser->preprocessor);
+	LoopBody body;
 
 	{
 		ident_storage_begin_scope(parser->ident_storage);
-		body = _parser_parse_single_node(parser, body_token);
-		ident_storage_end_scope(parser->ident_storage);
-	}
 
-	if (body == NULL) {
-		diagnostics_report_error(parser->diagnostics,
-				body_token.source_range,
-				STR_LIT("Expected a while loop body"),
-				NULL);
-		return NULL;
+		loop_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+		loop_scope->id = parser->ident_storage->current_scope->id;
+
+		if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
+			return NULL;
+		}
+		
+		Token right_paren = preprocessor_next_token(parser->preprocessor);
+		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			return NULL;
+		}
+
+		body = _parser_parse_loop_body(parser);
+
+		ident_storage_end_scope(parser->ident_storage);
 	}
 
 	AstNode* loop = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	loop->kind = AST_NODE_WHILE_LOOP;
 	loop->while_loop.condition = condition;
 	loop->while_loop.condition_kind = WHILE_LOOP_PRE_CONDITION;
-	loop->while_loop.body = body;
+	loop->while_loop.body = body.node;
+	loop->while_loop.loop_scope = loop_scope;
+	loop->while_loop.body_scope = body.scope;
 	return loop;
 }
 
@@ -2857,65 +2885,74 @@ static AstNode* _parser_parse_do_while_loop(Parser* parser) {
 	assert(do_token.kind == TOKEN_KEYWORD_DO);;
 
 	// Parse body
-	AstNode* body = NULL;
-	Token body_token = preprocessor_view_next(parser->preprocessor);
+	Scope* loop_scope = NULL;
+	LoopBody body;
+	Expr condition = {};
 
 	{
 		ident_storage_begin_scope(parser->ident_storage);
-		body = _parser_parse_single_node(parser, body_token);
+
+		loop_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+		loop_scope->id = parser->ident_storage->current_scope->id;
+
+		Token body_token = preprocessor_view_next(parser->preprocessor);
+
+		body = _parser_parse_loop_body(parser);
+
+		if (body.node == NULL) {
+			diagnostics_report_error(parser->diagnostics,
+					body_token.source_range,
+					STR_LIT("Expected a do-while loop body"),
+					NULL);
+			return NULL;
+		}
+
+		// Parse while part
+		Token while_token = preprocessor_next_token(parser->preprocessor);
+		if (while_token.kind != TOKEN_KEYWORD_WHILE) {
+			TokenKind expected_tokens[] = { TOKEN_KEYWORD_WHILE };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					while_token,
+					expected_tokens,
+					array_size(expected_tokens));
+			return NULL;
+		}
+
+		// Parse condition
+		Token left_paren = preprocessor_next_token(parser->preprocessor);
+		if (left_paren.kind != TOKEN_LEFT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					left_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			return NULL;
+		}
+
+		if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
+			return NULL;
+		}
+		
+		Token right_paren = preprocessor_next_token(parser->preprocessor);
+		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			return NULL;
+		}
+
 		ident_storage_end_scope(parser->ident_storage);
-	}
-
-	if (body == NULL) {
-		diagnostics_report_error(parser->diagnostics,
-				body_token.source_range,
-				STR_LIT("Expected a do-while loop body"),
-				NULL);
-		return NULL;
-	}
-
-	// Parse while part
-	Token while_token = preprocessor_next_token(parser->preprocessor);
-	if (while_token.kind != TOKEN_KEYWORD_WHILE) {
-		TokenKind expected_tokens[] = { TOKEN_KEYWORD_WHILE };
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				while_token,
-				expected_tokens,
-				array_size(expected_tokens));
-		return NULL;
-	}
-
-	// Parse condition
-	Token left_paren = preprocessor_next_token(parser->preprocessor);
-	if (left_paren.kind != TOKEN_LEFT_PAREN) {
-		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				left_paren,
-				expected_tokens,
-				array_size(expected_tokens));
-		return NULL;
-	}
-
-	Expr condition = {};
-	if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
-		return NULL;
-	}
-	
-	Token right_paren = preprocessor_next_token(parser->preprocessor);
-	if (right_paren.kind != TOKEN_RIGHT_PAREN) {
-		TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				right_paren,
-				expected_tokens,
-				array_size(expected_tokens));
-		return NULL;
 	}
 
 	AstNode* loop = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	loop->kind = AST_NODE_WHILE_LOOP;
 	loop->while_loop.condition = condition;
 	loop->while_loop.condition_kind = WHILE_LOOP_POST_CONDITION;
-	loop->while_loop.body = body;
+	loop->while_loop.body = body.node;
+	loop->while_loop.loop_scope = loop_scope;
+	loop->while_loop.body_scope = body.scope;
 	return loop;
 }
 
@@ -2936,12 +2973,17 @@ static AstNode* _parser_parse_for_loop(Parser* parser) {
 	}
 
 	AstNode* init_stmt = NULL;
+	bool has_condition_expr = false;
 	Expr condition_expr;
+	bool has_advance_expr = false;
 	Expr advance_expr;
-	AstNode* body = NULL;
+	LoopBody body;
+
+	uint64_t loop_scope_id;
 
 	{
 		ident_storage_begin_scope(parser->ident_storage);
+		loop_scope_id = parser->ident_storage->current_scope->id;
 
 		Token init_stmt_token = preprocessor_view_next(parser->preprocessor);
 
@@ -2952,11 +2994,15 @@ static AstNode* _parser_parse_for_loop(Parser* parser) {
 			_parser_consume_semicolon(parser);
 		}
 
-		_parser_try_parse_expr(parser, &condition_expr);
+		if (_parser_try_parse_expr(parser, &condition_expr) == EXPR_PARSE_OK) {
+			has_condition_expr = true;
+		}
 
 		_parser_consume_semicolon(parser);
 
-		_parser_try_parse_expr(parser, &advance_expr);
+		if (_parser_try_parse_expr(parser, &advance_expr) == EXPR_PARSE_OK) {
+			has_advance_expr = true;
+		}
 
 		Token right_paren = preprocessor_next_token(parser->preprocessor);
 		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
@@ -2967,25 +3013,35 @@ static AstNode* _parser_parse_for_loop(Parser* parser) {
 					array_size(expected_tokens));
 		}
 
-		Token body_token = preprocessor_view_next(parser->preprocessor);
-
-		if (body_token.kind != TOKEN_SEMICOLON) {
-			body = _parser_parse_single_node(parser, body_token);
-		}
+		body = _parser_parse_loop_body(parser);
 
 		ident_storage_end_scope(parser->ident_storage);
+	}
+
+	Scope* scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+	scope->id = loop_scope_id;
+
+	if (init_stmt) {
+		init_stmt->parent_scope = scope;
 	}
 
 	AstNode* loop = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	loop->kind = AST_NODE_FOR_LOOP;
 	loop->for_loop.init_stmt = init_stmt;
-	loop->for_loop.condition = arena_alloc(parser->ast_allocator, Expr);
-	*loop->for_loop.condition = condition_expr;
+	loop->for_loop.loop_scope = scope;
+	loop->for_loop.body_scope = body.scope;
 
-	loop->for_loop.advance_expr = arena_alloc(parser->ast_allocator, Expr);
-	*loop->for_loop.advance_expr = advance_expr;
+	if (has_condition_expr) {
+		loop->for_loop.condition = arena_alloc(parser->ast_allocator, Expr);
+		*loop->for_loop.condition = condition_expr;
+	}
 
-	loop->for_loop.body = body;
+	if (has_advance_expr) {
+		loop->for_loop.advance_expr = arena_alloc(parser->ast_allocator, Expr);
+		*loop->for_loop.advance_expr = advance_expr;
+	}
+
+	loop->for_loop.body = body.node;
 
 	profile_scope_end();
 	return loop;

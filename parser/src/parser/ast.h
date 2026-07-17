@@ -576,13 +576,17 @@ typedef enum {
 struct WhileLoop {
 	WhileLoopConditionKind condition_kind;
 	Expr condition;
+	Scope* loop_scope;
 	AstNode* body;
+	Scope* body_scope;
 };
 
 struct ForLoop {
+	Scope* loop_scope;
 	AstNode* init_stmt;
 	Expr* condition;
 	Expr* advance_expr;
+	Scope* body_scope;
 	AstNode* body;
 };
 

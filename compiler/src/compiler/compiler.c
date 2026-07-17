@@ -1,10 +1,14 @@
 #include "compiler.h"
 
+#include "core/profiler.h"
+
 //
 // StringStorage
 //
 
 uint32_t str_storage_append(StringStorage* storage, String string) {
+	profile_scope_start(__func__);
+
 	if (storage->count == storage->capacity) {
 		uint32_t new_capacity = max(4, storage->capacity + storage->capacity / 2);
 		String* new_array = allocator_alloc_array(storage->allocator, String, new_capacity);
@@ -24,6 +28,8 @@ uint32_t str_storage_append(StringStorage* storage, String string) {
 	uint32_t index = storage->count;
 	storage->strings[storage->count] = string;
 	storage->count += 1;
+
+	profile_scope_end();
 	return index;
 }
 
@@ -172,6 +178,8 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 
 // Generates a sequence of instructions that compute the address of an array element
 static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
+
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -210,11 +218,14 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	add_instr->bin_op.right = scaled_index;
 	add_instr->kind = INSTR_BIN_OP_64;
 
+	profile_scope_end();
 	return add_instr_index;
 }
 
 // Compiles a binary expression without casting compare operations to an interger
 static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
+
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -234,6 +245,8 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 					&variable->type,
 					value);
 			compiler->var_values[variable->id] = value;
+
+			profile_scope_end();
 			return value;
 		} else if (target->kind == EXPR_FUNCTION_PARAM) {
 			Type value_type;
@@ -249,6 +262,8 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 					value);
 
 			compiler->arg_states[arg_index] = value;
+
+			profile_scope_end();
 			return value;
 		} else if (target->kind == EXPR_UNARY) {
 			InstrIndex operand_instr = _compile_expr(compiler, target->unary.operand);
@@ -295,6 +310,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 					panic("Only up to 8 byte sizes are supported for dereferencing");
 				}
 
+				profile_scope_end();
 				return value_instr;
 			}
 			}
@@ -333,6 +349,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 				panic("Unsupported element size");
 			}
 
+			profile_scope_end();
 			return value_instr;
 		} else {
 			panic("Assignment to this expression kind is not supported");
@@ -464,10 +481,13 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 			"Binary operation was not handled, "
 			"and thus haven't produced a valid instruction");
 
+	profile_scope_end();
 	return instr_index;
 }
 
 static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
+
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 	switch (expr->kind) {
@@ -496,6 +516,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		call_instr->call_internal.function_index = func_ref_table_get_or_insert(&compiler->func_ref_table, func_name);
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
+		profile_scope_end();
 		return call_instr_index;
 	}
 	case EXPR_BINARY: {
@@ -510,12 +531,13 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 			convert->kind = INSTR_BOOL_TO_INT;
 			convert->bool_to_int.operand = instr_index;
 
-			return instr_new_cast(instr_buffer,
+			instr_index = instr_new_cast(instr_buffer,
 					instr_allocator,
 					convert_index,
 					_type_get_layout(compiler, &result_type).size * 8);
 		}
 
+		profile_scope_end();
 		return instr_index;
 	}
 	case EXPR_FUNCTION_REFERENCE:
@@ -523,6 +545,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 	case EXPR_VARIABLE_REFERENCE: {
 		InstrIndex var_value = compiler->var_values[expr->variable_ref->id];
 		assert(var_value.value != INVALID_INSTR_INDEX.value);
+		profile_scope_end();
 		return var_value;
 	}
 	case EXPR_INTEGER_LITERAL: {
@@ -531,10 +554,12 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		Type int_type = { .kind = expr->int_literal.integer_type };
 		size_t int_size = _type_get_layout(compiler, &int_type).size;
 		
-		return instr_new_int_const(instr_buffer,
+		InstrIndex instr_index = instr_new_int_const(instr_buffer,
 				instr_allocator,
 				expr->int_literal.value,
 				int_size);
+		profile_scope_end();
+		return instr_index;
 	}
 	case EXPR_STRING_LITERAL: {
 		String string = expr->string_literal.full_string;
@@ -544,11 +569,13 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 		instr->kind = INSTR_CONST_STRING;
 		instr->const_string.string_id = string_id;
+		profile_scope_end();
 		return instr_index;
 	}
 	case EXPR_FUNCTION_PARAM: {
 		size_t arg_index = expr->function_param.param_index;
 		assert(arg_index < compiler->function->parameter_count);
+		profile_scope_end();
 		return compiler->arg_states[arg_index];
 	}
 	case EXPR_UNARY:
@@ -593,6 +620,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 				panic("Only up to 8 byte sizes are supported for dereferencing");
 			}
 
+			profile_scope_end();
 			return instr_index;
 		}
 		case UNARY_OP_NEGATE: {
@@ -618,10 +646,12 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 				panic("Only up to 8 byte sizes are supported for dereferencing");
 			}
 
+			profile_scope_end();
 			return instr_index;
 		}
 		case UNARY_OP_PLUS:
 			// Nothing to do here
+			profile_scope_end();
 			return operand_instr;
 		}
 		break;
@@ -633,6 +663,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		instr->kind = INSTR_CONST_8;
 		instr->const_8.u = (uint8_t)expr->char_literal.value;
+		profile_scope_end();
 		return instr_index;
 	}
 	case EXPR_ARRAY_INDEX: {
@@ -668,31 +699,40 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 			panic("Unsupported element size");
 		}
 
+		profile_scope_end();
 		return load_instr_index;
 	}
 	case EXPR_ENUM_CONSTANT: {
 		assert(expr->enum_constant.variant_index < INT32_MAX);
-		return instr_new_int_const(instr_buffer,
+		InstrIndex instr_index = instr_new_int_const(instr_buffer,
 				instr_allocator,
 				expr->enum_constant.variant_index,
 				4);
+		profile_scope_end();
+		return instr_index;
 	}
 	case EXPR_CAST: {
 		Type value_type;
 		expr_get_type(expr->cast.expr, &value_type);
 
 		InstrIndex value = _compile_expr(compiler, expr->cast.expr);
-		return _compile_int_cast(compiler, &value_type, expr->cast.target_type, value);
+		value = _compile_int_cast(compiler, &value_type, expr->cast.target_type, value);
+		profile_scope_end();
+		return value;
 	}
 	}
 
 	unreachable();
+	profile_scope_end();
 	return (InstrIndex) {};
 }
 
 static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
 	if (expr_is_bool(expr)) {
-		return _compile_bin_expr(compiler, expr);
+		InstrIndex instr_index = _compile_bin_expr(compiler, expr);
+		profile_scope_end();
+		return instr_index;
 	} else {
 		InstrIndex expr_value = _compile_expr(compiler, expr);
 
@@ -719,6 +759,8 @@ static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) 
 			compare->compare.left = expr_value;
 			compare->compare.right = zero;
 			compare->compare.kind = INSTR_CMP_GREATER;
+
+			profile_scope_end();
 			return compare_index;
 		} else {
 			unreachable();
@@ -726,6 +768,7 @@ static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) 
 	}
 
 	unreachable();
+	profile_scope_end();
 	return INVALID_INSTR_INDEX;
 }
 
@@ -734,6 +777,8 @@ static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 		InstrIndex region_a,
 		InstrIndex variant_b,
 		InstrIndex region_b) {
+	profile_scope_start(__func__);
+
 	assert(variant_a.value != INVALID_INSTR_INDEX.value);
 	assert(region_a.value != INVALID_INSTR_INDEX.value);
 	assert(variant_b.value != INVALID_INSTR_INDEX.value);
@@ -766,6 +811,7 @@ static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 	phi->kind = INSTR_PHI;
 	phi->phi.variants = select_inputs_buffer;
 
+	profile_scope_end();
 	return phi_index;
 }
 
@@ -786,6 +832,8 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 		size_t value_index,
 		bool is_var,
 		const LoopControlStmt* loop_control_stmts) {
+	profile_scope_start(__func__);
+
 	assert(phi_index.value != INVALID_INSTR_INDEX.value);
 	assert(variant_a.value != INVALID_INSTR_INDEX.value);
 	assert(region_a.value != INVALID_INSTR_INDEX.value);
@@ -847,12 +895,15 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 
 	phi->kind = INSTR_PHI;
 	phi->phi.variants = select_inputs_buffer;
+
+	profile_scope_end();
 }
 
 static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 		LoopControlStmt* stmts,
 		InstrIndex break_target,
 		InstrIndex continue_target) {
+	profile_scope_start(__func__);
 
 	for (LoopControlStmt* stmt = stmts;
 			stmt != NULL;
@@ -873,6 +924,8 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 			unreachable();
 		}
 	}
+
+	profile_scope_end();
 }
 
 // Compiles a while loop.
@@ -908,6 +961,7 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
 		AstNode* node) {
+	profile_scope_start(__func__);
 	assert(node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION);
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
@@ -1080,6 +1134,7 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	compiler->current_loop = previous_loop;
 	compiler->current_loop_control_stmts = previous_loop_control_stmts;
 
+	profile_scope_end();
 	return post_loop_region_index;
 }
 
@@ -1087,6 +1142,7 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
 		AstNode* node) {
+	profile_scope_start(__func__);
 	assert(node->while_loop.condition_kind == WHILE_LOOP_POST_CONDITION);
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
@@ -1273,10 +1329,13 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	compiler->current_loop = previous_loop;
 	compiler->current_loop_control_stmts = previous_loop_control_stmts;
 
+	profile_scope_end();
 	return post_loop_region;
 }
 
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, AstNode* first_node) {
+	profile_scope_start(__func__);
+
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -1584,10 +1643,14 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 	CompiledBlockRegions regions;
 	regions.initial_region = initial_region;
 	regions.final_region = region_instr_index;
+
+	profile_scope_end();
 	return regions;
 }
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
+	profile_scope_start(__func__);
+
 	const Scope* body = compiler->function->body;
 	assert(body);
 
@@ -1692,6 +1755,8 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	compiled_function.usage_ranges = usage_ranges;
 	compiled_function.start_region = region;
 	compiled_function.func_ref_table = compiler->func_ref_table;
+
+	profile_scope_end();
 	return compiled_function;
 }
 

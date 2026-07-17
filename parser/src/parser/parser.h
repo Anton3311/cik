@@ -163,6 +163,8 @@ typedef struct {
 
 	IdentifierStorage* ident_storage;
 
+	bool inside_a_loop;
+
 	uint32_t next_var_id;
 } Parser;
 

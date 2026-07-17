@@ -2780,6 +2780,8 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 }
 
 static AstNode* _parser_parse_while_loop(Parser* parser) {
+	assert(parser->inside_a_loop);
+
 	Token while_token = preprocessor_next_token(parser->preprocessor);
 	assert(while_token.kind == TOKEN_KEYWORD_WHILE);
 
@@ -2835,6 +2837,8 @@ static AstNode* _parser_parse_while_loop(Parser* parser) {
 }
 
 static AstNode* _parser_parse_do_while_loop(Parser* parser) {
+	assert(parser->inside_a_loop);
+
 	Token do_token = preprocessor_next_token(parser->preprocessor);
 	assert(do_token.kind == TOKEN_KEYWORD_DO);;
 
@@ -3002,12 +3006,29 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	}
 	case TOKEN_KEYWORD_IF:
 		return _parser_parse_if_stmt(parser);
-	case TOKEN_KEYWORD_WHILE:
-		return _parser_parse_while_loop(parser);
-	case TOKEN_KEYWORD_DO:
-		return _parser_parse_do_while_loop(parser);
+	case TOKEN_KEYWORD_WHILE: {
+		bool inside_a_loop = parser->inside_a_loop;
+		parser->inside_a_loop = true;
+		AstNode* loop = _parser_parse_while_loop(parser);
+		parser->inside_a_loop = inside_a_loop;
+		return loop;
+	}
+	case TOKEN_KEYWORD_DO: {
+		bool inside_a_loop = parser->inside_a_loop;
+		parser->inside_a_loop = true;
+		AstNode* loop = _parser_parse_do_while_loop(parser);
+		parser->inside_a_loop = inside_a_loop;
+		return loop;
+	}
 	case TOKEN_KEYWORD_BREAK: {
 		preprocessor_next_token(parser->preprocessor);
+
+		if (!parser->inside_a_loop) {
+			diagnostics_report_error(parser->diagnostics,
+					initial_token.source_range,
+					STR_LIT("`break` outside of a loop"),
+					NULL);
+		}
 
 		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after break"))) {
 			return NULL;
@@ -3019,6 +3040,13 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	}
 	case TOKEN_KEYWORD_CONTINUE: {
 		preprocessor_next_token(parser->preprocessor);
+
+		if (!parser->inside_a_loop) {
+			diagnostics_report_error(parser->diagnostics,
+					initial_token.source_range,
+					STR_LIT("`continue` outside of a loop"),
+					NULL);
+		}
 
 		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after continue"))) {
 			return NULL;

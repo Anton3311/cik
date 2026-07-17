@@ -84,6 +84,9 @@ typedef struct {
 	// Size of the array is in `phi_variant_counts_per_region`
 	InstrIndex** phi_node_of_variant;
 
+	// Precomputed sizes (bit-count) for phi instructions.
+	uint8_t* phi_sizes;
+
 	StringArray string_consts;
 
 	// Used to map from string constant id to an offset in the `merged_strings_buffer`.

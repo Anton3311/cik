@@ -665,32 +665,129 @@ RegisterMoveArray _parallel_move_values(
 	return result;
 }
 
-static uint8_t _get_instr_value_size(const InstrBuffer* instr_buffer, InstrIndex instr_index) {
+static void _arrange_phi_variants_for_size_computation(const InstrBuffer* instr_buffer,
+		InstrIndex phi_index,
+		BitArray* visited,
+		InstrQueue* queue) {
+	profile_scope_start(__func__);
+
+	assert(!bit_array_get(visited, phi_index.value));
+
+	bit_array_set(visited, phi_index.value, true);
+
+	const Instr* phi = instr_buffer_at(instr_buffer, phi_index);
+
+	InstrInputs inputs = phi->phi.variants;
+	for (uint16_t i = 0; i < inputs.count; i += 1) {
+		InstrIndex variant_index = instr_buffer->inputs_buffer[inputs.start + i];
+		const Instr* variant = instr_buffer_at(instr_buffer, variant_index);
+		const Instr* value = instr_buffer_at(instr_buffer, variant->select.value);
+
+		if (value->kind != INSTR_PHI) {
+			continue;
+		}
+
+		if (bit_array_get(visited, variant->select.value.value)) {
+			continue;
+		}
+
+		_arrange_phi_variants_for_size_computation(instr_buffer,
+				variant->select.value,
+				visited,
+				queue);
+	}
+
+	instr_queue_push_back(queue, phi_index);
+
+	profile_scope_end();
+}
+
+static uint8_t* _arrange_phis_for_size_computation(const InstrBuffer* instr_buffer,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	profile_scope_start(__func__);
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	BitArray visited = bit_array_alloc(temp_allocator, instr_buffer->count);
+	bit_array_clear(&visited);
+
+	InstrQueue queue;
+	instr_queue_alloc(&queue, temp_allocator, instr_buffer->count);
+
+	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
+		if (instr_buffer->instr[i].kind != INSTR_PHI) {
+			continue;
+		}
+
+		if (bit_array_get(&visited, i)) {
+			continue;
+		}
+
+		_arrange_phi_variants_for_size_computation(instr_buffer,
+				(InstrIndex) { i },
+				&visited,
+				&queue);
+	}
+
+	assert(queue.head == 0);
+
+	uint8_t* sizes = arena_alloc_array_zeroed(allocator, uint8_t, instr_buffer->count);
+	for (size_t i = 0; i < queue.count; i += 1) {
+		InstrIndex phi_index = queue.buffer[i];
+		assert(sizes[phi_index.value] == 0);
+
+		const Instr* phi = instr_buffer_at(instr_buffer, phi_index);
+
+		InstrInputs variants = phi->phi.variants;
+
+		uint8_t phi_size = 0;
+		for (uint16_t j = 0; j < variants.count; j += 1) {
+			InstrIndex variant_index = instr_buffer->inputs_buffer[variants.start + j];
+			const Instr* variant = instr_buffer_at(instr_buffer, variant_index);
+
+			InstrIndex value_index = variant->select.value;
+			if (value_index.value == phi_index.value) {
+				continue;
+			}
+
+			const Instr* value = instr_buffer_at(instr_buffer, value_index);
+
+			uint8_t variant_size = 0;
+			if (value->kind == INSTR_PHI) {
+				variant_size = sizes[value_index.value];
+				if (variant_size == 0) {
+					continue;
+				}
+			} else {
+				variant_size = s_instr_storage_requiremenets[value->kind].reg_size;
+			}
+
+			assert(variant_size > 0);
+
+			if (phi_size == 0) {
+				phi_size = variant_size;
+			} else {
+				assert(phi_size == variant_size);
+			}
+		}
+
+		sizes[phi_index.value] = phi_size;
+	}
+
+	arena_end_temp(temp);
+
+	profile_scope_end();
+	return sizes;
+}
+
+static uint8_t _get_instr_value_size(const X64CodeGenerator* gen, InstrIndex instr_index) {
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
 	uint8_t value_size = 0;
 	if (instr->kind == INSTR_PHI) {
-		InstrInputs variants = instr->phi.variants;
-		for (uint16_t i = 0; i < variants.count; i += 1) {
-			InstrIndex variant_index = instr_buffer->inputs_buffer[variants.start + i];
-			const Instr* variant = instr_buffer_at(instr_buffer, variant_index);
-			assert(variant->kind == INSTR_SELECT);
-
-			InstrIndex variant_value = variant->select.value;
-			
-			// This phi might have itself as one of the variants.
-			if (variant_value.value == instr_index.value) {
-				// NOTE: We have a recursive phi, do not overflow the stack!
-				continue;
-			}
-
-			uint8_t variant_size = _get_instr_value_size(instr_buffer, variant_value);
-			if (value_size == 0) {
-				value_size = variant_size;
-			} else {
-				assert(variant_size == value_size);
-			}
-		}
+		value_size = gen->phi_sizes[instr_index.value];
 	} else {
 		value_size = s_instr_storage_requiremenets[instr->kind].reg_size;
 	}
@@ -842,7 +939,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 
-		assert(_get_instr_value_size(instr_buffer, instr->ptr_load.ptr) == 64);
+		assert(_get_instr_value_size(gen, instr->ptr_load.ptr) == 64);
 
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_LOAD_8);
 		encode_2(buffer,
@@ -861,7 +958,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(ptr_loc.kind == INSTR_STORAGE_REG);
 		assert(value_loc.kind == INSTR_STORAGE_REG);
 
-		assert(_get_instr_value_size(instr_buffer, instr->ptr_store.ptr) == 64);
+		assert(_get_instr_value_size(gen, instr->ptr_store.ptr) == 64);
 
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_PTR_STORE_8);
 		encode_2(buffer,
@@ -990,7 +1087,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
 
-		uint8_t operand_size = _get_instr_value_size(instr_buffer, instr->cast.value);
+		uint8_t operand_size = _get_instr_value_size(gen, instr->cast.value);
 		uint8_t output_size = 8 << (instr->kind - INSTR_CAST_TO_8);
 
 		assert_msg(operand_size != 16, "16-bit not yet implemented");
@@ -2066,6 +2163,9 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 	encoding_init();
 	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+
+	// use `temp_allocator` as a persitent allocator and `allocator` is a temporary
+	gen->phi_sizes = _arrange_phis_for_size_computation(&gen->instr_buffer, gen->temp_allocator, gen->allocator);
 
 	bool validation_result = _x64_validate(gen);
 	assert(validation_result);

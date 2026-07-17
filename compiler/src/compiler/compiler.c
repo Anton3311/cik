@@ -93,7 +93,9 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Type*
 		break;
 
 	case TYPE_ARRAY:
-		break;
+		// NOTE: Doesn't account for the array size.
+		//       The array is treated as a pointer.
+		return compiler->pointer_type_layout;
 	}
 
 	unreachable();

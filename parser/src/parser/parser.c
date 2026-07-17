@@ -457,6 +457,20 @@ bool _parser_expect_semicolon(Parser* parser, String error_message) {
 	return true;
 }
 
+bool _parser_consume_semicolon(Parser* parser) {
+	Token token = preprocessor_next_token(parser->preprocessor);
+	if (token.kind != TOKEN_SEMICOLON) {
+		TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				token,
+				expected_tokens,
+				array_size(expected_tokens));
+		return false;
+	}
+
+	return true;
+}
+
 // TODO: Don't reset `ast_allocator` because, during testing that same `ast_allocator`
 //       is used for diagnostics and reseting it corrupts diagnostics state
 static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count, StructField** out_fields) {
@@ -2905,6 +2919,78 @@ static AstNode* _parser_parse_do_while_loop(Parser* parser) {
 	return loop;
 }
 
+static AstNode* _parser_parse_for_loop(Parser* parser) {
+	profile_func_colored(PROFILE_COLOR);
+	assert(parser->inside_a_loop);
+
+	Token for_token = preprocessor_next_token(parser->preprocessor);
+	assert(for_token.kind == TOKEN_KEYWORD_FOR);
+
+	Token left_paren = preprocessor_next_token(parser->preprocessor);
+	if (left_paren.kind != TOKEN_LEFT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				left_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+	}
+
+	AstNode* init_stmt = NULL;
+	Expr condition_expr;
+	Expr advance_expr;
+	AstNode* body = NULL;
+
+	{
+		ident_storage_begin_scope(parser->ident_storage);
+
+		Token init_stmt_token = preprocessor_view_next(parser->preprocessor);
+
+		if (init_stmt_token.kind != TOKEN_SEMICOLON) {
+			// FIXME: `_parser_parse_single_node` also consumes the `;`
+			init_stmt = _parser_parse_single_node(parser, init_stmt_token);
+		} else {
+			_parser_consume_semicolon(parser);
+		}
+
+		_parser_try_parse_expr(parser, &condition_expr);
+
+		_parser_consume_semicolon(parser);
+
+		_parser_try_parse_expr(parser, &advance_expr);
+
+		Token right_paren = preprocessor_next_token(parser->preprocessor);
+		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+		}
+
+		Token body_token = preprocessor_view_next(parser->preprocessor);
+
+		if (body_token.kind != TOKEN_SEMICOLON) {
+			body = _parser_parse_single_node(parser, body_token);
+		}
+
+		ident_storage_end_scope(parser->ident_storage);
+	}
+
+	AstNode* loop = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+	loop->kind = AST_NODE_FOR_LOOP;
+	loop->for_loop.init_stmt = init_stmt;
+	loop->for_loop.condition = arena_alloc(parser->ast_allocator, Expr);
+	*loop->for_loop.condition = condition_expr;
+
+	loop->for_loop.advance_expr = arena_alloc(parser->ast_allocator, Expr);
+	*loop->for_loop.advance_expr = advance_expr;
+
+	loop->for_loop.body = body;
+
+	profile_scope_end();
+	return loop;
+}
+
 AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
 	case TOKEN_LEFT_BRACE: {
@@ -3017,6 +3103,13 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		bool inside_a_loop = parser->inside_a_loop;
 		parser->inside_a_loop = true;
 		AstNode* loop = _parser_parse_do_while_loop(parser);
+		parser->inside_a_loop = inside_a_loop;
+		return loop;
+	}
+	case TOKEN_KEYWORD_FOR: {
+		bool inside_a_loop = parser->inside_a_loop;
+		parser->inside_a_loop = true;
+		AstNode* loop = _parser_parse_for_loop(parser);
 		parser->inside_a_loop = inside_a_loop;
 		return loop;
 	}

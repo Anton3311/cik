@@ -1621,7 +1621,27 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	for (size_t i = 0; i < compiler->function->parameter_count; i += 1) {
 		InstrIndex index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, index);
-		instr->kind = INSTR_LOAD_ARG;
+
+		const FunctionParam* param = &compiler->function->parameters[i];
+		size_t param_type_size = _type_get_layout(compiler, &param->type).size;
+
+		switch (param_type_size) {
+		case 1:
+			instr->kind = INSTR_LOAD_ARG_8;
+			break;
+		case 2:
+			instr->kind = INSTR_LOAD_ARG_16;
+			break;
+		case 4:
+			instr->kind = INSTR_LOAD_ARG_32;
+			break;
+		case 8:
+			instr->kind = INSTR_LOAD_ARG_64;
+			break;
+		default:
+			unreachable();
+		}
+
 		instr->load_arg.index = (uint8_t)i;
 
 		compiler->arg_states[i] = index;

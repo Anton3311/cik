@@ -173,6 +173,8 @@ static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 		return STR_LIT("compare");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_CAST_TO_"))) {
 		return STR_LIT("cast");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_LOAD_ARG_"))) {
+		return STR_LIT("load_arg");
 	}
 
 	return str_to_lower(

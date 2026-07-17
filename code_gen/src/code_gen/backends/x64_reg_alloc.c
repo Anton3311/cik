@@ -122,7 +122,10 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 	for (size_t i = 0; i < instr_buffer->count; i += 1) {
 		InstrKind kind = instr_buffer->instr[i].kind;
 
-		if (kind == INSTR_LOAD_ARG) {
+		if (kind == INSTR_LOAD_ARG_8
+				|| kind == INSTR_LOAD_ARG_16
+				|| kind == INSTR_LOAD_ARG_32
+				|| kind == INSTR_LOAD_ARG_64) {
 			continue;
 		}
 
@@ -140,7 +143,10 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
 		InstrKind kind = instr_buffer->instr[instr_index.value].kind;
 
-		if (kind != INSTR_LOAD_ARG) {
+		if (kind != INSTR_LOAD_ARG_8
+				&& kind != INSTR_LOAD_ARG_16
+				&& kind != INSTR_LOAD_ARG_32
+				&& kind != INSTR_LOAD_ARG_64) {
 			continue;
 		}
 

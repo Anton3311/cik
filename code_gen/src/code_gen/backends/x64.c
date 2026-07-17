@@ -68,7 +68,10 @@ static void _init_storage_requiremenets() {
 	s[INSTR_PTR_STORE_32]           = (T) { .allowed_registers = 0, .reg_size = 32 };
 	s[INSTR_PTR_STORE_64]           = (T) { .allowed_registers = 0, .reg_size = 64 };
 
-	s[INSTR_LOAD_ARG]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
+	s[INSTR_LOAD_ARG_8]             = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_LOAD_ARG_16]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_LOAD_ARG_32]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_LOAD_ARG_64]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
 	s[INSTR_BRANCH]                 = (T) { .allowed_registers = 0, .reg_size = 0 };
 	s[INSTR_JUMP]                   = (T) { .allowed_registers = 0, .reg_size = 0 };
@@ -868,7 +871,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 
-	case INSTR_LOAD_ARG:
+	case INSTR_LOAD_ARG_8:
+	case INSTR_LOAD_ARG_16:
+	case INSTR_LOAD_ARG_32:
+	case INSTR_LOAD_ARG_64:
 		// There is nothing to do. These instruction type is more of a hint
 		// to where to look for the value, it doesn't get turned into any machine code.
 		//
@@ -1698,7 +1704,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.ptr);
 		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.value);
 		break;
-	case INSTR_LOAD_ARG:
+	case INSTR_LOAD_ARG_8:
+	case INSTR_LOAD_ARG_16:
+	case INSTR_LOAD_ARG_32:
+	case INSTR_LOAD_ARG_64:
 		break;
 	case INSTR_LOGICAL_SHIFT_LEFT_8:
 	case INSTR_LOGICAL_SHIFT_LEFT_16:

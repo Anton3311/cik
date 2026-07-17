@@ -299,10 +299,15 @@ static CFGDominatorTree _build_cfg_dominator_tree(const InstrBuffer* instr_buffe
 			}
 		}
 
-		assert(found);
+		if (!found) {
+			// This region is unreachable
+			tree.immediate_dominators[i] = UINT16_MAX;
+		}
 	}
 
 	// The initial region dones't have an immediate dominator
+	// TODO: Need a better way to mark the initial region's dominator, since `UINT16_MAX` is also
+	//       used for unreachable regions.
 	tree.immediate_dominators[instr_region_id(instr_buffer, initial_region)] = UINT16_MAX;
 
 	arena_end_temp(temp);

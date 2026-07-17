@@ -847,6 +847,32 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	phi->phi.variants = select_inputs_buffer;
 }
 
+static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
+		LoopControlStmt* stmts,
+		InstrIndex break_target,
+		InstrIndex continue_target) {
+
+	for (LoopControlStmt* stmt = stmts;
+			stmt != NULL;
+			stmt = stmt->next) {
+
+		const Instr* region = instr_buffer_at(instr_buffer, stmt->region);
+		assert(region->kind == INSTR_REGION);
+
+		Instr* jump = instr_buffer_at(instr_buffer, region->region.last_instr);
+		assert(jump->kind == INSTR_JUMP);
+		assert(jump->jump.target_region.value == INVALID_INSTR_INDEX.value);
+
+		if (stmt->kind == LOOP_CONTROL_BREAK) {
+			jump->jump.target_region = break_target;
+		} else if (stmt->kind == LOOP_CONTROL_CONTINUE) {
+			jump->jump.target_region = continue_target;
+		} else {
+			unreachable();
+		}
+	}
+}
+
 // Compiles a while loop.
 //
 // A while loop in compiled form looks like this:
@@ -1038,25 +1064,10 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	compiler->arg_states = original_arg_values;
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
-	for (LoopControlStmt* stmt = compiler->current_loop_control_stmts;
-			stmt != NULL;
-			stmt = stmt->next) {
-
-		const Instr* region = instr_buffer_at(instr_buffer, stmt->region);
-		assert(region->kind == INSTR_REGION);
-
-		Instr* jump = instr_buffer_at(instr_buffer, region->region.last_instr);
-		assert(jump->kind == INSTR_JUMP);
-		assert(jump->jump.target_region.value == INVALID_INSTR_INDEX.value);
-
-		if (stmt->kind == LOOP_CONTROL_BREAK) {
-			jump->jump.target_region = post_loop_region_index;
-		} else if (stmt->kind == LOOP_CONTROL_CONTINUE) {
-			jump->jump.target_region = condition_region;
-		} else {
-			unreachable();
-		}
-	}
+	_fix_loop_control_jumps(instr_buffer,
+			compiler->current_loop_control_stmts,
+			post_loop_region_index, 
+			condition_region);
 
 	arena_end_temp(temp);
 
@@ -1077,6 +1088,12 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	assert(node->while_loop.condition_kind == WHILE_LOOP_POST_CONDITION);
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
+
+	// Save the previous loop state
+	AstNode* previous_loop = compiler->current_loop;
+	LoopControlStmt* previous_loop_control_stmts = compiler->current_loop_control_stmts;
+	compiler->current_loop = node;
+	compiler->current_loop_control_stmts = NULL;
 
 	size_t arg_count = compiler->function->parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -1157,15 +1174,22 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	//
 	//       Replacement of empty phi variants is done later.
 
-	InstrIndex jump_to_condition = instr_new_jump(instr_buffer,
-			instr_allocator,
-			INVALID_INSTR_INDEX,
-			&compiler->io_state);
+	InstrIndex jump_to_condition;
+	bool final_region_finished = instr_region_finished(instr_buffer, body_block.final_region);
+	if (!final_region_finished) {
+		jump_to_condition = instr_new_jump(instr_buffer,
+				instr_allocator,
+				INVALID_INSTR_INDEX,
+				&compiler->io_state);
 
-	instr_region_set_last(instr_buffer, body_block.final_region, jump_to_condition);
+		instr_region_set_last(instr_buffer, body_block.final_region, jump_to_condition);
+	}
 
 	InstrIndex condition_region = instr_new_region(instr_buffer, instr_allocator);
-	instr_set_jump_target(instr_buffer, jump_to_condition, condition_region);
+
+	if (!final_region_finished) {
+		instr_set_jump_target(instr_buffer, jump_to_condition, condition_region);
+	}
 
 	InstrIndex branch_index = instr_buffer_append(instr_buffer, instr_allocator);
 	Instr* branch = instr_buffer_at(instr_buffer, branch_index);
@@ -1231,7 +1255,22 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	branch->branch.true_region = body_block.initial_region;
 	branch->branch.false_region = post_loop_region;
 
+	// Now fix the jumps inserted by `break` and `continue` statements.
+	_fix_loop_control_jumps(instr_buffer,
+			compiler->current_loop_control_stmts,
+			post_loop_region, 
+			body_block.initial_region);
+
 	arena_end_temp(temp);
+
+	// Restore the previous loop state
+	if (compiler->current_loop_control_stmts) {
+		_free_loop_control_stmt(compiler, compiler->current_loop_control_stmts);
+	}
+
+	compiler->current_loop = previous_loop;
+	compiler->current_loop_control_stmts = previous_loop_control_stmts;
+
 	return post_loop_region;
 }
 

@@ -230,6 +230,101 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	return add_instr_index;
 }
 
+static void _compile_assignment(FunctionCompiler* compiler,
+		Expr* target,
+		InstrIndex value_instr) {
+	profile_scope_start(__func__);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	if (target->kind == EXPR_VARIABLE_REFERENCE) {
+		const Variable* variable = target->variable_ref;
+		compiler->var_values[variable->id] = value_instr;
+	} else if (target->kind == EXPR_FUNCTION_PARAM) {
+		size_t arg_index = target->function_param.param_index;
+		compiler->arg_states[arg_index] = value_instr;
+	} else if (target->kind == EXPR_UNARY) {
+		InstrIndex operand_instr = _compile_expr(compiler, target->unary.operand);
+		Type operand_type;
+		expr_get_type(target->unary.operand, &operand_type);
+
+		switch (target->unary.op) {
+		case UNARY_OP_DEREFERENCE: {
+			Type* element_type = type_extract_pointer_base_type(&operand_type);
+			TypeLayout element_layout = _type_get_layout(compiler, element_type);
+
+			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+			instr->ptr_store.ptr = operand_instr;
+			instr->ptr_store.value = value_instr;
+			instr->ptr_store.io_state = compiler->io_state;
+
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, instr_index);
+
+			switch (element_layout.size) {
+			case 1:
+				instr->kind = INSTR_PTR_STORE_8;
+				break;
+			case 2:
+				instr->kind = INSTR_PTR_STORE_16;
+				break;
+			case 4:
+				instr->kind = INSTR_PTR_STORE_32;
+				break;
+			case 8:
+				instr->kind = INSTR_PTR_STORE_64;
+				break;
+			default:
+				panic("Only up to 8 byte sizes are supported for dereferencing");
+			}
+
+			break;
+		}
+		default:
+			unreachable();
+		}
+	} else if (target->kind == EXPR_ARRAY_INDEX) {
+		Type array_type;
+		expr_get_type(target->array_index.array, &array_type);
+
+		Type* element_type = type_extract_pointer_base_type(&array_type);
+		TypeLayout element_layout = _type_get_layout(compiler, element_type);
+
+		InstrIndex element_addr = _compile_address_of_array_element(compiler, target);
+
+		InstrIndex store_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* store_instr = instr_buffer_at(instr_buffer, store_instr_index);
+		store_instr->ptr_store.ptr = element_addr;
+		store_instr->ptr_store.value = value_instr;
+		store_instr->ptr_store.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_instr_index);
+
+		switch (element_layout.size) {
+		case 1:
+			store_instr->kind = INSTR_PTR_STORE_8;
+			break;
+		case 2:
+			store_instr->kind = INSTR_PTR_STORE_16;
+			break;
+		case 4:
+			store_instr->kind = INSTR_PTR_STORE_32;
+			break;
+		case 8:
+			store_instr->kind = INSTR_PTR_STORE_64;
+			break;
+		default:
+			panic("Unsupported element size");
+		}
+	} else {
+		panic("Assignment to this expression kind is not supported");
+	}
+
+	profile_scope_end();
+}
+
 // Compiles a binary expression without casting compare operations to an interger
 static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	profile_scope_start(__func__);
@@ -239,129 +334,23 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 
 	if (expr->binary.op == BIN_OP_ASSIGNMENT) {
 		Expr* target = expr->binary.left;
+		Expr* value = expr->binary.right;
 
-		if (target->kind == EXPR_VARIABLE_REFERENCE) {
-			Type value_type;
-			expr_get_type(expr->binary.right, &value_type);
+		Type value_type;
+		expr_get_type(value, &value_type);
+		Type target_type;
+		expr_get_type(target, &target_type);
 
-			InstrIndex value = _compile_expr(compiler, expr->binary.right);
+		InstrIndex value_instr = _compile_expr(compiler, value);
+		if (!type_equal(&value_type, &target_type)) {
+			assert(type_kind_is_int(value_type.kind));
+			assert(type_kind_is_int(target_type.kind));
 
-			const Variable* variable = target->variable_ref;
-
-			value = _compile_int_cast(compiler,
-					&value_type,
-					&variable->type,
-					value);
-			compiler->var_values[variable->id] = value;
-
-			profile_scope_end();
-			return value;
-		} else if (target->kind == EXPR_FUNCTION_PARAM) {
-			Type value_type;
-			expr_get_type(expr->binary.right, &value_type);
-
-			InstrIndex value = _compile_expr(compiler, expr->binary.right);
-
-			size_t arg_index = target->function_param.param_index;
-
-			value = _compile_int_cast(compiler,
-					&value_type,
-					&compiler->function->parameters[arg_index].type,
-					value);
-
-			compiler->arg_states[arg_index] = value;
-
-			profile_scope_end();
-			return value;
-		} else if (target->kind == EXPR_UNARY) {
-			InstrIndex operand_instr = _compile_expr(compiler, target->unary.operand);
-			Type operand_type;
-			expr_get_type(target->unary.operand, &operand_type);
-
-			switch (target->unary.op) {
-			case UNARY_OP_DEREFERENCE: {
-				const Type* base_type = NULL;
-				if (operand_type.kind == TYPE_POINTER) {
-					base_type = operand_type.pointer_base_type;
-				} else if (operand_type.kind == TYPE_ARRAY) {
-					base_type = operand_type.array.element_type;
-				} else {
-					panic("todo: report error");
-				}
-
-				InstrIndex value_instr = _compile_expr(compiler, expr->binary.right);
-
-				InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-
-				instr->ptr_store.ptr = operand_instr;
-				instr->ptr_store.value = value_instr;
-				instr->ptr_store.io_state = compiler->io_state;
-
-				compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, instr_index);
-
-				TypeLayout layout = _type_get_layout(compiler, base_type);
-				switch (layout.size) {
-				case 1:
-					instr->kind = INSTR_PTR_STORE_8;
-					break;
-				case 2:
-					instr->kind = INSTR_PTR_STORE_16;
-					break;
-				case 4:
-					instr->kind = INSTR_PTR_STORE_32;
-					break;
-				case 8:
-					instr->kind = INSTR_PTR_STORE_64;
-					break;
-				default:
-					panic("Only up to 8 byte sizes are supported for dereferencing");
-				}
-
-				profile_scope_end();
-				return value_instr;
-			}
-			}
-		} else if (target->kind == EXPR_ARRAY_INDEX) {
-			Type array_type;
-			expr_get_type(target->array_index.array, &array_type);
-
-			Type* element_type = type_extract_pointer_base_type(&array_type);
-			TypeLayout element_layout = _type_get_layout(compiler, element_type);
-
-			InstrIndex element_addr = _compile_address_of_array_element(compiler, target);
-			InstrIndex value_instr = _compile_expr(compiler, expr->binary.right);
-
-			InstrIndex store_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* store_instr = instr_buffer_at(instr_buffer, store_instr_index);
-			store_instr->ptr_store.ptr = element_addr;
-			store_instr->ptr_store.value = value_instr;
-			store_instr->ptr_store.io_state = compiler->io_state;
-
-			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_instr_index);
-
-			switch (element_layout.size) {
-			case 1:
-				store_instr->kind = INSTR_PTR_STORE_8;
-				break;
-			case 2:
-				store_instr->kind = INSTR_PTR_STORE_16;
-				break;
-			case 4:
-				store_instr->kind = INSTR_PTR_STORE_32;
-				break;
-			case 8:
-				store_instr->kind = INSTR_PTR_STORE_64;
-				break;
-			default:
-				panic("Unsupported element size");
-			}
-
-			profile_scope_end();
-			return value_instr;
-		} else {
-			panic("Assignment to this expression kind is not supported");
+			value_instr = _compile_int_cast(compiler, &value_type, &target_type, value_instr);
 		}
+
+		_compile_assignment(compiler, target, value_instr);
+		return value_instr;
 	}
 
 	Type left_type;

@@ -505,9 +505,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		assert(expr->call.args.count <= UINT16_MAX);
 
-		InstrInputs arg_inputs = instr_allocate_inputs_array(instr_buffer,
-				expr->call.args.count,
-				compiler->input_instr_array_allocator);
+		InstrInputs arg_inputs = instr_allocate_inputs_array(instr_buffer, expr->call.args.count);
 
 		for (uint16_t i = 0; i < arg_inputs.count; i += 1) {
 			Expr* arg = expr->call.args.exprs[i];
@@ -809,8 +807,7 @@ static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 	select_b->select.value = variant_b;
 	select_b->select.region = region_b;
 
-	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
-			2, compiler->input_instr_array_allocator);
+	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer, 2);
 
 	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
 	select_inputs[0] = select_a_index;
@@ -855,8 +852,7 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	assert(phi->phi.variants.count == UINT16_MAX);
 
 	InstrInputs select_inputs_buffer = instr_allocate_inputs_array(instr_buffer,
-			loop_control_stmt_count,
-			compiler->input_instr_array_allocator);
+			loop_control_stmt_count);
 
 	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
 
@@ -1792,8 +1788,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
-	instr_buffer->inputs_buffer = arena_alloc_array(compiler->input_instr_array_allocator, InstrIndex, 0);
-	instr_buffer->inputs_buffer_size = 0;
 	instr_buffer_init(instr_buffer, instr_allocator);
 
 	// Setup initial `INSTR_LOAD_ARG`

@@ -174,13 +174,10 @@ int main(int argc, char *argv[]) {
 					continue;
 				}
 
-				Arena input_instr_array_allocator = arena_alloc_sub_arena(&arena, 4096);
-
 				FunctionCompiler c = {};
 				c.function = node->function_def;
 				c.allocator = &arena;
 				c.instr_allocator = &arena;
-				c.input_instr_array_allocator = &input_instr_array_allocator;
 				c.temp_allocator = &temp_arena;
 				c.pointer_type_layout = type_layout_new(8, 8);
 				c.func_ref_table.allocator = heap_allocator_new();
@@ -204,6 +201,7 @@ int main(int argc, char *argv[]) {
 
 				MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 
+				instr_buffer_release(&gen.instr_buffer);
 				// Free function symbol table
 				func_ref_table_release(&func.func_ref_table);
 				// Free string storage

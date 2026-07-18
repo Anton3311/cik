@@ -266,33 +266,45 @@ struct Instr {
 
 #ifndef CODE_GENERATION_PASS
 
+//
+// InstrBuffer
+//
+
 struct InstrBuffer {
 	Instr* instr;
 	InstrIndex* inputs_buffer;
 
 	uint16_t count;
 	uint16_t inputs_buffer_size;
+	uint16_t inputs_buffer_capacity;
 	uint16_t region_count;
 };
 
-inline InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer,
-		uint16_t count,
-		Arena* inputs_buffer_allocator) {
+#define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[(index).value]
 
-	const void* inputs_buffer_end = buffer->inputs_buffer + buffer->inputs_buffer_size;
-	const void* arena_allocation_end = inputs_buffer_allocator->base + inputs_buffer_allocator->allocated;
-	assert_msg(inputs_buffer_end == arena_allocation_end,
-			"The arena was ment to be exclusively used for allocating arrays of input instructions");
+void instr_buffer_init(InstrBuffer* buffer, Arena* allocator);
+void instr_buffer_release(InstrBuffer* buffer);
 
-	arena_alloc_array(inputs_buffer_allocator, uint16_t, count);
+InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer, uint16_t count);
 
-	InstrInputs inputs = {};
-	inputs.start = buffer->inputs_buffer_size;
-	inputs.count = count;
+inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
+	assert(buffer->count <= UINT16_MAX);
 
-	buffer->inputs_buffer_size += count;
-	return inputs;
+	const uint8_t* arena_end = (const uint8_t*)allocator->base + allocator->allocated;
+	const Instr* buffer_end = buffer->instr + buffer->count;
+	assert((const void*)arena_end == (const void*)buffer_end);
+
+	Instr* instr = arena_alloc(allocator, Instr);
+	memset(instr, 0xff, sizeof(*instr));
+
+	InstrIndex i = { .value = buffer->count };
+	buffer->count += 1;
+	return i;
 }
+
+//
+// InstrQueue
+//
 
 struct InstrQueue {
 	InstrIndex* buffer;
@@ -377,28 +389,6 @@ inline InstrUsageRange instr_usage_range_extended(const InstrUsageRange range, I
 	new_range.last_usage.value = max(range.last_usage.value, instr_index.value);
 	return new_range;
 }
-
-inline void instr_buffer_init(InstrBuffer* buffer, Arena* allocator) {
-	buffer->instr = arena_alloc_array(allocator, Instr, 0);
-	buffer->count = 0;
-}
-
-inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
-	assert(buffer->count <= UINT16_MAX);
-
-	const uint8_t* arena_end = (const uint8_t*)allocator->base + allocator->allocated;
-	const Instr* buffer_end = buffer->instr + buffer->count;
-	assert((const void*)arena_end == (const void*)buffer_end);
-
-	Instr* instr = arena_alloc(allocator, Instr);
-	memset(instr, 0xff, sizeof(*instr));
-
-	InstrIndex i = { .value = buffer->count };
-	buffer->count += 1;
-	return i;
-}
-
-#define instr_buffer_at(instr_buffer, index) &instr_buffer->instr[(index).value]
 
 inline bool instr_is_control(const InstrBuffer* instr_buffer, InstrIndex instr_index) {
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);

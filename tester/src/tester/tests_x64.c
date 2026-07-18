@@ -69,7 +69,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 				continue;
 			}
 
-			Arena input_instr_array_allocator = arena_alloc_sub_arena(context->arena, 4096);
 			Arena symbol_arena = arena_alloc_sub_arena(context->arena, 1024);
 			Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
 
@@ -78,7 +77,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			c.allocator = context->arena;
 			c.instr_allocator = context->arena;
 			c.temp_allocator = context->temp_arena;
-			c.input_instr_array_allocator = &input_instr_array_allocator;
 			c.pointer_type_layout = type_layout_new(8, 8);
 			c.func_ref_table.allocator = arena_allocator_new(&symbol_arena);
 			c.str_storage.allocator = arena_allocator_new(&strings_arena);
@@ -101,6 +99,9 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			gen.string_consts = str_storage_to_array(&c.str_storage);
 
 			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
+
+			instr_buffer_release(&gen.instr_buffer);
+
 			return machine_code;
 		}
 	}
@@ -905,6 +906,8 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 
 		assert(result == 96);
 	}
+
+	instr_buffer_release(instr_buffer);
 }
 
 static uint64_t _internal_store(uint64_t* out) {

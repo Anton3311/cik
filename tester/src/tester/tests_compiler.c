@@ -61,14 +61,11 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 				continue;
 			}
 
-			Arena input_instr_array_allocator = arena_alloc_sub_arena(context->arena, 4096);
-
 			FunctionCompiler c = {};
 			c.function = node->function_def;
 			c.allocator = context->arena;
 			c.instr_allocator = context->arena;
 			c.temp_allocator = context->temp_arena;
-			c.input_instr_array_allocator = &input_instr_array_allocator;
 			c.pointer_type_layout = type_layout_new(8, 8);
 
 			CompiledFunction func = function_compiler_compile(&c);
@@ -103,5 +100,7 @@ void test_reassigning_to_an_old_value_does_not_place_phi(TestContext* context) {
 		const Instr* instr = &func.instr_buffer.instr[i];
 		assert(instr->kind != INSTR_PHI);
 	}
+
+	instr_buffer_release(&func.instr_buffer);
 }
 

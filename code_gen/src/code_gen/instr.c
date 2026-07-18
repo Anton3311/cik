@@ -1,5 +1,7 @@
 #include "instr.h"
 
+#include "core/profiler.h"
+
 bool instr_bin_op_is_commutative(InstrBinOp op) {
 	switch (op) {
 	case INSTR_BIN_ADD:
@@ -85,6 +87,64 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_IO_STATE] = INSTR_FEATURE_CONTROL,
 	[INSTR_REGION] = INSTR_FEATURE_CONTROL,
 };
+
+//
+// InstrBuffer
+//
+
+void instr_buffer_init(InstrBuffer* buffer, Arena* allocator) {
+	buffer->instr = arena_alloc_array(allocator, Instr, 0);
+	buffer->inputs_buffer = NULL;
+	buffer->count = 0;
+	buffer->inputs_buffer_size = 0;
+	buffer->inputs_buffer_capacity = 0;
+	buffer->region_count = 0;
+}
+
+void instr_buffer_release(InstrBuffer* buffer) {
+	if (buffer->inputs_buffer) {
+		heap_release(buffer->inputs_buffer);
+	}
+
+	*buffer = (InstrBuffer) {};
+}
+
+InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer, uint16_t count) {
+	profile_scope_start(__func__);
+
+	assert(count > 0);
+	assert(buffer->inputs_buffer_capacity >= buffer->inputs_buffer_size);
+
+	uint16_t free_size = buffer->inputs_buffer_capacity - buffer->inputs_buffer_size;
+	if (count > free_size) {
+		uint16_t new_capacity = max(32, buffer->inputs_buffer_capacity * 2);
+		InstrIndex* new_buffer = heap_alloc_array(InstrIndex, new_capacity);
+
+		if (buffer->inputs_buffer) {
+			array_copy(new_buffer, buffer->inputs_buffer, buffer->inputs_buffer_size);
+			heap_release(buffer->inputs_buffer);
+		}
+
+		asan_poison_memory_region(buffer->inputs_buffer, new_capacity - buffer->inputs_buffer_size);
+
+		buffer->inputs_buffer = new_buffer;
+		buffer->inputs_buffer_capacity = new_capacity;
+	}
+
+	InstrInputs inputs = {};
+	inputs.start = buffer->inputs_buffer_size;
+	inputs.count = count;
+
+	buffer->inputs_buffer_size += count;
+	assert(buffer->inputs_buffer_size <= buffer->inputs_buffer_capacity);
+
+	profile_scope_end();
+	return inputs;
+}
+
+//
+// Instr
+//
 
 InstrIndex instr_new_int_const(InstrBuffer* buffer,
 		Arena* allocator,

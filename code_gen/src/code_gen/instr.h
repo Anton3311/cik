@@ -437,6 +437,10 @@ inline InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
 		InstrIndex operand,
 		uint8_t shift_count) {
 
+	if (shift_count == 0) {
+		return operand;
+	}
+
 	InstrIndex shift_index = instr_buffer_append(buffer, allocator);
 	Instr* shift_instr = instr_buffer_at(buffer, shift_index);
 	shift_instr->kind = INSTR_LOGICAL_SHIFT_LEFT_64;

@@ -6,7 +6,7 @@
 extern X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT];
 
 static InstrIndexArray _gather_instr_with_storage_requirement(const InstrBuffer* instr_buffer,
-		const InstrUsageRange* live_ranges,
+		const InstrLiveRange* live_ranges,
 		Arena* allocator) {
 	profile_scope_start(__func__);
 
@@ -38,7 +38,7 @@ static InstrIndexArray _gather_instr_with_storage_requirement(const InstrBuffer*
 //
 // The array must be indexed using an element index of the `instr_with_storage_requirement`
 static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_storage_requirement,
-		const InstrUsageRange* live_ranges,
+		const InstrLiveRange* live_ranges,
 		Arena* allocator) {
 
 	profile_scope_start(__func__);
@@ -52,27 +52,27 @@ static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_s
 		UInt16Array* edges = &graph_edges[i];
 		edges->values = arena_alloc_array(allocator, uint16_t, 0);
 	
-		InstrUsageRange live_range_a = live_ranges[instr_with_storage_requirement.instr[i].value];
+		InstrLiveRange live_range_a = live_ranges[instr_with_storage_requirement.instr[i].value];
 		for (size_t j = 0; j < instr_with_storage_requirement.count; j += 1) {
 			if (i == j) {
 				continue;
 			}
 
-			InstrUsageRange live_range_b = live_ranges[instr_with_storage_requirement.instr[j].value];
+			InstrLiveRange live_range_b = live_ranges[instr_with_storage_requirement.instr[j].value];
 
-			uint16_t max_start = max(live_range_a.first_usage.value, live_range_b.first_usage.value);
-			uint16_t min_end = min(live_range_a.last_usage.value, live_range_b.last_usage.value);
+			uint16_t max_start = max(live_range_a.start.value, live_range_b.start.value);
+			uint16_t min_end = min(live_range_a.end.value, live_range_b.end.value);
 
 			// Check whether live ranges overlap.
 			bool overlap = min_end >= max_start;
 
 #if 1
 			// If the ranges only overlap at their ends, then don't consider them overlapping
-			if (live_range_a.last_usage.value == live_range_b.first_usage.value) {
+			if (live_range_a.end.value == live_range_b.start.value) {
 				overlap = false;
 			}
 
-			if (live_range_a.first_usage.value == live_range_b.last_usage.value) {
+			if (live_range_a.start.value == live_range_b.end.value) {
 				overlap = false;
 			}
 #endif
@@ -89,13 +89,13 @@ static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_s
 	return graph_edges;
 }
 
-inline bool _instr_allowed_to_share_a_register(InstrUsageRange live_range_a,
-		InstrUsageRange live_range_b) {
-	if (live_range_a.last_usage.value == live_range_b.first_usage.value) {
+inline bool _instr_allowed_to_share_a_register(InstrLiveRange live_range_a,
+		InstrLiveRange live_range_b) {
+	if (live_range_a.end.value == live_range_b.start.value) {
 		return true;
 	}
 
-	if (live_range_a.first_usage.value == live_range_b.last_usage.value) {
+	if (live_range_a.start.value == live_range_b.end.value) {
 		return true;
 	}
 
@@ -106,7 +106,7 @@ inline bool _instr_allowed_to_share_a_register(InstrUsageRange live_range_a,
 //
 // This array is expected to be of size `instr_buffer.count`
 static void _run_graph_coloring(const InstrBuffer* instr_buffer,
-		const InstrUsageRange* live_ranges,
+		const InstrLiveRange* live_ranges,
 		InstrIndexArray instr_with_storage_requirement,
 		UInt16Array* interference_graph,
 		InstrStorageLocation* instr_storage,
@@ -217,7 +217,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 }
 
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
-		InstrUsageRange* live_ranges,
+		InstrLiveRange* live_ranges,
 		uint16_t allowed_registers,
 		Arena* allocator,
 		Arena* temp_allocator) {

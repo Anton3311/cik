@@ -88,11 +88,11 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 				resolver(&func.func_ref_table, resolver_data);
 			}
 
-			instr_replace_dead_instr(func.instr_buffer, func.usage_ranges);
+			instr_replace_dead_instr(func.instr_buffer, func.live_ranges);
 
 			X64CodeGenerator gen = {};
 			gen.instr_buffer = func.instr_buffer;
-			gen.usage_ranges = func.usage_ranges;
+			gen.live_ranges = func.live_ranges;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func.func_ref_table;
@@ -854,7 +854,7 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	}
 
 	// Compute live ranges
-	InstrUsageRange* live_ranges = instr_compute_usage_ranges(*instr_buffer,
+	InstrLiveRange* live_ranges = instr_compute_live_ranges(*instr_buffer,
 			region_index,
 			context->arena,
 			context->temp_arena);
@@ -879,7 +879,7 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		X64CodeGenerator gen = {};
 		gen.flags = X64_SKIP_REG_ALLOC | X64_PRINT_SCHEDULED_IR;
 		gen.instr_buffer = *instr_buffer;
-		gen.usage_ranges = live_ranges;
+		gen.live_ranges = live_ranges;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.ref_table = &func_ref_table;

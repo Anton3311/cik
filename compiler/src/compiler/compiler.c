@@ -1853,14 +1853,14 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			"`compiler->io_state` should have been consumed during the compilation "
 			"of the final region in the function body");
 
-	InstrUsageRange* usage_ranges = instr_compute_usage_ranges(compiler->instr_buffer,
+	InstrLiveRange* live_ranges = instr_compute_live_ranges(compiler->instr_buffer,
 			region,
 			compiler->instr_allocator,
 			compiler->temp_allocator);
 
 	CompiledFunction compiled_function;
 	compiled_function.instr_buffer = compiler->instr_buffer;
-	compiled_function.usage_ranges = usage_ranges;
+	compiled_function.live_ranges = live_ranges;
 	compiled_function.start_region = region;
 	compiled_function.func_ref_table = compiler->func_ref_table;
 

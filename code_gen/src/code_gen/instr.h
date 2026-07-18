@@ -20,7 +20,7 @@
 
 typedef struct Instr Instr;
 typedef struct InstrBuffer InstrBuffer;
-typedef struct InstrUsageRange InstrUsageRange;
+typedef union InstrLiveRange InstrLiveRange;
 typedef struct InstrQueue InstrQueue;
 
 typedef enum {
@@ -356,40 +356,6 @@ inline InstrIndex instr_queue_pop_back(InstrQueue* queue) {
 	return instr;
 }
 
-struct InstrUsageRange {
-	union {
-		struct {
-			InstrIndex first_usage;
-			InstrIndex last_usage;
-		};
-
-		uint32_t value;
-	};
-};
-
-inline bool instr_usage_range_is_valid(const InstrUsageRange range) {
-	return range.value != UINT32_MAX && range.first_usage.value <= range.last_usage.value;
-}
-
-inline bool instr_usage_range_is_empty(const InstrUsageRange range) {
-	return range.value == UINT32_MAX;
-}
-
-inline InstrUsageRange instr_usage_range_merge(InstrUsageRange a, InstrUsageRange b) {
-	InstrUsageRange out = {};
-	out.first_usage.value = min(a.first_usage.value, b.first_usage.value);
-	out.last_usage.value = max(a.last_usage.value, b.last_usage.value);
-	return out;
-}
-
-// Returns a new range that includes the given instruction index
-inline InstrUsageRange instr_usage_range_extended(const InstrUsageRange range, InstrIndex instr_index) {
-	InstrUsageRange new_range;
-	new_range.first_usage.value = min(range.first_usage.value, instr_index.value);
-	new_range.last_usage.value = max(range.last_usage.value, instr_index.value);
-	return new_range;
-}
-
 inline bool instr_is_control(const InstrBuffer* instr_buffer, InstrIndex instr_index) {
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 	return has_flag(INSTR_FEATURES[instr->kind], INSTR_FEATURE_CONTROL);
@@ -497,23 +463,17 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
 		InstrIndex instr_index,
 		InstrQueue* queue);
 
-typedef struct {
-	InstrIndex* instr;
-	size_t count;
-} InstrUsageGroup;
+union InstrLiveRange {
+	struct {
+		InstrIndex start;
+		InstrIndex end;
+	};
 
-typedef struct {
-	InstrUsageGroup* groups;
-	size_t count;
-} InstrUsageGroupArray;
+	uint32_t value;
+};
 
-InstrUsageGroupArray instr_group_by_overlapping_usages(const InstrBuffer buffer,
-		const InstrUsageRange* usage_ranges,
-		Arena* allocator,
-		Arena* temp_allocator);
-
-// Returns an array of `InstrUsageRange` of size `buffer->count`
-InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
+// Returns an array of `InstrLiveRange` of size `buffer->count`
+InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
 		Arena* allocator,
 		Arena* temp_allocator);
@@ -536,7 +496,7 @@ void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator);
 
 // Turns unused instruciton into INSTR_NO_OP.
 // Doesn't removed these instructions from the array.
-void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrUsageRange* usage_ranges);
+void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrLiveRange* usage_ranges);
 
 #endif // CODE_GENERATION_PASS
 

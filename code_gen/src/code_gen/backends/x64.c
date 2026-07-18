@@ -1437,7 +1437,7 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 
 	RegisterAllocationResult result;
 	result = x64_alloc_regs(&gen->instr_buffer,
-			gen->usage_ranges,
+			gen->live_ranges,
 			allowed_registers,
 			gen->allocator,
 			gen->temp_allocator);

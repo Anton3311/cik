@@ -281,15 +281,43 @@ void instr_push_input_dependencies(const InstrBuffer* buffer,
 	}
 }
 
-InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
+//
+// Live Ranges
+//
+
+inline bool _live_range_is_valid(const InstrLiveRange range) {
+	return range.value != UINT32_MAX && range.start.value <= range.end.value;
+}
+
+inline bool _live_range_is_empty(const InstrLiveRange range) {
+	return range.value == UINT32_MAX;
+}
+
+inline InstrLiveRange _live_range_merge(InstrLiveRange a, InstrLiveRange b) {
+	InstrLiveRange out = {};
+	out.start.value = min(a.start.value, b.start.value);
+	out.end.value = max(a.end.value, b.end.value);
+	return out;
+}
+
+// Returns a new range that includes the given instruction index
+inline InstrLiveRange _live_range_extended(const InstrLiveRange range, InstrIndex instr_index) {
+	InstrLiveRange new_range;
+	new_range.start.value = min(range.start.value, instr_index.value);
+	new_range.end.value = max(range.end.value, instr_index.value);
+	return new_range;
+}
+
+InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
 		Arena* allocator,
 		Arena* temp_allocator) {
+	profile_scope_start(__func__);
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
-	InstrUsageRange* usage_ranges = arena_alloc_array(allocator, InstrUsageRange, buffer.count);
-	memset(usage_ranges, 0xff, sizeof(*usage_ranges) * buffer.count);
+	InstrLiveRange* live_ranges = arena_alloc_array(allocator, InstrLiveRange, buffer.count);
+	memset(live_ranges, 0xff, sizeof(*live_ranges) * buffer.count);
 
 	InstrQueue stack;
 	instr_queue_alloc(&stack, temp_allocator, buffer.count);
@@ -311,13 +339,15 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 		}
 
 		bit_array_set(&visited_instr, instr_index.value, true);
-		if (instr_usage_range_is_valid(usage_ranges[instr_index.value])) {
-			usage_ranges[instr_index.value] = instr_usage_range_extended(usage_ranges[instr_index.value], instr_index);
-		} else if (instr_usage_range_is_empty(usage_ranges[instr_index.value])) {
-			usage_ranges[instr_index.value].first_usage = instr_index;
-			usage_ranges[instr_index.value].last_usage = instr_index;
+		if (_live_range_is_valid(live_ranges[instr_index.value])) {
+			live_ranges[instr_index.value] = _live_range_extended(
+					live_ranges[instr_index.value],
+					instr_index);
+		} else if (_live_range_is_empty(live_ranges[instr_index.value])) {
+			live_ranges[instr_index.value].start = instr_index;
+			live_ranges[instr_index.value].end = instr_index;
 		} else {
-			panic("InstrUsageRange has invalid state");
+			panic("InstrLiveRange has invalid state");
 		}
 
 		size_t first_dep_index = stack.count;
@@ -339,28 +369,28 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 				continue;
 			}
 
-			InstrUsageRange usage_range = usage_ranges[dep_index.value];
-			if (instr_usage_range_is_valid(usage_range)) {
-				usage_range = instr_usage_range_extended(usage_range, instr_index);
-			} else if (instr_usage_range_is_empty(usage_range)) {
-				usage_range.first_usage = instr_index;
-				usage_range.last_usage = instr_index;
+			InstrLiveRange live_range = live_ranges[dep_index.value];
+			if (_live_range_is_valid(live_range)) {
+				live_range = _live_range_extended(live_range, instr_index);
+			} else if (_live_range_is_empty(live_range)) {
+				live_range.start = instr_index;
+				live_range.end = instr_index;
 			} else {
-				panic("InstrUsageRange has invalid state");
+				panic("InstrLiveRange has invalid state");
 			}
 
-			usage_ranges[dep_index.value] = usage_range;
+			live_ranges[dep_index.value] = live_range;
 		}
 	}
 
 	for (size_t i = 0; i < buffer.count; i += 1) {
-		if (usage_ranges[i].value == UINT32_MAX) {
+		if (live_ranges[i].value == UINT32_MAX) {
 			continue;
 		}
 
 		const Instr* instr = &buffer.instr[i];
 		if (instr->kind == INSTR_PHI) {
-			InstrUsageRange phi_usage_range = usage_ranges[i];
+			InstrLiveRange phi_live_range = live_ranges[i];
 
 			InstrInputs variants = instr->phi.variants;
 			for (uint16_t j = variants.start; j < variants.start + variants.count; j += 1) {
@@ -371,7 +401,7 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 				const Instr* region = &buffer.instr[select->select.region.value];
 				assert(region->kind == INSTR_REGION);
 
-				InstrUsageRange* variant_usage_range = &usage_ranges[select->select.value.value];
+				InstrLiveRange* variant_live_range = &live_ranges[select->select.value.value];
 
 				// NOTE: Extend the live range of the variant value to the end of the region, to
 				//       make sure it stays alive until the end of the region.
@@ -388,19 +418,20 @@ InstrUsageRange* instr_compute_usage_ranges(const InstrBuffer buffer,
 				//       it doesn't get override by other instructions (at index 3), until it
 				//       reaches a jump back to the start of the region, where the phi node is
 				//       placed.
-				*variant_usage_range = instr_usage_range_extended(
-						*variant_usage_range,
+				*variant_live_range = _live_range_extended(
+						*variant_live_range,
 						region->region.last_instr);
 
-				phi_usage_range = instr_usage_range_merge(phi_usage_range, *variant_usage_range);
+				phi_live_range = _live_range_merge(phi_live_range, *variant_live_range);
 			}
 
-			usage_ranges[i] = phi_usage_range;
+			live_ranges[i] = phi_live_range;
 		}
 	}
 
 	arena_end_temp(temp);
-	return usage_ranges;
+	profile_scope_end();
+	return live_ranges;
 }
 
 InstrIndexArray _instr_gather_regions_in_dfs_order(const InstrBuffer instr_buffer,
@@ -504,9 +535,9 @@ void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator) {
 	}
 }
 
-void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrUsageRange* usage_ranges) {
+void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrLiveRange* live_ranges) {
 	for (size_t i = 0; i < instr_buffer.count; i += 1) {
-		if (usage_ranges[i].value == UINT32_MAX) {
+		if (live_ranges[i].value == UINT32_MAX) {
 			instr_buffer.instr[i].kind = INSTR_NO_OP;
 		}
 	}

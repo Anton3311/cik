@@ -10,7 +10,7 @@ typedef struct {
 } RegisterAllocationResult;
 
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
-		InstrUsageRange* live_ranges,
+		InstrLiveRange* live_ranges,
 		uint16_t allowed_registers,
 		Arena* allocator,
 		Arena* temp_allocator);

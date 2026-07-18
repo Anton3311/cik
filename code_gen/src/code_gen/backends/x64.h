@@ -58,7 +58,7 @@ typedef struct {
 	X64BackendFlags flags;
 
 	InstrBuffer instr_buffer;
-	InstrUsageRange* usage_ranges;
+	InstrLiveRange* live_ranges;
 	InstrStorageLocation* instr_storage;
 
 	Arena* allocator;

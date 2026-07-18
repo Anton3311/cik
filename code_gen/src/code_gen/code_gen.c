@@ -1,33 +1,43 @@
 #include "code_gen.h"
 
+#include "core/profiler.h"
+
 uint16_t func_ref_table_entry_index(const FunctionRefTable* table, String name) {
+	profile_scope_start(__func__);
 	for (uint16_t i = 0; i < table->size; i += 1) {
 		if (str_equal(table->refs[i].name, name)) {
+			profile_scope_end();
 			return i;
 		}
 	}
 
+	profile_scope_end();
 	return UINT16_MAX;
 }
 
 bool func_ref_table_resolve_ref_to(FunctionRefTable* table, String name, void* impl_address) {
+	profile_scope_start(__func__);
 	assert(impl_address != NULL);
 
 	uint16_t entry_index = func_ref_table_entry_index(table, name);
 	if (entry_index == UINT16_MAX) {
+		profile_scope_end();
 		return false;
 	}
 
 	FunctionRef* ref = &table->refs[entry_index];
 	if (ref->address != NULL) {
+		profile_scope_end();
 		return false;
 	}
 
 	ref->address = impl_address;
+	profile_scope_end();
 	return true;
 }
 
 uint16_t func_ref_table_insert(FunctionRefTable* table, String name) {
+	profile_scope_start(__func__);
 	assert(func_ref_table_entry_index(table, name) == UINT16_MAX);
 
 	if (table->size == table->capacity) {
@@ -57,6 +67,7 @@ uint16_t func_ref_table_insert(FunctionRefTable* table, String name) {
 
 	ref->name = name;
 	ref->address = NULL;
+	profile_scope_end();
 	return id;
 }
 

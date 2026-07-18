@@ -516,12 +516,14 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
-		call_instr->kind = INSTR_CALL_INTERNAL;
-		call_instr->call_internal.args = arg_inputs;
-		call_instr->call_internal.io_state = compiler->io_state;
+		call_instr->kind = INSTR_CALL_INDIRECT;
+		call_instr->call_indirect.args = arg_inputs;
+		call_instr->call_indirect.io_state = compiler->io_state;
 
 		String func_name = callable->function_ref->name.string;
-		call_instr->call_internal.function_index = func_ref_table_get_or_insert(&compiler->func_ref_table, func_name);
+		call_instr->call_indirect.function_index = func_ref_table_get_or_insert(
+				&compiler->func_ref_table,
+				func_name);
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		profile_scope_end();

@@ -92,7 +92,7 @@ typedef enum {
 	INSTR_PHI,
 	INSTR_SELECT,
 
-	INSTR_CALL_INTERNAL,
+	INSTR_CALL_INDIRECT,
 
 	INSTR_COUNT,
 } InstrKind;
@@ -246,7 +246,7 @@ struct Instr {
 			InstrInputs args;
 			InstrIndex io_state;
 			uint16_t function_index;
-		} call_internal;
+		} call_indirect;
 
 		struct {
 			uint16_t id;

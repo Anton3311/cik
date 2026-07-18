@@ -78,7 +78,7 @@ static void _init_storage_requiremenets() {
 
 	s[INSTR_RETURN_VALUE]           = (T) { .allowed_registers = 0, .reg_size = 0 };
 
-	s[INSTR_CALL_INTERNAL]          = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
+	s[INSTR_CALL_INDIRECT]          = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
 	s[INSTR_REGION]                 = (T) { .allowed_registers = 0, .reg_size = 0 };
 
@@ -1184,7 +1184,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_IO_STATE:
 		return;
 	
-	case INSTR_CALL_INTERNAL: {
+	case INSTR_CALL_INDIRECT: {
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
 
 		const uint32_t SHADOW_SPACE_SIZE = 32;
@@ -1199,7 +1199,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			X64_REG_11,
 		};
 
-		InstrInputs args = instr->call_internal.args;
+		InstrInputs args = instr->call_indirect.args;
 
 		// Push saved registers
 		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
@@ -1263,7 +1263,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			arena_end_temp(temp);
 		}
 
-		uint16_t function_id = instr->call_internal.function_index;
+		uint16_t function_id = instr->call_indirect.function_index;
 		assert(function_id < gen->ref_table->size);
 		const FunctionRef* ref = &gen->ref_table->refs[function_id];
 
@@ -1858,10 +1858,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		}
 
 		break;
-	case INSTR_CALL_INTERNAL: {
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->call_internal.io_state);
+	case INSTR_CALL_INDIRECT: {
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->call_indirect.io_state);
 
-		InstrInputs args = instr->call_internal.args;
+		InstrInputs args = instr->call_indirect.args;
 		for (uint16_t i = 0; i < args.count; i += 1) {
 			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + i];
 			_try_enqueue_for_scheduling(queue, context, current_region_id, arg_instr);

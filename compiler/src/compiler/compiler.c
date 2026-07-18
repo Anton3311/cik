@@ -1034,12 +1034,11 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 		Expr* advance_expr) {
 	profile_scope_start(__func__);
 
-	// TODO: Support compiling for loops without a condition
-	assert(condition_expr != NULL);
-
 	if (node->kind == AST_NODE_WHILE_LOOP) {
 		assert(node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION);
 
+		assert(init_stmt == NULL);
+		assert(condition_expr != NULL);
 		assert(advance_expr == NULL);
 	}
 
@@ -1088,7 +1087,7 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 			InstrIndex,
 			arg_count);
 
-	// Replace current variable and argument with phis
+	// Replace current variables and arguments with phis
 	const Scope* body_scope = _loop_body_scope(node);
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
@@ -1124,24 +1123,42 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 	compiler->arg_states = arg_values_for_body;
 
 	// Compile the condition
-	InstrIndex jump_to_condition = instr_new_jump(instr_buffer,
-			instr_allocator,
-			INVALID_INSTR_INDEX,
-			&compiler->io_state);
 
-	InstrIndex condition_region = instr_new_region(instr_buffer, instr_allocator);
-	instr_set_jump_target(instr_buffer, jump_to_condition, condition_region);
-	instr_region_set_last(instr_buffer, pre_loop_region_index, jump_to_condition);
+	InstrIndex branch_index = INVALID_INSTR_INDEX;
+	InstrIndex condition_region = INVALID_INSTR_INDEX;
+	InstrIndex pre_loop_to_body_jump = INVALID_INSTR_INDEX;
+	if (condition_expr) {
+		InstrIndex jump_to_condition = instr_new_jump(instr_buffer,
+				instr_allocator,
+				INVALID_INSTR_INDEX,
+				&compiler->io_state);
 
-	InstrIndex branch_index = instr_buffer_append(instr_buffer, instr_allocator);
-	Instr* branch = instr_buffer_at(instr_buffer, branch_index);
-	branch->kind = INSTR_BRANCH;
-	branch->branch.condition = _compile_expr_to_bool(compiler, condition_expr);
-	branch->branch.io_state = compiler->io_state;
+		condition_region = instr_new_region(instr_buffer, instr_allocator);
+		instr_set_jump_target(instr_buffer, jump_to_condition, condition_region);
+		instr_region_set_last(instr_buffer, pre_loop_region_index, jump_to_condition);
 
-	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+		branch_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* branch = instr_buffer_at(instr_buffer, branch_index);
+		branch->kind = INSTR_BRANCH;
+		branch->branch.condition = _compile_expr_to_bool(compiler, condition_expr);
+		branch->branch.io_state = compiler->io_state;
 
-	instr_region_set_last(instr_buffer, condition_region, branch_index);
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
+		instr_region_set_last(instr_buffer, condition_region, branch_index);
+	} else {
+		// Now, that this loop doesn't have a `condition_expr`, there is also no `condition_region`,
+		// which means we can directly jump to the body of the loop.
+		//
+		// Here jump target is `INVALID_INSTR_INDEX`, since we haven't yet compiled the body, and
+		// thus don't know its `initial_region`
+		pre_loop_to_body_jump = instr_new_jump(instr_buffer,
+				instr_allocator,
+				INVALID_INSTR_INDEX,
+				&compiler->io_state);
+
+		instr_region_set_last(instr_buffer, pre_loop_region_index, pre_loop_to_body_jump);
+	}
 
 	// Compile the body
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, body);
@@ -1169,20 +1186,40 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;
 
-	// Now the post loop staff
+	// Jump back to the start of the loop
 	if (!instr_region_finished(instr_buffer, body_block.final_region)) {
+		// NOTE: In case this loop doesn't have a `condition_expr`, jump directly to the first
+		//       region of the body.
+		InstrIndex post_loop_jump_target = condition_expr
+			? condition_region
+			: body_block.initial_region;
+
+		assert(post_loop_jump_target.value != INVALID_INSTR_INDEX.value);
+
 		InstrIndex post_loop_jump = instr_new_jump(instr_buffer,
 				instr_allocator,
-				condition_region,
+				post_loop_jump_target,
 				&compiler->io_state);
 
 		instr_region_set_last(instr_buffer, body_block.final_region, post_loop_jump);
 	}
 
+	if (!condition_expr) {
+		assert(pre_loop_to_body_jump.value != INVALID_INSTR_INDEX.value);
+
+		instr_set_jump_target(instr_buffer, pre_loop_to_body_jump, body_block.initial_region);
+	}
+
 	InstrIndex post_loop_region_index = instr_new_region(instr_buffer, instr_allocator);
 
-	branch->branch.true_region = body_block.initial_region;
-	branch->branch.false_region = post_loop_region_index;
+	// Now fix the jump targets, of the branch instruction. If there is actually a `condition_expr`.
+	if (condition_expr) {
+		assert(branch_index.value != INVALID_INSTR_INDEX.value);
+
+		Instr* branch = instr_buffer_at(instr_buffer, branch_index);
+		branch->branch.true_region = body_block.initial_region;
+		branch->branch.false_region = post_loop_region_index;
+	}
 
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;

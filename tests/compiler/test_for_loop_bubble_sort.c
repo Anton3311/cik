@@ -12,20 +12,14 @@ int main(int argc, char* argv[]) {
 	array[3] = 67;
 	array[4] = -19;
 
-	int i = 0;
-	while (i < 5) {
-		int j = 0;
-		while (j < 5) {
+	for (int i = 0; i < 5; i = i + 1) {
+		for (int j = 0; j < 5; j = j + 1) {
 			if (array[j + 1] < array[j]) {
 				int temp = array[j + 1];
 				array[j + 1] = array[j];
 				array[j] = temp;
 			}
-
-			j = j + 1;
 		}
-
-		i = i + 1;
 	}
 
 	assert(array[0] = -19);

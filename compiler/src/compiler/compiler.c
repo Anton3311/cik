@@ -988,9 +988,9 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 	profile_scope_end();
 }
 
-// Compiles a while loop.
+// Compiles a while or a for loop.
 //
-// A while loop in compiled form looks like this:
+// A loop in compiled form looks like this:
 // 
 // `pre_loop_region`:
 //   here we assign the initial values to all the variables
@@ -1018,11 +1018,30 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 //
 // NOTE: Phi nodes are created for all variables and function arguments, since we don't really know
 //       which variables will be modified inside the loop, without doing extra `Ast` traversals.
-static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
+//
+// * `node` - loop node
+// * `init_stmt` - statement that defines the initial state of a for loop (irrelevant for while loops)
+// * `condition_expr` - the loop condition
+// * `body` - loop body
+// * `advance_expr` - an expression, that advances the state forward after each iteration (relevant
+// only for `for loop`s)
+static InstrIndex _compile_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
-		AstNode* node) {
+		AstNode* node,
+		AstNode* init_stmt,
+		Expr* condition_expr,
+		AstNode* body,
+		Expr* advance_expr) {
 	profile_scope_start(__func__);
-	assert(node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION);
+
+	// TODO: Support compiling for loops without a condition
+	assert(condition_expr != NULL);
+
+	if (node->kind == AST_NODE_WHILE_LOOP) {
+		assert(node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION);
+
+		assert(advance_expr == NULL);
+	}
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
@@ -1050,6 +1069,12 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 		instr_set_jump_target(instr_buffer, jump_to_pre_loop, pre_loop_region_index);
 
 		region_instr->region.last_instr = jump_to_pre_loop;
+	}
+
+	// Compile the `init_stmt`. So that any variables defined by it, get initialized and later get
+	// replaced with a phi.
+	if (init_stmt) {
+		_compile_statement(compiler, init_stmt);
 	}
 
 	// Arrays of original var & arg values before the loop
@@ -1111,7 +1136,7 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	InstrIndex branch_index = instr_buffer_append(instr_buffer, instr_allocator);
 	Instr* branch = instr_buffer_at(instr_buffer, branch_index);
 	branch->kind = INSTR_BRANCH;
-	branch->branch.condition = _compile_expr_to_bool(compiler, &node->while_loop.condition);
+	branch->branch.condition = _compile_expr_to_bool(compiler, condition_expr);
 	branch->branch.io_state = compiler->io_state;
 
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
@@ -1119,8 +1144,16 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	instr_region_set_last(instr_buffer, condition_region, branch_index);
 
 	// Compile the body
-	AstNode* body = node->while_loop.body;
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, body);
+
+	// Compile `advance_expr` right at the end of the body.
+	if (!instr_region_finished(instr_buffer, body_block.final_region)) {
+		// If the loop body already ends with a control instruction, whether it's break, cotinue or
+		// a return, the `advance_expr` won't be rechable any more.
+		if (node->kind == AST_NODE_FOR_LOOP && advance_expr) {
+			_compile_expr(compiler, advance_expr);
+		}
+	}
 
 	_merge_pre_loop_and_inner_values(compiler,
 			var_phis,
@@ -1173,7 +1206,7 @@ static InstrIndex _compile_while_loop(FunctionCompiler* compiler,
 	return post_loop_region_index;
 }
 
-// Similar to `_compile_while_loop`.
+// Similar to `_compile_loop`.
 static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
 		AstNode* node) {
@@ -1345,6 +1378,37 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	return post_loop_region;
 }
 
+static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
+	switch (node->kind) {
+	case AST_NODE_VARIABLE:
+		assert(node->variable.id < compiler->var_count);
+		assert(node->parent_scope);
+
+		compiler->vars[node->variable.id] = &node->variable;
+		compiler->var_parent_scopes[node->variable.id] = node->parent_scope;
+
+		if (node->variable.value) {
+			Type value_type;
+			expr_get_type(node->variable.value, &value_type);
+
+			InstrIndex value = _compile_expr(compiler, node->variable.value);
+
+			// insert an implicit cast to the variable type
+			compiler->var_values[node->variable.id] = _compile_int_cast(compiler,
+					&value_type,
+					&node->variable.type,
+					value);
+		}
+
+		break;
+	case AST_NODE_EXPR:
+		_compile_expr(compiler, &node->expr);
+		break;
+	default:
+		unreachable();
+	}
+}
+
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, AstNode* first_node) {
 	profile_scope_start(__func__);
 
@@ -1363,24 +1427,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 
 		switch (node->kind) {
 		case AST_NODE_VARIABLE:
-			assert(node->variable.id < compiler->var_count);
-
-			compiler->vars[node->variable.id] = &node->variable;
-			compiler->var_parent_scopes[node->variable.id] = node->parent_scope;
-
-			if (node->variable.value) {
-				Type value_type;
-				expr_get_type(node->variable.value, &value_type);
-
-				InstrIndex value = _compile_expr(compiler, node->variable.value);
-
-				// insert an implicit cast to the variable type
-				compiler->var_values[node->variable.id] = _compile_int_cast(compiler,
-						&value_type,
-						&node->variable.type,
-						value);
-			}
-
+			_compile_statement(compiler, node);
 			break;
 		case AST_NODE_IF: {
 			// NOTE: How are branches compiled:
@@ -1612,13 +1659,29 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		}
 		case AST_NODE_WHILE_LOOP:
 			if (node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION) {
-				region_instr_index = _compile_while_loop(compiler, region_instr_index, node);
+				region_instr_index = _compile_loop(compiler,
+						region_instr_index,
+						node,
+						NULL,
+						&node->while_loop.condition,
+						node->while_loop.body,
+						NULL);
 			} else  if (node->while_loop.condition_kind == WHILE_LOOP_POST_CONDITION) {
 				region_instr_index = _compile_do_while_loop(compiler, region_instr_index, node);
 			} else {
 				unreachable();
 			}
 			break;
+		case AST_NODE_FOR_LOOP: {
+			region_instr_index = _compile_loop(compiler,
+					region_instr_index,
+					node,
+					node->for_loop.init_stmt,
+					node->for_loop.condition,
+					node->for_loop.body,
+					node->for_loop.advance_expr);
+			break;
+		}
 		case AST_NODE_BREAK:
 		case AST_NODE_CONTINUE: {
 			assert_msg(compiler->current_loop,
@@ -1647,7 +1710,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			break;
 		}
 		case AST_NODE_EXPR: 
-			_compile_expr(compiler, &node->expr);
+			_compile_statement(compiler, node);
 			break;
 		}
 	}

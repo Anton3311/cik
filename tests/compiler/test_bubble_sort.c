@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
 	int i = 0;
 	while (i < 5) {
 		int j = 0;
-		while (j < 5) {
+		while (j < 4) {
 			if (array[j + 1] < array[j]) {
 				int temp = array[j + 1];
 				array[j + 1] = array[j];

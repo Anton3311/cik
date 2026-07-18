@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
 	array[4] = -19;
 
 	for (int i = 0; i < 5; i = i + 1) {
-		for (int j = 0; j < 5; j = j + 1) {
+		for (int j = 0; j < 4; j = j + 1) {
 			if (array[j + 1] < array[j]) {
 				int temp = array[j + 1];
 				array[j + 1] = array[j];

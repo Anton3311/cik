@@ -425,12 +425,14 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
 	switch (expr->binary.op) {
 	case BIN_OP_ADD:
+	case BIN_OP_ASSIGNMENT_BY_SUM:
 		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = INSTR_BIN_ADD;
 		instr->bin_op.left = left;
 		instr->bin_op.right = right;
 		break;
 	case BIN_OP_SUB:
+	case BIN_OP_ASSIGNMENT_BY_DIFFERENCE:
 		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = INSTR_BIN_SUB;
 		instr->bin_op.left = left;
@@ -477,6 +479,10 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	assert_msg(instr->kind != INSTR_NO_OP,
 			"Binary operation was not handled, "
 			"and thus haven't produced a valid instruction");
+
+	if (bin_op_is_assignment(expr->binary.op)) {
+		_compile_assignment(compiler, expr->binary.left, instr_index);
+	}
 
 	profile_scope_end();
 	return instr_index;

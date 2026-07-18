@@ -2007,6 +2007,18 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 				right_type.kind = TYPE_INT;
 			}
 
+			ValueKind left_value_kind = expr_get_value_kind(left_operand);
+			ValueKind right_value_kind = expr_get_value_kind(right_operand);
+
+			if (bin_op_is_assignment(current_bin_op)) {
+				if (left_value_kind != VALUE_L) {
+					diagnostics_report_error(parser->diagnostics,
+							left_operand_token.source_range,
+							STR_LIT("Expected an l-value"),
+							NULL);
+				}
+			}
+
 			Type result_type;
 			bin_expr_select_result_type(&left_type, &right_type, &result_type);
 

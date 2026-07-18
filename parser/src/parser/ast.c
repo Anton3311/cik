@@ -474,6 +474,34 @@ bool expr_is_bool(Expr* expr) {
 	return false;
 }
 
+ValueKind expr_get_value_kind(Expr* expr) {
+	switch (expr->kind) {
+	case EXPR_VARIABLE_REFERENCE:
+		return VALUE_L;
+	case EXPR_FUNCTION_PARAM:
+		return VALUE_L;
+	case EXPR_ARRAY_INDEX:
+		return VALUE_L;
+	case EXPR_UNARY:
+		switch (expr->unary.op) {
+		case UNARY_OP_PRE_INCREMENT:
+		case UNARY_OP_POST_INCREMENT:
+		case UNARY_OP_PRE_DECREMENT:
+		case UNARY_OP_POST_DECREMENT:
+			return VALUE_L;
+		case UNARY_OP_DEREFERENCE:
+			return VALUE_L;
+		default:
+			return VALUE_R;
+		}
+	default:
+		return VALUE_R;
+	}
+
+	unreachable();
+	return 0;
+}
+
 size_t struct_field_namespace_index_of(const StructFieldNamespace* struct_namespace, String name) {
 	size_t index = hash_string(name) % struct_namespace->capacity;
 	

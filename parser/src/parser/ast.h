@@ -193,6 +193,15 @@ bool type_is_struct(const Type* type, const Struct* struct_def);
 bool type_is_enum(const Type* type, const Enum* enum_def);
 
 //
+// L & R Values
+//
+
+typedef enum {
+	VALUE_L = 1,
+	VALUE_R = 2,
+} ValueKind;
+
+//
 // Expr
 //
 
@@ -236,6 +245,10 @@ typedef enum {
 
 inline bool bin_op_is_compare(BinOpKind kind) {
 	return kind >= BIN_OP_LOGICAL_EQUAL && kind <= BIN_OP_LOGICAL_GREATER_OR_EQUAL;
+}
+
+inline bool bin_op_is_assignment(BinOpKind kind) {
+	return kind >= BIN_OP_ASSIGNMENT && kind <= BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT;
 }
 
 typedef enum {
@@ -371,6 +384,7 @@ struct Expr {
 
 void expr_get_type(Expr* expr, Type* out_type);
 bool expr_is_bool(Expr* expr);
+ValueKind expr_get_value_kind(Expr* expr);
 
 //
 // Struct

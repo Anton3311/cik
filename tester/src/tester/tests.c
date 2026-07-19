@@ -2269,3 +2269,58 @@ void test_parse_char_const_with_multiple_chars_is_tool_long(TestContext* context
 	assert(diagnostics.first != NULL);
 	assert(str_equal(diagnostics.first->message, STR_LIT("Character constant is too long")));
 }
+
+void test_unary_op_requires_l_value_error(TestContext* context) {
+	String source = STR_LIT("0++;\n"
+			"0--;\n"
+			"++0;\n"
+			"--0;\n");
+
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	AST ast;
+	run_parser_test(context, &diagnostics, &source_storage, source, &ast);
+
+	DiagnosticsEntry* error = diagnostics.first;
+	for (size_t i = 0; i < 4; i += 1) {
+		assert(error);
+
+		assert(str_equal(error->message, STR_LIT("Expected an l-value")));
+		assert(error->start_line == (uint32_t)(i));
+		assert(error->end_line == (uint32_t)(i));
+
+		error = error->next;
+	}
+}
+
+void test_unary_op_requires_int_type(TestContext* context) {
+	String source = STR_LIT("typedef struct {} A;\n"
+			"A a;\n"
+			"a++;\n"
+			"a--;\n"
+			"++a;\n"
+			"--a;\n");
+
+	SourceStorage source_storage;
+	Diagnostics diagnostics;
+	AST ast;
+	run_parser_test(context, &diagnostics, &source_storage, source, &ast);
+
+	String error_messages[4] = {
+		STR_LIT("Cannot apply '++' to an operand of type 'A'"),
+		STR_LIT("Cannot apply '--' to an operand of type 'A'"),
+		STR_LIT("Cannot apply '++' to an operand of type 'A'"),
+		STR_LIT("Cannot apply '--' to an operand of type 'A'"),
+	};
+
+	DiagnosticsEntry* error = diagnostics.first;
+	for (size_t i = 0; i < 4; i += 1) {
+		assert(error);
+
+		assert(str_equal(error->message, error_messages[i]));
+		assert(error->start_line == (uint32_t)(i + 2));
+		assert(error->end_line == (uint32_t)(i + 2));
+
+		error = error->next;
+	}
+}

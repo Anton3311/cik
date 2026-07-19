@@ -106,4 +106,7 @@ void test_parse_empty_char_fails(TestContext* context);
 void test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long(TestContext* context);
 void test_parse_char_const_with_multiple_chars_is_tool_long(TestContext* context);
 
+void test_unary_op_requires_l_value_error(TestContext* context);
+void test_unary_op_requires_int_type(TestContext* context);
+
 #endif

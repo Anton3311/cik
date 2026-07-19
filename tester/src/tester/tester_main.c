@@ -181,6 +181,8 @@ int main(int argc, char* argv[]) {
 		test(test_parse_empty_char_fails),
 		test(test_parse_char_const_with_escape_sequence_and_a_following_char_is_tool_long),
 		test(test_parse_char_const_with_multiple_chars_is_tool_long),
+		test(test_unary_op_requires_l_value_error),
+		test(test_unary_op_requires_int_type),
 	};
 
 	TestCase compiler_tests[] = {

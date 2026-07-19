@@ -1572,7 +1572,46 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		out_expr->unary.operand = arena_alloc(parser->ast_allocator, Expr);
 		out_expr->unary.op = unary_op;
 
+		Token operand_token = preprocessor_view_next(parser->preprocessor);
 		ExprParseResult result = _parser_try_parse_bin_expr_operand(parser, out_expr->unary.operand);
+
+		bool requires_l_value = unary_op == UNARY_OP_PRE_INCREMENT
+			|| unary_op == UNARY_OP_PRE_DECREMENT;
+
+		bool requires_int_operand = unary_op == UNARY_OP_PRE_INCREMENT
+			|| unary_op == UNARY_OP_POST_INCREMENT
+			|| unary_op == UNARY_OP_PRE_DECREMENT
+			|| unary_op == UNARY_OP_POST_DECREMENT;
+
+		if (result == EXPR_PARSE_OK && requires_int_operand) {
+			Type operand_type;
+			expr_get_type(out_expr->unary.operand, &operand_type);
+
+			if (!type_kind_is_int(operand_type.kind)) {
+				StringBuilder builder = { parser->diagnostics->allocator };
+				str_builder_append(&builder, STR_LIT("Cannot apply '"));
+				str_builder_append(&builder, token.string);
+				str_builder_append(&builder, STR_LIT("' to an operand of type '"));
+				type_format(&operand_type, &builder);
+				str_builder_append(&builder, STR_LIT("'"));
+
+				diagnostics_report_error(parser->diagnostics,
+						operand_token.source_range,
+						builder.string,
+						NULL);
+			}
+		}
+
+		if (result == EXPR_PARSE_OK && requires_l_value) {
+			ValueKind operand_value_kind = expr_get_value_kind(out_expr->unary.operand);
+			if (operand_value_kind != VALUE_L) {
+				diagnostics_report_error(parser->diagnostics,
+						operand_token.source_range,
+						STR_LIT("Expected an l-value"),
+						NULL);
+			}
+		}
+
 		profile_scope_end();
 		return result;
 	}
@@ -1887,6 +1926,8 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* out_expr) {
 	profile_func_colored(PROFILE_COLOR);
 
+	Token expr_token = preprocessor_view_next(parser->preprocessor);
+
 	ExprParseResult result = _parser_try_parse_expr_operand_without_post_fix_operator(parser, out_expr);
 	if (result != EXPR_PARSE_OK) {
 		profile_scope_end();
@@ -1939,23 +1980,43 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
-		} else if (operator_token.kind == TOKEN_DOUBLE_PLUS) {
+		} else if (operator_token.kind == TOKEN_DOUBLE_PLUS
+				|| operator_token.kind == TOKEN_DOUBLE_MINUS) {
+
 			preprocessor_next_token(parser->preprocessor);
 
 			Expr* operand = arena_alloc(parser->ast_allocator, Expr);
 			memcpy(operand, out_expr, sizeof(*out_expr));
 
-			out_expr->kind = EXPR_UNARY;
-			out_expr->unary.op = UNARY_OP_POST_INCREMENT;
-			out_expr->unary.operand = operand;
-		} else if (operator_token.kind == TOKEN_DOUBLE_MINUS) {
-			preprocessor_next_token(parser->preprocessor);
+			Type operand_type;
+			expr_get_type(operand, &operand_type);
 
-			Expr* operand = arena_alloc(parser->ast_allocator, Expr);
-			memcpy(operand, out_expr, sizeof(*out_expr));
+			if (!type_kind_is_int(operand_type.kind)) {
+				StringBuilder builder = { parser->diagnostics->allocator };
+				str_builder_append(&builder, STR_LIT("Cannot apply '"));
+				str_builder_append(&builder, operator_token.string);
+				str_builder_append(&builder, STR_LIT("' to an operand of type '"));
+				type_format(&operand_type, &builder);
+				str_builder_append(&builder, STR_LIT("'"));
+
+				diagnostics_report_error(parser->diagnostics,
+						expr_token.source_range,
+						builder.string,
+						NULL);
+			}
+
+			ValueKind operand_value_kind = expr_get_value_kind(operand);
+			if (operand_value_kind != VALUE_L) {
+				diagnostics_report_error(parser->diagnostics,
+						expr_token.source_range,
+						STR_LIT("Expected an l-value"),
+						NULL);
+			}
 
 			out_expr->kind = EXPR_UNARY;
-			out_expr->unary.op = UNARY_OP_POST_DECREMENT;
+			out_expr->unary.op = operator_token.kind == TOKEN_DOUBLE_PLUS
+				? UNARY_OP_POST_INCREMENT
+				: UNARY_OP_POST_DECREMENT;
 			out_expr->unary.operand = operand;
 		} else {
 			break;

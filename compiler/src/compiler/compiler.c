@@ -581,10 +581,15 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		profile_scope_end();
 		return compiler->arg_states[arg_index];
 	}
-	case EXPR_UNARY:
+	case EXPR_UNARY: {
+		UnaryOpKind op = expr->unary.op;
 		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+
 		Type operand_type;
 		expr_get_type(expr->unary.operand, &operand_type);
+
+		TypeLayout operand_type_layout = _type_get_layout(compiler, &operand_type);
+		size_t result_bit_size_index = count_trailing_zeros(operand_type_layout.size);
 
 		switch (expr->unary.op) {
 		case UNARY_OP_DEREFERENCE: {
@@ -626,6 +631,41 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 			profile_scope_end();
 			return instr_index;
 		}
+		case UNARY_OP_PRE_INCREMENT:
+		case UNARY_OP_POST_INCREMENT:
+		case UNARY_OP_PRE_DECREMENT:
+		case UNARY_OP_POST_DECREMENT: {
+			bool is_increment = op == UNARY_OP_PRE_INCREMENT  || op == UNARY_OP_POST_INCREMENT;
+			bool is_pre_op = op == UNARY_OP_PRE_INCREMENT || op == UNARY_OP_PRE_DECREMENT;
+
+			assert(type_kind_is_int(operand_type.kind));
+			assert(operand_type_layout.size <= 8);
+
+			InstrIndex one_const = instr_new_int_const(instr_buffer,
+					instr_allocator,
+					1,
+					operand_type_layout.size);
+
+			InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
+			bin_op->kind = INSTR_BIN_OP_8 + result_bit_size_index;
+			bin_op->bin_op.left = operand_instr;
+			bin_op->bin_op.right = one_const;
+
+			if (is_increment) {
+				bin_op->bin_op.kind = INSTR_BIN_ADD;
+			} else {
+				bin_op->bin_op.kind = INSTR_BIN_SUB;
+			}
+
+			_compile_assignment(compiler, expr->unary.operand, bin_op_index);
+
+			if (is_pre_op) {
+				return bin_op_index;
+			} else {
+				return operand_instr;
+			}
+		}
 		case UNARY_OP_NEGATE: {
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
@@ -658,6 +698,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 			return operand_instr;
 		}
 		break;
+	}
 	case EXPR_CHAR_LITERAL: {
 		assert(expr->char_literal.value <= 0xff);
 

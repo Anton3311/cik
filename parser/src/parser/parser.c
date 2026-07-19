@@ -1939,6 +1939,24 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
+		} else if (operator_token.kind == TOKEN_DOUBLE_PLUS) {
+			preprocessor_next_token(parser->preprocessor);
+
+			Expr* operand = arena_alloc(parser->ast_allocator, Expr);
+			memcpy(operand, out_expr, sizeof(*out_expr));
+
+			out_expr->kind = EXPR_UNARY;
+			out_expr->unary.op = UNARY_OP_POST_INCREMENT;
+			out_expr->unary.operand = operand;
+		} else if (operator_token.kind == TOKEN_DOUBLE_MINUS) {
+			preprocessor_next_token(parser->preprocessor);
+
+			Expr* operand = arena_alloc(parser->ast_allocator, Expr);
+			memcpy(operand, out_expr, sizeof(*out_expr));
+
+			out_expr->kind = EXPR_UNARY;
+			out_expr->unary.op = UNARY_OP_POST_DECREMENT;
+			out_expr->unary.operand = operand;
 		} else {
 			break;
 		}
@@ -1951,6 +1969,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 	profile_func_colored(PROFILE_COLOR);
 
+	Token left_operand_token = preprocessor_view_next(parser->preprocessor);
 	ExprParseResult left_operand_result = _parser_try_parse_bin_expr_operand(parser, out_expr);
 	if (left_operand_result != EXPR_PARSE_OK) {
 		profile_scope_end();

@@ -361,6 +361,7 @@ inline bool instr_is_control(const InstrBuffer* instr_buffer, InstrIndex instr_i
 	return has_flag(INSTR_FEATURES[instr->kind], INSTR_FEATURE_CONTROL);
 }
 
+// `int_size` - size of the int in bytes
 InstrIndex instr_new_int_const(InstrBuffer* buffer,
 		Arena* allocator,
 		uint64_t value,

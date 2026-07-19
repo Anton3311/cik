@@ -1971,6 +1971,17 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			Expr* callable = arena_alloc(parser->ast_allocator, Expr);
 			memcpy(callable, out_expr, sizeof(*out_expr));
 
+			Type callable_type;
+			expr_get_type(callable, &callable_type);
+			if (callable_type.kind != TYPE_FUNCTION) {
+				diagnostics_report_error(parser->diagnostics,
+						source_range_unpack(
+							parser->preprocessor->source_storage,
+							expr_get_source_range(callable)),
+						STR_LIT("Expression is not callable"),
+						NULL);
+			}
+
 			out_expr->kind = EXPR_CALL;
 			out_expr->call.callable = callable;
 			out_expr->call.args = args;

@@ -119,7 +119,7 @@ static LoopControlStmt* _alloc_loop_control_stmt(FunctionCompiler* compiler) {
 	LoopControlStmt* stmt = heap_alloc(LoopControlStmt);
 	stmt->next = NULL;
 
-	size_t arg_count = compiler->function->parameter_count;
+	size_t arg_count = compiler->function->proto.parameter_count;
 
 	stmt->var_values = heap_alloc_array(InstrIndex, compiler->var_count);
 	stmt->arg_values = heap_alloc_array(InstrIndex, arg_count);
@@ -513,7 +513,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		call_instr->call_indirect.args = arg_inputs;
 		call_instr->call_indirect.io_state = compiler->io_state;
 
-		String func_name = callable->function_ref.func->name.string;
+		String func_name = callable->function_ref.func->proto.name;
 		call_instr->call_indirect.function_index = func_ref_table_get_or_insert(
 				&compiler->func_ref_table,
 				func_name);
@@ -577,7 +577,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 	}
 	case EXPR_FUNCTION_PARAM: {
 		size_t arg_index = expr->function_param.param_index;
-		assert(arg_index < compiler->function->parameter_count);
+		assert(arg_index < compiler->function->proto.parameter_count);
 		profile_scope_end();
 		return compiler->arg_states[arg_index];
 	}
@@ -980,7 +980,7 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 				control_stmt_count);
 	}
 
-	size_t arg_count = compiler->function->parameter_count;
+	size_t arg_count = compiler->function->proto.parameter_count;
 	for (size_t i = 0; i < arg_count; i += 1) {
 		_fill_phi_variants(compiler,
 				arg_phis[i],
@@ -1083,7 +1083,7 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 	compiler->current_loop = node;
 	compiler->current_loop_control_stmts = NULL;
 
-	size_t arg_count = compiler->function->parameter_count;
+	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -1292,7 +1292,7 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	compiler->current_loop = node;
 	compiler->current_loop_control_stmts = NULL;
 
-	size_t arg_count = compiler->function->parameter_count;
+	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
@@ -1560,7 +1560,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				array_copy(var_values_for_true_path, compiler->var_values, compiler->var_count);
 				array_copy(var_values_for_false_path, compiler->var_values, compiler->var_count);
 
-				size_t arg_count = compiler->function->parameter_count;
+				size_t arg_count = compiler->function->proto.parameter_count;
 				InstrIndex* arg_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
 						InstrIndex,
 						arg_count);
@@ -1706,7 +1706,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			break;
 		}
 		case AST_NODE_RETURN: {
-			bool should_return_value = compiler->function->return_type.kind != TYPE_VOID;
+			bool should_return_value = compiler->function->proto.return_type.kind != TYPE_VOID;
 
 			if (should_return_value) {
 				assert(node->return_stmt.value != NULL);
@@ -1771,7 +1771,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				: LOOP_CONTROL_CONTINUE;
 			control->region = region_instr_index;
 
-			size_t arg_count = compiler->function->parameter_count;
+			size_t arg_count = compiler->function->proto.parameter_count;
 
 			array_copy(control->var_values, compiler->var_values, compiler->var_count);
 			array_copy(control->arg_values, compiler->arg_states, arg_count);
@@ -1815,10 +1815,12 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	}
 
 	// Allocate`arg_states` buffer
-	assert_msg(compiler->function->parameter_count <= 4, "For now only up to 4 params are supported");
+	assert_msg(compiler->function->proto.parameter_count <= 4,
+			"For now only up to 4 params are supported");
+
 	compiler->arg_states = arena_alloc_array(compiler->allocator,
 			InstrIndex,
-			compiler->function->parameter_count);
+			compiler->function->proto.parameter_count);
 
 	// Init `InstrBuffer`
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -1827,11 +1829,11 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	instr_buffer_init(instr_buffer, instr_allocator);
 
 	// Setup initial `INSTR_LOAD_ARG`
-	for (size_t i = 0; i < compiler->function->parameter_count; i += 1) {
+	for (size_t i = 0; i < compiler->function->proto.parameter_count; i += 1) {
 		InstrIndex index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, index);
 
-		const FunctionParam* param = &compiler->function->parameters[i];
+		const FunctionParam* param = &compiler->function->proto.parameters[i];
 		size_t param_type_size = _type_get_layout(compiler, &param->type).size;
 
 		switch (param_type_size) {
@@ -1868,7 +1870,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	InstrIndex region = body_block.initial_region;
 
-	if (compiler->function->return_type.kind == TYPE_VOID) {
+	if (compiler->function->proto.return_type.kind == TYPE_VOID) {
 		if (!instr_region_finished(instr_buffer, region)) {
 			Instr* region_instr = instr_buffer_at(instr_buffer, region);
 			assert(region_instr->region.last_instr.value == INVALID_INSTR_INDEX.value);

@@ -16,6 +16,7 @@ typedef struct Enum Enum;
 typedef struct EnumVariant EnumVariant;
 typedef struct TypeDef TypeDef;
 typedef struct Function Function;
+typedef struct FunctionPrototype FunctionPrototype;
 typedef struct FunctionParam FunctionParam;
 typedef struct Variable Variable;
 typedef struct Scope Scope;
@@ -138,6 +139,7 @@ typedef enum {
 
 	TYPE_POINTER            = 16,
 	TYPE_ARRAY              = 17,
+	TYPE_FUNCTION           = 18,
 } TypeKind;
 
 struct Type {
@@ -151,6 +153,7 @@ struct Type {
 		Struct* union_def;
 		Enum* enum_def;
 		Type* pointer_base_type;
+		const FunctionPrototype* function;
 
 		struct {
 			Type* element_type;
@@ -551,16 +554,20 @@ struct FunctionParam {
 	SourceString name;
 };
 
-struct Function {
+struct FunctionPrototype {
 	Type return_type;
-	SourceString name;
+	String name;
+	FunctionCallingConvention calling_convention;
+	bool has_va_args;
+	size_t parameter_count;
+	FunctionParam* parameters;
+};
+
+struct Function {
+	FunctionPrototype proto;
 
 	bool is_inline;
 	bool is_forward_declared;
-	bool has_va_args;
-	FunctionCallingConvention calling_convention;
-	size_t parameter_count;
-	FunctionParam* parameters;
 	Scope* body;
 	DeclSpec* decl_spec;
 	StorageSpecifier storage_specifier;

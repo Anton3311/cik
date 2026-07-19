@@ -226,6 +226,25 @@ void type_format(const Type* type, StringBuilder* builder) {
 		case TYPE_DOUBLE:
 			str_builder_append(builder, STR_LIT("double"));
 			break;
+		case TYPE_FUNCTION: {
+			const FunctionPrototype* proto = type->function;
+			type_format(&proto->return_type, builder);
+			str_builder_append(builder, STR_LIT(" ("));
+			str_builder_append(builder,
+					function_calling_convetion_to_string(proto->calling_convention));
+			str_builder_append(builder, STR_LIT(" *)("));
+
+			for (size_t i = 0; i < proto->parameter_count; i += 1) {
+				type_format(&proto->parameters[i].type, builder);
+
+				if (i + 1 != proto->parameter_count) {
+					str_builder_append(builder, STR_LIT(", "));
+				}
+			}
+
+			str_builder_append(builder, STR_LIT(")"));
+			break;
+		}
 		}
 	}
 }
@@ -472,7 +491,7 @@ void bin_expr_select_result_type(const Type* left_type,
 String function_calling_convetion_to_string(FunctionCallingConvention conv) {
 	switch (conv) {
 	case FUNC_CALL_CONV_DEFAULT:
-		return STR_LIT("default");
+		return STR_LIT("__cdecl");
 	case FUNC_CALL_CONV_CDECL:
 		return STR_LIT("__cdecl");
 	}
@@ -506,12 +525,15 @@ void parsed_node_list_append(NodeList* list, AstNode* node) {
 }
 
 void expr_get_type(Expr* expr, Type* out_type) {
+	memset(out_type, 0, sizeof(*out_type));
+
 	switch (expr->kind) {
 	case EXPR_CALL: {
 		Expr* callable = expr->call.callable;
-		assert_msg(callable->kind == EXPR_FUNCTION_REFERENCE, "A callable expression is not function");
+		assert_msg(callable->kind == EXPR_FUNCTION_REFERENCE,
+				"A callable expression is not function");
 
-		*out_type = callable->function_ref.func->return_type;
+		*out_type = callable->function_ref.func->proto.return_type;
 		return;
 	}
 	case EXPR_BINARY: {
@@ -550,7 +572,9 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		return;
 	}
 	case EXPR_FUNCTION_REFERENCE:
-		panic("todo: return a type that correspond to the function signature (function pointer type)");
+		out_type->kind = TYPE_FUNCTION;
+		out_type->function = &expr->function_ref.func->proto;
+		return;
 	case EXPR_VARIABLE_REFERENCE:
 		*out_type = expr->variable_ref.var->type;
 		return;
@@ -575,8 +599,8 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		return;
 	case EXPR_FUNCTION_PARAM: {
 		const Function* func = expr->function_param.function_def;
-		assert(expr->function_param.param_index < func->parameter_count);
-		*out_type = func->parameters[expr->function_param.param_index].type;
+		assert(expr->function_param.param_index < func->proto.parameter_count);
+		*out_type = func->proto.parameters[expr->function_param.param_index].type;
 		return;
 	}
 	case EXPR_ARRAY_INDEX: {
@@ -798,7 +822,7 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 	switch (expr->kind) {
 	case EXPR_FUNCTION_REFERENCE:
 		printer_begin_struct(printer, "function_ref");
-		printer_string_field(printer, "name", expr->function_ref.func->name.string);
+		printer_string_field(printer, "name", expr->function_ref.func->proto.name);
 		printer_end_struct(printer);
 		break;
 	case EXPR_VARIABLE_REFERENCE:
@@ -880,8 +904,10 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 	case EXPR_FUNCTION_PARAM: {
 		const Function* func_def = expr->function_param.function_def;
 		printer_begin_struct(printer, "function_param");
-		printer_string_field(printer, "func_name", func_def->name.string);
-		printer_string_field(printer, "param_name", func_def->parameters[expr->function_param.param_index].name.string);
+		printer_string_field(printer, "func_name", func_def->proto.name);
+		printer_string_field(printer,
+				"param_name",
+				func_def->proto.parameters[expr->function_param.param_index].name.string);
 		printer_end_struct(printer);
 		break;
 	}
@@ -1141,17 +1167,19 @@ void print_function_def(PrinterState* printer, const Function* function_def) {
 
 	printer_string_field(printer, "storage_spec", storage_spec_string);
 
-	printer_string_field(printer, "name", function_def->name.string);
-	printer_string_field(printer, "calling_convetion", function_calling_convetion_to_string(function_def->calling_convention));
+	const FunctionPrototype* proto = &function_def->proto;
+	printer_string_field(printer, "name", proto->name);
+	printer_string_field(printer, "calling_convetion",
+			function_calling_convetion_to_string(proto->calling_convention));
 
 	printer_field(printer, "return_type");
-	print_type(printer, &function_def->return_type);
+	print_type(printer, &proto->return_type);
 
 	printer_field(printer, "parameters");
 	printer_begin_array(printer);
 
-	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
-		const FunctionParam* param = &function_def->parameters[i];
+	for (size_t i = 0; i < proto->parameter_count; i += 1) {
+		const FunctionParam* param = &proto->parameters[i];
 
 		printer_array_element(printer, i);
 		printer_begin_struct(printer, "param");
@@ -1167,7 +1195,7 @@ void print_function_def(PrinterState* printer, const Function* function_def) {
 
 	printer_end_array(printer);
 	printer_bool_field(printer, "is_forward_declared", function_def->is_forward_declared);
-	printer_bool_field(printer, "has_va_args", function_def->has_va_args);
+	printer_bool_field(printer, "has_va_args", proto->has_va_args);
 
 	if (!function_def->is_forward_declared) {
 		printer_field(printer, "body");

@@ -2290,8 +2290,9 @@ static void _parser_register_function_param_identifiers(Parser* parser, Function
 	profile_func_colored(PROFILE_COLOR);
 	assert(!function_def->is_forward_declared);
 
-	for (size_t i = 0; i < function_def->parameter_count; i += 1) {
-		const FunctionParam* param = &function_def->parameters[i];
+	FunctionPrototype* proto = &function_def->proto;
+	for (size_t i = 0; i < proto->parameter_count; i += 1) {
+		const FunctionParam* param = &proto->parameters[i];
 		if (param->name.string.length == 0) {
 			continue;
 		}
@@ -2378,7 +2379,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 		assert(function_def);
 
 		// TODO: Verify that return types also match
-		if (function_def->parameter_count != param_count || function_def->has_va_args != has_va_args) {
+		if (function_def->proto.parameter_count != param_count || function_def->proto.has_va_args != has_va_args) {
 			DiagnosticsEntry* error = diagnostics_report_error(parser->diagnostics,
 					source_string_to_range(name),
 					STR_LIT("Function was previously defined with a different parameter count"),
@@ -2391,7 +2392,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 			profile_scope_end();
 			return NULL;
 		} else {
-			FunctionParam* prev_def_param = function_def->parameters;
+			FunctionParam* prev_def_param = function_def->proto.parameters;
 			FunctionParam* new_def_param = params;
 
 			for (size_t i = 0; i < param_count; i += 1) {
@@ -2423,15 +2424,15 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 
 		function_def = arena_alloc_zeroed(parser->ast_allocator, Function); 
 		
-		function_def->name = name;
-		function_def->return_type = *return_type;
-		function_def->parameters = params;
-		function_def->parameter_count = param_count;
+		function_def->proto.name = name.string;
+		function_def->proto.return_type = *return_type;
+		function_def->proto.parameters = params;
+		function_def->proto.parameter_count = param_count;
 		function_def->is_forward_declared = true;
 		function_def->decl_spec = decl_spec;
 		function_def->storage_specifier = storage_specifier;
 		function_def->var_count = 0;
-		function_def->has_va_args = has_va_args;
+		function_def->proto.has_va_args = has_va_args;
 
 		entry->function_def = function_def;
 	}

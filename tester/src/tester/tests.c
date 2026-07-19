@@ -979,14 +979,14 @@ void test_parse_function_def(TestContext* context) {
 	assert(first->kind == AST_NODE_FUNCTION);
 
 	Function* function_def = first->function_def;
-	assert(str_equal(function_def->name.string, STR_LIT("func")));
+	assert(str_equal(function_def->proto.name, STR_LIT("func")));
 
-	Type* return_type = &function_def->return_type;
+	Type* return_type = &function_def->proto.return_type;
 	assert(return_type->kind == TYPE_VOID);
 
-	assert(function_def->parameter_count == 2);
-	const FunctionParam* first_param = &function_def->parameters[0];
-	const FunctionParam* second_param = &function_def->parameters[1];
+	assert(function_def->proto.parameter_count == 2);
+	const FunctionParam* first_param = &function_def->proto.parameters[0];
+	const FunctionParam* second_param = &function_def->proto.parameters[1];
 
 	assert(str_equal(first_param->name.string, STR_LIT("a")));
 	assert(first_param->type.kind == TYPE_INT);

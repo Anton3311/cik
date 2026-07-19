@@ -2143,7 +2143,12 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 			}
 
 			Type result_type;
-			bin_expr_select_result_type(&left_type, &right_type, &result_type);
+
+			if (bin_op_is_compare(current_bin_op)) {
+				result_type.kind = TYPE_INT;
+			} else {
+				bin_expr_select_result_type(&left_type, &right_type, &result_type);
+			}
 
 			*current_expr = (Expr) {
 				.kind = EXPR_BINARY,

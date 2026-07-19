@@ -925,6 +925,40 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 			break;
 		}
+		case INSTR_BIN_IMUL:
+			if (bit_count == 8) {
+				// FIXME: Make sure that nothing else is using `AH` at this moment, since it will be
+				//        overriden by the `imul` result.
+
+				bool should_save_ax = dst_loc.reg != X64_REG_A;
+
+				if (should_save_ax) {
+					encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_A, 64));
+				}
+
+				if (left_reg == X64_REG_A) {
+					encode_1(buffer, MNEMONIC_IMUL, operand_reg(right_reg, 8));
+				} else if (right_reg == X64_REG_A) {
+					encode_1(buffer, MNEMONIC_IMUL, operand_reg(left_reg, 8));
+				} else {
+					_emit_mov_regs(buffer, left_reg, X64_REG_A, 8);
+					encode_1(buffer, MNEMONIC_IMUL, operand_reg(right_reg, 8));
+				}
+
+				_emit_mov_regs(buffer, X64_REG_A, dst_loc.reg, 8);
+
+				if (should_save_ax) {
+					encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_A, 64));
+				}
+			} else {
+				assert(bit_count == 16 || bit_count == 32 || bit_count == 64);
+
+				encode_2(buffer,
+						MNEMONIC_IMUL,
+						operand_reg(left_reg, bit_count),
+						operand_reg(right_reg, bit_count));
+			}
+			break;
 		}
 
 		return;

@@ -796,6 +796,37 @@ static uint8_t _get_instr_value_size(const X64CodeGenerator* gen, InstrIndex ins
 	return value_size;
 }
 
+static void _emit_mul(CodeBuffer* buffer,
+		MnemonicKind mnemonic,
+		X64Register left_reg,
+		X64Register right_reg,
+		X64Register dst_reg,
+		uint8_t bit_count) {
+	// FIXME: Make sure that nothing else is using `AH` at this moment, since it will be
+	//        overriden by the `imul` result.
+	X64Register mul_output_reg = X64_REG_A;
+	bool should_save_output = dst_reg != mul_output_reg;
+
+	if (should_save_output) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(mul_output_reg, 64));
+	}
+
+	if (left_reg == mul_output_reg) {
+		encode_1(buffer, mnemonic, operand_reg(right_reg, bit_count));
+	} else if (right_reg == mul_output_reg) {
+		encode_1(buffer, mnemonic, operand_reg(left_reg, bit_count));
+	} else {
+		_emit_mov_regs(buffer, left_reg, mul_output_reg, bit_count);
+		encode_1(buffer, mnemonic, operand_reg(right_reg, bit_count));
+	}
+
+	_emit_mov_regs(buffer, X64_REG_A, dst_reg, bit_count);
+
+	if (should_save_output) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(mul_output_reg, 64));
+	}
+}
+
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
@@ -927,29 +958,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		}
 		case INSTR_BIN_IMUL:
 			if (bit_count == 8) {
-				// FIXME: Make sure that nothing else is using `AH` at this moment, since it will be
-				//        overriden by the `imul` result.
-
-				bool should_save_ax = dst_loc.reg != X64_REG_A;
-
-				if (should_save_ax) {
-					encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_A, 64));
-				}
-
-				if (left_reg == X64_REG_A) {
-					encode_1(buffer, MNEMONIC_IMUL, operand_reg(right_reg, 8));
-				} else if (right_reg == X64_REG_A) {
-					encode_1(buffer, MNEMONIC_IMUL, operand_reg(left_reg, 8));
-				} else {
-					_emit_mov_regs(buffer, left_reg, X64_REG_A, 8);
-					encode_1(buffer, MNEMONIC_IMUL, operand_reg(right_reg, 8));
-				}
-
-				_emit_mov_regs(buffer, X64_REG_A, dst_loc.reg, 8);
-
-				if (should_save_ax) {
-					encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_A, 64));
-				}
+				_emit_mul(buffer, MNEMONIC_IMUL, left_reg, right_reg, dst_loc.reg, 8);
 			} else {
 				assert(bit_count == 16 || bit_count == 32 || bit_count == 64);
 
@@ -958,6 +967,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 						operand_reg(left_reg, bit_count),
 						operand_reg(right_reg, bit_count));
 			}
+			break;
+		case INSTR_BIN_UMUL:
+			_emit_mul(buffer, MNEMONIC_MUL, left_reg, right_reg, dst_loc.reg, bit_count);
 			break;
 		}
 

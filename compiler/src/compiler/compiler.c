@@ -239,7 +239,7 @@ static void _compile_assignment(FunctionCompiler* compiler,
 	Arena* instr_allocator = compiler->instr_allocator;
 
 	if (target->kind == EXPR_VARIABLE_REFERENCE) {
-		const Variable* variable = target->variable_ref;
+		const Variable* variable = target->variable_ref.var;
 		compiler->var_values[variable->id] = value_instr;
 	} else if (target->kind == EXPR_FUNCTION_PARAM) {
 		size_t arg_index = target->function_param.param_index;
@@ -513,7 +513,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		call_instr->call_indirect.args = arg_inputs;
 		call_instr->call_indirect.io_state = compiler->io_state;
 
-		String func_name = callable->function_ref->name.string;
+		String func_name = callable->function_ref.func->name.string;
 		call_instr->call_indirect.function_index = func_ref_table_get_or_insert(
 				&compiler->func_ref_table,
 				func_name);
@@ -546,7 +546,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 	case EXPR_FUNCTION_REFERENCE:
 		break;
 	case EXPR_VARIABLE_REFERENCE: {
-		InstrIndex var_value = compiler->var_values[expr->variable_ref->id];
+		InstrIndex var_value = compiler->var_values[expr->variable_ref.var->id];
 		assert(var_value.value != INVALID_INSTR_INDEX.value);
 		profile_scope_end();
 		return var_value;

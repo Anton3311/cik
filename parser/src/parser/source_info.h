@@ -4,6 +4,7 @@
 #include "core/core.h"
 
 typedef struct SourceFile SourceFile;
+typedef struct SourceStorage SourceStorage;
 
 typedef struct {
 	String string;
@@ -15,6 +16,16 @@ typedef struct {
 	size_t start;
 	size_t end;
 } SourceRange;
+
+typedef struct {
+	uint32_t start;
+	uint16_t length;
+	uint16_t file_id;
+} PackedSourceRange;
+
+PackedSourceRange source_range_pack(SourceRange range);
+SourceRange source_range_unpack(const SourceStorage* storage, PackedSourceRange range);
+PackedSourceRange source_range_merge(PackedSourceRange a, PackedSourceRange b);
 
 //
 // LineInfo
@@ -63,24 +74,21 @@ inline SourceRange source_range_from_sub_string(String source_code, String sub_s
 // SourceStorage
 //
 
-typedef struct {
-	size_t value;
-} SourceFileId;
-
 struct SourceFile {
+	uint16_t id;
 	String path;
 	String source_code;
 	LineInfo line_info;
 };
 
-typedef struct {
+struct SourceStorage {
 	StringArray include_dirs;
 	SourceFile* files;
 	size_t count;
 	size_t capacity;
 
 	Arena* allocator;
-} SourceStorage;
+};
 
 void source_storage_init(SourceStorage* storage, StringArray include_dirs, Arena* allocator);
 

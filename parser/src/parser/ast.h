@@ -279,6 +279,8 @@ struct BinExpr {
 	// `TypeKind` and `pointer_base_type` is enough to
 	// represent all possible arithmetic types, since binary
 	// operations are only supported by arithmetic types 
+	//
+	// TODO: Include type qualifiers here
 	TypeKind result_type_kind;
 	Type* pointer_base_type;
 
@@ -294,11 +296,13 @@ void bin_expr_select_result_type(
 struct UnaryExpr {
 	UnaryOpKind op;
 	Expr* operand;
+	PackedSourceRange operator_source_range;
 };
 
 struct Call {
 	Expr* callable;
 	ExprArray args;
+	PackedSourceRange right_paren_source_range;
 };
 
 struct StringLiteral {
@@ -306,8 +310,9 @@ struct StringLiteral {
 
 	// A string literal is just a fixed size array of chars.
 	// This expression store the array size which matches the size of `full_string`.
+	//
 	// Why not just store the size as an int (or even completely avoid, as it is already packed
-	// in the above string).
+	// in the above string)?
 	//
 	// The string literal must also work with `expr_get_type`, which returns a result type of
 	// an expr. For a string literal it must be an array type of fixed size.
@@ -317,6 +322,7 @@ struct StringLiteral {
 	// to size expr, however the `expr_get_type` is not allowed to allocate anything, so the only
 	// way to this is to store a size expr in `StringLiteral` and make the array type point here.
 	Expr* array_size_expr;
+	PackedSourceRange source_range;
 };
 
 // TODO: When implmenenting wide char support,
@@ -330,11 +336,13 @@ struct IntegerLiteral {
 	IntergerLiteralFormat format;
 	TypeKind integer_type;
 	uint64_t value;
+	PackedSourceRange source_range;
 };
 
 struct ArrayIndex {
 	Expr* array;
 	Expr* index;
+	PackedSourceRange right_bracket_source_range;
 };
 
 typedef enum {
@@ -357,8 +365,16 @@ struct Expr {
 
 	union {
 		Call call;
-		Function* function_ref;
-		Variable* variable_ref;
+		struct {
+			Function* func;
+			PackedSourceRange source_range;
+		} function_ref;
+
+		struct {
+			Variable* var;
+			PackedSourceRange source_range;
+		} variable_ref;
+
 		BinExpr binary;
 		UnaryExpr unary;
 		IntegerLiteral int_literal;
@@ -369,14 +385,17 @@ struct Expr {
 		struct {
 			const Enum* enum_def;
 			size_t variant_index;
+			PackedSourceRange source_range;
 		} enum_constant;
 
 		struct {
 			const Function* function_def;
 			size_t param_index;
+			PackedSourceRange source_range;
 		} function_param;
 
 		struct {
+			PackedSourceRange left_paren_source_range;
 			Type* target_type;
 			Expr* expr;
 		} cast;
@@ -386,6 +405,7 @@ struct Expr {
 void expr_get_type(Expr* expr, Type* out_type);
 bool expr_is_bool(Expr* expr);
 ValueKind expr_get_value_kind(Expr* expr);
+PackedSourceRange expr_get_source_range(const Expr* expr);
 
 //
 // Struct

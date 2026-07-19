@@ -1,5 +1,38 @@
 #include "source_info.h"
 
+#include "core/profiler.h"
+
+PackedSourceRange source_range_pack(SourceRange range) {
+	assert(range.source_file);
+	assert(range.start <= UINT32_MAX);
+	size_t length = range.end - range.start;
+	assert(length <= UINT16_MAX);
+
+	return (PackedSourceRange) {
+		.start = (uint32_t)range.start,
+		.length = (uint16_t)length,
+		.file_id = range.source_file->id
+	};
+}
+
+SourceRange source_range_unpack(const SourceStorage* storage, PackedSourceRange range) {
+	return (SourceRange) {
+		.source_file = &storage->files[range.file_id],
+		.start = (size_t)(range.start),
+		.end = (size_t)(range.start + range.length),
+	};
+}
+
+PackedSourceRange source_range_merge(PackedSourceRange a, PackedSourceRange b) {
+	assert(a.file_id == b.file_id);
+
+	PackedSourceRange result;
+	result.file_id = a.file_id;
+	result.start = min(a.start, b.start);
+	result.length = max(a.start + a.length, b.start + b.length) - result.start;
+	return result;
+}
+
 LineInfo line_info_from_source(Arena* allocator, String source) {
 	LineInfo line_info = {};
 	line_info.line_starts = arena_alloc_array(allocator, uint32_t, 0);
@@ -127,36 +160,46 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 }
 
 SourceFile* _source_storage_insert(SourceStorage* storage, String path, Arena* temp_allocator) {
+	profile_scope_start(__func__);
+
 	assert(storage->count < storage->capacity);
 	assert(path.length > 0);
 
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
 	SourceFile* file = &storage->files[storage->count];
+	file->id = (uint16_t)storage->count;
+	file->path = path;
+	file->source_code = read_entire_file_to_str(str_to_cstr(path, temp_allocator), storage->allocator);
+	file->line_info = line_info_from_source(storage->allocator, file->source_code);
+
 	storage->count += 1;
 
-	file->path = path;
-
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
-	file->source_code = read_entire_file_to_str(str_to_cstr(path, temp_allocator), storage->allocator);
 	arena_end_temp(temp);
-
-	file->line_info = line_info_from_source(storage->allocator, file->source_code);
+	profile_scope_end();
 	return file;
 }
 
 SourceFile* source_storage_append(SourceStorage* storage, String path, String source_code) {
+	profile_scope_start(__func__);
+
 	assert(storage->count < storage->capacity);
 	assert(path.length > 0);
 
 	SourceFile* file = &storage->files[storage->count];
-	storage->count += 1;
-
+	file->id = (uint16_t)storage->count;
 	file->path = path;
 	file->source_code = source_code;
 	file->line_info = line_info_from_source(storage->allocator, file->source_code);
+
+	storage->count += 1;
+	profile_scope_end();
 	return file;
 }
 
 SourceFile* source_storage_append_from_path(SourceStorage* storage, String path, Arena* temp_allocator) {
+	profile_scope_start(__func__);
+
 	assert(path.length > 0);
 	assert(temp_allocator);
 
@@ -165,17 +208,21 @@ SourceFile* source_storage_append_from_path(SourceStorage* storage, String path,
 	SourceFile* source_file = source_storage_append(storage, path, source_code);
 	arena_end_temp(temp);
 
+	profile_scope_end();
 	return source_file;
 }
 
 SourceFile* source_storage_find_file(SourceStorage* storage, String path) {
+	profile_scope_start(__func__);
 	assert(path.length > 0);
 
 	for (size_t i = 0; i < storage->count; i += 1) {
 		if (str_equal(storage->files[i].path, path)) {
+			profile_scope_end();
 			return &storage->files[i];
 		}
 	}
 
+	profile_scope_end();
 	return NULL;
 }

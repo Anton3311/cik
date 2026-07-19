@@ -401,7 +401,7 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		Expr* callable = expr->call.callable;
 		assert_msg(callable->kind == EXPR_FUNCTION_REFERENCE, "A callable expression is not function");
 
-		*out_type = callable->function_ref->return_type;
+		*out_type = callable->function_ref.func->return_type;
 		return;
 	}
 	case EXPR_BINARY: {
@@ -442,7 +442,7 @@ void expr_get_type(Expr* expr, Type* out_type) {
 	case EXPR_FUNCTION_REFERENCE:
 		panic("todo: return a type that correspond to the function signature (function pointer type)");
 	case EXPR_VARIABLE_REFERENCE:
-		*out_type = expr->variable_ref->type;
+		*out_type = expr->variable_ref.var->type;
 		return;
 	case EXPR_INTEGER_LITERAL: {
 		out_type->kind = expr->int_literal.integer_type;
@@ -521,6 +521,49 @@ ValueKind expr_get_value_kind(Expr* expr) {
 
 	unreachable();
 	return 0;
+}
+
+PackedSourceRange expr_get_source_range(const Expr* expr) {
+	assert(expr);
+
+	switch (expr->kind) {
+	case EXPR_CALL:
+		return source_range_merge(
+				expr_get_source_range(expr->call.callable),
+				expr->call.right_paren_source_range);
+	case EXPR_BINARY:
+		return source_range_merge(
+				expr_get_source_range(expr->binary.left),
+				expr_get_source_range(expr->binary.right));
+	case EXPR_UNARY:
+		return source_range_merge(
+				expr_get_source_range(expr->unary.operand),
+				expr->unary.operator_source_range);
+	case EXPR_FUNCTION_REFERENCE:
+		return expr->function_ref.source_range;
+	case EXPR_VARIABLE_REFERENCE:
+		return expr->variable_ref.source_range;
+	case EXPR_INTEGER_LITERAL:
+		return expr->int_literal.source_range;
+	case EXPR_STRING_LITERAL:
+		return expr->string_literal.source_range;
+	case EXPR_CHAR_LITERAL:
+		unreachable();
+	case EXPR_ENUM_CONSTANT:
+		return expr->enum_constant.source_range;
+	case EXPR_FUNCTION_PARAM:
+		return expr->function_param.source_range;
+	case EXPR_ARRAY_INDEX:
+		return source_range_merge(
+				expr_get_source_range(expr->array_index.array),
+				expr->array_index.right_bracket_source_range);
+	case EXPR_CAST:
+		return source_range_merge(
+				expr->cast.left_paren_source_range,
+				expr_get_source_range(expr->cast.expr));
+	}
+
+	return (PackedSourceRange) {};
 }
 
 size_t struct_field_namespace_index_of(const StructFieldNamespace* struct_namespace, String name) {
@@ -645,12 +688,12 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 	switch (expr->kind) {
 	case EXPR_FUNCTION_REFERENCE:
 		printer_begin_struct(printer, "function_ref");
-		printer_string_field(printer, "name", expr->function_ref->name.string);
+		printer_string_field(printer, "name", expr->function_ref.func->name.string);
 		printer_end_struct(printer);
 		break;
 	case EXPR_VARIABLE_REFERENCE:
 		printer_begin_struct(printer, "variable_ref");
-		printer_string_field(printer, "name", expr->variable_ref->name.string);
+		printer_string_field(printer, "name", expr->variable_ref.var->name.string);
 		printer_end_struct(printer);
 		break;
 	case EXPR_BINARY: {

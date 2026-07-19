@@ -1134,7 +1134,7 @@ void test_parse_function_ref_expr(TestContext* context) {
 	AstNode* body_node = first_def->function_def->body->nodes.first;
 	assert(body_node->kind == AST_NODE_EXPR);
 	assert(body_node->expr.kind == EXPR_FUNCTION_REFERENCE);
-	assert(body_node->expr.function_ref == first_def->function_def);
+	assert(body_node->expr.function_ref.func == first_def->function_def);
 }
 
 void test_parse_primitive_integer_types(TestContext* context) {
@@ -1315,9 +1315,9 @@ void test_parse_variable_ref_expr(TestContext* context) {
 	assert(expr->kind == EXPR_BINARY);
 
 	assert(expr->binary.left->kind == EXPR_VARIABLE_REFERENCE);
-	assert(expr->binary.left->variable_ref == variable);
+	assert(expr->binary.left->variable_ref.var == variable);
 	assert(expr->binary.right->kind == EXPR_VARIABLE_REFERENCE);
-	assert(expr->binary.right->variable_ref == variable);
+	assert(expr->binary.right->variable_ref.var == variable);
 }
 
 void test_parse_return_stmt(TestContext* context) {
@@ -1537,7 +1537,7 @@ void test_parse_recursive_function(TestContext* context) {
 
 	const Expr* callable = call->expr.call.callable;
 	assert(callable->kind == EXPR_FUNCTION_REFERENCE);
-	assert(callable->function_ref == func);
+	assert(callable->function_ref.func == func);
 }
 
 void test_parse_function_param_in_expr(TestContext* context) {

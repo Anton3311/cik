@@ -1571,6 +1571,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		out_expr->kind = EXPR_UNARY;
 		out_expr->unary.operand = arena_alloc(parser->ast_allocator, Expr);
 		out_expr->unary.op = unary_op;
+		out_expr->unary.operator_source_range = source_range_pack(token.source_range);
 
 		Token operand_token = preprocessor_view_next(parser->preprocessor);
 		ExprParseResult result = _parser_try_parse_bin_expr_operand(parser, out_expr->unary.operand);
@@ -1582,6 +1583,10 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			|| unary_op == UNARY_OP_POST_INCREMENT
 			|| unary_op == UNARY_OP_PRE_DECREMENT
 			|| unary_op == UNARY_OP_POST_DECREMENT;
+
+		SourceRange operand_source_range = source_range_unpack(
+				parser->preprocessor->source_storage,
+				expr_get_source_range(out_expr->unary.operand));
 
 		if (result == EXPR_PARSE_OK && requires_int_operand) {
 			Type operand_type;
@@ -1596,7 +1601,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				str_builder_append(&builder, STR_LIT("'"));
 
 				diagnostics_report_error(parser->diagnostics,
-						operand_token.source_range,
+						operand_source_range,
 						builder.string,
 						NULL);
 			}
@@ -1606,7 +1611,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			ValueKind operand_value_kind = expr_get_value_kind(out_expr->unary.operand);
 			if (operand_value_kind != VALUE_L) {
 				diagnostics_report_error(parser->diagnostics,
-						operand_token.source_range,
+						operand_source_range,
 						STR_LIT("Expected an l-value"),
 						NULL);
 			}
@@ -1675,6 +1680,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				.format = literal.format,
 				.integer_type = int_type,
 				.value = literal.value,
+				.source_range = source_range_pack(token.source_range),
 			};
 
 			profile_scope_end();
@@ -1697,12 +1703,14 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		switch (entry->kind) {
 		case IDENT_FUNCTION:
 			out_expr->kind = EXPR_FUNCTION_REFERENCE;
-			out_expr->function_ref = entry->function_def;
+			out_expr->function_ref.func = entry->function_def;
+			out_expr->function_ref.source_range = source_range_pack(token.source_range);
 			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_VARIABLE:
 			out_expr->kind = EXPR_VARIABLE_REFERENCE;
-			out_expr->variable_ref = entry->variable;
+			out_expr->variable_ref.var = entry->variable;
+			out_expr->variable_ref.source_range = source_range_pack(token.source_range);
 			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_TYPE_DEF:
@@ -1714,12 +1722,14 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			out_expr->kind = EXPR_ENUM_CONSTANT;
 			out_expr->enum_constant.enum_def = entry->enum_constant.enum_def;
 			out_expr->enum_constant.variant_index = entry->enum_constant.variant_index;
+			out_expr->enum_constant.source_range = source_range_pack(token.source_range);
 			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_FUNCTION_PARAM:
 			out_expr->kind = EXPR_FUNCTION_PARAM;
 			out_expr->function_param.function_def = entry->function_param.function_def;
 			out_expr->function_param.param_index = entry->function_param.param_index;
+			out_expr->function_param.source_range = source_range_pack(token.source_range);
 			profile_scope_end();
 			return EXPR_PARSE_OK;
 		case IDENT_KIND_MAX:
@@ -1820,6 +1830,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			out_expr->kind = EXPR_CAST;
 			out_expr->cast.target_type = arena_alloc(parser->ast_allocator, Type);
 			out_expr->cast.expr = arena_alloc(parser->ast_allocator, Expr);
+			out_expr->cast.left_paren_source_range = source_range_pack(token.source_range);
 
 			*out_expr->cast.target_type = cast_target_type;
 
@@ -1878,7 +1889,7 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 	while (true) {
 		Token maybe_right_paren = preprocessor_view_next(parser->preprocessor);
 		if (maybe_right_paren.kind == TOKEN_RIGHT_PAREN) {
-			preprocessor_next_token(parser->preprocessor);
+			// Let the caller consume the ')'
 			break;
 		}
 
@@ -1894,10 +1905,12 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 		args.exprs[args.count] = arg;
 		args.count += 1;
 
-		Token comma_or_right_paren = preprocessor_next_token(parser->preprocessor);
+		Token comma_or_right_paren = preprocessor_view_next(parser->preprocessor);
 		if (comma_or_right_paren.kind == TOKEN_COMMA) {
+			preprocessor_next_token(parser->preprocessor);
 			continue;
 		} else if (comma_or_right_paren.kind == TOKEN_RIGHT_PAREN) {
+			// Let the caller consume the ')'
 			break;
 		} else {
 			TokenKind expected_tokens[] = { TOKEN_COMMA, TOKEN_RIGHT_PAREN };
@@ -1946,12 +1959,22 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				return result;
 			}
 
+			Token right_paren = preprocessor_next_token(parser->preprocessor);
+			if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						right_paren,
+						expected_tokens,
+						array_size(expected_tokens));
+			}
+
 			Expr* callable = arena_alloc(parser->ast_allocator, Expr);
 			memcpy(callable, out_expr, sizeof(*out_expr));
 
 			out_expr->kind = EXPR_CALL;
 			out_expr->call.callable = callable;
 			out_expr->call.args = args;
+			out_expr->call.right_paren_source_range = source_range_pack(right_paren.source_range);
 		} else if (operator_token.kind == TOKEN_LEFT_BRACKET) {
 			preprocessor_next_token(parser->preprocessor);
 
@@ -1970,6 +1993,10 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			out_expr->array_index.index = index;
 
 			Token closing_bracket = preprocessor_next_token(parser->preprocessor);
+
+			out_expr->array_index.right_bracket_source_range =
+				source_range_pack(closing_bracket.source_range);
+
 			if (closing_bracket.kind != TOKEN_RIGHT_BRACKET) {
 				TokenKind expected_tokens[] = { TOKEN_RIGHT_BRACKET };
 				diagnostics_report_unexpected_token(parser->diagnostics,
@@ -1991,6 +2018,10 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			Type operand_type;
 			expr_get_type(operand, &operand_type);
 
+			SourceRange operand_source_range = source_range_unpack(
+					parser->preprocessor->source_storage,
+					expr_get_source_range(operand));
+
 			if (!type_kind_is_int(operand_type.kind)) {
 				StringBuilder builder = { parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Cannot apply '"));
@@ -2000,7 +2031,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				str_builder_append(&builder, STR_LIT("'"));
 
 				diagnostics_report_error(parser->diagnostics,
-						expr_token.source_range,
+						operand_source_range,
 						builder.string,
 						NULL);
 			}
@@ -2008,7 +2039,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			ValueKind operand_value_kind = expr_get_value_kind(operand);
 			if (operand_value_kind != VALUE_L) {
 				diagnostics_report_error(parser->diagnostics,
-						expr_token.source_range,
+						operand_source_range,
 						STR_LIT("Expected an l-value"),
 						NULL);
 			}
@@ -2017,6 +2048,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			out_expr->unary.op = operator_token.kind == TOKEN_DOUBLE_PLUS
 				? UNARY_OP_POST_INCREMENT
 				: UNARY_OP_POST_DECREMENT;
+			out_expr->unary.operator_source_range = source_range_pack(operator_token.source_range);
 			out_expr->unary.operand = operand;
 		} else {
 			break;

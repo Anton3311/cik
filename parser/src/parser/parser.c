@@ -1934,6 +1934,142 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 	return EXPR_PARSE_OK;
 }
 
+static bool _check_is_convertable(Parser* parser,
+		Type* from,
+		Type* to,
+		SourceRange from_source_range) {
+
+	if (type_kind_is_int(from->kind) && type_kind_is_int(to->kind)) {
+		return true;
+	}
+
+	if (to->kind == TYPE_POINTER && type_kind_is_pointer_like(from->kind)) {
+		Type* to_base_type = to->pointer_base_type;
+		Type* from_base_type = type_extract_pointer_base_type(from);
+
+		if (has_flag(from_base_type->qualifiers, TYPE_QUALIFIER_CONST)
+				&& !has_flag(to_base_type->qualifiers, TYPE_QUALIFIER_CONST)) {
+			
+			StringBuilder builder = { parser->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Convertion from '"));
+			type_format(from, &builder);
+			str_builder_append(&builder, STR_LIT("' to '"));
+			type_format(to, &builder);
+			str_builder_append(&builder, STR_LIT("' discards 'const' qualifier"));
+
+			diagnostics_report_error(parser->diagnostics,
+					from_source_range,
+					builder.string,
+					NULL);
+
+			return false;
+		}
+		
+		if (type_equal(to_base_type, from_base_type)) {
+			return true;
+		}
+
+		if (to_base_type->kind == TYPE_VOID) {
+			return true;
+		}
+
+		if (from_base_type->kind == TYPE_VOID) {
+			return true;
+		}
+	}
+
+	StringBuilder builder = { parser->diagnostics->allocator };
+	str_builder_append(&builder, STR_LIT("Cannot implicitly convert from '"));
+	type_format(from, &builder);
+	str_builder_append(&builder, STR_LIT("' to '"));
+	type_format(to, &builder);
+	str_builder_append(&builder, STR_LIT("'"));
+
+	diagnostics_report_error(parser->diagnostics,
+			from_source_range,
+			builder.string,
+			NULL);
+	return false;
+}
+
+static void _type_check_call(Parser* parser, Expr* call) {
+	profile_func_colored(PROFILE_COLOR);
+
+	assert(call->kind == EXPR_CALL);
+
+	Expr* callable = call->call.callable;
+	ExprArray args = call->call.args;
+
+	Type callable_type;
+	expr_get_type(callable, &callable_type);
+
+	if (callable_type.kind != TYPE_FUNCTION) {
+		diagnostics_report_error(parser->diagnostics,
+				source_range_unpack(
+					parser->preprocessor->source_storage,
+					expr_get_source_range(callable)),
+				STR_LIT("Expression is not callable"),
+				NULL);
+
+		profile_scope_end();
+		return;
+	}
+
+	assert(callable_type.kind == TYPE_FUNCTION);
+
+	SourceRange call_source_range = source_range_unpack(
+			parser->preprocessor->source_storage,
+			expr_get_source_range(call));
+
+	const FunctionPrototype* proto = callable_type.function;
+	if (args.count < proto->parameter_count) {
+		diagnostics_report_error(parser->diagnostics,
+				call_source_range,
+				STR_LIT("Too few arguments for a call"),
+				NULL);
+	}
+
+	if (!proto->has_va_args && args.count > proto->parameter_count) {
+		diagnostics_report_error(parser->diagnostics,
+				call_source_range,
+				STR_LIT("Too many arguments for a call"),
+				NULL);
+	}
+
+	assert(args.count >= proto->parameter_count);
+	for (size_t i = 0; i < proto->parameter_count; i += 1) {
+		Type arg_type;
+		expr_get_type(args.exprs[i], &arg_type);
+
+		_check_is_convertable(parser,
+				&arg_type,
+				&proto->parameters[i].type,
+				source_range_unpack(
+					parser->preprocessor->source_storage,
+					expr_get_source_range(args.exprs[i])));
+	}
+
+	if (proto->has_va_args) {
+		for (size_t i = proto->parameter_count; i < args.count; i += 1) {
+			Type arg_type;
+			expr_get_type(args.exprs[i], &arg_type);
+
+			if (arg_type.kind != TYPE_VOID) {
+				continue;
+			}
+
+			diagnostics_report_error(parser->diagnostics,
+					source_range_unpack(
+						parser->preprocessor->source_storage,
+						expr_get_source_range(args.exprs[i])),
+					STR_LIT("Argument has type 'void'"),
+					NULL);
+		}
+	}
+
+	profile_scope_end();
+}
+
 // Tries to parse an expression operand + any post fix operators,
 // like increment, decrement, array access, member access or a call
 static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* out_expr) {
@@ -1971,21 +2107,12 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			Expr* callable = arena_alloc(parser->ast_allocator, Expr);
 			memcpy(callable, out_expr, sizeof(*out_expr));
 
-			Type callable_type;
-			expr_get_type(callable, &callable_type);
-			if (callable_type.kind != TYPE_FUNCTION) {
-				diagnostics_report_error(parser->diagnostics,
-						source_range_unpack(
-							parser->preprocessor->source_storage,
-							expr_get_source_range(callable)),
-						STR_LIT("Expression is not callable"),
-						NULL);
-			}
-
 			out_expr->kind = EXPR_CALL;
 			out_expr->call.callable = callable;
 			out_expr->call.args = args;
 			out_expr->call.right_paren_source_range = source_range_pack(right_paren.source_range);
+
+			_type_check_call(parser, out_expr);
 		} else if (operator_token.kind == TOKEN_LEFT_BRACKET) {
 			preprocessor_next_token(parser->preprocessor);
 

@@ -116,6 +116,116 @@ void type_format(const Type* type, StringBuilder* builder) {
 			type_format(type->array.element_type, builder);
 			str_builder_append(builder, STR_LIT("[]"));
 			break;
+		case TYPE_STRUCT:
+			str_builder_append(builder, STR_LIT("struct "));
+			str_builder_append(builder, type->struct_def->name.string);
+			break;
+		case TYPE_UNION:
+			str_builder_append(builder, STR_LIT("union "));
+			str_builder_append(builder, type->union_def->name.string);
+			break;
+		case TYPE_ENUM:
+			str_builder_append(builder, STR_LIT("enum "));
+			str_builder_append(builder, type->enum_def->name.string);
+			break;
+		case TYPE_VOID:
+			str_builder_append(builder, STR_LIT("void"));
+			break;
+		case TYPE_SIZE_T:
+			str_builder_append(builder, STR_LIT("size_t"));
+			break;
+
+		case TYPE_CHAR:
+			str_builder_append(builder, STR_LIT("char"));
+			break;
+		case TYPE_INT:
+			str_builder_append(builder, STR_LIT("int"));
+			break;
+		case TYPE_SHORT:
+			str_builder_append(builder, STR_LIT("short"));
+			break;
+		case TYPE_LONG:
+			str_builder_append(builder, STR_LIT("long"));
+			break;
+		case TYPE_LONG_LONG:
+			str_builder_append(builder, STR_LIT("long long"));
+			break;
+		case TYPE_INT8:
+			str_builder_append(builder, STR_LIT("__int8"));
+			break;
+		case TYPE_INT16:
+			str_builder_append(builder, STR_LIT("__int16"));
+			break;
+		case TYPE_INT32:
+			str_builder_append(builder, STR_LIT("__int32"));
+			break;
+		case TYPE_INT64:
+			str_builder_append(builder, STR_LIT("__int64"));
+			break;
+
+		case TYPE_SIGNED_CHAR:
+			str_builder_append(builder, STR_LIT("signed char"));
+			break;
+		case TYPE_SIGNED_INT:
+			str_builder_append(builder, STR_LIT("signed int"));
+			break;
+		case TYPE_SIGNED_SHORT:
+			str_builder_append(builder, STR_LIT("signed short"));
+			break;
+		case TYPE_SIGNED_LONG:
+			str_builder_append(builder, STR_LIT("signed long"));
+			break;
+		case TYPE_SIGNED_LONG_LONG:
+			str_builder_append(builder, STR_LIT("signed long long"));
+			break;
+		case TYPE_SIGNED_INT8:
+			str_builder_append(builder, STR_LIT("signed __int8"));
+			break;
+		case TYPE_SIGNED_INT16:
+			str_builder_append(builder, STR_LIT("signed __int16"));
+			break;
+		case TYPE_SIGNED_INT32:
+			str_builder_append(builder, STR_LIT("signed __int32"));
+			break;
+		case TYPE_SIGNED_INT64:
+			str_builder_append(builder, STR_LIT("signed __int64"));
+			break;
+
+
+		case TYPE_UNSIGNED_CHAR:
+			str_builder_append(builder, STR_LIT("unsigned char"));
+			break;
+		case TYPE_UNSIGNED_INT:
+			str_builder_append(builder, STR_LIT("unsigned int"));
+			break;
+		case TYPE_UNSIGNED_SHORT:
+			str_builder_append(builder, STR_LIT("unsigned short"));
+			break;
+		case TYPE_UNSIGNED_LONG:
+			str_builder_append(builder, STR_LIT("unsigned long"));
+			break;
+		case TYPE_UNSIGNED_LONG_LONG:
+			str_builder_append(builder, STR_LIT("unsigned long long"));
+			break;
+		case TYPE_UNSIGNED_INT8:
+			str_builder_append(builder, STR_LIT("unsigned __int8"));
+			break;
+		case TYPE_UNSIGNED_INT16:
+			str_builder_append(builder, STR_LIT("unsigned __int16"));
+			break;
+		case TYPE_UNSIGNED_INT32:
+			str_builder_append(builder, STR_LIT("unsigned __int32"));
+			break;
+		case TYPE_UNSIGNED_INT64:
+			str_builder_append(builder, STR_LIT("unsigned __int64"));
+			break;
+
+		case TYPE_FLOAT:
+			str_builder_append(builder, STR_LIT("float"));
+			break;
+		case TYPE_DOUBLE:
+			str_builder_append(builder, STR_LIT("double"));
+			break;
 		}
 	}
 }

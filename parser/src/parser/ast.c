@@ -490,8 +490,6 @@ void bin_expr_select_result_type(const Type* left_type,
 
 String function_calling_convetion_to_string(FunctionCallingConvention conv) {
 	switch (conv) {
-	case FUNC_CALL_CONV_DEFAULT:
-		return STR_LIT("__cdecl");
 	case FUNC_CALL_CONV_CDECL:
 		return STR_LIT("__cdecl");
 	}

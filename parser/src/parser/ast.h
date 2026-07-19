@@ -543,7 +543,6 @@ struct DeclSpec {
 //
 
 typedef enum {
-	FUNC_CALL_CONV_DEFAULT,
 	FUNC_CALL_CONV_CDECL,
 } FunctionCallingConvention;
 

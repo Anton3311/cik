@@ -2528,7 +2528,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		return NULL;
 	}
 
-	FunctionCallingConvention call_conv = FUNC_CALL_CONV_DEFAULT;
+	FunctionCallingConvention call_conv = FUNC_CALL_CONV_CDECL;
 
 	Token name_token = preprocessor_next_token(parser->preprocessor);
 	if (name_token.kind != TOKEN_IDENT) {

@@ -5,10 +5,14 @@
 bool instr_bin_op_is_commutative(InstrBinOp op) {
 	switch (op) {
 	case INSTR_BIN_ADD:
-	case INSTR_BIN_MUL:
+	case INSTR_BIN_IMUL:
+	case INSTR_BIN_UMUL:
 		return true;
 	case INSTR_BIN_SUB:
-	case INSTR_BIN_DIV:
+	case INSTR_BIN_IDIV:
+	case INSTR_BIN_UDIV:
+	case INSTR_BIN_IMOD:
+	case INSTR_BIN_UMOD:
 		return false;
 	}
 

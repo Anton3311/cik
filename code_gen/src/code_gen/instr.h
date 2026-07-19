@@ -100,8 +100,12 @@ typedef enum {
 typedef enum {
 	INSTR_BIN_ADD,
 	INSTR_BIN_SUB,
-	INSTR_BIN_MUL,
-	INSTR_BIN_DIV,
+	INSTR_BIN_IMUL,
+	INSTR_BIN_IDIV,
+	INSTR_BIN_IMOD,
+	INSTR_BIN_UMUL,
+	INSTR_BIN_UDIV,
+	INSTR_BIN_UMOD,
 } InstrBinOp;
 
 bool instr_bin_op_is_commutative(InstrBinOp op);

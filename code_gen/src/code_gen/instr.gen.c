@@ -68,8 +68,12 @@ String instr_bin_op_name(InstrBinOp variant) {
     switch (variant) {
     case INSTR_BIN_ADD: return STR_LIT("add");
     case INSTR_BIN_SUB: return STR_LIT("sub");
-    case INSTR_BIN_MUL: return STR_LIT("mul");
-    case INSTR_BIN_DIV: return STR_LIT("div");
+    case INSTR_BIN_IMUL: return STR_LIT("imul");
+    case INSTR_BIN_IDIV: return STR_LIT("idiv");
+    case INSTR_BIN_IMOD: return STR_LIT("imod");
+    case INSTR_BIN_UMUL: return STR_LIT("umul");
+    case INSTR_BIN_UDIV: return STR_LIT("udiv");
+    case INSTR_BIN_UMOD: return STR_LIT("umod");
     }
     unreachable();
     return (String) {};

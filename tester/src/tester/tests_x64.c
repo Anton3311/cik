@@ -910,6 +910,130 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	instr_buffer_release(instr_buffer);
 }
 
+void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* context) {
+	Arena* instr_allocator = context->arena;
+
+	InstrBuffer buffer = {};
+	InstrBuffer* instr_buffer = &buffer;
+	instr_buffer_init(instr_buffer, instr_allocator);
+
+	// Setup out test program, which just computes 10 - 5 and returns the result.
+	InstrIndex left_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex right_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex cast_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex io_state_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex return_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex region_index = instr_new_region(instr_buffer, instr_allocator);
+
+	{
+		Instr* left_operand = instr_buffer_at(instr_buffer, left_operand_index);
+		left_operand->kind = INSTR_CONST_8;
+		left_operand->const_32.u = 16;
+	}
+
+	{
+		Instr* right_operand = instr_buffer_at(instr_buffer, right_operand_index);
+		right_operand->kind = INSTR_CONST_8;
+		right_operand->const_32.u = 73;
+	}
+
+	{
+		Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
+		bin_op->kind = INSTR_BIN_OP_8;
+		bin_op->bin_op.kind = INSTR_BIN_IMUL;
+		bin_op->bin_op.left = left_operand_index;
+		bin_op->bin_op.right = right_operand_index;
+	}
+
+	{
+		Instr* cast = instr_buffer_at(instr_buffer, cast_index);
+		cast->kind = INSTR_CAST_TO_64;
+		cast->cast.value = bin_op_index;
+	}
+
+	{
+		Instr* io_state = instr_buffer_at(instr_buffer, io_state_index);
+		io_state->kind = INSTR_IO_STATE;
+		io_state->io_state.producer = INVALID_INSTR_INDEX;
+	}
+
+	{
+		Instr* ret = instr_buffer_at(instr_buffer, return_index);
+		ret->kind = INSTR_RETURN_VALUE;
+		ret->return_value.value = cast_index;
+		ret->return_value.io_state = io_state_index;
+	}
+
+	{
+		Instr* region = instr_buffer_at(instr_buffer, region_index);
+		region->region.last_instr = return_index;
+	}
+
+	// Compute live ranges
+	InstrLiveRange* live_ranges = instr_compute_live_ranges(*instr_buffer,
+			region_index,
+			context->arena,
+			context->temp_arena);
+
+	X64Register reg_configurations[6][4] = {
+		{ X64_REG_A, X64_REG_C, X64_REG_D, X64_REG_B }, // 0 - left_operand, 1 - right_operand, 2 - bin_op
+		{ X64_REG_C, X64_REG_A, X64_REG_D, X64_REG_B },
+		{ X64_REG_8, X64_REG_A, X64_REG_D, X64_REG_B },
+
+		{ X64_REG_A, X64_REG_C, X64_REG_A, X64_REG_B },
+		{ X64_REG_C, X64_REG_A, X64_REG_A, X64_REG_B },
+		{ X64_REG_8, X64_REG_A, X64_REG_A, X64_REG_B },
+	};
+
+	InstrStorageLocation* instr_storage = arena_alloc_array_zeroed(context->arena,
+			InstrStorageLocation,
+			instr_buffer->count);
+
+	for (size_t i = 0; i < instr_buffer->count; i += 1) {
+		instr_storage[i].kind = INSTR_STORAGE_NONE;
+		instr_storage[i].reg = 0;
+	}
+
+	FunctionRefTable func_ref_table = {};
+	for (size_t i = 0; i < array_size(reg_configurations); i += 1) {
+		X64CodeGenerator gen = {};
+		gen.flags = X64_SKIP_REG_ALLOC | X64_PRINT_SCHEDULED_IR;
+		gen.instr_buffer = *instr_buffer;
+		gen.live_ranges = live_ranges;
+		gen.allocator = context->arena;
+		gen.temp_allocator = context->temp_arena;
+		gen.ref_table = &func_ref_table;
+		gen.string_consts = (StringArray) {};
+		gen.instr_storage = instr_storage;
+
+		{
+			instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;
+			instr_storage[left_operand_index.value].reg = reg_configurations[i][0];
+
+			instr_storage[right_operand_index.value].kind = INSTR_STORAGE_REG;
+			instr_storage[right_operand_index.value].reg = reg_configurations[i][1];
+
+			instr_storage[bin_op_index.value].kind = INSTR_STORAGE_REG;
+			instr_storage[bin_op_index.value].reg = reg_configurations[i][2];
+
+			instr_storage[cast_index.value].kind = INSTR_STORAGE_REG;
+			instr_storage[cast_index.value].reg = reg_configurations[i][3];
+		}
+
+		MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
+		
+		typedef uint64_t(*Function)();
+
+		Function function = (Function)machine_code.code;
+		uint64_t result = function();
+
+		assert(result == 144);
+	}
+
+	instr_buffer_release(instr_buffer);
+}
+
 static uint64_t _internal_store(uint64_t* out) {
 	*out = 10;
 	return 0;

@@ -90,7 +90,7 @@ typedef struct {
 
 #define OP_RM OP_REG | OP_MEM
 
-static Encoding s_encodings[61];
+static Encoding s_encodings[66];
 
 static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
 static bool s_encoding_initialized = false;
@@ -178,6 +178,22 @@ void encoding_init() {
 
 	*(e++) = (E) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, { { OP_REG, 8 },            { OP_IMM, 8 } } };
 	*(e++) = (E) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_IMM, 16 | 32 | 64 } } };
+
+	// imul
+	*(e++) = (E) { MNEMONIC_IMUL, ENC_NONE, 0x69, 0x0, {
+		{ OP_REG, 16 | 32 | 64 },
+		{ OP_RM,  16 | 32 | 64 },
+		{ OP_IMM, 16 | 32 }
+	} };
+	*(e++) = (E) { MNEMONIC_IMUL, ENC_NONE, 0x6b, 0x0, {
+		{ OP_REG, 16 | 32 | 64 },
+		{ OP_RM,  16 | 32 | 64 },
+		{ OP_IMM, 8 }
+	} };
+	*(e++) = (E) { MNEMONIC_IMUL, ENC_NONE, 0xf6, 0x5, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_IMUL, ENC_NONE, 0xf7, 0x5, { { OP_RM, 16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_IMUL, ENC_HAS_0F_PREFIX, 0xaf, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM, 16 | 32 | 64 } } };
 
 	// movzx
 	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } };

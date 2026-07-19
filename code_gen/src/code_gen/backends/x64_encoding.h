@@ -102,6 +102,10 @@ typedef enum {
 
 	MNEMONIC_MOV,
 
+	// To encode IMUL ax, al, r/m - use `encode_1` with `r/m` operand.
+	// No need to pass the first two register operands
+	MNEMONIC_IMUL,
+
 	MNEMONIC_MOVZX,
 
 	MNEMONIC_SHL,

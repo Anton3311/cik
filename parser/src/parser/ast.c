@@ -99,6 +99,27 @@ void type_array_to_pointer(const Type* type, Type* out_type) {
 	out_type->pointer_base_type = element_type;
 }
 
+void type_format(const Type* type, StringBuilder* builder) {
+	if (has_flag(type->qualifiers, TYPE_QUALIFIER_CONST)) {
+		str_builder_append(builder, STR_LIT("const "));
+	}
+
+	if (type->alias_definition) {
+		str_builder_append(builder, type->alias_definition->new_name.string);
+	} else {
+		switch (type->kind) {
+		case TYPE_POINTER:
+			type_format(type->pointer_base_type, builder);
+			str_builder_append(builder, STR_LIT("*"));
+			break;
+		case TYPE_ARRAY:
+			type_format(type->array.element_type, builder);
+			str_builder_append(builder, STR_LIT("[]"));
+			break;
+		}
+	}
+}
+
 uint32_t type_get_int_convertion_rank(const Type* type) {
 	switch (type->kind) {
 	case TYPE_VOID:

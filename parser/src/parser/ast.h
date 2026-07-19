@@ -161,6 +161,7 @@ struct Type {
 
 bool type_equal(const Type* a, const Type* b);
 void type_array_to_pointer(const Type* type, Type* out_type);
+void type_format(const Type* type, StringBuilder* builder);
 
 inline bool type_kind_is_int(TypeKind kind) {
 	TypeKind kind_without_sign_flags = kind & (TypeKind)(~(TYPE_FLAG_SIGNED | TYPE_FLAG_UNSIGNED));

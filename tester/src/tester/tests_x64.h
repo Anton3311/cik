@@ -41,6 +41,7 @@ void test_return_file_path(TestContext* context);
 void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* context);
 void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* context);
 void test_div_instr_code_gen_for_different_reg_configurations(TestContext* context);
+void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* context);
 void test_memory_operations_are_synchronized_with_calls(TestContext* context);
 void test_ptr_store_instr(TestContext* context);
 void test_ptr_store_synced_with_calls(TestContext* context);

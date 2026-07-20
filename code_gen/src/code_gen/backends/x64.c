@@ -912,10 +912,21 @@ static void _emit_div_mod(CodeBuffer* buffer,
 
 	encode_1(buffer, mnemonic, operand_reg(right_reg, bit_count));
 
-	_emit_mov_regs(buffer,
-			select_quotient ? quotient_output_reg : remainder_output_reg,
-			dst_reg,
-			bit_count);
+	if (bit_count == 8) {
+		if (!select_quotient) {
+			_emit_mov_regs(buffer, 4 /* AH */, X64_REG_A, 8);
+		}
+
+		_emit_mov_regs(buffer,
+				select_quotient ? quotient_output_reg : X64_REG_A,
+				dst_reg,
+				bit_count);
+	} else {
+		_emit_mov_regs(buffer,
+				select_quotient ? quotient_output_reg : remainder_output_reg,
+				dst_reg,
+				bit_count);
+	}
 
 	if (use_temp_r9) {
 		encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_9, 64));
@@ -1083,6 +1094,24 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			break;
 		case INSTR_BIN_UDIV:
 			_emit_div_mod(buffer, MNEMONIC_DIV, left_reg, right_reg, dst_loc.reg, true, bit_count);
+			break;
+		case INSTR_BIN_IMOD:
+			_emit_div_mod(buffer,
+					MNEMONIC_IDIV,
+					left_reg,
+					right_reg,
+					dst_loc.reg,
+					false,
+					bit_count);
+			break;
+		case INSTR_BIN_UMOD:
+			_emit_div_mod(buffer,
+					MNEMONIC_DIV,
+					left_reg,
+					right_reg,
+					dst_loc.reg,
+					false,
+					bit_count);
 			break;
 		}
 

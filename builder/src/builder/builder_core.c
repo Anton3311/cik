@@ -387,7 +387,7 @@ static void _msvc_gen_exe_link_cmd(BuildContext* context,
 	assert(unit->output_type == OUTPUT_EXE);
 
 	// TODO: For debug configs link against LIBCMTD.lib, for release LIBCMT.lib
-	str_builder_append(builder, STR_LIT("/nologo "));
+	str_builder_append(builder, STR_LIT("/nologo /incremental:no /opt:ref /opt:icf"));
 
 	for (size_t i = 0; i < unit->dependency_count; i += 1) {
 		str_builder_append_char(builder, ' ');

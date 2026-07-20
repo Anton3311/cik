@@ -136,6 +136,8 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
+	bool has_failed_tests = false;
+
 	for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
 		printf("\n --- %.*s\n\n", STR_FMT(test_storage.suite_names[suite_index]));
 
@@ -162,6 +164,10 @@ int main(int argc, char* argv[]) {
 				tests.count,
 				tests.count - tests_passed,
 				tests.count);
+
+		if (tests_passed < tests.count) {
+			has_failed_tests = true;
+		}
 	}
 
 	{
@@ -190,6 +196,10 @@ int main(int argc, char* argv[]) {
 				test_count,
 				test_count - tests_passed,
 				test_count);
+
+		if (tests_passed < test_count) {
+			has_failed_tests = true;
+		}
 	}
 
 	{
@@ -241,9 +251,13 @@ int main(int argc, char* argv[]) {
 				test_count,
 				test_count - tests_passed,
 				test_count);
+
+		if (tests_passed < test_count) {
+			has_failed_tests = true;
+		}
 	}
 
 	arena_release(&temp_arena);
 	arena_release(&arena);
-	return 0;
+	return has_failed_tests ? EXIT_FAILURE : 0;
 }

@@ -827,6 +827,66 @@ static void _emit_mul(CodeBuffer* buffer,
 	}
 }
 
+static void _emit_div_mod(CodeBuffer* buffer,
+		MnemonicKind mnemonic,
+		X64Register left_reg,
+		X64Register right_reg,
+		X64Register dst_reg,
+		bool select_quotient,
+		uint8_t bit_count) {
+	assert(mnemonic == MNEMONIC_DIV || mnemonic == MNEMONIC_IDIV);
+
+	X64Register quotient_output_reg = X64_REG_A;
+	X64Register remainder_output_reg = X64_REG_D;
+	bool should_save_a = dst_reg != quotient_output_reg;
+	bool should_save_d = dst_reg != remainder_output_reg;
+
+	if (should_save_a) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(quotient_output_reg, 64));
+	}
+
+	if (should_save_d) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(remainder_output_reg, 64));
+	}
+
+	if (mnemonic == MNEMONIC_IDIV) {
+		switch (bit_count) {
+		case 8:
+			encode_2(buffer, MNEMONIC_MOVSX, operand_reg(left_reg, 8), operand_reg(X64_REG_A, 16));
+			break;
+		case 16:
+			panic("Not implemented");
+		case 32:
+			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
+			encode_n(buffer, MNEMONIC_CDQ, NULL, 0);
+			break;
+		case 64:
+			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
+			encode_n(buffer, MNEMONIC_CQO, NULL, 0);
+			break;
+		default:
+			unreachable();
+		}
+	} else {
+
+	}
+
+	encode_1(buffer, mnemonic, operand_reg(right_reg, bit_count));
+
+	_emit_mov_regs(buffer,
+			select_quotient ? quotient_output_reg : remainder_output_reg,
+			dst_reg,
+			bit_count);
+
+	if (should_save_a) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(quotient_output_reg, 64));
+	}
+
+	if (should_save_d) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(remainder_output_reg, 64));
+	}
+}
+
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
@@ -970,6 +1030,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			break;
 		case INSTR_BIN_UMUL:
 			_emit_mul(buffer, MNEMONIC_MUL, left_reg, right_reg, dst_loc.reg, bit_count);
+			break;
+		case INSTR_BIN_IDIV:
+			_emit_div_mod(buffer, MNEMONIC_IDIV, left_reg, right_reg, dst_loc.reg, true, bit_count);
 			break;
 		}
 

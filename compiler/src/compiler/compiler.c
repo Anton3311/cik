@@ -448,6 +448,16 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		instr->bin_op.right = right;
 		break;
 	}
+	case BIN_OP_DIV:
+	case BIN_OP_ASSIGNMENT_BY_QUOTIENT: {
+		bool is_unsigned = has_flag(result_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
+
+		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
+		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UDIV : INSTR_BIN_IDIV;
+		instr->bin_op.left = left;
+		instr->bin_op.right = right;
+		break;
+	}
 	case BIN_OP_LOGICAL_EQUAL:
 		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_EQUAL;

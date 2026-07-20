@@ -106,8 +106,18 @@ typedef enum {
 	// No need to pass the first two register operands
 	MNEMONIC_MUL,
 	MNEMONIC_IMUL,
+	MNEMONIC_DIV,
+	MNEMONIC_IDIV,
 
 	MNEMONIC_MOVZX,
+	MNEMONIC_MOVSX,
+
+	// Copy sign bit of `AX` into every bit of `DX`
+	MNEMONIC_CWD,
+	// Copy sign bit of `EAX` into every bit of `EDX`
+	MNEMONIC_CDQ,
+	// Copy sign bit of `RAX` into every bit of `RDX`
+	MNEMONIC_CQO,
 
 	MNEMONIC_SHL,
 

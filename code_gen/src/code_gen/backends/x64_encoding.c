@@ -48,6 +48,11 @@ enum EncodingFlags {
 
 	// The destination reg index is added to the opcode byte. ModRM not used.
 	ENC_ADD_REG_TO_OPCODE  = 1 << 1,
+
+	// The REX prefix with (W == 1) must be added no matter what the operands are.
+	ENC_MANDATORY_REX_64    = 1 << 2,
+	// THe operand size override prefix must be added no matter what the operands are.
+	ENC_MANDATORY_66       = 1 << 3
 };
 
 typedef uint8_t EncodingFlags;
@@ -90,7 +95,7 @@ typedef struct {
 
 #define OP_RM OP_REG | OP_MEM
 
-static Encoding s_encodings[68];
+static Encoding s_encodings[77];
 
 static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
 static bool s_encoding_initialized = false;
@@ -199,9 +204,28 @@ void encoding_init() {
 
 	*(e++) = (E) { MNEMONIC_IMUL, ENC_HAS_0F_PREFIX, 0xaf, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM, 16 | 32 | 64 } } };
 
+	// div
+	*(e++) = (E) { MNEMONIC_DIV, ENC_NONE, 0xf6, 0x6, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_DIV, ENC_NONE, 0xf7, 0x6, { { OP_RM, 16 | 32 | 64 } } };
+
+	// idiv
+	*(e++) = (E) { MNEMONIC_IDIV, ENC_NONE, 0xf6, 0x7, { { OP_RM, 8 } } };
+	*(e++) = (E) { MNEMONIC_IDIV, ENC_NONE, 0xf7, 0x7, { { OP_RM, 16 | 32 | 64 } } };
+
 	// movzx
 	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } };
 	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, { { OP_RM, 16 }, { OP_REG, 16 | 32 | 64 } } };
+
+	// cwd
+	*(e++) = (E) { MNEMONIC_CWD, ENC_MANDATORY_66, 0x99, 0x0 };
+	// cdq
+	*(e++) = (E) { MNEMONIC_CDQ, ENC_NONE, 0x99, 0x0 };
+	// cqo
+	*(e++) = (E) { MNEMONIC_CQO, ENC_MANDATORY_REX_64, 0x99, 0x0 };
+
+	// movsx
+	*(e++) = (E) { MNEMONIC_MOVSX, ENC_HAS_0F_PREFIX, 0xbe, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_MOVSX, ENC_HAS_0F_PREFIX, 0xbf, 0x0, { { OP_RM, 16 }, { OP_REG, 16 | 32 | 64 } } };
 
 	// shl
 	*(e++) = (E) { MNEMONIC_SHL, ENC_NONE, 0xc1, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
@@ -387,7 +411,6 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		EncodingOperation operation) {
 
 	profile_scope_start(__func__);
-	assert(operand_count > 0);
 	assert(operand_count <= MAX_OPERAND_COUNT);
 
 	size_t encoding_index = _select_encoding(mnemonic, operands, operand_count);
@@ -423,9 +446,7 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 
 		rex_prefix_bits |= ((fields.reg >> 3) << 2);
 		rex_prefix_bits |= ((fields.rm >> 3) << 0);
-	} else {
-		assert(operand_count >= 1);
-		
+	} else if (operand_count >= 1) {
 		if (operands[0].kind == OP_REG) {
 			if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
 				// For instructions that require adding register number to the opcode byte, store
@@ -437,16 +458,23 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		}
 	}
 
+	bool is_16_bit = false;
 	for (size_t i = 0; i < operand_count; i += 1) {
 		Operand op = operands[i];
 		if (op.bit_count == 64 && (op.kind == OP_REG)) {
 			rex_prefix_bits |= 0b1000;
 		}
+
+		if (op.bit_count == 16 && op.kind == OP_REG) {
+			is_16_bit = true;
+		}
 	}
 
 	size_t encoding_size = 0;
+	// operand size override
+	encoding_size += (is_16_bit || has_flag(encoding.flags, ENC_MANDATORY_66)) ? 1 : 0;
 	// rex prefix
-	encoding_size += (rex_prefix_bits == 0) ? 0 : 1;
+	encoding_size += (rex_prefix_bits || has_flag(encoding.flags, ENC_MANDATORY_REX_64)) ? 1 : 0;
 	// 0f prefix
 	encoding_size += has_flag(encoding.flags, ENC_HAS_0F_PREFIX) ? 1 : 0;
 	// opcode byte
@@ -492,9 +520,18 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
 		uint8_t* write_ptr = buffer;
 
+		// operand size override
+		if (is_16_bit || has_flag(encoding.flags, ENC_MANDATORY_66)) {
+			*write_ptr = 0x66;
+			write_ptr += 1;
+		}
+
 		// rex prefix
 		if (rex_prefix_bits) {
 			*write_ptr = 0b01000000 | rex_prefix_bits;
+			write_ptr += 1;
+		} else if (has_flag(encoding.flags, ENC_MANDATORY_REX_64)) {
+			*write_ptr = 0b01000000 | 0b1000; // 64-bit operand
 			write_ptr += 1;
 		}
 

@@ -116,8 +116,11 @@ void instr_buffer_release(InstrBuffer* buffer) {
 InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer, uint16_t count) {
 	profile_scope_start(__func__);
 
-	assert(count > 0);
 	assert(buffer->inputs_buffer_capacity >= buffer->inputs_buffer_size);
+
+	if (count == 0) {
+		return (InstrInputs) { .start = UINT16_MAX, .count = 0 };
+	}
 
 	uint16_t free_size = buffer->inputs_buffer_capacity - buffer->inputs_buffer_size;
 	if (count > free_size) {

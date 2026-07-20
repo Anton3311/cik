@@ -841,12 +841,35 @@ static void _emit_div_mod(CodeBuffer* buffer,
 	bool should_save_a = dst_reg != quotient_output_reg;
 	bool should_save_d = dst_reg != remainder_output_reg;
 
+	bool use_temp_r8 = left_reg == X64_REG_A || left_reg == X64_REG_D;
+	bool use_temp_r9 = right_reg == X64_REG_A || right_reg == X64_REG_D;
+
 	if (should_save_a) {
 		encode_1(buffer, MNEMONIC_PUSH, operand_reg(quotient_output_reg, 64));
 	}
 
 	if (should_save_d) {
 		encode_1(buffer, MNEMONIC_PUSH, operand_reg(remainder_output_reg, 64));
+	}
+
+	if (use_temp_r8) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_8, 64));
+		encode_2(buffer,
+				MNEMONIC_MOV,
+				operand_reg(X64_REG_8, bit_count),
+				operand_reg(left_reg, bit_count));
+
+		left_reg = X64_REG_8;
+	}
+
+	if (use_temp_r9) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_9, 64));
+		encode_2(buffer,
+				MNEMONIC_MOV,
+				operand_reg(X64_REG_9, bit_count),
+				operand_reg(right_reg, bit_count));
+
+		right_reg = X64_REG_9;
 	}
 
 	if (mnemonic == MNEMONIC_IDIV) {
@@ -868,7 +891,23 @@ static void _emit_div_mod(CodeBuffer* buffer,
 			unreachable();
 		}
 	} else {
-
+		switch (bit_count) {
+		case 8:
+			encode_2(buffer, MNEMONIC_MOVZX, operand_reg(left_reg, 8), operand_reg(X64_REG_A, 16));
+			break;
+		case 16:
+			panic("Not implemented");
+		case 32:
+			_emit_load_const_32(buffer, X64_REG_D, 0);
+			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
+			break;
+		case 64:
+			_emit_load_const_64(buffer, X64_REG_D, 0);
+			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
+			break;
+		default:
+			unreachable();
+		}
 	}
 
 	encode_1(buffer, mnemonic, operand_reg(right_reg, bit_count));
@@ -878,12 +917,20 @@ static void _emit_div_mod(CodeBuffer* buffer,
 			dst_reg,
 			bit_count);
 
-	if (should_save_a) {
-		encode_1(buffer, MNEMONIC_POP, operand_reg(quotient_output_reg, 64));
+	if (use_temp_r9) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_9, 64));
+	}
+
+	if (use_temp_r8) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_8, 64));
 	}
 
 	if (should_save_d) {
 		encode_1(buffer, MNEMONIC_POP, operand_reg(remainder_output_reg, 64));
+	}
+
+	if (should_save_a) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(quotient_output_reg, 64));
 	}
 }
 
@@ -1033,6 +1080,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			break;
 		case INSTR_BIN_IDIV:
 			_emit_div_mod(buffer, MNEMONIC_IDIV, left_reg, right_reg, dst_loc.reg, true, bit_count);
+			break;
+		case INSTR_BIN_UDIV:
+			_emit_div_mod(buffer, MNEMONIC_DIV, left_reg, right_reg, dst_loc.reg, true, bit_count);
 			break;
 		}
 

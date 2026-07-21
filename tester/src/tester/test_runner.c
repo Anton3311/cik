@@ -5,27 +5,8 @@
 
 #define PREPROCESSOR_TESTS_DIRECTORY "tests/preprocessor"
 #define COMPILER_TESTS_DIRECTORY "tests/compiler"
-
-ProcessRunResult run_tester(String args, Arena* arena, Arena* temp_arena, String* out_stdout, int32_t* out_exit_code) {
-	ArenaRegion temp = arena_begin_temp(temp_arena);
-
-	StringBuilder builder = { .arena = temp_arena };
-	str_builder_append(&builder, STR_LIT("tester.exe "));
-	str_builder_append(&builder, args);
-
-	String cmd_args = builder.string;
-
-	ProcessRunResult result = process_capture_stdout(STR_LIT("bin/tester.exe"),
-			STR_LIT("."),
-			cmd_args,
-			out_exit_code,
-			out_stdout,
-			arena,
-			temp_arena);
-
-	arena_end_temp(temp);
-	return result;
-}
+#define TESTER_EXE_NAME "tester.exe"
+#define TESTER_EXE_PATH "bin/tester.exe"
 
 typedef struct {
 	size_t suite_index;
@@ -75,6 +56,8 @@ typedef struct {
 
 TestResult test_run_unit_test(TestRunnerContext* context) {
 	StringBuilder builder = { .arena = context->temp_allocator };
+	str_builder_append(&builder, STR_LIT(TESTER_EXE_NAME));
+	str_builder_append_char(&builder, ' ');
 	str_builder_append_int(&builder, TEST_CMD_RUN_TEST);
 	str_builder_append_char(&builder, ' ');
 	str_builder_append_int(&builder, context->suite_index);
@@ -83,11 +66,14 @@ TestResult test_run_unit_test(TestRunnerContext* context) {
 
 	String test_output = {};
 	int32_t exit_code = 0;
-	ProcessRunResult process_result = run_tester(builder.string,
-			context->allocator,
-			context->temp_allocator,
+	ProcessRunResult process_result = process_capture_stdout(
+			STR_LIT(TESTER_EXE_PATH),
+			STR_LIT("."),
+			builder.string,
+			&exit_code,
 			&test_output,
-			&exit_code);
+			context->allocator,
+			context->temp_allocator);
 
 	return (TestResult) {
 		.output = test_output,
@@ -98,6 +84,8 @@ TestResult test_run_unit_test(TestRunnerContext* context) {
 
 TestResult test_run_preprocessor_test(TestRunnerContext* context) {
 	StringBuilder builder = { .arena = context->temp_allocator };
+	str_builder_append(&builder, STR_LIT(TESTER_EXE_NAME));
+	str_builder_append_char(&builder, ' ');
 	str_builder_append_int(&builder, TEST_CMD_RUN_PREPROCESSOR_TEST);
 	str_builder_append_char(&builder, ' ');
 	str_builder_append(&builder, STR_LIT(PREPROCESSOR_TESTS_DIRECTORY));
@@ -106,11 +94,14 @@ TestResult test_run_preprocessor_test(TestRunnerContext* context) {
 
 	String test_output = {};
 	int32_t exit_code = 0;
-	ProcessRunResult process_result = run_tester(builder.string,
-			context->allocator,
-			context->temp_allocator,
+	ProcessRunResult process_result = process_capture_stdout(
+			STR_LIT(TESTER_EXE_PATH),
+			STR_LIT("."),
+			builder.string,
+			&exit_code,
 			&test_output,
-			&exit_code);
+			context->allocator,
+			context->temp_allocator);
 
 	return (TestResult) {
 		.output = test_output,
@@ -159,17 +150,23 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 	storage->suite_count = 0;
 
 	{
-		String all_test_suites = {};
-
 		ArenaRegion temp = arena_begin_temp(suites_allocator);
+
 		StringBuilder builder = { .arena = suites_allocator };
+		str_builder_append(&builder, STR_LIT(TESTER_EXE_NAME));
+		str_builder_append_char(&builder, ' ');
 		str_builder_append_int(&builder, TEST_CMD_GET_TEST_SUITE_NAMES);
-		
-		bool result = run_tester(builder.string,
-				tests_allocator,
-				suites_allocator,
+
+		String all_test_suites = {};
+		int32_t exit_code = 0;
+		bool result = process_capture_stdout(
+				STR_LIT(TESTER_EXE_PATH),
+				STR_LIT("."),
+				builder.string,
+				&exit_code,
 				&all_test_suites,
-				NULL) == PROCESS_RUN_OK;
+				tests_allocator,
+				suites_allocator) == PROCESS_RUN_OK;
 
 		arena_end_temp(temp);
 
@@ -192,16 +189,22 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 		ArenaRegion temp = arena_begin_temp(suites_allocator);
 
 		StringBuilder builder = { .arena = suites_allocator };
+		str_builder_append(&builder, STR_LIT(TESTER_EXE_NAME));
+		str_builder_append_char(&builder, ' ');
 		str_builder_append_int(&builder, TEST_CMD_GET_TEST_NAMES);
 		str_builder_append_char(&builder, ' ');
 		str_builder_append_int(&builder, test_suite_index);
 
 		String test_case_names = {};
-		bool result = run_tester(builder.string,
-				tests_allocator,
-				suites_allocator,
+		int32_t exit_code = 0;
+		bool result = process_capture_stdout(
+				STR_LIT(TESTER_EXE_PATH),
+				STR_LIT("."),
+				builder.string,
+				&exit_code,
 				&test_case_names,
-				NULL) == PROCESS_RUN_OK;
+				tests_allocator,
+				suites_allocator) == PROCESS_RUN_OK;
 
 		arena_end_temp(temp);
 
@@ -310,6 +313,8 @@ void report_test_result(String test_name,
 	}
 }
 
+// NOTE: Allocations from the `allocator` and `temp_allocator` are all cleaned up before the
+//       function returns. Both allocator in this case act as temporary.
 void run_test_and_report_result(TestStorage* storage,
 		size_t suite_index,
 		size_t test_index,

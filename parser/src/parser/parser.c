@@ -1534,11 +1534,20 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 	profile_func_colored(PROFILE_COLOR);
 	StringBuilder builder = { .arena = parser->ast_allocator };
 
+	Token first_string_token = preprocessor_view_next(parser->preprocessor);
+	assert_msg(first_string_token.kind == TOKEN_STRING, "Expected at least a single string token");
+
+	PackedSourceRange source_range = source_range_pack(first_string_token.source_range);
+
 	while (true) {
 		Token string_token = preprocessor_view_next(parser->preprocessor);
 		if (string_token.kind != TOKEN_STRING) {
 			break;
 		}
+
+		source_range = source_range_merge(
+				source_range,
+				source_range_pack(string_token.source_range));
 
 		preprocessor_next_token(parser->preprocessor);
 
@@ -1556,6 +1565,7 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 
 	out_literal->full_string = builder.string;
 	out_literal->array_size_expr = size_expr;
+	out_literal->source_range = source_range;
 
 	profile_scope_end();
 }

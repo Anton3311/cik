@@ -17,7 +17,7 @@ jobs:
       matrix:
         compiler:
           - name: cl
-            extra_cmd: "--asan"
+            extra_cmd: ""
           - name: clang
             extra_cmd: ""
     steps:

@@ -1,4 +1,9 @@
 @echo off
+
+set OUT_DIR=bin
+
+if not exist %OUT_DIR% mkdir %OUT_DIR%
+
 if [%1] == [clang] (
 	@echo on
 	clang ^
@@ -6,7 +11,7 @@ if [%1] == [clang] (
 		builder\src\builder\builder_main.c ^
 		builder\src\builder\builder_core.c ^
 		-g -lDbghelp.lib -lShlwapi.lib -lPathcch.lib -lAdvapi32.lib ^
-		-m64 -Wall -o bin\bb.exe -Icore\src\ -Ibuilder\src\
+		-m64 -Wall -o %OUT_DIR%\bb.exe -Icore\src\ -Ibuilder\src\
 	@echo off
 ) else if [%1] == [cl] (
 	@echo on
@@ -15,7 +20,7 @@ if [%1] == [clang] (
 		builder\src\builder\builder_main.c ^
 		builder\src\builder\builder_core.c ^
 		/Icore/src /Ibuilder/src ^
-		/DEBUG /Z7 /Fe"bin/bb.exe" Dbghelp.lib Shlwapi.lib Pathcch.lib Advapi32.lib
+		/DEBUG /Z7 /Fe"%OUT_DIR%/bb.exe" Dbghelp.lib Shlwapi.lib Pathcch.lib Advapi32.lib
 
 	rm builder_main.obj
 	rm builder_core.obj

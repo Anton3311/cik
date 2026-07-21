@@ -425,84 +425,63 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	// 2 -> 32-bits
 	// 3 -> 64-bits
 	bool is_unsigned = has_flag(common_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
-	size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &common_type).size);
+	TypeLayout common_type_layout = _type_get_layout(compiler, &common_type);
+	size_t result_bit_size_index = count_trailing_zeros(common_type_layout.size);
+
 	switch (expr->binary.op) {
 	case BIN_OP_ADD:
 	case BIN_OP_ASSIGNMENT_BY_SUM:
-		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = INSTR_BIN_ADD;
-		instr->bin_op.left = left;
-		instr->bin_op.right = right;
 		break;
 	case BIN_OP_SUB:
 	case BIN_OP_ASSIGNMENT_BY_DIFFERENCE:
-		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = INSTR_BIN_SUB;
-		instr->bin_op.left = left;
-		instr->bin_op.right = right;
 		break;
 	case BIN_OP_MUL:
 	case BIN_OP_ASSIGNMENT_BY_PRODUCT:
-		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UMUL : INSTR_BIN_IMUL;
-		instr->bin_op.left = left;
-		instr->bin_op.right = right;
 		break;
 	case BIN_OP_DIV:
 	case BIN_OP_ASSIGNMENT_BY_QUOTIENT:
-		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UDIV : INSTR_BIN_IDIV;
-		instr->bin_op.left = left;
-		instr->bin_op.right = right;
 		break;
 	case BIN_OP_MOD:
 	case BIN_OP_ASSIGNMENT_BY_REMAINDER:
-		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UMOD : INSTR_BIN_IMOD;
-		instr->bin_op.left = left;
-		instr->bin_op.right = right;
 		break;
 	case BIN_OP_LOGICAL_EQUAL:
-		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_EQUAL;
-		instr->compare.left = left;
-		instr->compare.right = right;
 		break;
 	case BIN_OP_LOGICAL_NOT_EQUAL:
-		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_NOT_EQUAL;
-		instr->compare.left = left;
-		instr->compare.right = right;
 		break;
 	case BIN_OP_LOGICAL_LESS:
-		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_LESS;
-		instr->compare.left = left;
-		instr->compare.right = right;
 		break;
 	case BIN_OP_LOGICAL_LESS_OR_EQUAL:
-		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_LESS_OR_EQUAL;
-		instr->compare.left = left;
-		instr->compare.right = right;
 		break;
 	case BIN_OP_LOGICAL_GREATER:
-		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_GREATER;
-		instr->compare.left = left;
-		instr->compare.right = right;
 		break;
 	case BIN_OP_LOGICAL_GREATER_OR_EQUAL:
-		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_GREATER_OR_EQUAL;
-		instr->compare.left = left;
-		instr->compare.right = right;
 		break;
 	}
 
 	assert_msg(instr->kind != INSTR_NO_OP,
 			"Binary operation was not handled, "
 			"and thus haven't produced a valid instruction");
+
+	if (bin_op_is_compare(expr->binary.op)) {
+		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		instr->compare.left = left;
+		instr->compare.right = right;
+	} else {
+		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
+		instr->bin_op.left = left;
+		instr->bin_op.right = right;
+	}
 
 	if (bin_op_is_assignment(expr->binary.op)) {
 		_compile_assignment(compiler, expr->binary.left, instr_index);

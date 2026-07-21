@@ -43,6 +43,11 @@ typedef enum {
 	INSTR_NEGATE_32,
 	INSTR_NEGATE_64,
 
+	INSTR_BITWISE_NOT_8,
+	INSTR_BITWISE_NOT_16,
+	INSTR_BITWISE_NOT_32,
+	INSTR_BITWISE_NOT_64,
+
 	INSTR_LOGICAL_SHIFT_LEFT_8,
 	INSTR_LOGICAL_SHIFT_LEFT_16,
 	INSTR_LOGICAL_SHIFT_LEFT_32,
@@ -185,6 +190,10 @@ struct Instr {
 		struct {
 			InstrIndex operand;
 		} negate;
+
+		struct {
+			InstrIndex operand;
+		} bitwise_not;
 
 		struct {
 			InstrIndex operand;

@@ -691,27 +691,13 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 			}
 		}
 		case UNARY_OP_NEGATE: {
+			TypeLayout layout = _type_get_layout(compiler, &operand_type);
+			assert_msg(layout.size <= 8, "Only up to 8 byte sizes are supported for dereferencing");
+
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+			instr->kind = INSTR_NEGATE_8 + result_bit_size_index;
 			instr->negate.operand = operand_instr;
-
-			TypeLayout layout = _type_get_layout(compiler, &operand_type);
-			switch (layout.size) {
-			case 1:
-				instr->kind = INSTR_NEGATE_8;
-				break;
-			case 2:
-				instr->kind = INSTR_NEGATE_16;
-				break;
-			case 4:
-				instr->kind = INSTR_NEGATE_32;
-				break;
-			case 8:
-				instr->kind = INSTR_NEGATE_64;
-				break;
-			default:
-				panic("Only up to 8 byte sizes are supported for dereferencing");
-			}
 
 			profile_scope_end();
 			return instr_index;
@@ -720,6 +706,18 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 			// Nothing to do here
 			profile_scope_end();
 			return operand_instr;
+		case UNARY_OP_BITWISE_NOT: {
+			TypeLayout layout = _type_get_layout(compiler, &operand_type);
+			assert_msg(layout.size <= 8, "Only up to 8 byte sizes are supported for dereferencing");
+
+			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+			instr->kind = INSTR_BITWISE_NOT_8 + result_bit_size_index;
+			instr->bitwise_not.operand = operand_instr;
+
+			profile_scope_end();
+			return instr_index;
+		}
 		}
 		break;
 	}

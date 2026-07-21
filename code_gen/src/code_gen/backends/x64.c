@@ -31,6 +31,11 @@ static void _init_storage_requiremenets() {
 	s[INSTR_BIN_OP_32]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
 	s[INSTR_BIN_OP_64]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
+	s[INSTR_BITWISE_NOT_8]          = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_BITWISE_NOT_16]         = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_BITWISE_NOT_32]         = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_BITWISE_NOT_64]         = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+
 	s[INSTR_LOGICAL_SHIFT_LEFT_8]   = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 	s[INSTR_LOGICAL_SHIFT_LEFT_16]  = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
 	s[INSTR_LOGICAL_SHIFT_LEFT_32]  = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
@@ -1179,6 +1184,23 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		// register is used as an input.
 		return;
 
+	case INSTR_BITWISE_NOT_8:
+	case INSTR_BITWISE_NOT_16:
+	case INSTR_BITWISE_NOT_32:
+	case INSTR_BITWISE_NOT_64: {
+		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_BITWISE_NOT_8);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation operand_loc = gen->instr_storage[instr->negate.operand.value];
+
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(operand_loc.kind == INSTR_STORAGE_REG);
+
+		_emit_mov_regs(buffer, operand_loc.reg, dst_loc.reg, bit_count);
+		encode_1(buffer, MNEMONIC_NOT, operand_reg(dst_loc.reg, bit_count));
+		return;
+	}
+
 	case INSTR_LOGICAL_SHIFT_LEFT_8:
 	case INSTR_LOGICAL_SHIFT_LEFT_16:
 	case INSTR_LOGICAL_SHIFT_LEFT_32:
@@ -2021,6 +2043,12 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_NEGATE_32:
 	case INSTR_NEGATE_64:
 		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->negate.operand);
+		break;
+	case INSTR_BITWISE_NOT_8:
+	case INSTR_BITWISE_NOT_16:
+	case INSTR_BITWISE_NOT_32:
+	case INSTR_BITWISE_NOT_64:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bitwise_not.operand);
 		break;
 	case INSTR_CAST_TO_8:
 	case INSTR_CAST_TO_16:

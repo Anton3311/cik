@@ -22,6 +22,10 @@ String instr_name(InstrKind variant) {
     case INSTR_NEGATE_16: return STR_LIT("negate_16");
     case INSTR_NEGATE_32: return STR_LIT("negate_32");
     case INSTR_NEGATE_64: return STR_LIT("negate_64");
+    case INSTR_BITWISE_NOT_8: return STR_LIT("bitwise_not_8");
+    case INSTR_BITWISE_NOT_16: return STR_LIT("bitwise_not_16");
+    case INSTR_BITWISE_NOT_32: return STR_LIT("bitwise_not_32");
+    case INSTR_BITWISE_NOT_64: return STR_LIT("bitwise_not_64");
     case INSTR_LOGICAL_SHIFT_LEFT_8: return STR_LIT("logical_shift_left_8");
     case INSTR_LOGICAL_SHIFT_LEFT_16: return STR_LIT("logical_shift_left_16");
     case INSTR_LOGICAL_SHIFT_LEFT_32: return STR_LIT("logical_shift_left_32");
@@ -134,6 +138,18 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         break;
     case INSTR_NEGATE_64:
         instr_queue_push_back(out_dependencies, instr->negate.operand);
+        break;
+    case INSTR_BITWISE_NOT_8:
+        instr_queue_push_back(out_dependencies, instr->bitwise_not.operand);
+        break;
+    case INSTR_BITWISE_NOT_16:
+        instr_queue_push_back(out_dependencies, instr->bitwise_not.operand);
+        break;
+    case INSTR_BITWISE_NOT_32:
+        instr_queue_push_back(out_dependencies, instr->bitwise_not.operand);
+        break;
+    case INSTR_BITWISE_NOT_64:
+        instr_queue_push_back(out_dependencies, instr->bitwise_not.operand);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
         instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
@@ -320,6 +336,18 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_NEGATE_64:
         printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->negate.operand.value);
+        break;
+    case INSTR_BITWISE_NOT_8:
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->bitwise_not.operand.value);
+        break;
+    case INSTR_BITWISE_NOT_16:
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->bitwise_not.operand.value);
+        break;
+    case INSTR_BITWISE_NOT_32:
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->bitwise_not.operand.value);
+        break;
+    case INSTR_BITWISE_NOT_64:
+        printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->bitwise_not.operand.value);
         break;
     case INSTR_LOGICAL_SHIFT_LEFT_8:
         printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);

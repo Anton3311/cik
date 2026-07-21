@@ -437,7 +437,7 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
-void bin_expr_select_result_type(const Type* left_type,
+void bin_expr_select_common_type(const Type* left_type,
 		const Type* right_type,
 		Type* out_type) {
 
@@ -535,8 +535,13 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		return;
 	}
 	case EXPR_BINARY: {
-		out_type->kind = expr->binary.result_type_kind;
-		out_type->pointer_base_type = expr->binary.pointer_base_type;
+		if (bin_op_is_compare(expr->binary.op)) {
+			out_type->kind = TYPE_INT;
+		} else {
+			out_type->kind = expr->binary.common_type_kind;
+			out_type->pointer_base_type = expr->binary.pointer_base_type;
+		}
+
 		return;
 	}
 	case EXPR_UNARY: {
@@ -829,15 +834,15 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		printer_end_struct(printer);
 		break;
 	case EXPR_BINARY: {
-		Type result_type = {
-			.kind = expr->binary.result_type_kind,
+		Type common_type = {
+			.kind = expr->binary.common_type_kind,
 			.pointer_base_type = expr->binary.pointer_base_type
 		};
 
 		printer_begin_struct(printer, "binary_expr");
 		printer_string_field(printer, "kind", bin_op_kind_to_string(expr->binary.op));
-		printer_field(printer, "result_type");
-		print_type(printer, &result_type);
+		printer_field(printer, "common_type");
+		print_type(printer, &common_type);
 		printer_field(printer, "left");
 		print_expr(printer, expr->binary.left);
 		printer_field(printer, "right");

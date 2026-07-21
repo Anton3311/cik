@@ -365,8 +365,10 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	InstrIndex left = _compile_expr(compiler, expr->binary.left);
 	InstrIndex right = _compile_expr(compiler, expr->binary.right);
 
-	Type result_type;
-	expr_get_type(expr, &result_type);
+	Type common_type = {
+		.kind = expr->binary.common_type_kind,
+		.pointer_base_type = expr->binary.pointer_base_type
+	};
 
 	// TODO: Don't scale int constants during compare operations.
 
@@ -411,8 +413,8 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 				left,
 				(uint8_t)shift_count);
 	} else {
-		left = _compile_int_cast(compiler, &left_type, &result_type, left);
-		right = _compile_int_cast(compiler, &right_type, &result_type, right);
+		left = _compile_int_cast(compiler, &left_type, &common_type, left);
+		right = _compile_int_cast(compiler, &right_type, &common_type, right);
 	}
 
 	InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
@@ -422,7 +424,8 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	// 1 -> 16-bits
 	// 2 -> 32-bits
 	// 3 -> 64-bits
-	size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
+	bool is_unsigned = has_flag(common_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
+	size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &common_type).size);
 	switch (expr->binary.op) {
 	case BIN_OP_ADD:
 	case BIN_OP_ASSIGNMENT_BY_SUM:
@@ -439,35 +442,26 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		instr->bin_op.right = right;
 		break;
 	case BIN_OP_MUL:
-	case BIN_OP_ASSIGNMENT_BY_PRODUCT: {
-		bool is_unsigned = has_flag(result_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
-
+	case BIN_OP_ASSIGNMENT_BY_PRODUCT:
 		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UMUL : INSTR_BIN_IMUL;
 		instr->bin_op.left = left;
 		instr->bin_op.right = right;
 		break;
-	}
 	case BIN_OP_DIV:
-	case BIN_OP_ASSIGNMENT_BY_QUOTIENT: {
-		bool is_unsigned = has_flag(result_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
-
+	case BIN_OP_ASSIGNMENT_BY_QUOTIENT:
 		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UDIV : INSTR_BIN_IDIV;
 		instr->bin_op.left = left;
 		instr->bin_op.right = right;
 		break;
-	}
 	case BIN_OP_MOD:
-	case BIN_OP_ASSIGNMENT_BY_REMAINDER: {
-		bool is_unsigned = has_flag(result_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
-
+	case BIN_OP_ASSIGNMENT_BY_REMAINDER:
 		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UMOD : INSTR_BIN_IMOD;
 		instr->bin_op.left = left;
 		instr->bin_op.right = right;
 		break;
-	}
 	case BIN_OP_LOGICAL_EQUAL:
 		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.kind = INSTR_CMP_EQUAL;

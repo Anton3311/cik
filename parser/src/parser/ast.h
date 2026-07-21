@@ -279,19 +279,23 @@ uint32_t bin_op_precedence(BinOpKind op);
 struct BinExpr {
 	BinOpKind op;
 
-	// `TypeKind` and `pointer_base_type` is enough to
-	// represent all possible arithmetic types, since binary
-	// operations are only supported by arithmetic types 
+	// Common type represent a type both operands should be casted to before performing the binary
+	// operation. This isn't necessarily same as the result type, although in case of an arithmetic
+	// operation they match. For compare operations, the result is distict from the common type, and
+	// is just a `TYPE_INT`
+	//
+	// `TypeKind` and `pointer_base_type` is enough to represent all possible arithmetic types,
+	// since binary operations are only supported by arithmetic types 
 	//
 	// TODO: Include type qualifiers here
-	TypeKind result_type_kind;
+	TypeKind common_type_kind;
 	Type* pointer_base_type;
 
 	Expr* left;
 	Expr* right;
 };
 
-void bin_expr_select_result_type(
+void bin_expr_select_common_type(
 		const Type* left_type,
 		const Type* right_type,
 		Type* out_type);

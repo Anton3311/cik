@@ -1,10 +1,6 @@
 #ifndef PROFILER_H
 #define PROFILER_H
 
-#include <intrin.h>
-
-#include "core/core.h"
-
 #ifdef FEATURE_PROFILER
 	#include "tracy/TracyC.h"
 

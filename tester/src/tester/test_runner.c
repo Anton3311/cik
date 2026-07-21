@@ -3,6 +3,8 @@
 #include "core/core.h"
 #include "tester/tester_core.h"
 
+#define PREPROCESSOR_TESTS_DIRECTORY "tests/preprocessor"
+
 ProcessRunResult run_tester(String args, Arena* arena, Arena* temp_arena, String* out_stdout, int32_t* out_exit_code) {
 	ArenaRegion temp = arena_begin_temp(temp_arena);
 
@@ -71,8 +73,6 @@ typedef struct {
 // 
 
 TestResult test_run_unit_test(TestRunnerContext* context) {
-	ArenaRegion temp = arena_begin_temp(context->temp_allocator);
-
 	StringBuilder builder = { .arena = context->temp_allocator };
 	str_builder_append_int(&builder, TEST_CMD_RUN_TEST);
 	str_builder_append_char(&builder, ' ');
@@ -88,7 +88,28 @@ TestResult test_run_unit_test(TestRunnerContext* context) {
 			&test_output,
 			&exit_code);
 
-	arena_end_temp(temp);
+	return (TestResult) {
+		.output = test_output,
+		.process_run_result = process_result,
+		.exit_code = exit_code,
+	};
+}
+
+TestResult test_run_preprocessor_test(TestRunnerContext* context) {
+	StringBuilder builder = { .arena = context->temp_allocator };
+	str_builder_append_int(&builder, TEST_CMD_RUN_PREPROCESSOR_TEST);
+	str_builder_append_char(&builder, ' ');
+	str_builder_append(&builder, STR_LIT(PREPROCESSOR_TESTS_DIRECTORY));
+	str_builder_append_char(&builder, '/');
+	str_builder_append(&builder, context->test_name);
+
+	String test_output = {};
+	int32_t exit_code = 0;
+	ProcessRunResult process_result = run_tester(builder.string,
+			context->allocator,
+			context->temp_allocator,
+			&test_output,
+			&exit_code);
 
 	return (TestResult) {
 		.output = test_output,
@@ -166,6 +187,29 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 			desc->name = line;
 			desc->runner = test_run_unit_test;
 			tests->count += 1;
+		}
+	}
+
+	// Extract preprocessor tests
+
+	{
+		StringArray paths = fs_enumerate_files_in_directory(
+				STR_LIT(PREPROCESSOR_TESTS_DIRECTORY),
+				tests_allocator,
+				suites_allocator);
+
+		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
+		suite->name = STR_LIT(PREPROCESSOR_TESTS_DIRECTORY);
+		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
+		suite->tests.count = paths.count;
+
+		storage->suite_count += 1;
+
+		for (size_t i = 0; i < paths.count; i += 1) {
+			TestDescriptor* test = &suite->tests.tests[i];
+			test->name = paths.values[i];
+			test->runner = test_run_preprocessor_test;
+
 		}
 	}
 
@@ -311,40 +355,6 @@ int main(int argc, char* argv[]) {
 			has_failed_tests = true;
 		}
 	}
-
-#if 0
-	{
-		String test_directory = STR_LIT("tests/preprocessor");
-
-		size_t tests_passed = 0;
-		printf("\n --- %.*s\n\n", STR_FMT(test_directory));
-
-		StringArray paths = fs_enumerate_files_in_directory(test_directory, &arena, &temp_arena);
-		for (size_t i = 0; i < paths.count; i += 1) {
-			StringBuilder builder = { .arena = &temp_arena };
-			str_builder_append_int(&builder, TEST_CMD_RUN_PREPROCESSOR_TEST);
-			str_builder_append_char(&builder, ' ');
-			str_builder_append(&builder, test_directory);
-			str_builder_append_char(&builder, '/');
-			str_builder_append(&builder, paths.values[i]);
-
-			if (run_single_test(builder.string, paths.values[i], &arena, &temp_arena)) {
-				tests_passed += 1;
-			}
-		}
-
-		size_t test_count = paths.count;
-		printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m\n",
-				tests_passed,
-				test_count,
-				test_count - tests_passed,
-				test_count);
-
-		if (tests_passed < test_count) {
-			has_failed_tests = true;
-		}
-	}
-#endif
 
 	{
 		String test_directory = STR_LIT("tests/compiler");

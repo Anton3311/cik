@@ -377,6 +377,21 @@ void run_test_and_report_result(TestStorage* storage,
 	arena_end_temp(temp2);
 }
 
+typedef enum {
+	MODE_ALL,
+	MODE_SINGLE,
+} ModeKind;
+
+typedef struct {
+	ModeKind kind;
+	union {
+		struct {
+			size_t suite_index;
+			size_t test_index;
+		} single;
+	};
+} Mode;
+
 int main(int argc, char* argv[]) {
 	Arena arena = { .capacity = 128 * 4096 };
 	Arena temp_arena = { .capacity = 128 * 4096 };
@@ -387,33 +402,109 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	bool has_failed_tests = false;
+	Mode mode = {};
+	mode.kind = MODE_ALL;
 
-	for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
-		printf("\n --- %.*s\n\n", STR_FMT(test_storage.suites[suite_index].name));
+	int32_t arg_index = 1;
+	while (arg_index < argc) {
+		if (strcmp(argv[arg_index], "run-test") == 0) {
+			mode.kind = MODE_SINGLE;
 
-		Summary summary = {};
+			arg_index += 1;
+			if (arg_index >= argc) {
+				fprintf(stderr, "Expected test case name");
+				return EXIT_FAILURE;
+			}
 
-		TestDescriptorArray tests = test_storage.suites[suite_index].tests;
-		for (size_t test_index = 0; test_index < tests.count; test_index += 1) {
-			run_test_and_report_result(&test_storage,
-					suite_index,
-					test_index,
-					&summary,
-					&arena,
-					&temp_arena);
-		}
+			bool test_case_found = false;
+			String test_case_name = str_from_cstr(argv[arg_index]);
+			arg_index += 1;
 
-		printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m\n",
-				summary.passed_count,
-				tests.count,
-				tests.count - summary.passed_count,
-				tests.count);
+			for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
+				const TestSuiteDescriptor* suite = &test_storage.suites[suite_index];
+				for (size_t test_index = 0; test_index < suite->tests.count; test_index += 1) {
+					if (str_equal(suite->tests.tests[test_index].name, test_case_name)) {
+						mode.single.suite_index = suite_index;
+						mode.single.test_index = test_index;
+						test_case_found = true;
+						break;
+					}
+				}
 
-		if (summary.passed_count < tests.count) {
-			has_failed_tests = true;
+				if (test_case_found) {
+					break;
+				}
+			}
+
+			if (!test_case_found) {
+				fprintf(stderr,
+						"Test named '%.*s' not found in any of the test suites",
+						STR_FMT(test_case_name));
+				return EXIT_FAILURE;
+			}
+		} else {
+			fprintf(stderr, "Unknown option '%s'", argv[arg_index]);
+			return EXIT_FAILURE;
 		}
 	}
+
+	bool has_failed_tests = false;
+
+	switch (mode.kind) {
+	case MODE_ALL:
+		for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
+			printf("\n --- %.*s\n\n", STR_FMT(test_storage.suites[suite_index].name));
+
+			Summary summary = {};
+
+			TestDescriptorArray tests = test_storage.suites[suite_index].tests;
+			for (size_t test_index = 0; test_index < tests.count; test_index += 1) {
+				run_test_and_report_result(&test_storage,
+						suite_index,
+						test_index,
+						&summary,
+						&arena,
+						&temp_arena);
+			}
+
+			printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m Skipped: %zu/%zu\n",
+					summary.passed_count,
+					tests.count,
+					tests.count - summary.passed_count,
+					tests.count,
+					(size_t)0,
+					tests.count);
+
+			if (summary.passed_count < tests.count) {
+				has_failed_tests = true;
+			}
+		}
+		break;
+	case MODE_SINGLE: {
+		Summary summary = {};
+
+		run_test_and_report_result(&test_storage,
+				mode.single.suite_index,
+				mode.single.test_index,
+				&summary,
+				&arena,
+				&temp_arena);
+
+		size_t test_count = 1;
+		printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m Skipped: %zu\n",
+				summary.passed_count,
+				test_count,
+				test_count - summary.passed_count,
+				test_count,
+				test_storage.suites[mode.single.suite_index].tests.count - test_count);
+
+		if (summary.passed_count < test_count) {
+			has_failed_tests = true;
+		}
+		break;
+	}
+	}
+
 
 	arena_release(&temp_arena);
 	arena_release(&arena);

@@ -26,6 +26,14 @@ typedef struct InstrQueue InstrQueue;
 typedef enum {
 	INSTR_NO_OP,
 
+	// An uninitialized value
+	//
+	// Doesn't have a correponding veriant in the `Instr` struct
+	INSTR_UNINITIALIZED_8,
+	INSTR_UNINITIALIZED_16,
+	INSTR_UNINITIALIZED_32,
+	INSTR_UNINITIALIZED_64,
+
 	INSTR_CONST_8,
 	INSTR_CONST_16,
 	INSTR_CONST_32,

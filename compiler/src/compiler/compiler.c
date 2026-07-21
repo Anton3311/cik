@@ -1472,14 +1472,20 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 }
 
 static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
+	profile_scope_start(__func__);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
 	switch (node->kind) {
-	case AST_NODE_VARIABLE:
+	case AST_NODE_VARIABLE: {
 		assert(node->variable.id < compiler->var_count);
 		assert(node->parent_scope);
 
 		compiler->vars[node->variable.id] = &node->variable;
 		compiler->var_parent_scopes[node->variable.id] = node->parent_scope;
 
+		InstrIndex value_instr = INVALID_INSTR_INDEX;
 		if (node->variable.value) {
 			Type value_type;
 			expr_get_type(node->variable.value, &value_type);
@@ -1487,19 +1493,35 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 			InstrIndex value = _compile_expr(compiler, node->variable.value);
 
 			// insert an implicit cast to the variable type
-			compiler->var_values[node->variable.id] = _compile_int_cast(compiler,
+			value_instr = _compile_int_cast(compiler,
 					&value_type,
 					&node->variable.type,
 					value);
+		} else {
+			TypeLayout variable_type_layout = _type_get_layout(compiler, &node->variable.type);
+			assert(variable_type_layout.size <= 8);
+
+			uint8_t bit_count_index = count_trailing_zeros(variable_type_layout.size);
+			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+			instr->kind = INSTR_UNINITIALIZED_8 + bit_count_index;
+
+			value_instr = instr_index;
 		}
 
+		assert(value_instr.value != INVALID_INSTR_INDEX.value);
+
+		compiler->var_values[node->variable.id] = value_instr;
 		break;
+	}
 	case AST_NODE_EXPR:
 		_compile_expr(compiler, &node->expr);
 		break;
 	default:
 		unreachable();
 	}
+
+	profile_scope_end();
 }
 
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, AstNode* first_node) {

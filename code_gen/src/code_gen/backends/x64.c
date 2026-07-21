@@ -19,6 +19,11 @@ static void _init_storage_requiremenets() {
 	typedef X64InstrStorageRequirement T;
 	s[INSTR_NO_OP]                  = (T) { .allowed_registers = 0, .reg_size = 0 };
 
+	s[INSTR_UNINITIALIZED_8]        = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_UNINITIALIZED_16]       = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_UNINITIALIZED_32]       = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_UNINITIALIZED_64]       = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
+
 	s[INSTR_CONST_8]                = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 	s[INSTR_CONST_16]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
 	s[INSTR_CONST_32]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
@@ -970,6 +975,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 
 	switch (instr->kind) {
 	case INSTR_NO_OP:
+		return;
+	
+	case INSTR_UNINITIALIZED_8:
+	case INSTR_UNINITIALIZED_16:
+	case INSTR_UNINITIALIZED_32:
+	case INSTR_UNINITIALIZED_64:
 		return;
 
 	case INSTR_CONST_8:
@@ -1985,6 +1996,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 
 	switch (instr->kind) {
 	case INSTR_NO_OP:
+	case INSTR_UNINITIALIZED_8:
+	case INSTR_UNINITIALIZED_16:
+	case INSTR_UNINITIALIZED_32:
+	case INSTR_UNINITIALIZED_64:
 	case INSTR_CONST_8:
 	case INSTR_CONST_16:
 	case INSTR_CONST_32:

@@ -9,6 +9,10 @@
 String instr_name(InstrKind variant) {
     switch (variant) {
     case INSTR_NO_OP: return STR_LIT("no_op");
+    case INSTR_UNINITIALIZED_8: return STR_LIT("uninitialized_8");
+    case INSTR_UNINITIALIZED_16: return STR_LIT("uninitialized_16");
+    case INSTR_UNINITIALIZED_32: return STR_LIT("uninitialized_32");
+    case INSTR_UNINITIALIZED_64: return STR_LIT("uninitialized_64");
     case INSTR_CONST_8: return STR_LIT("const_8");
     case INSTR_CONST_16: return STR_LIT("const_16");
     case INSTR_CONST_32: return STR_LIT("const_32");
@@ -100,6 +104,14 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
     const Instr* instr = &buffer->instr[instr_index.value];
     switch (instr->kind) {
     case INSTR_NO_OP:
+        break;
+    case INSTR_UNINITIALIZED_8:
+        break;
+    case INSTR_UNINITIALIZED_16:
+        break;
+    case INSTR_UNINITIALIZED_32:
+        break;
+    case INSTR_UNINITIALIZED_64:
         break;
     case INSTR_CONST_8:
         break;
@@ -297,6 +309,14 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
 
     switch (instr->kind) {
     case INSTR_NO_OP:
+        break;
+    case INSTR_UNINITIALIZED_8:
+        break;
+    case INSTR_UNINITIALIZED_16:
+        break;
+    case INSTR_UNINITIALIZED_32:
+        break;
+    case INSTR_UNINITIALIZED_64:
         break;
     case INSTR_CONST_8:
         printf("u: %u i: %d ", (uint32_t)instr->const_8.u, (int32_t)instr->const_8.i);

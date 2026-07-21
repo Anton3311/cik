@@ -1,5 +1,7 @@
 #include "parse_tools.h"
 
+#include "core/profiler.h"
+
 String int_literal_format_to_string(IntergerLiteralFormat format) {
 	switch (format) {
 	case INT_LIT_FMT_DECIMAL:
@@ -459,6 +461,8 @@ void parse_escaped_string(StringBuilder* builder,
 		String string,
 		const SourceFile* file,
 		Diagnostics* diagnostics) {
+	profile_scope_start(__func__);
+
 	while (string.length > 0) {
 		const char* char_ptr = memchr(string.v, '\\', string.length);
 		if (char_ptr) {
@@ -486,5 +490,7 @@ void parse_escaped_string(StringBuilder* builder,
 			break;
 		}
 	}
+	
+	profile_scope_end();
 }
 

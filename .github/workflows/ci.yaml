@@ -15,7 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        compiler: [cl, clang]
+        compiler:
+          - name: cl
+            extra_cmd: "--asan"
+          - name: clang
+            extra_cmd: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -30,7 +34,7 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_INSTALL=%%i"
           call "%VS_INSTALL%\VC\Auxiliary\Build\vcvarsall.bat" x64
-          bin\bb.exe build "--cc=${{matrix.compiler}}"
+          bin\bb.exe build "--cc=${{matrix.compiler.name}}" ${{matrix.compiler.extra_cmd}}
       - name: Test
         shell: cmd
         run: |

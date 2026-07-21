@@ -13,7 +13,6 @@ int main(int argc, char* argv[]) {
 	assert(10i8 >= 10i8);
 	assert(10i8 <= 10i8);
 
-#if 0
 	// i16
 	assert(10i16 == 10i16);
 	assert(10i16 != 5i16);
@@ -23,7 +22,6 @@ int main(int argc, char* argv[]) {
 	assert(5 <= 10i16);
 	assert(10i16 >= 10i16);
 	assert(10i16 <= 10i16);
-#endif
 
 	// i32
 	assert(10i32 == 10i32);
@@ -55,7 +53,6 @@ int main(int argc, char* argv[]) {
 	assert(10ui8 >= 10ui8);
 	assert(10ui8 <= 10ui8);
 
-#if 0
 	// ui16
 	assert(10ui16 == 10ui16);
 	assert(10ui16 != 5ui16);
@@ -65,7 +62,6 @@ int main(int argc, char* argv[]) {
 	assert(5 <= 10ui16);
 	assert(10ui16 >= 10ui16);
 	assert(10ui16 <= 10ui16);
-#endif
 
 	// ui32
 	assert(10ui32 == 10ui32);

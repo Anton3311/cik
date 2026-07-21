@@ -394,6 +394,13 @@ inline void _emit_load_const_32(CodeBuffer* buffer, X64Register reg, uint32_t va
 			operand_imm(value, 32));
 }
 
+inline void _emit_load_const_16(CodeBuffer* buffer, X64Register reg, uint16_t value) {
+	encode_2(buffer,
+			MNEMONIC_MOV,
+			operand_reg(reg, 16),
+			operand_imm(value, 16));
+}
+
 inline void _emit_load_const_8(CodeBuffer* buffer, X64Register reg, uint8_t value) {
 	encode_2(buffer,
 			MNEMONIC_MOV,
@@ -878,7 +885,9 @@ static void _emit_div_mod(CodeBuffer* buffer,
 			encode_2(buffer, MNEMONIC_MOVSX, operand_reg(left_reg, 8), operand_reg(X64_REG_A, 16));
 			break;
 		case 16:
-			panic("Not implemented");
+			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
+			encode_n(buffer, MNEMONIC_CWD, NULL, 0);
+			break;
 		case 32:
 			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
 			encode_n(buffer, MNEMONIC_CDQ, NULL, 0);
@@ -896,7 +905,9 @@ static void _emit_div_mod(CodeBuffer* buffer,
 			encode_2(buffer, MNEMONIC_MOVZX, operand_reg(left_reg, 8), operand_reg(X64_REG_A, 16));
 			break;
 		case 16:
-			panic("Not implemented");
+			_emit_load_const_16(buffer, X64_REG_D, 0);
+			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
+			break;
 		case 32:
 			_emit_load_const_32(buffer, X64_REG_D, 0);
 			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
@@ -961,7 +972,9 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		_emit_load_const_8(buffer, instr_storage.reg, instr->const_8.u);
 		return;
 	case INSTR_CONST_16:
-		unreachable();
+		assert(instr_storage.kind == INSTR_STORAGE_REG);
+		_emit_load_const_16(buffer, instr_storage.reg, instr->const_16.u);
+		return;
 	case INSTR_CONST_32:
 		assert(instr_storage.kind == INSTR_STORAGE_REG);
 		_emit_load_const_32(buffer, instr_storage.reg, instr->const_32.u);
@@ -985,8 +998,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
 	case INSTR_BIN_OP_64: {
-		assert_msg(instr->kind != INSTR_BIN_OP_16, "Not implemented");
-
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_BIN_OP_8);
 
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
@@ -1192,10 +1203,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_COMPARE_16:
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64: {
-		if (instr->kind == INSTR_COMPARE_16) {
-			unreachable();
-		}
-
 		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
 		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
 		assert(left_loc.kind == INSTR_STORAGE_REG);
@@ -1250,8 +1257,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_NEGATE_16:
 	case INSTR_NEGATE_32:
 	case INSTR_NEGATE_64: {
-		assert(instr->kind != INSTR_NEGATE_16);
-
 		uint8_t bit_count = _bit_count_from_index(instr->kind - INSTR_NEGATE_8);
 
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
@@ -1278,9 +1283,6 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		uint8_t operand_size = _get_instr_value_size(gen, instr->cast.value);
 		uint8_t output_size = 8 << (instr->kind - INSTR_CAST_TO_8);
 
-		assert_msg(operand_size != 16, "16-bit not yet implemented");
-		assert_msg(output_size != 16, "16-bit not yet implemented");
-
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);
 
@@ -1299,7 +1301,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 			return;
 		}
 
-		if (operand_size == 8) {
+		if (operand_size == 8 || operand_size == 16) {
 			encode_2(buffer,
 					MNEMONIC_MOVZX,
 					operand_reg(src_loc.reg, operand_size),

@@ -1964,6 +1964,8 @@ void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("fclose"), fclose);
 	func_ref_table_resolve_ref_to(table, STR_LIT("fread"), fread);
 	func_ref_table_resolve_ref_to(table, STR_LIT("fwrite"), fwrite);
+	func_ref_table_resolve_ref_to(table, STR_LIT("ftell"), ftell);
+	func_ref_table_resolve_ref_to(table, STR_LIT("fseek"), fseek);
 	func_ref_table_resolve_ref_to(table, STR_LIT("malloc"), malloc);
 	func_ref_table_resolve_ref_to(table, STR_LIT("free"), free);
 }

@@ -29,6 +29,7 @@ jobs:
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_INSTALL=%%i"
+          call "%VS_INSTALL%\VC\Auxiliary\Build\vcvarsall.bat" x64
           bin\bb.exe build "--cc=${{matrix.compiler}}"
       - name: Test
         shell: cmd

@@ -44,6 +44,7 @@ typedef struct {
 typedef struct {
 	TestSuiteDescriptor* suites;
 	size_t suite_count;
+	size_t max_test_name_length;
 } TestStorage;
 
 typedef struct {
@@ -270,6 +271,16 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 		}
 	}
 
+	storage->max_test_name_length = 0;
+	for (size_t suite_index = 0; suite_index < storage->suite_count; suite_index += 1) {
+		const TestSuiteDescriptor* suite = &storage->suites[suite_index];
+		for (size_t test_index = 0; test_index < suite->tests.count; test_index += 1) {
+			storage->max_test_name_length = max(
+					storage->max_test_name_length,
+					suite->tests.tests[test_index].name.length);
+		}
+	}
+
 	return true;
 }
 
@@ -287,6 +298,41 @@ void report_termination_status(String output, int32_t exit_code) {
 
 inline bool test_passed(ProcessRunResult process_result, int32_t exit_code) {
 	return process_result == PROCESS_RUN_OK && exit_code == 0;
+}
+
+void print_duration(uint64_t duration_in_ticks) {
+	uint64_t timer_freq = hardware_timer_get_frequency();
+	uint64_t ticks_per_sec = timer_freq * 1000;
+	uint64_t ticks_per_ms = timer_freq;
+	uint64_t ticks_per_micro_sec = timer_freq / 1000;
+	uint64_t ticks_per_ns = timer_freq / 1000000;
+
+	uint64_t duration = 0;
+	const char* duration_sufix = "ns";
+
+	if (duration_in_ticks >= ticks_per_sec) {
+		duration = duration_in_ticks / ticks_per_sec;
+		duration_sufix = "s";
+	} else if (duration_in_ticks >= ticks_per_ms) {
+		duration = duration_in_ticks / ticks_per_ms;
+		duration_sufix = "ms";
+	} else if (duration_in_ticks >= ticks_per_micro_sec) {
+		duration = duration_in_ticks / ticks_per_micro_sec;
+		duration_sufix = "us";
+	} else {
+		duration = duration_in_ticks / ticks_per_ns;
+		duration_sufix = "ns";
+	}
+
+	if (duration < 10) {
+		printf("   %llu%s", duration, duration_sufix);
+	} else if (duration < 100) {
+		printf("  %llu%s", duration, duration_sufix);
+	} else if (duration < 1000) {
+		printf(" %llu%s", duration, duration_sufix);
+	} else {
+		printf("%llu%s", duration, duration_sufix);
+	}
 }
 
 void report_test_result(String test_name,
@@ -340,7 +386,9 @@ void run_test_and_report_result(TestStorage* storage,
 	context.allocator = allocator;
 	context.temp_allocator = temp_allocator;
 
+	uint64_t start_time = __rdtsc();
 	TestResult result = test->runner(&context);
+	uint64_t end_time = __rdtsc();
 
 	// Report results
 	bool pass = test_passed(result.process_run_result, result.exit_code);
@@ -352,10 +400,14 @@ void run_test_and_report_result(TestStorage* storage,
 	}
 
 	if (pass) {
-		printf("  \x1b[1;32m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test->name), message);
+		printf("  \x1b[1;32m%s\x1b[0m %.*s %s", status_string, STR_FMT(test->name), message);
 	} else {
-		printf("  \x1b[1;31m%s\x1b[0m %.*s %s\n", status_string, STR_FMT(test->name), message);
+		printf("  \x1b[1;31m%s\x1b[0m %.*s %s", status_string, STR_FMT(test->name), message);
 	}
+
+	printf("\033[%zuC", storage->max_test_name_length - test->name.length + 1);
+	print_duration(end_time - start_time);
+	printf("\n");
 
 	if (result.exit_code != 0) {
 		printf("    stdout:\n");

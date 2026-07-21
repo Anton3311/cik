@@ -520,6 +520,16 @@ StringArray fs_enumerate_entries_in_directory(String directory_path,
 	return file_paths;
 }
 
+bool fs_create_directory(String directory_path, Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	const char* directory_path_cstr = str_to_cstr(directory_path, temp_allocator);
+	BOOL result = CreateDirectoryA(directory_path_cstr, NULL);
+
+	arena_end_temp(temp);
+	return result == TRUE;
+}
+
 //
 // BitArray
 //

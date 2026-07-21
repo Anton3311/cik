@@ -521,6 +521,8 @@ StringArray fs_enumerate_entries_in_directory(String directory_path,
 		Arena* file_path_allocator,
 		Arena* temp_arena);
 
+bool fs_create_directory(String directory_path, Arena* temp_allocator);
+
 //
 // Hashing
 //

@@ -1,5 +1,8 @@
 #include "builder_core.h"
 
+#define BIN_DIRECTORY "bin/"
+#define OBJ_DIRECTORY "bin/obj/"
+
 typedef struct {
 	String clang_path;
 	String llvm_lib_path;
@@ -160,11 +163,11 @@ static void _format_output_file_path(StringBuilder* builder,
 		bool include_file_ext) {
 	switch (unit->output_type) {
 	case OUTPUT_OBJ:
-		str_builder_append(builder, STR_LIT("bin/obj/"));
+		str_builder_append(builder, STR_LIT(OBJ_DIRECTORY));
 		break;
 	case OUTPUT_EXE:
 	case OUTPUT_LIB:
-		str_builder_append(builder, STR_LIT("bin/"));
+		str_builder_append(builder, STR_LIT(BIN_DIRECTORY));
 		break;
 	case OUTPUT_NONE:
 		unreachable();
@@ -527,6 +530,14 @@ static bool _run_build_process(BuildContext* context,
 	if (build_queue.count == 0) {
 		fprintf(stderr, "\033[31;1mNo targets to build\n\033[0m");
 		return false;
+	}
+
+	if (!path_exists(context->allocator, STR_LIT(BIN_DIRECTORY))) {
+		fs_create_directory(STR_LIT(BIN_DIRECTORY), context->allocator);
+	}
+
+	if (!path_exists(context->allocator, STR_LIT(OBJ_DIRECTORY))) {
+		fs_create_directory(STR_LIT(OBJ_DIRECTORY), context->allocator);
 	}
 
 	bool result = true;

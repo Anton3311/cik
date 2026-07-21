@@ -108,6 +108,18 @@ uint64_t hardware_timer_get_frequency() {
 }
 
 //
+// Profiler
+//
+
+#ifdef FEATURE_PROFILER
+void profiler_wait_for_connection() {
+	while (!TracyCIsConnected) {
+		thrd_yield();
+	}
+}
+#endif
+
+//
 // Allocator
 //
 

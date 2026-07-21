@@ -1,7 +1,5 @@
 #include "tokenizer.h"
 
-#include "core/profiler.h"
-
 #include <ctype.h>
 
 void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file) {

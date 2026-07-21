@@ -1,5 +1,4 @@
 #include "core/core.h"
-#include "core/profiler.h"
 #include "parser/preprocessor.h"
 #include "parser/parser.h"
 

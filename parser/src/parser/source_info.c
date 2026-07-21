@@ -1,7 +1,5 @@
 #include "source_info.h"
 
-#include "core/profiler.h"
-
 PackedSourceRange source_range_pack(SourceRange range) {
 	assert(range.source_file);
 	assert(range.start <= UINT32_MAX);

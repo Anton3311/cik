@@ -1,7 +1,5 @@
 #include "compiler.h"
 
-#include "core/profiler.h"
-
 //
 // StringStorage
 //

@@ -1,7 +1,5 @@
 #include "x64_encoding.h"
 
-#include "core/profiler.h"
-
 //
 // CodeBuffer
 //

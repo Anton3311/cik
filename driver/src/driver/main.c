@@ -3,7 +3,6 @@
 #include <threads.h>
 
 #include "core/core.h"
-#include "core/profiler.h"
 #include "parser/preprocessor.h"
 #include "parser/parser.h"
 #include "compiler/compiler.h"

@@ -1,6 +1,5 @@
 #include "x64.h"
 
-#include "core/profiler.h"
 #include "code_gen/backends/x64_reg_alloc.h"
 
 inline uint8_t _bit_count_from_index(uint8_t i) {

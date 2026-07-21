@@ -1,7 +1,5 @@
 #include "parser.h"
 
-#include "core/profiler.h"
-
 #include "parser/parse_tools.h"
 
 #define PROFILE_COLOR 0xfffd0a0a

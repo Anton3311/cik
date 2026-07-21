@@ -1,7 +1,5 @@
 #include "x64_reg_alloc.h"
 
-#include "core/profiler.h"
-
 // Defined in `x64.c`
 extern X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT];
 

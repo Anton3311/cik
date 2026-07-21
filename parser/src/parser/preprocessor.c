@@ -1,7 +1,5 @@
 #include "preprocessor.h"
 
-#include "core/profiler.h"
-
 #include "parser/parse_tools.h"
 
 #define REMOVED_MACRO_FLAG (void*)0x1

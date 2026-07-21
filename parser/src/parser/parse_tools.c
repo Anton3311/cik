@@ -1,7 +1,5 @@
 #include "parse_tools.h"
 
-#include "core/profiler.h"
-
 String int_literal_format_to_string(IntergerLiteralFormat format) {
 	switch (format) {
 	case INT_LIT_FMT_DECIMAL:

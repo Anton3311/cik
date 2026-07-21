@@ -1,7 +1,5 @@
 #include "code_gen.h"
 
-#include "core/profiler.h"
-
 uint16_t func_ref_table_entry_index(const FunctionRefTable* table, String name) {
 	profile_scope_start(__func__);
 	for (uint16_t i = 0; i < table->size; i += 1) {

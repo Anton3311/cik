@@ -1,7 +1,5 @@
 #include "instr.h"
 
-#include "core/profiler.h"
-
 bool instr_bin_op_is_commutative(InstrBinOp op) {
 	switch (op) {
 	case INSTR_BIN_ADD:

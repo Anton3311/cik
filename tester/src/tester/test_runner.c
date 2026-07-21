@@ -4,6 +4,7 @@
 #include "tester/tester_core.h"
 
 #define PREPROCESSOR_TESTS_DIRECTORY "tests/preprocessor"
+#define COMPILER_TESTS_DIRECTORY "tests/compiler"
 
 ProcessRunResult run_tester(String args, Arena* arena, Arena* temp_arena, String* out_stdout, int32_t* out_exit_code) {
 	ArenaRegion temp = arena_begin_temp(temp_arena);
@@ -118,6 +119,37 @@ TestResult test_run_preprocessor_test(TestRunnerContext* context) {
 	};
 }
 
+TestResult test_run_compiler_test(TestRunnerContext* context) {
+	String compiler_path = STR_LIT("bin/c.exe");
+
+	StringBuilder builder = { .arena = context->temp_allocator };
+	str_builder_append(&builder, compiler_path);
+	str_builder_append_char(&builder, ' ');
+	str_builder_append(&builder, STR_LIT(COMPILER_TESTS_DIRECTORY));
+	str_builder_append_char(&builder, '/');
+	str_builder_append(&builder, context->test_name);
+	str_builder_append(&builder, STR_LIT(" --show-ir -Istdx"));
+
+	String cmd_args = builder.string;
+
+	String output;
+	int32_t exit_code;
+	ProcessRunResult process_result = process_capture_stdout(
+			compiler_path,
+			STR_LIT("."),
+			cmd_args,
+			&exit_code,
+			&output,
+			context->allocator,
+			context->temp_allocator);
+
+	return (TestResult) {
+		.output = output,
+		.process_run_result = process_result,
+		.exit_code = exit_code,
+	};
+}
+
 //
 // Test Extraction
 // 
@@ -209,6 +241,28 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 			TestDescriptor* test = &suite->tests.tests[i];
 			test->name = paths.values[i];
 			test->runner = test_run_preprocessor_test;
+
+		}
+	}
+
+	// Extract compiler tests
+	{
+		StringArray paths = fs_enumerate_files_in_directory(
+				STR_LIT(COMPILER_TESTS_DIRECTORY),
+				tests_allocator,
+				suites_allocator);
+
+		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
+		suite->name = STR_LIT(COMPILER_TESTS_DIRECTORY);
+		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
+		suite->tests.count = paths.count;
+
+		storage->suite_count += 1;
+
+		for (size_t i = 0; i < paths.count; i += 1) {
+			TestDescriptor* test = &suite->tests.tests[i];
+			test->name = paths.values[i];
+			test->runner = test_run_compiler_test;
 
 		}
 	}
@@ -352,61 +406,6 @@ int main(int argc, char* argv[]) {
 				tests.count);
 
 		if (summary.passed_count < tests.count) {
-			has_failed_tests = true;
-		}
-	}
-
-	{
-		String test_directory = STR_LIT("tests/compiler");
-
-		size_t tests_passed = 0;
-		printf("\n --- %.*s\n\n", STR_FMT(test_directory));
-
-		String compiler_exe = STR_LIT("bin/c.exe");
-
-		StringArray paths = fs_enumerate_files_in_directory(test_directory, &arena, &temp_arena);
-		for (size_t i = 0; i < paths.count; i += 1) {
-			ArenaRegion temp = arena_begin_temp(&temp_arena);
-
-			StringBuilder builder = { .arena = &temp_arena };
-			str_builder_append(&builder, compiler_exe);
-			str_builder_append_char(&builder, ' ');
-			str_builder_append(&builder, test_directory);
-			str_builder_append_char(&builder, '/');
-			str_builder_append(&builder, paths.values[i]);
-			str_builder_append(&builder, STR_LIT(" --show-ir -Istdx"));
-
-			String cmd_args = builder.string;
-
-			String output;
-			int32_t exit_code;
-
-			ProcessRunResult process_result = process_capture_stdout(
-					compiler_exe,
-					STR_LIT("."),
-					cmd_args,
-					&exit_code,
-					&output,
-					&arena,
-					&temp_arena);
-
-			arena_end_temp(temp);
-
-			report_test_result(paths.values[i], process_result, exit_code, output);
-
-			if (test_passed(process_result, exit_code)) {
-				tests_passed += 1;
-			}
-		}
-
-		size_t test_count = paths.count;
-		printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m\n",
-				tests_passed,
-				test_count,
-				test_count - tests_passed,
-				test_count);
-
-		if (tests_passed < test_count) {
 			has_failed_tests = true;
 		}
 	}

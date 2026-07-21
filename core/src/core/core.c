@@ -198,6 +198,8 @@ size_t align_to_page_size(size_t bytes) {
 }
 
 void _arena_reserve(Arena* arena) {
+	profile_core_func();
+
 	_query_system_memory_spec();
 
 	arena->base = (uint8_t*)VirtualAlloc(NULL,
@@ -206,9 +208,13 @@ void _arena_reserve(Arena* arena) {
 			PAGE_READWRITE);
 
 	assert(arena->base != NULL);
+
+	profile_scope_end();
 }
 
 void _arena_commit(Arena* arena, size_t size) {
+	profile_core_func();
+
 	size_t page_count = _compute_page_count(size);
 
 	size_t commit_size = page_count * s_sys_mem_spec.page_size;
@@ -226,10 +232,14 @@ void _arena_commit(Arena* arena, size_t size) {
 	asan_poison_memory_region(arena->base + arena->commited, commit_size);
 
 	arena->commited += commit_size;
+
+	profile_scope_end();
 }
 
 void arena_release(Arena* arena) {
+	profile_core_func();
 	if (arena->base == NULL) {
+		profile_scope_end();
 		return;
 	}
 
@@ -239,14 +249,21 @@ void arena_release(Arena* arena) {
 	arena->base = NULL;
 	arena->allocated = 0;
 	arena->commited = 0;
+
+	profile_scope_end();
 }
 
 void* allocate_executable(size_t size) {
-	return VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	profile_core_func();
+	LPVOID ptr = VirtualAlloc(NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	profile_scope_end();
+	return ptr;
 }
 
 void free_executable(void* ptr, size_t size) {
+	profile_core_func();
 	VirtualFree(ptr, size, MEM_RELEASE);
+	profile_scope_end();
 }
 
 //
@@ -254,6 +271,8 @@ void free_executable(void* ptr, size_t size) {
 //
 
 WideString str_to_wstr(String string, Arena* allocator, bool include_null_terminator) {
+	profile_core_func();
+
 	// Doesn't include the null-terminator
 	int32_t required_size = MultiByteToWideChar(CP_UTF8, 0, string.v, string.length, NULL, 0);
 
@@ -272,10 +291,13 @@ WideString str_to_wstr(String string, Arena* allocator, bool include_null_termin
 	}
 
 	assert(result != 0);
+	profile_scope_end();
 	return (WideString) { .v = wide_string, .length = wide_string_length };
 }
 
 String str_from_wstr(WideString string, Arena* allocator) {
+	profile_core_func();
+	
 	// Doesn't include the null-terminator
 	int32_t required_size = WideCharToMultiByte(CP_UTF8,
 			0,             /* dwFlags */
@@ -298,6 +320,7 @@ String str_from_wstr(WideString string, Arena* allocator) {
 
 	assert(result != 0);
 
+	profile_scope_end();
 	return (String) { .v = buffer, .length = required_size };
 }
 
@@ -375,6 +398,7 @@ bool line_iterator_next(LineIterator* iter, String* out_line) {
 }
 
 StringArray string_to_lines(String string, Arena* allocator) {
+	profile_core_func();
 	StringArray array = { .values = arena_alloc_array(allocator, String, 0), .count = 0 };
 
 	LineIterator iter = { .source = string };
@@ -384,6 +408,7 @@ StringArray string_to_lines(String string, Arena* allocator) {
 		array.count += 1;
 	}
 
+	profile_scope_end();
 	return array;
 }
 
@@ -392,8 +417,11 @@ StringArray string_to_lines(String string, Arena* allocator) {
 //
 
 String env_get(const char* var_name, Arena* allocator) {
+	profile_core_func();
+
 	DWORD buffer_size = GetEnvironmentVariable(var_name, NULL, 0);
 	if (buffer_size == 0) {
+		profile_scope_end();
 		return (String) {};
 	}
 
@@ -403,10 +431,12 @@ String env_get(const char* var_name, Arena* allocator) {
 	DWORD result = GetEnvironmentVariable(var_name, buffer, buffer_size);
 	if (result + 1 != buffer_size) {
 		arena_end_temp(temp);
+		profile_scope_end();
 		return (String) {};
 	}
 
 	// buffer_size includes null-terminator
+	profile_scope_end();
 	return (String) { .v = buffer, .length = buffer_size - 1 };
 }
 
@@ -415,11 +445,14 @@ String env_get(const char* var_name, Arena* allocator) {
 //
 
 String read_entire_file_to_str(const char* file_path, Arena* arena) {
+	profile_core_func();
+
 	FILE* f = NULL;
 	errno_t error = fopen_s(&f, file_path, "rb");
 
 	if (!f || error == EINVAL) {
 		// Failed to open
+		profile_scope_end();
 		return (String) {};
 	}
 
@@ -433,21 +466,26 @@ String read_entire_file_to_str(const char* file_path, Arena* arena) {
 
 	fclose(f);
 
+	profile_scope_end();
 	return (String) { .v = string, .length = size };
 }
 
 bool write_str_to_file(const char* file_path, String string) {
+	profile_core_func();
+
 	FILE* f = NULL;
 	errno_t error = fopen_s(&f, file_path, "w");
 
 	if (!f || error == EINVAL) {
 		// Failed to open
+		profile_scope_end();
 		return false;
 	}
 
 	fwrite(string.v, 1, string.length, f);
 	fclose(f);
 
+	profile_scope_end();
 	return true;
 }
 
@@ -459,6 +497,8 @@ StringArray fs_enumerate_entries_in_directory(String directory_path,
 		FsEntryType mask,
 		Arena* file_path_allocator,
 		Arena* temp_arena) {
+
+	profile_core_func();
 	ArenaRegion temp = arena_begin_temp(temp_arena);
 
 	DWORD file_attributes = 0;
@@ -517,16 +557,19 @@ StringArray fs_enumerate_entries_in_directory(String directory_path,
 	memcpy(file_paths.values, file_path_array, sizeof(String) * file_count);
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return file_paths;
 }
 
 bool fs_create_directory(String directory_path, Arena* temp_allocator) {
+	profile_core_func();
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	const char* directory_path_cstr = str_to_cstr(directory_path, temp_allocator);
 	BOOL result = CreateDirectoryA(directory_path_cstr, NULL);
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return result == TRUE;
 }
 
@@ -623,6 +666,8 @@ bool bit_array_equal(const BitArray* a, const BitArray* b) {
 //
 
 bool win_sdk_get_install_path(Arena* allocator, String* out_path) {
+	profile_core_func();
+
 	HKEY key = {};
 	LSTATUS result = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
 			"SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
@@ -646,6 +691,7 @@ bool win_sdk_get_install_path(Arena* allocator, String* out_path) {
 
 	if (status != ERROR_SUCCESS) {
 		RegCloseKey(key);
+		profile_scope_end();
 		return false;
 	}
 
@@ -665,12 +711,15 @@ bool win_sdk_get_install_path(Arena* allocator, String* out_path) {
 	if (status != ERROR_SUCCESS) {
 		arena_end_temp(temp);
 		RegCloseKey(key);
+
+		profile_scope_end();
 		return false;
 	}
 
 	RegCloseKey(key);
 
 	*out_path = str_from_cstr(data_buffer);
+	profile_scope_end();
 	return true;
 }
 
@@ -680,6 +729,7 @@ bool win_sdk_get_install_path(Arena* allocator, String* out_path) {
 // 
 
 String get_current_directory(Arena* allocator) {
+	profile_core_func();
 	// Includes null terminator
 	DWORD buffer_size = GetCurrentDirectory(0, NULL);
 
@@ -690,10 +740,12 @@ String get_current_directory(Arena* allocator) {
 
 	if (!result) {
 		arena_end_temp(temp);
+		profile_scope_end();
 		return (String) {};
 	}
 
 	assert(buffer[buffer_size - 1] == 0);
+	profile_scope_end();
 	return (String) { .v = buffer, .length = buffer_size - 1 };
 }
 
@@ -709,22 +761,26 @@ String path_to_absolute(Arena* allocator, String path) {
 }
 
 bool path_exists(Arena* temp_allocator, String path) {
+	profile_core_func();
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	const char* path_cstr = str_to_cstr(path, temp_allocator);
 	bool exists = PathFileExistsA(path_cstr);
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return exists;
 }
 
 inline static DWORD _get_file_attributes(String path, Arena* temp_allocator) {
+	profile_core_func();
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	const char* path_cstr = str_to_cstr(path, temp_allocator);
 	DWORD attributes = GetFileAttributesA(path_cstr);
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return attributes;
 }
 
@@ -747,6 +803,7 @@ bool path_is_directory(Arena* temp_allocator, String path) {
 }
 
 WideString _path_canonicalize_to_wide_string(String path, Arena* allocator) {
+	profile_core_func();
 	WideString wide_path_string = str_to_wstr(path, allocator, true);
 
 	wchar_t* wide_canonical_path = arena_alloc_array(allocator, wchar_t, wide_path_string.length);
@@ -763,10 +820,12 @@ WideString _path_canonicalize_to_wide_string(String path, Arena* allocator) {
 		}
 	}
 
+	profile_scope_end();
 	return (WideString) { .v = wide_canonical_path, .length = canonical_path_length };
 }
 
 String path_canonicalize(String path, Arena* allocator, Arena* temp_allocator) {
+	profile_core_func();
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	WideString wide_canonical_path_string = _path_canonicalize_to_wide_string(path, temp_allocator);
@@ -774,6 +833,7 @@ String path_canonicalize(String path, Arena* allocator, Arena* temp_allocator) {
 
 	arena_end_temp(temp);
 
+	profile_scope_end();
 	return canonical_path;
 }
 
@@ -789,6 +849,8 @@ size_t path_get_file_name_start(String path) {
 }
 
 uint64_t path_get_last_write_time(String path, Arena* temp_allocator) {
+	profile_core_func();
+
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	const char* path_cstr = str_to_cstr(path, temp_allocator);
@@ -803,6 +865,7 @@ uint64_t path_get_last_write_time(String path, Arena* temp_allocator) {
 
 	if (file_handle == INVALID_HANDLE_VALUE) {
 		arena_end_temp(temp);
+		profile_scope_end();
 		return 0;
 	}
 
@@ -810,6 +873,7 @@ uint64_t path_get_last_write_time(String path, Arena* temp_allocator) {
 	if (!GetFileTime(file_handle, NULL, NULL, &write_time)) {
 		CloseHandle(file_handle);
 		arena_end_temp(temp);
+		profile_scope_end();
 		return 0;
 	}
 
@@ -818,6 +882,8 @@ uint64_t path_get_last_write_time(String path, Arena* temp_allocator) {
 
 	CloseHandle(file_handle);
 	arena_end_temp(temp);
+
+	profile_scope_end();
 	return last_write_time;
 }
 
@@ -858,11 +924,15 @@ ProcessRunResult process_run(String executable_path,
 		String arguments,
 		int32_t* out_exit_code,
 		Arena* temp_allocator) {
+	profile_core_func();
+
 	if (!path_is_file(temp_allocator, executable_path)) {
+		profile_scope_end();
 		return PROCESS_RUN_INVALID_EXE_PATH;
 	}
 
 	if (!path_is_directory(temp_allocator, working_directory)) {
+		profile_scope_end();
 		return PROCESS_RUN_INVALID_WORKING_DIR_PATH;
 	}
 
@@ -894,6 +964,7 @@ ProcessRunResult process_run(String executable_path,
 	arena_end_temp(temp);
 
 	if (!success) {
+		profile_scope_end();
 		return PROCESS_RUN_ERROR;
 	}
 
@@ -907,6 +978,7 @@ ProcessRunResult process_run(String executable_path,
 
 	CloseHandle(process_info.hProcess);
 	CloseHandle(process_info.hThread);
+	profile_scope_end();
 	return PROCESS_RUN_OK;
 }
 
@@ -916,6 +988,8 @@ typedef struct {
 } StdoutPipe;
 
 static bool _stdout_pipe_create(StdoutPipe* pipe) {
+	profile_core_func();
+
 	HANDLE stdout_read = NULL;
 	HANDLE stdout_write = NULL;
 
@@ -924,6 +998,7 @@ static bool _stdout_pipe_create(StdoutPipe* pipe) {
 	security_attributes.bInheritHandle = TRUE;
 	security_attributes.lpSecurityDescriptor = NULL;
 	if (!CreatePipe(&stdout_read, &stdout_write, &security_attributes, 0)) {
+		profile_scope_end();
 		return false;
 	}
 
@@ -936,13 +1011,18 @@ static bool _stdout_pipe_create(StdoutPipe* pipe) {
 		.write = stdout_write,
 	};
 
+	profile_scope_end();
 	return true;
 }
 
 static void _stdout_pipe_release(StdoutPipe* pipe) {
+	profile_core_func();
+
 	CloseHandle(pipe->read);
 	CloseHandle(pipe->write);
 	*pipe = (StdoutPipe) {};
+
+	profile_scope_end();
 }
 
 ProcessRunResult process_capture_stdout(String executable_path,

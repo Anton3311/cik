@@ -1,12 +1,16 @@
 #ifndef CORE_H
 #define CORE_H
 
+#include "core/profiler.h"
+
 #include <stdalign.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+
+#define profile_core_func() profile_func_colored(0xa0a010ff)
 
 #if defined(__clang__)
 	#define COMPILER_CLANG
@@ -359,15 +363,23 @@ inline String str_from_cstr(const char* cstr) {
 }
 
 inline String str_duplicate_from_cstr(const char* str, Arena* allocator) {
+	profile_core_func();
+
 	size_t length = strlen(str);
 	char* string = arena_alloc_array(allocator, char, length);
 	memcpy(string, str, length);
+
+	profile_scope_end();
 	return (String) { .v = string, .length = length };
 }
 
 inline String str_duplicate(String string, Arena* allocator) {
+	profile_core_func();
+
 	char* copy = arena_alloc_array(allocator, char, string.length);
 	memcpy(copy, string.v, string.length);
+
+	profile_scope_end();
 	return (String) { .v = copy, .length = string.length };
 }
 
@@ -382,11 +394,14 @@ WideString str_to_wstr(String string, Arena* allocator, bool include_null_termin
 String str_from_wstr(WideString string, Arena* allocator);
 
 inline String str_to_lower(String string, Arena* allocator) {
+	profile_core_func();
+
 	char* lower = arena_alloc_array(allocator, char, string.length);
 	for (size_t i = 0; i < string.length; i += 1) {
 		lower[i] = tolower(string.v[i]);
 	}
 
+	profile_scope_end();
 	return (String) { .v = lower, .length = string.length };
 }
 

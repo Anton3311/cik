@@ -60,6 +60,7 @@ String instr_name(InstrKind variant) {
     case INSTR_PHI: return STR_LIT("phi");
     case INSTR_SELECT: return STR_LIT("select");
     case INSTR_CALL_INDIRECT: return STR_LIT("call_indirect");
+    case INSTR_COUNT: unreachable();
     }
     unreachable();
     return (String) {};

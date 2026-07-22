@@ -119,16 +119,21 @@ void _emit_enum_to_string_mapping(GenContext* context,
 				" variant) {\n"
 				"    switch (variant) {\n"));
 
-	size_t variant_count = skip_last ? (enum_def->variant_count - 1) : enum_def->variant_count;
-	for (size_t i = 0; i < variant_count; i += 1) {
+	for (size_t i = 0; i < enum_def->variant_count; i += 1) {
 		String variant_name = enum_def->variants[i].name.string;
 		String simple_name = sub_str(variant_name, prefix_length, variant_name.length - prefix_length);
 
-		str_builder_append(builder, STR_LIT("    case "));
-		str_builder_append(builder, variant_name);
-		str_builder_append(builder, STR_LIT(": return STR_LIT(\""));
-		str_builder_append(builder, str_to_lower(simple_name, context->temp_allocator));
-		str_builder_append(builder, STR_LIT("\");\n"));
+		if (skip_last && i == enum_def->variant_count - 1) {
+			str_builder_append(builder, STR_LIT("    case "));
+			str_builder_append(builder, variant_name);
+			str_builder_append(builder, STR_LIT(": unreachable();\n"));
+		} else {
+			str_builder_append(builder, STR_LIT("    case "));
+			str_builder_append(builder, variant_name);
+			str_builder_append(builder, STR_LIT(": return STR_LIT(\""));
+			str_builder_append(builder, str_to_lower(simple_name, context->temp_allocator));
+			str_builder_append(builder, STR_LIT("\");\n"));
+		}
 	}
 
 	// Finish switch scope

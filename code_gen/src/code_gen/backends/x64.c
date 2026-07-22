@@ -976,6 +976,11 @@ void _emit_bitwise_shift(CodeBuffer* buffer,
 		Arena* temp_allocator) {
 
 	bool dst_is_cl = dst_reg == X64_REG_C;
+	bool should_save_rcx = value_reg != X64_REG_C && count_reg != X64_REG_C && dst_reg != X64_REG_C;
+
+	if (should_save_rcx) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_C, 64));
+	}
 
 	X64Register result_reg = dst_reg;
 	if (dst_is_cl && value_reg != X64_REG_C) {
@@ -986,31 +991,36 @@ void _emit_bitwise_shift(CodeBuffer* buffer,
 		result_reg = count_reg;
 	}
 
-	// Manually resolve the cycle.
-	// Parallel moves won't do that, since won't have any temp registers for that.
+	X64Register expected_locs[] = { result_reg, X64_REG_C };
+	InstrStorageLocation input_locs[2];
+
 	if (value_reg == X64_REG_C && count_reg == result_reg) {
+		// Manually resolve the cycle.
+		// Parallel moves won't do that, since it won't have any temp registers for that.
 		encode_1(buffer, MNEMONIC_PUSH, operand_reg(value_reg, 64));
 		encode_1(buffer, MNEMONIC_PUSH, operand_reg(count_reg, 64));
 
 		encode_1(buffer, MNEMONIC_POP, operand_reg(value_reg, 64));
 		encode_1(buffer, MNEMONIC_POP, operand_reg(count_reg, 64));
 
-		X64Register temp = value_reg;
-		value_reg = count_reg;
-		count_reg = temp;
-	}
-
-	X64Register expected_locs[] = { result_reg, X64_REG_C };
-	InstrStorageLocation input_locs[] = { 
-		(InstrStorageLocation) {
-			.kind = INSTR_STORAGE_REG,
-			.reg = value_reg,
-		},
-		(InstrStorageLocation) {
+		input_locs[0] = (InstrStorageLocation) {
 			.kind = INSTR_STORAGE_REG,
 			.reg = count_reg,
-		},
-	};
+		};
+		input_locs[1] = (InstrStorageLocation) {
+			.kind = INSTR_STORAGE_REG,
+			.reg = value_reg,
+		};
+	} else {
+		input_locs[0] = (InstrStorageLocation) {
+			.kind = INSTR_STORAGE_REG,
+			.reg = value_reg,
+		};
+		input_locs[1] = (InstrStorageLocation) {
+			.kind = INSTR_STORAGE_REG,
+			.reg = count_reg,
+		};
+	}
 
 	RegisterMoveArray moves = _parallel_move_values(input_locs,
 			expected_locs,
@@ -1034,10 +1044,12 @@ void _emit_bitwise_shift(CodeBuffer* buffer,
 
 	if (dst_is_cl && value_reg != X64_REG_C) {
 		encode_1(buffer, MNEMONIC_POP, operand_reg(value_reg, 64));
-		result_reg = value_reg;
 	} else if (dst_is_cl && count_reg != X64_REG_C) {
 		encode_1(buffer, MNEMONIC_POP, operand_reg(count_reg, 64));
-		result_reg = count_reg;
+	}
+
+	if (should_save_rcx) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_C, 64));
 	}
 }
 

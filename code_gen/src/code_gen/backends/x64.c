@@ -1622,9 +1622,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_PHI:
 		// Nothing to do here, everything is already handled during code gen of `INSTR_REGION`
 		return;
-	case INSTR_SELECT: {
+	case INSTR_SELECT:
 		return;
-	}
+	case INSTR_COUNT:
+		unreachable();
 	}
 
 	unreachable();

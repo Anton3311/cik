@@ -81,8 +81,6 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Type*
 		return type_layout_new(8, 8);
 
 	case TYPE_SIZE_T:
-	case TYPE_POINTER:
-		return compiler->pointer_type_layout;
 
 	case TYPE_FLOAT:
 		return type_layout_new(4, 4);
@@ -96,9 +94,13 @@ static TypeLayout _type_get_layout(const FunctionCompiler* compiler, const Type*
 	case TYPE_ENUM:
 		break;
 
+	case TYPE_POINTER:
+		return compiler->pointer_type_layout;
 	case TYPE_ARRAY:
 		// NOTE: Doesn't account for the array size.
 		//       The array is treated as a pointer.
+		return compiler->pointer_type_layout;
+	case TYPE_FUNCTION:
 		return compiler->pointer_type_layout;
 	}
 
@@ -1842,6 +1844,13 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		case AST_NODE_EXPR: 
 			_compile_statement(compiler, node);
 			break;
+		case AST_NODE_TYPE_DEF:
+		case AST_NODE_STRUCT:
+		case AST_NODE_UNION:
+		case AST_NODE_ENUM:
+			break;
+		case AST_NODE_FUNCTION:
+			panic("Function is not allowed here");
 		}
 	}
 
@@ -1988,6 +1997,17 @@ static uint64_t _internal_store_u64(uint64_t* out) {
 	return 0;
 }
 
+static FILE* _internal_fopen(const char* path, const char* mode) {
+	FILE* f = NULL;
+	errno_t error = fopen_s(&f, path, mode);
+
+	if (!f || error == EINVAL) {
+		return NULL;
+	}
+
+	return f;
+}
+
 void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
 	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
@@ -1995,7 +2015,7 @@ void compiler_resolve_default_func_refs(FunctionRefTable* table) {
 	func_ref_table_resolve_ref_to(table, STR_LIT("panic"), _internal_panic);
 	func_ref_table_resolve_ref_to(table, STR_LIT("identity"), _internal_identity);
 	func_ref_table_resolve_ref_to(table, STR_LIT("store_u64"), _internal_identity);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fopen"), fopen);
+	func_ref_table_resolve_ref_to(table, STR_LIT("fopen"), _internal_fopen);
 	func_ref_table_resolve_ref_to(table, STR_LIT("fclose"), fclose);
 	func_ref_table_resolve_ref_to(table, STR_LIT("fread"), fread);
 	func_ref_table_resolve_ref_to(table, STR_LIT("fwrite"), fwrite);

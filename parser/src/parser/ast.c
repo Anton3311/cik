@@ -303,6 +303,7 @@ uint32_t type_get_int_convertion_rank(const Type* type) {
 
 	case TYPE_POINTER:
 	case TYPE_ARRAY:
+	case TYPE_FUNCTION:
 		break;
 	}
 
@@ -1115,7 +1116,7 @@ void print_type(PrinterState* printer, const Type* type) {
 		}
 
 		printer_end_struct(printer);
-		break;	break;
+		break;
 	}
 }
 

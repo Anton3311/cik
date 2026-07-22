@@ -22,5 +22,27 @@ int main(int argc, char* argv[]) {
 	assert((0b101ui16 >> 2ui16) == 0b1ui16);
 	assert((0b101ui32 >> 2ui32) == 0b1ui32);
 	assert((0b101ui64 >> 2ui64) == 0b1ui64);
+
+
+
+	assert((0b101i8 << 8i8) == 0b0i8);
+	assert((0b101i16 << 16i16) == 0b0i16);
+	assert((0b101i32 << 32i32) == 0b101i32);
+	assert((0b101i64 << 64i64) == 0b101i64);
+
+	assert((0b101ui8 << 8ui8) == 0b0ui8);
+	assert((0b101ui16 << 16ui16) == 0b0ui16);
+	assert((0b101ui32 << 32ui32) == 0b101ui32);
+	assert((0b101ui64 << 64ui64) == 0b101ui64);
+
+	assert((0b101i8 >> 8i8) == 0b0i8);
+	assert((0b101i16 >> 16i16) == 0b0i16);
+	assert((0b101i32 >> 32i32) == 0b101i32);
+	assert((0b101i64 >> 64i64) == 0b101i64);
+
+	assert((0b101ui8 >> 8ui8) == 0b0ui8);
+	assert((0b101ui16 >> 16ui16) == 0b0ui16);
+	assert((0b101ui32 >> 32ui32) == 0b101ui32);
+	assert((0b101ui64 >> 64ui64) == 0b101ui64);
 	return 0;
 }

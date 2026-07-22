@@ -56,16 +56,6 @@ typedef enum {
 	INSTR_BITWISE_NOT_32,
 	INSTR_BITWISE_NOT_64,
 
-	INSTR_LOGICAL_SHIFT_LEFT_8,
-	INSTR_LOGICAL_SHIFT_LEFT_16,
-	INSTR_LOGICAL_SHIFT_LEFT_32,
-	INSTR_LOGICAL_SHIFT_LEFT_64,
-
-	INSTR_LOGICAL_SHIFT_RIGHT_8,
-	INSTR_LOGICAL_SHIFT_RIGHT_16,
-	INSTR_LOGICAL_SHIFT_RIGHT_32,
-	INSTR_LOGICAL_SHIFT_RIGHT_64,
-
 	INSTR_COMPARE_8,
 	INSTR_COMPARE_16,
 	INSTR_COMPARE_32,
@@ -209,11 +199,6 @@ struct Instr {
 		struct {
 			InstrIndex operand;
 		} bitwise_not;
-
-		struct {
-			InstrIndex operand;
-			uint8_t shift_count;
-		} logical_shift;
 
 		struct {
 			InstrCompareKind kind;
@@ -461,22 +446,12 @@ inline InstrIndex instr_new_io_state(InstrBuffer* buffer, Arena* allocator, Inst
 	return i;
 }
 
-inline InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
+// `operand_size` - size of an operand in bytes
+InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex operand,
-		uint8_t shift_count) {
-
-	if (shift_count == 0) {
-		return operand;
-	}
-
-	InstrIndex shift_index = instr_buffer_append(buffer, allocator);
-	Instr* shift_instr = instr_buffer_at(buffer, shift_index);
-	shift_instr->kind = INSTR_LOGICAL_SHIFT_LEFT_64;
-	shift_instr->logical_shift.operand = operand;
-	shift_instr->logical_shift.shift_count = shift_count;
-	return shift_index;
-}
+		uint8_t operand_size,
+		uint8_t shift_count);
 
 // Creates a INSTR_CAST_<target_bit_count>
 InstrIndex instr_new_cast(InstrBuffer* buffer,

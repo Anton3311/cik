@@ -30,14 +30,6 @@ String instr_name(InstrKind variant) {
     case INSTR_BITWISE_NOT_16: return STR_LIT("bitwise_not_16");
     case INSTR_BITWISE_NOT_32: return STR_LIT("bitwise_not_32");
     case INSTR_BITWISE_NOT_64: return STR_LIT("bitwise_not_64");
-    case INSTR_LOGICAL_SHIFT_LEFT_8: return STR_LIT("logical_shift_left_8");
-    case INSTR_LOGICAL_SHIFT_LEFT_16: return STR_LIT("logical_shift_left_16");
-    case INSTR_LOGICAL_SHIFT_LEFT_32: return STR_LIT("logical_shift_left_32");
-    case INSTR_LOGICAL_SHIFT_LEFT_64: return STR_LIT("logical_shift_left_64");
-    case INSTR_LOGICAL_SHIFT_RIGHT_8: return STR_LIT("logical_shift_right_8");
-    case INSTR_LOGICAL_SHIFT_RIGHT_16: return STR_LIT("logical_shift_right_16");
-    case INSTR_LOGICAL_SHIFT_RIGHT_32: return STR_LIT("logical_shift_right_32");
-    case INSTR_LOGICAL_SHIFT_RIGHT_64: return STR_LIT("logical_shift_right_64");
     case INSTR_COMPARE_8: return STR_LIT("compare_8");
     case INSTR_COMPARE_16: return STR_LIT("compare_16");
     case INSTR_COMPARE_32: return STR_LIT("compare_32");
@@ -168,30 +160,6 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
     case INSTR_BITWISE_NOT_64:
         instr_queue_push_back(out_dependencies, instr->bitwise_not.operand);
         break;
-    case INSTR_LOGICAL_SHIFT_LEFT_8:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
-    case INSTR_LOGICAL_SHIFT_LEFT_16:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
-    case INSTR_LOGICAL_SHIFT_LEFT_32:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
-    case INSTR_LOGICAL_SHIFT_LEFT_64:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_8:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_16:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_32:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_64:
-        instr_queue_push_back(out_dependencies, instr->logical_shift.operand);
-        break;
     case INSTR_COMPARE_8:
         instr_queue_push_back(out_dependencies, instr->compare.left);
         instr_queue_push_back(out_dependencies, instr->compare.right);
@@ -308,7 +276,7 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
 void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena* temp_allocator) {
     String name = instr_name(instr->kind);
 
-    size_t name_width = 23;
+    size_t name_width = 17;
 
     printf("\033[32;1m%.*s\033[0m \033[%uC", STR_FMT(name), (uint32_t)(name_width - name.length));
 
@@ -373,30 +341,6 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_BITWISE_NOT_64:
         printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->bitwise_not.operand.value);
-        break;
-    case INSTR_LOGICAL_SHIFT_LEFT_8:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
-        break;
-    case INSTR_LOGICAL_SHIFT_LEFT_16:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
-        break;
-    case INSTR_LOGICAL_SHIFT_LEFT_32:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
-        break;
-    case INSTR_LOGICAL_SHIFT_LEFT_64:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_8:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_16:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_32:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
-        break;
-    case INSTR_LOGICAL_SHIFT_RIGHT_64:
-        printf("operand: \033[33;1m%%%u\033[0m shift_count: %u ", (uint32_t)instr->logical_shift.operand.value, (uint32_t)instr->logical_shift.shift_count);
         break;
     case INSTR_COMPARE_8:
         printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);

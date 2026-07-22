@@ -215,6 +215,7 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	InstrIndex scaled_index = instr_new_logical_shift_left_by(instr_buffer,
 			instr_allocator,
 			index,
+			8,
 			(uint8_t)shift_count);
 
 	InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
@@ -380,35 +381,43 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		Type* base_type = type_extract_pointer_base_type(&left_type);
 		TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
+		size_t value_size = _type_get_layout(compiler, &right_type).size;
 		if (value_layout.size != compiler->pointer_type_layout.size) {
+			value_size = compiler->pointer_type_layout.size;
+
 			// promote the right operand to match the pointer size
 			right = instr_new_cast(instr_buffer,
 					instr_allocator,
 					right,
-					compiler->pointer_type_layout.size * 8);
+					value_size * 8);
 		}
 
 		size_t shift_count = count_trailing_zeros(value_layout.size);
 		right = instr_new_logical_shift_left_by(instr_buffer,
 				instr_allocator,
 				right,
+				value_size,
 				(uint8_t)shift_count);
 	} else if (right_is_pointer_like && type_kind_is_int(left_type.kind)) {
 		Type* base_type = type_extract_pointer_base_type(&right_type);
 		TypeLayout value_layout = _type_get_layout(compiler, base_type);
 
+		size_t value_size = _type_get_layout(compiler, &left_type).size;
 		if (value_layout.size != compiler->pointer_type_layout.size) {
+			value_size = compiler->pointer_type_layout.size;
+
 			// promote the left operand to match the pointer size
 			left = instr_new_cast(instr_buffer,
 					instr_allocator,
 					left,
-					compiler->pointer_type_layout.size * 8);
+					value_size * 8);
 		}
 
 		size_t shift_count = count_trailing_zeros(value_layout.size);
 		left = instr_new_logical_shift_left_by(instr_buffer,
 				instr_allocator,
 				left,
+				value_size,
 				(uint8_t)shift_count);
 	} else {
 		left = _compile_int_cast(compiler, &left_type, &common_type, left);

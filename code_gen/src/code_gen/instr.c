@@ -65,16 +65,6 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 	[INSTR_BITWISE_NOT_32] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_BITWISE_NOT_64] = INSTR_FEATURE_REG_STORAGE,
 
-	[INSTR_LOGICAL_SHIFT_LEFT_8] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_LOGICAL_SHIFT_LEFT_16] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_LOGICAL_SHIFT_LEFT_32] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_LOGICAL_SHIFT_LEFT_64] = INSTR_FEATURE_REG_STORAGE,
-
-	[INSTR_LOGICAL_SHIFT_RIGHT_8] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_LOGICAL_SHIFT_RIGHT_16] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_LOGICAL_SHIFT_RIGHT_32] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_LOGICAL_SHIFT_RIGHT_64] = INSTR_FEATURE_REG_STORAGE,
-
 	[INSTR_COMPARE_8] = 0,
 	[INSTR_COMPARE_16] = 0,
 	[INSTR_COMPARE_32] = 0,
@@ -253,6 +243,47 @@ InstrIndex instr_new_empty_phi(InstrBuffer* buffer, Arena* allocator) {
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_PHI;
 	return i;
+}
+
+InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex operand,
+		uint8_t operand_size,
+		uint8_t shift_count) {
+
+	if (shift_count == 0) {
+		return operand;
+	}
+
+	InstrIndex shift_count_const = instr_new_int_const(buffer,
+			allocator,
+			shift_count,
+			1);
+
+	InstrIndex shift_index = instr_buffer_append(buffer, allocator);
+	Instr* shift_instr = instr_buffer_at(buffer, shift_index);
+	shift_instr->bin_op.kind = INSTR_BIN_SHIFT_LEFT;
+	shift_instr->bin_op.left = operand;
+	shift_instr->bin_op.right = shift_count_const;
+
+	switch (operand_size) {
+	case 1:
+		shift_instr->kind = INSTR_BIN_OP_8;
+		break;
+	case 2:
+		shift_instr->kind = INSTR_BIN_OP_16;
+		break;
+	case 4:
+		shift_instr->kind = INSTR_BIN_OP_32;
+		break;
+	case 8:
+		shift_instr->kind = INSTR_BIN_OP_64;
+		break;
+	default:
+		unreachable();
+	}
+
+	return shift_index;
 }
 
 InstrIndex instr_new_cast(InstrBuffer* buffer,

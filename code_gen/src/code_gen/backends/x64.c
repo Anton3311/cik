@@ -1063,7 +1063,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					MNEMONIC_ADD,
 					operand_reg(left_reg, bit_count),
 					operand_reg(right_reg, bit_count));
-			break;
+			return;
 		case INSTR_BIN_SUB: {
 			if (dst_loc.reg == right_loc.reg) {
 				// NOTE: When saving the register, push/pop the whole 64-bit register
@@ -1098,7 +1098,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 						operand_reg(right_reg, bit_count));
 			}
 
-			break;
+			return;
 		}
 		case INSTR_BIN_IMUL:
 			if (bit_count == 8) {
@@ -1111,16 +1111,16 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 						operand_reg(left_reg, bit_count),
 						operand_reg(right_reg, bit_count));
 			}
-			break;
+			return;
 		case INSTR_BIN_UMUL:
 			_emit_mul(buffer, MNEMONIC_MUL, left_reg, right_reg, dst_loc.reg, bit_count);
-			break;
+			return;
 		case INSTR_BIN_IDIV:
 			_emit_div_mod(buffer, MNEMONIC_IDIV, left_reg, right_reg, dst_loc.reg, true, bit_count);
-			break;
+			return;
 		case INSTR_BIN_UDIV:
 			_emit_div_mod(buffer, MNEMONIC_DIV, left_reg, right_reg, dst_loc.reg, true, bit_count);
-			break;
+			return;
 		case INSTR_BIN_IMOD:
 			_emit_div_mod(buffer,
 					MNEMONIC_IDIV,
@@ -1129,7 +1129,7 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					dst_loc.reg,
 					false,
 					bit_count);
-			break;
+			return;
 		case INSTR_BIN_UMOD:
 			_emit_div_mod(buffer,
 					MNEMONIC_DIV,
@@ -1138,10 +1138,10 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					dst_loc.reg,
 					false,
 					bit_count);
-			break;
+			return;
 		}
 
-		return;
+		unreachable();
 	}
 
 	case INSTR_PTR_LOAD_8:

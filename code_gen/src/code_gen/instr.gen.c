@@ -82,6 +82,9 @@ String instr_bin_op_name(InstrBinOp variant) {
     case INSTR_BIN_UMUL: return STR_LIT("umul");
     case INSTR_BIN_UDIV: return STR_LIT("udiv");
     case INSTR_BIN_UMOD: return STR_LIT("umod");
+    case INSTR_BIN_AND: return STR_LIT("and");
+    case INSTR_BIN_OR: return STR_LIT("or");
+    case INSTR_BIN_XOR: return STR_LIT("xor");
     }
     unreachable();
     return (String) {};

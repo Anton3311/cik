@@ -1139,6 +1139,24 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					false,
 					bit_count);
 			return;
+		case INSTR_BIN_AND:
+			encode_2(buffer,
+					MNEMONIC_AND,
+					operand_reg(left_reg, bit_count),
+					operand_reg(right_reg, bit_count));
+			return;
+		case INSTR_BIN_OR:
+			encode_2(buffer,
+					MNEMONIC_OR,
+					operand_reg(left_reg, bit_count),
+					operand_reg(right_reg, bit_count));
+			return;
+		case INSTR_BIN_XOR:
+			encode_2(buffer,
+					MNEMONIC_XOR,
+					operand_reg(left_reg, bit_count),
+					operand_reg(right_reg, bit_count));
+			return;
 		}
 
 		unreachable();

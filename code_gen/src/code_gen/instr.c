@@ -12,6 +12,10 @@ bool instr_bin_op_is_commutative(InstrBinOp op) {
 	case INSTR_BIN_IMOD:
 	case INSTR_BIN_UMOD:
 		return false;
+	case INSTR_BIN_AND:
+	case INSTR_BIN_OR:
+	case INSTR_BIN_XOR:
+		return true;
 	}
 
 	unreachable();

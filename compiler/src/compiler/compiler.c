@@ -447,6 +447,11 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	case BIN_OP_ASSIGNMENT_BY_REMAINDER:
 		instr->bin_op.kind = is_unsigned ? INSTR_BIN_UMOD : INSTR_BIN_IMOD;
 		break;
+
+	case BIN_OP_LOGICAL_AND:
+	case BIN_OP_LOGICAL_OR:
+		panic("todo");
+
 	case BIN_OP_LOGICAL_EQUAL:
 		instr->compare.kind = INSTR_CMP_EQUAL;
 		break;
@@ -465,6 +470,27 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	case BIN_OP_LOGICAL_GREATER_OR_EQUAL:
 		instr->compare.kind = INSTR_CMP_GREATER_OR_EQUAL;
 		break;
+
+	case BIN_OP_BITWISE_AND:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_AND:
+		instr->bin_op.kind = INSTR_BIN_AND;
+		break;
+	case BIN_OP_BITWISE_OR:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_OR:
+		instr->bin_op.kind = INSTR_BIN_OR;
+		break;
+	case BIN_OP_BITWISE_XOR:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_XOR:
+		instr->bin_op.kind = INSTR_BIN_XOR;
+		break;
+	case BIN_OP_BITWISE_SHIFT_LEFT:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT:
+	case BIN_OP_BITWISE_SHIFT_RIGHT:
+	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT:
+		panic("todo");
+
+	case BIN_OP_ASSIGNMENT:
+		panic("Assignment is handled in a different path");
 	}
 
 	assert_msg(instr->kind != INSTR_NO_OP,

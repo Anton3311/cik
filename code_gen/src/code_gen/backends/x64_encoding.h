@@ -61,7 +61,10 @@ typedef struct Operand Operand;
 
 typedef enum {
 	MNEMONIC_ADD,
+	MNEMONIC_OR,
+	MNEMONIC_AND,
 	MNEMONIC_SUB,
+	MNEMONIC_XOR,
 
 	MNEMONIC_CMP,
 

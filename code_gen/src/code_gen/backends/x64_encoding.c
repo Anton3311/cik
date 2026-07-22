@@ -93,7 +93,7 @@ typedef struct {
 
 #define OP_RM OP_REG | OP_MEM
 
-static Encoding s_encodings[79];
+static Encoding s_encodings[107];
 
 static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
 static bool s_encoding_initialized = false;
@@ -115,7 +115,29 @@ void encoding_init() {
 	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x02, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
 	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x03, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
 
+	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x80, 0x0, { { OP_RM, 8 },            { OP_IMM, 8 } } };
 	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x81, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_ADD, ENC_NONE, 0x83, 0x0, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
+
+	// or
+	*(e++) = (E) { MNEMONIC_OR, ENC_NONE, 0x08, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_OR, ENC_NONE, 0x09, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_OR, ENC_NONE, 0x0a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
+	*(e++) = (E) { MNEMONIC_OR, ENC_NONE, 0x0b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_OR, ENC_NONE, 0x80, 0x1, { { OP_RM, 8 },            { OP_IMM, 8 } } };
+	*(e++) = (E) { MNEMONIC_OR, ENC_NONE, 0x81, 0x1, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_OR, ENC_NONE, 0x83, 0x1, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
+
+	// and
+	*(e++) = (E) { MNEMONIC_AND, ENC_NONE, 0x20, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_AND, ENC_NONE, 0x21, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_AND, ENC_NONE, 0x22, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
+	*(e++) = (E) { MNEMONIC_AND, ENC_NONE, 0x23, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_AND, ENC_NONE, 0x80, 0x4, { { OP_RM, 8 },            { OP_IMM, 8 } } };
+	*(e++) = (E) { MNEMONIC_AND, ENC_NONE, 0x81, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_AND, ENC_NONE, 0x83, 0x4, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
 
 	// sub
 	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x28, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
@@ -123,13 +145,29 @@ void encoding_init() {
 	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x2a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
 	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x2b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
 
+	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x80, 0x5, { { OP_RM, 8 },            { OP_IMM, 8 } } };
 	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x81, 0x5, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_SUB, ENC_NONE, 0x83, 0x5, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
+
+	// xor
+	*(e++) = (E) { MNEMONIC_XOR, ENC_NONE, 0x30, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
+	*(e++) = (E) { MNEMONIC_XOR, ENC_NONE, 0x31, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_XOR, ENC_NONE, 0x32, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
+	*(e++) = (E) { MNEMONIC_XOR, ENC_NONE, 0x33, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_XOR, ENC_NONE, 0x80, 0x6, { { OP_RM, 8 },            { OP_IMM, 8 } } };
+	*(e++) = (E) { MNEMONIC_XOR, ENC_NONE, 0x81, 0x6, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_XOR, ENC_NONE, 0x83, 0x6, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
 
 	// cmp
 	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x38, 0x0, { { OP_RM,  8 },            { OP_REG, 8 } } };
 	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x39, 0x0, { { OP_RM,  16 | 32 | 64 }, { OP_REG, 16 | 32 | 64 } } };
 	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x3a, 0x0, { { OP_REG, 8 },            { OP_RM,  8 } } };
 	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x3b, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM,  16 | 32 | 64 } } };
+
+	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x80, 0x7, { { OP_RM, 8 },            { OP_IMM, 8 } } };
+	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x81, 0x7, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 16 | 32 } } };
+	*(e++) = (E) { MNEMONIC_CMP, ENC_NONE, 0x83, 0x7, { { OP_RM, 16 | 32 | 64 }, { OP_IMM, 8 } } };
 
 	// push
 	*(e++) = (E) { MNEMONIC_PUSH, ENC_ADD_REG_TO_OPCODE, 0x50, 0x0, { { OP_RM, 16 | 64 } } };

@@ -442,6 +442,11 @@ inline bool str_starts_with(String str, String prefix) {
 	return memcmp(str.v, prefix.v, prefix.length) == 0;
 }
 
+inline size_t str_find_char(String str, char c) {
+	const char* position = memchr(str.v, c, str.length);
+	return position ? (size_t)(position - str.v) : SIZE_MAX;
+}
+
 typedef enum {
 	LINE_ENDING_NONE,
 	LINE_ENDING_LF,

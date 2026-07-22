@@ -361,7 +361,7 @@ void report_test_result(String test_name,
 
 // NOTE: Allocations from the `allocator` and `temp_allocator` are all cleaned up before the
 //       function returns. Both allocator in this case act as temporary.
-void run_test_and_report_result(TestStorage* storage,
+bool run_test_and_report_result(TestStorage* storage,
 		size_t suite_index,
 		size_t test_index,
 		Summary* summary,
@@ -427,12 +427,154 @@ void run_test_and_report_result(TestStorage* storage,
 
 	arena_end_temp(temp1);
 	arena_end_temp(temp2);
+
+	return pass;
+}
+
+bool raddbg_ipc_run_cmd(String raddbg_path, String args, Arena* temp_allocator) {
+	int32_t exit_code = 0;
+	if (process_run(raddbg_path,
+				STR_LIT("."),
+				args,
+				&exit_code,
+				temp_allocator) != PROCESS_RUN_OK || exit_code != 0) {
+		fprintf(stderr, "Failed to run 'raddbg.exe %.*s'\n", STR_FMT(args));
+		return false;
+	}
+
+	return true;
+}
+
+void add_test_as_raddbg_target(String raddbg_path, String test_name, Arena* temp_allocator) {
+	if (is_debugger_connected()) {
+		fprintf(stderr,
+				"Cannot add a failing test to the list of targets in raddbg,"
+				" since currently running with a debugger connected\n");
+		return;
+	}
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	String current_working_directory = get_current_directory(temp_allocator);
+
+	{
+		StringBuilder builder = { .arena = temp_allocator };
+		str_builder_append(&builder, STR_LIT("raddbg.exe --ipc remove_target \""));
+		str_builder_append(&builder, test_name);
+		str_builder_append_char(&builder, '"');
+
+		if (!raddbg_ipc_run_cmd(raddbg_path, builder.string, temp_allocator)) {
+			return;
+		}
+	}
+
+	{
+		StringBuilder builder = { .arena = temp_allocator };
+		str_builder_append(&builder, STR_LIT("raddbg.exe --ipc add_target \""));
+		str_builder_append(&builder, current_working_directory);
+		str_builder_append(&builder, STR_LIT("\\bin\\test_runner.exe"));
+		str_builder_append_char(&builder, '"');
+
+		if (!raddbg_ipc_run_cmd(raddbg_path, builder.string, temp_allocator)) {
+			return;
+		}
+	}
+
+	for (size_t i = 0; i < 2; i += 1) {
+		if (!raddbg_ipc_run_cmd(raddbg_path,
+					STR_LIT("raddbg.exe --ipc move_next"),
+					temp_allocator)) {
+			return;
+		}
+	}
+
+	if (!raddbg_ipc_run_cmd(raddbg_path,
+				STR_LIT("raddbg.exe --ipc move_right"),
+				temp_allocator)) {
+		return;
+	}
+
+	// Set the lavel field
+	{
+		StringBuilder builder = { .arena = temp_allocator };
+		str_builder_append(&builder, STR_LIT("raddbg.exe --ipc insert_text \""));
+		str_builder_append(&builder, test_name);
+		str_builder_append_char(&builder, '"');
+
+		if (!raddbg_ipc_run_cmd(raddbg_path, builder.string, temp_allocator)) {
+			return;
+		}
+	}
+
+	// Move to the 'Arguments' field
+	for (size_t i = 0; i < 2; i += 1) {
+		if (!raddbg_ipc_run_cmd(raddbg_path,
+					STR_LIT("raddbg.exe --ipc move_next"),
+					temp_allocator)) {
+			return;
+		}
+	}
+
+	// Insert 'run-test <test_name>' in the 'Arguments' field
+	{
+		StringBuilder builder = { .arena = temp_allocator };
+		str_builder_append(&builder, STR_LIT("raddbg.exe --ipc insert_text \"run-test "));
+		str_builder_append(&builder, test_name);
+		str_builder_append_char(&builder, '"');
+
+		if (!raddbg_ipc_run_cmd(raddbg_path, builder.string, temp_allocator)) {
+			return;
+		}
+	}
+
+	// Move to the 'Working directory' field
+	if (!raddbg_ipc_run_cmd(raddbg_path, STR_LIT("raddbg.exe --ipc move_next"), temp_allocator)) {
+		return;
+	}
+
+	// Insert 'Working directory' field
+	{
+		StringBuilder builder = { .arena = temp_allocator };
+		str_builder_append(&builder, STR_LIT("raddbg.exe --ipc insert_text \""));
+		str_builder_append(&builder, current_working_directory);
+		str_builder_append_char(&builder, '"');
+
+		if (!raddbg_ipc_run_cmd(raddbg_path, builder.string, temp_allocator)) {
+			return;
+		}
+	}
+
+	// Move to the 'Debug Subprocesses' field
+	for (size_t i = 0; i < 7; i += 1) {
+		if (!raddbg_ipc_run_cmd(raddbg_path,
+					STR_LIT("raddbg.exe --ipc move_next"),
+					temp_allocator)) {
+			return;
+		}
+	}
+
+	// Set `Debug Subprocesses` to true
+	if (!raddbg_ipc_run_cmd(raddbg_path, STR_LIT("raddbg.exe --ipc accept"), temp_allocator)) {
+		return;
+	}
+
+	// Close the popup
+	if (!raddbg_ipc_run_cmd(raddbg_path, STR_LIT("raddbg.exe --ipc cancel"), temp_allocator)) {
+		return;
+	}
+
+	arena_end_temp(temp);
 }
 
 typedef enum {
 	MODE_ALL,
 	MODE_SINGLE,
 } ModeKind;
+
+typedef enum {
+	FLAG_NONE         = 0,
+	FLAG_DEBUG_FAILED = 1 << 0,
+} Flags;
 
 typedef struct {
 	ModeKind kind;
@@ -441,6 +583,11 @@ typedef struct {
 			size_t suite_index;
 			size_t test_index;
 		} single;
+
+		struct {
+			Flags flags;
+			String raddbg_path;
+		} all;
 	};
 } Mode;
 
@@ -456,9 +603,12 @@ int main(int argc, char* argv[]) {
 
 	Mode mode = {};
 	mode.kind = MODE_ALL;
+	mode.all.flags = FLAG_NONE;
 
 	int32_t arg_index = 1;
 	while (arg_index < argc) {
+		String arg = str_from_cstr(argv[arg_index]);
+
 		if (strcmp(argv[arg_index], "run-test") == 0) {
 			mode.kind = MODE_SINGLE;
 
@@ -494,6 +644,24 @@ int main(int argc, char* argv[]) {
 						STR_FMT(test_case_name));
 				return EXIT_FAILURE;
 			}
+		} else if (mode.kind == MODE_ALL && strcmp(argv[arg_index], "--debug-failed") == 0) {
+			mode.all.flags |= FLAG_DEBUG_FAILED;
+			arg_index += 1;
+		} else if (mode.kind == MODE_ALL && str_starts_with(arg, STR_LIT("--raddbg-path="))) {
+			size_t split_position = str_find_char(arg, '=');
+			if (split_position == SIZE_MAX) {
+				fprintf(stderr, "Expected --raddbg-path=<path>\n");
+				return EXIT_FAILURE;
+			}
+
+			String path = sub_str(arg, split_position + 1, arg.length - split_position - 1);
+			if (!path_exists(&temp_arena, path)) {
+				fprintf(stderr, "'%.*s' doesn't exist", STR_FMT(path));
+				return EXIT_FAILURE;
+			}
+
+			mode.all.raddbg_path = path;
+			arg_index += 1;
 		} else {
 			fprintf(stderr, "Unknown option '%s'", argv[arg_index]);
 			return EXIT_FAILURE;
@@ -511,12 +679,19 @@ int main(int argc, char* argv[]) {
 
 			TestDescriptorArray tests = test_storage.suites[suite_index].tests;
 			for (size_t test_index = 0; test_index < tests.count; test_index += 1) {
-				run_test_and_report_result(&test_storage,
+				bool passed = run_test_and_report_result(&test_storage,
 						suite_index,
 						test_index,
 						&summary,
 						&arena,
 						&temp_arena);
+
+				if (!passed && has_flag(mode.all.flags, FLAG_DEBUG_FAILED)) {
+					add_test_as_raddbg_target(
+							mode.all.raddbg_path,
+							tests.tests[test_index].name,
+							&temp_arena);
+				}
 			}
 
 			printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m Skipped: %zu/%zu\n",

@@ -56,6 +56,9 @@ typedef enum {
 	INSTR_BITWISE_NOT_32,
 	INSTR_BITWISE_NOT_64,
 
+	// A boolean not
+	INSTR_NOT,
+
 	INSTR_COMPARE_8,
 	INSTR_COMPARE_16,
 	INSTR_COMPARE_32,
@@ -129,10 +132,13 @@ typedef enum {
 	INSTR_CMP_GREATER_OR_EQUAL,
 } InstrCompareKind;
 
+InstrCompareKind instr_compare_kind_flip(InstrCompareKind kind);
+
 typedef enum {
 	INSTR_FEATURE_NONE                 = 0,
 	INSTR_FEATURE_CONTROL              = 1 << 0,
 	INSTR_FEATURE_REG_STORAGE          = 1 << 1,
+	INSTR_FEATURE_BOOL                 = 1 << 2,
 } InstrFeatureFlag;
 
 extern InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT];
@@ -199,6 +205,10 @@ struct Instr {
 		struct {
 			InstrIndex operand;
 		} bitwise_not;
+
+		struct {
+			InstrIndex operand;
+		} not;
 
 		struct {
 			InstrCompareKind kind;

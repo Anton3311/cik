@@ -40,6 +40,8 @@ static void _init_storage_requiremenets() {
 	s[INSTR_BITWISE_NOT_32]         = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 	s[INSTR_BITWISE_NOT_64]         = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 
+	s[INSTR_BOOL_TO_INT]            = (T) { .allowed_registers = 0, .reg_size = 0 };
+
 	s[INSTR_COMPARE_8]              = (T) { .allowed_registers = 0, .reg_size = 0 };
 	s[INSTR_COMPARE_16]             = (T) { .allowed_registers = 0, .reg_size = 0 };
 	s[INSTR_COMPARE_32]             = (T) { .allowed_registers = 0, .reg_size = 0 };
@@ -1327,12 +1329,15 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		return;
 	}
 
+	case INSTR_NOT:
+		return;
+
 	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64: {
-		const InstrStorageLocation left_loc = gen->instr_storage[instr->bin_op.left.value];
-		const InstrStorageLocation right_loc = gen->instr_storage[instr->bin_op.right.value];
+		const InstrStorageLocation left_loc = gen->instr_storage[instr->compare.left.value];
+		const InstrStorageLocation right_loc = gen->instr_storage[instr->compare.right.value];
 		assert(left_loc.kind == INSTR_STORAGE_REG);
 		assert(right_loc.kind == INSTR_STORAGE_REG);
 
@@ -1349,10 +1354,20 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 
 		Instr* operand_instr = instr_buffer_at(instr_buffer, instr->bool_to_int.operand);
-		assert(operand_instr->kind >= INSTR_COMPARE_8);
-		assert(operand_instr->kind <= INSTR_COMPARE_64);
+		assert(has_flag(INSTR_FEATURES[operand_instr->kind], INSTR_FEATURE_BOOL));
+		
+		// Consume all the `INSTR_NOT`
+		bool condition_is_flipped = 0;
+		while (operand_instr->kind == INSTR_NOT) {
+			condition_is_flipped = !condition_is_flipped;
+			operand_instr = instr_buffer_at(instr_buffer, operand_instr->not.operand);
+		}
 
 		InstrCompareKind compare_kind = operand_instr->compare.kind;
+		if (condition_is_flipped) {
+			compare_kind = instr_compare_kind_flip(compare_kind);
+		}
+
 		MnemonicKind mnemonic = 0;
 		switch (compare_kind) {
 		case INSTR_CMP_EQUAL:
@@ -1697,15 +1712,27 @@ static void _encode_control_instr(const Instr* instr,
 		MnemonicKind jump_to_true_mnemonic_kind = 0;
 
 		const Instr* condition_instr = instr_buffer_at(instr_buffer, instr->branch.condition);
+
+		bool condition_is_flipped = false;
+		while (condition_instr->kind == INSTR_NOT) {
+			condition_is_flipped = !condition_is_flipped;
+			condition_instr = instr_buffer_at(instr_buffer, condition_instr->not.operand);
+		}
+
 		switch (condition_instr->kind) {
 		case INSTR_COMPARE_8:
 		case INSTR_COMPARE_16:
 		case INSTR_COMPARE_32:
-		case INSTR_COMPARE_64:
-			jump_to_true_mnemonic_kind = _select_jmp_mnemonic(condition_instr->compare.kind);
+		case INSTR_COMPARE_64: 
+			if (condition_is_flipped) {
+				jump_to_true_mnemonic_kind = _select_jmp_mnemonic(
+						instr_compare_kind_flip(condition_instr->compare.kind));
+			} else {
+				jump_to_true_mnemonic_kind = _select_jmp_mnemonic(condition_instr->compare.kind);
+			}
 			break;
 		default:
-			jump_to_true_mnemonic_kind = MNEMONIC_JNZ;
+			jump_to_true_mnemonic_kind = condition_is_flipped ? MNEMONIC_JNZ : MNEMONIC_JZ;
 		}
 
 		uint16_t true_region_id = instr_region_id(instr_buffer, instr->branch.true_region);
@@ -2128,6 +2155,9 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_LOAD_ARG_16:
 	case INSTR_LOAD_ARG_32:
 	case INSTR_LOAD_ARG_64:
+		break;
+	case INSTR_NOT:
+		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->not.operand);
 		break;
 	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:

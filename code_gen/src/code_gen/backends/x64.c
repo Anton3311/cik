@@ -1467,28 +1467,12 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 	case INSTR_BRANCH: {
 		const Instr* condition_instr = instr_buffer_at(instr_buffer, instr->branch.condition);
 
+		assert_msg(
+				has_flag(INSTR_FEATURES[condition_instr->kind], INSTR_FEATURE_BOOL),
+				"A condition instruction for `INSTR_BRANCH` must produce a boolean value");
+
 		// HACK: Need to store somewhere the currently processed region
 		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
-
-		switch (condition_instr->kind) {
-		case INSTR_COMPARE_8:
-		case INSTR_COMPARE_16:
-		case INSTR_COMPARE_32:
-		case INSTR_COMPARE_64:
-			break;
-		default:
-			const InstrStorageLocation cond_loc = gen->instr_storage[instr->branch.condition.value];
-			assert(cond_loc.kind == INSTR_STORAGE_REG);
-
-			assert(has_flag(INSTR_FEATURES[condition_instr->kind], INSTR_FEATURE_REG_STORAGE));
-			uint8_t bit_count = s_instr_storage_requiremenets[condition_instr->kind].reg_size;
-			encode_2(buffer,
-					MNEMONIC_TEST,
-					operand_reg(cond_loc.reg, bit_count),
-					operand_reg(cond_loc.reg, bit_count));
-			break;
-		}
-
 		_x64_generate_phi_copies(gen, current_region_id, buffer);
 		return;
 	}

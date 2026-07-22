@@ -965,6 +965,82 @@ static void _emit_div_mod(CodeBuffer* buffer,
 	}
 }
 
+// Well that is a mess!
+void _emit_bitwise_shift(CodeBuffer* buffer,
+		MnemonicKind mnemonic,
+		X64Register value_reg,
+		X64Register count_reg,
+		X64Register dst_reg,
+		uint8_t bit_count,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	bool dst_is_cl = dst_reg == X64_REG_C;
+
+	X64Register result_reg = dst_reg;
+	if (dst_is_cl && value_reg != X64_REG_C) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(value_reg, 64));
+		result_reg = value_reg;
+	} else if (dst_is_cl && count_reg != X64_REG_C) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(count_reg, 64));
+		result_reg = count_reg;
+	}
+
+	// Manually resolve the cycle.
+	// Parallel moves won't do that, since won't have any temp registers for that.
+	if (value_reg == X64_REG_C && count_reg == result_reg) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(value_reg, 64));
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(count_reg, 64));
+
+		encode_1(buffer, MNEMONIC_POP, operand_reg(value_reg, 64));
+		encode_1(buffer, MNEMONIC_POP, operand_reg(count_reg, 64));
+
+		X64Register temp = value_reg;
+		value_reg = count_reg;
+		count_reg = temp;
+	}
+
+	X64Register expected_locs[] = { result_reg, X64_REG_C };
+	InstrStorageLocation input_locs[] = { 
+		(InstrStorageLocation) {
+			.kind = INSTR_STORAGE_REG,
+			.reg = value_reg,
+		},
+		(InstrStorageLocation) {
+			.kind = INSTR_STORAGE_REG,
+			.reg = count_reg,
+		},
+	};
+
+	RegisterMoveArray moves = _parallel_move_values(input_locs,
+			expected_locs,
+			2, 0,
+			allocator,
+			temp_allocator);
+
+	for (size_t i = 0; i < moves.count; i += 1) {
+		RegisterMove move = moves.moves[i];
+		_emit_mov_regs(buffer, move.src, move.dst, 64);
+	}
+
+	encode_1(buffer, mnemonic, operand_reg(result_reg, bit_count));
+
+	if (dst_is_cl) {
+		encode_2(buffer,
+				MNEMONIC_MOV,
+				operand_reg(dst_reg, bit_count),
+				operand_reg(result_reg, bit_count));
+	}
+
+	if (dst_is_cl && value_reg != X64_REG_C) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(value_reg, 64));
+		result_reg = value_reg;
+	} else if (dst_is_cl && count_reg != X64_REG_C) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(count_reg, 64));
+		result_reg = count_reg;
+	}
+}
+
 void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
 	assert(instr_index.value < gen->instr_buffer.count);
 
@@ -1156,6 +1232,26 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 					MNEMONIC_XOR,
 					operand_reg(left_reg, bit_count),
 					operand_reg(right_reg, bit_count));
+			return;
+		case INSTR_BIN_SHIFT_LEFT:
+			_emit_bitwise_shift(buffer,
+					MNEMONIC_SHL,
+					left_reg,
+					right_reg,
+					dst_loc.reg,
+					bit_count,
+					gen->allocator,
+					gen->temp_allocator);
+			return;
+		case INSTR_BIN_SHIFT_RIGHT:
+			_emit_bitwise_shift(buffer,
+					MNEMONIC_SHR,
+					left_reg,
+					right_reg,
+					dst_loc.reg,
+					bit_count,
+					gen->allocator,
+					gen->temp_allocator);
 			return;
 		}
 

@@ -85,6 +85,8 @@ String instr_bin_op_name(InstrBinOp variant) {
     case INSTR_BIN_AND: return STR_LIT("and");
     case INSTR_BIN_OR: return STR_LIT("or");
     case INSTR_BIN_XOR: return STR_LIT("xor");
+    case INSTR_BIN_SHIFT_LEFT: return STR_LIT("shift_left");
+    case INSTR_BIN_SHIFT_RIGHT: return STR_LIT("shift_right");
     }
     unreachable();
     return (String) {};

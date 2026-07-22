@@ -122,6 +122,15 @@ typedef enum {
 	// Copy sign bit of `RAX` into every bit of `RDX`
 	MNEMONIC_CQO,
 
+	// shr r/m8,        imm8
+	// shr r/m16/32/64, imm8
+	// shr r/m8,        CL
+	// shr r/m16/32/64, CL
+	MNEMONIC_SHR,
+	// shl r/m8,        imm8
+	// shl r/m16/32/64, imm8
+	// shl r/m8,        CL
+	// shl r/m16/32/64, CL
 	MNEMONIC_SHL,
 
 	MNEMONIC_JMP,

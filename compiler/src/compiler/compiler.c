@@ -485,9 +485,12 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		break;
 	case BIN_OP_BITWISE_SHIFT_LEFT:
 	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_LEFT:
+		instr->bin_op.kind = INSTR_BIN_SHIFT_LEFT;
+		break;
 	case BIN_OP_BITWISE_SHIFT_RIGHT:
 	case BIN_OP_ASSIGNMENT_BY_BITWISE_SHIFT_RIGHT:
-		panic("todo");
+		instr->bin_op.kind = INSTR_BIN_SHIFT_RIGHT;
+		break;
 
 	case BIN_OP_ASSIGNMENT:
 		panic("Assignment is handled in a different path");

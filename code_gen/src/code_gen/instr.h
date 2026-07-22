@@ -123,6 +123,9 @@ typedef enum {
 	INSTR_BIN_AND,
 	INSTR_BIN_OR,
 	INSTR_BIN_XOR,
+
+	INSTR_BIN_SHIFT_LEFT,
+	INSTR_BIN_SHIFT_RIGHT,
 } InstrBinOp;
 
 bool instr_bin_op_is_commutative(InstrBinOp op);

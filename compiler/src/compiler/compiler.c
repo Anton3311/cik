@@ -529,7 +529,151 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	return instr_index;
 }
 
-static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
+static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
+
+	assert(expr->kind == EXPR_UNARY);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	Type operand_type;
+	expr_get_type(expr->unary.operand, &operand_type);
+
+	TypeLayout operand_type_layout = _type_get_layout(compiler, &operand_type);
+	size_t result_bit_size_index = count_trailing_zeros(operand_type_layout.size);
+
+	UnaryOpKind op = expr->unary.op;
+	switch (expr->unary.op) {
+	case UNARY_OP_DEREFERENCE: {
+		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+		const Type* base_type = NULL;
+		if (operand_type.kind == TYPE_POINTER) {
+			base_type = operand_type.pointer_base_type;
+		} else if (operand_type.kind == TYPE_ARRAY) {
+			base_type = operand_type.array.element_type;
+		} else {
+			panic("todo: report error");
+		}
+
+		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+		instr->ptr_load.ptr = operand_instr;
+		instr->ptr_load.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, instr_index);
+
+		TypeLayout layout = _type_get_layout(compiler, base_type);
+		switch (layout.size) {
+		case 1:
+			instr->kind = INSTR_PTR_LOAD_8;
+			break;
+		case 2:
+			instr->kind = INSTR_PTR_LOAD_16;
+			break;
+		case 4:
+			instr->kind = INSTR_PTR_LOAD_32;
+			break;
+		case 8:
+			instr->kind = INSTR_PTR_LOAD_64;
+			break;
+		default:
+			panic("Only up to 8 byte sizes are supported for dereferencing");
+		}
+
+		profile_scope_end();
+		return instr_index;
+	}
+	case UNARY_OP_PRE_INCREMENT:
+	case UNARY_OP_POST_INCREMENT:
+	case UNARY_OP_PRE_DECREMENT:
+	case UNARY_OP_POST_DECREMENT: {
+		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+
+		bool is_increment = op == UNARY_OP_PRE_INCREMENT  || op == UNARY_OP_POST_INCREMENT;
+		bool is_pre_op = op == UNARY_OP_PRE_INCREMENT || op == UNARY_OP_PRE_DECREMENT;
+
+		assert(type_kind_is_int(operand_type.kind));
+		assert(operand_type_layout.size <= 8);
+
+		InstrIndex one_const = instr_new_int_const(instr_buffer,
+				instr_allocator,
+				1,
+				operand_type_layout.size);
+
+		InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
+		bin_op->kind = INSTR_BIN_OP_8 + result_bit_size_index;
+		bin_op->bin_op.left = operand_instr;
+		bin_op->bin_op.right = one_const;
+
+		if (is_increment) {
+			bin_op->bin_op.kind = INSTR_BIN_ADD;
+		} else {
+			bin_op->bin_op.kind = INSTR_BIN_SUB;
+		}
+
+		_compile_assignment(compiler, expr->unary.operand, bin_op_index);
+
+		if (is_pre_op) {
+			return bin_op_index;
+		} else {
+			return operand_instr;
+		}
+	}
+	case UNARY_OP_NEGATE: {
+		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+
+		TypeLayout layout = _type_get_layout(compiler, &operand_type);
+		assert_msg(layout.size <= 8, "Only up to 8 byte sizes are supported for dereferencing");
+
+		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+		instr->kind = INSTR_NEGATE_8 + result_bit_size_index;
+		instr->negate.operand = operand_instr;
+
+		profile_scope_end();
+		return instr_index;
+	}
+	case UNARY_OP_PLUS: {
+		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+		// Nothing to do here
+		profile_scope_end();
+		return operand_instr;
+	}
+	case UNARY_OP_BITWISE_NOT: {
+		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
+
+		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+		instr->kind = INSTR_BITWISE_NOT_8 + result_bit_size_index;
+		instr->bitwise_not.operand = operand_instr;
+
+		profile_scope_end();
+		return instr_index;
+	}
+	case UNARY_OP_LOGICAL_NOT: {
+		InstrIndex operand_instr = _compile_expr_to_bool(compiler, expr->unary.operand);
+
+		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+		instr->kind = INSTR_NOT;
+		instr->not.operand = operand_instr;
+
+		profile_scope_end();
+		return instr_index;
+	}
+	}
+
+	unreachable();
+	return INVALID_INSTR_INDEX;
+}
+
+// Compiles an expression.
+//
+// Doesn't implicitely cast bool expression to `TYPE_INT`.
+static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compiler, Expr* expr) {
 	profile_scope_start(__func__);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -564,23 +708,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		return call_instr_index;
 	}
 	case EXPR_BINARY: {
-		Type result_type = {};
-		expr_get_type(expr, &result_type);
-
 		InstrIndex instr_index = _compile_bin_expr(compiler, expr);
-
-		if (bin_op_is_compare(expr->binary.op)) {
-			InstrIndex convert_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* convert = instr_buffer_at(instr_buffer, convert_index);
-			convert->kind = INSTR_BOOL_TO_INT;
-			convert->bool_to_int.operand = instr_index;
-
-			instr_index = instr_new_cast(instr_buffer,
-					instr_allocator,
-					convert_index,
-					_type_get_layout(compiler, &result_type).size * 8);
-		}
-
 		profile_scope_end();
 		return instr_index;
 	}
@@ -622,148 +750,8 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		profile_scope_end();
 		return compiler->arg_states[arg_index];
 	}
-	case EXPR_UNARY: {
-		UnaryOpKind op = expr->unary.op;
-
-		Type operand_type;
-		expr_get_type(expr->unary.operand, &operand_type);
-
-		TypeLayout operand_type_layout = _type_get_layout(compiler, &operand_type);
-		size_t result_bit_size_index = count_trailing_zeros(operand_type_layout.size);
-
-		switch (expr->unary.op) {
-		case UNARY_OP_DEREFERENCE: {
-			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-			const Type* base_type = NULL;
-			if (operand_type.kind == TYPE_POINTER) {
-				base_type = operand_type.pointer_base_type;
-			} else if (operand_type.kind == TYPE_ARRAY) {
-				base_type = operand_type.array.element_type;
-			} else {
-				panic("todo: report error");
-			}
-
-			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-
-			instr->ptr_load.ptr = operand_instr;
-			instr->ptr_load.io_state = compiler->io_state;
-
-			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, instr_index);
-
-			TypeLayout layout = _type_get_layout(compiler, base_type);
-			switch (layout.size) {
-			case 1:
-				instr->kind = INSTR_PTR_LOAD_8;
-				break;
-			case 2:
-				instr->kind = INSTR_PTR_LOAD_16;
-				break;
-			case 4:
-				instr->kind = INSTR_PTR_LOAD_32;
-				break;
-			case 8:
-				instr->kind = INSTR_PTR_LOAD_64;
-				break;
-			default:
-				panic("Only up to 8 byte sizes are supported for dereferencing");
-			}
-
-			profile_scope_end();
-			return instr_index;
-		}
-		case UNARY_OP_PRE_INCREMENT:
-		case UNARY_OP_POST_INCREMENT:
-		case UNARY_OP_PRE_DECREMENT:
-		case UNARY_OP_POST_DECREMENT: {
-			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-
-			bool is_increment = op == UNARY_OP_PRE_INCREMENT  || op == UNARY_OP_POST_INCREMENT;
-			bool is_pre_op = op == UNARY_OP_PRE_INCREMENT || op == UNARY_OP_PRE_DECREMENT;
-
-			assert(type_kind_is_int(operand_type.kind));
-			assert(operand_type_layout.size <= 8);
-
-			InstrIndex one_const = instr_new_int_const(instr_buffer,
-					instr_allocator,
-					1,
-					operand_type_layout.size);
-
-			InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
-			bin_op->kind = INSTR_BIN_OP_8 + result_bit_size_index;
-			bin_op->bin_op.left = operand_instr;
-			bin_op->bin_op.right = one_const;
-
-			if (is_increment) {
-				bin_op->bin_op.kind = INSTR_BIN_ADD;
-			} else {
-				bin_op->bin_op.kind = INSTR_BIN_SUB;
-			}
-
-			_compile_assignment(compiler, expr->unary.operand, bin_op_index);
-
-			if (is_pre_op) {
-				return bin_op_index;
-			} else {
-				return operand_instr;
-			}
-		}
-		case UNARY_OP_NEGATE: {
-			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-
-			TypeLayout layout = _type_get_layout(compiler, &operand_type);
-			assert_msg(layout.size <= 8, "Only up to 8 byte sizes are supported for dereferencing");
-
-			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-			instr->kind = INSTR_NEGATE_8 + result_bit_size_index;
-			instr->negate.operand = operand_instr;
-
-			profile_scope_end();
-			return instr_index;
-		}
-		case UNARY_OP_PLUS: {
-			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-			// Nothing to do here
-			profile_scope_end();
-			return operand_instr;
-		}
-		case UNARY_OP_BITWISE_NOT: {
-			InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
-
-			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-			instr->kind = INSTR_BITWISE_NOT_8 + result_bit_size_index;
-			instr->bitwise_not.operand = operand_instr;
-
-			profile_scope_end();
-			return instr_index;
-		}
-		case UNARY_OP_LOGICAL_NOT: {
-			InstrIndex operand_instr = _compile_expr_to_bool(compiler, expr->unary.operand);
-
-			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-			instr->kind = INSTR_NOT;
-			instr->not.operand = operand_instr;
-
-			InstrIndex convert_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* convert = instr_buffer_at(instr_buffer, convert_index);
-			convert->kind = INSTR_BOOL_TO_INT;
-			convert->bool_to_int.operand = instr_index;
-
-			InstrIndex result_instr = instr_new_cast(instr_buffer,
-					instr_allocator,
-					convert_index,
-					32);
-
-			profile_scope_end();
-			return result_instr;
-		}
-		}
-		break;
-	}
+	case EXPR_UNARY:
+		return _compile_unary_expr(compiler, expr);
 	case EXPR_CHAR_LITERAL: {
 		assert(expr->char_literal.value <= 0xff);
 
@@ -836,12 +824,47 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 	return (InstrIndex) {};
 }
 
+// Compiles the expression while casting results of boolean expressions to `TYPE_INT`.
+//
+// Other expression kinds are returned untouched.
+static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
+
+	InstrIndex instr_index = _compile_expr_without_implicit_casts(compiler, expr);
+
+	if (expr_is_bool(expr)) {
+		Type result_type = {};
+		expr_get_type(expr, &result_type);
+
+		assert_msg(result_type.kind == TYPE_INT, "A boolean expression must have a `TYPE_INT`");
+
+		InstrBuffer* instr_buffer = &compiler->instr_buffer;
+		Arena* instr_allocator = compiler->instr_allocator;
+
+		InstrIndex convert_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* convert = instr_buffer_at(instr_buffer, convert_index);
+		convert->kind = INSTR_BOOL_TO_INT;
+		convert->bool_to_int.operand = instr_index;
+
+		instr_index = instr_new_cast(instr_buffer,
+				instr_allocator,
+				convert_index,
+				_type_get_layout(compiler, &result_type).size * 8);
+	}
+
+	profile_scope_end();
+	return instr_index;
+}
+
+// Compiles the expression while casting non-boolean expressions to a boolean.
+// 
+// Boolean expressions are returned untouched.
 static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) {
 	profile_scope_start(__func__);
+
+	InstrIndex instr_index = INVALID_INSTR_INDEX;
 	if (expr_is_bool(expr)) {
-		InstrIndex instr_index = _compile_bin_expr(compiler, expr);
-		profile_scope_end();
-		return instr_index;
+		instr_index = _compile_expr_without_implicit_casts(compiler, expr);
 	} else {
 		InstrIndex expr_value = _compile_expr(compiler, expr);
 
@@ -849,36 +872,36 @@ static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) 
 		expr_get_type(expr, &result_type);
 
 		TypeLayout result_layout = _type_get_layout(compiler, &result_type);
+		size_t result_bit_size_index = count_trailing_zeros(result_layout.size);
 
-		size_t result_bit_size_index = count_trailing_zeros(_type_get_layout(compiler, &result_type).size);
-		if (type_kind_is_int(result_type.kind)
+		assert_msg(type_kind_is_int(result_type.kind)
 				|| result_type.kind == TYPE_POINTER
-				|| result_type.kind == TYPE_ARRAY) {
-			InstrBuffer* instr_buffer = &compiler->instr_buffer;
-			Arena* instr_allocator = compiler->instr_allocator;
+				|| result_type.kind == TYPE_ARRAY,
+			"This expression type is not implicitely convertable to a boolean");
 
-			InstrIndex zero = instr_new_int_const(instr_buffer,
-					instr_allocator,
-					0,
-					result_layout.size);
+		InstrBuffer* instr_buffer = &compiler->instr_buffer;
+		Arena* instr_allocator = compiler->instr_allocator;
 
-			InstrIndex compare_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* compare = instr_buffer_at(instr_buffer, compare_index);
-			compare->kind = INSTR_COMPARE_8 + result_bit_size_index;
-			compare->compare.left = expr_value;
-			compare->compare.right = zero;
-			compare->compare.kind = INSTR_CMP_GREATER;
+		// A cast to boolean is done using a comparison against a zero
+		InstrIndex zero = instr_new_int_const(instr_buffer,
+				instr_allocator,
+				0,
+				result_layout.size);
 
-			profile_scope_end();
-			return compare_index;
-		} else {
-			unreachable();
-		}
+		InstrIndex compare_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* compare = instr_buffer_at(instr_buffer, compare_index);
+		compare->kind = INSTR_COMPARE_8 + result_bit_size_index;
+		compare->compare.left = expr_value;
+		compare->compare.right = zero;
+		compare->compare.kind = INSTR_CMP_GREATER;
+
+		instr_index = compare_index;
 	}
 
-	unreachable();
+	assert(instr_index.value != INVALID_INSTR_INDEX.value);
+
 	profile_scope_end();
-	return INVALID_INSTR_INDEX;
+	return instr_index;
 }
 
 static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,

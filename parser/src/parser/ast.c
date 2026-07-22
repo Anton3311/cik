@@ -628,6 +628,8 @@ void expr_get_type(Expr* expr, Type* out_type) {
 bool expr_is_bool(Expr* expr) {
 	if (expr->kind == EXPR_BINARY) {
 		return bin_op_is_compare(expr->binary.op);
+	} else if (expr->kind == EXPR_UNARY && expr->unary.op == UNARY_OP_LOGICAL_NOT) {
+		return true;
 	}
 
 	return false;

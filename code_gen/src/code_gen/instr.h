@@ -512,10 +512,6 @@ String instr_format_input_instrs(const InstrIndex* input_instr_buffer,
 void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena* temp_allocator);
 void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator);
 
-// Turns unused instruciton into INSTR_NO_OP.
-// Doesn't removed these instructions from the array.
-void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrLiveRange* usage_ranges);
-
 #endif // CODE_GENERATION_PASS
 
 #endif

@@ -610,10 +610,3 @@ void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator) {
 	}
 }
 
-void instr_replace_dead_instr(const InstrBuffer instr_buffer, const InstrLiveRange* live_ranges) {
-	for (size_t i = 0; i < instr_buffer.count; i += 1) {
-		if (live_ranges[i].value == UINT32_MAX) {
-			instr_buffer.instr[i].kind = INSTR_NO_OP;
-		}
-	}
-}

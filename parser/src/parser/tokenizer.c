@@ -133,6 +133,7 @@ String token_kind_to_string(TokenKind kind) {
 	case TOKEN_KEYWORD_INT64: return STR_LIT("__int64");
 
 	case TOKEN_DECLSPEC: return STR_LIT("__declspec");
+	case TOKEN_COUNT: unreachable();
 	}
 
 	unreachable();

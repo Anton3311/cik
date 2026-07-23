@@ -1948,7 +1948,8 @@ static void _collect_phis(X64CodeGenerator* gen, Arena* allocator) {
 }
 
 static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffer,
-		uint16_t* assigned_region_to_instr, 
+		uint16_t* instr_scheduled_region, 
+		uint16_t* instr_position_in_region,
 		uint16_t current_region_id,
 		InstrIndexArray scheduled,
 		const CFGDominatorTree* dom_tree,
@@ -1957,28 +1958,30 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 
 	bool valid = true;
 
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
-	BitArray visited_instr = bit_array_alloc(temp_allocator, instr_buffer->count);
-	bit_array_clear(&visited_instr);
-
 	for (size_t i = 0; i < scheduled.count; i += 1) {
+		InstrIndex current_instr = scheduled.instr[i];
 		const Instr* instr = instr_buffer_at(instr_buffer, scheduled.instr[i]);
+
 		if (instr->kind == INSTR_SELECT) {
-			uint16_t region_assigned_to_input = assigned_region_to_instr[instr->select.value.value];
+			uint16_t region_assigned_to_input = instr_scheduled_region[instr->select.value.value];
 			uint16_t expected_region = instr_region_id(instr_buffer, instr->select.region);
 
 			bool input_is_available = _is_region_dominated_by(dom_tree,
 					region_assigned_to_input,
 					expected_region);
 
-			assert_msg(input_is_available,
-					"Value definition '%u' appears before its input '%u'. "
-					"Input is not available in region with id '%u', since it is placed in region "
-					"with id '%u'",
-					(uint32_t)scheduled.instr[i].value,
-					(uint32_t)instr->select.value.value,
-					expected_region,
-					region_assigned_to_input);
+			if (!input_is_available) {
+				debug_log_error(
+						"Value definition '%u' appears before its input '%u'. "
+						"Input is not available in region with id '%u', since it is placed in"
+						" region with id '%u'",
+						(uint32_t)scheduled.instr[i].value,
+						(uint32_t)instr->select.value.value,
+						expected_region,
+						region_assigned_to_input);
+
+				valid = false;
+			}
 		} else {
 			ArenaRegion inner_temp = arena_begin_temp(temp_allocator);
 
@@ -1998,50 +2001,55 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 					continue;
 				}
 
-				uint16_t region_assigned_to_input = assigned_region_to_instr[input.value];
-				if (region_assigned_to_input == current_region_id) {
-					if (!bit_array_get(&visited_instr, input.value)) {
-						debug_log_error(
-								"Value definition '%u' in region '%u' appers before its input '%u'",
-								(uint32_t)scheduled.instr[i].value,
-								(uint32_t)current_region_id,
-								(uint32_t)input.value);
+				bool input_is_available = true;
+				if (instr_scheduled_region[input.value] == current_region_id) {
+					// The input and the current instruction are in the same region.
+					// 
+					// Check whether the input is placed before the def (current instruction).
 
-						valid = false;
-					}
+					uint16_t current_instr_position = instr_position_in_region[current_instr.value];
+					uint16_t input_instr_position = instr_position_in_region[input.value];
+
+					input_is_available = input_instr_position < current_instr_position;
 				} else {
-					bool input_is_available = _is_region_dominated_by(dom_tree,
-							region_assigned_to_input,
+					// Input and def are in different regions.
+					//
+					// The input is only then available, when the input's region is dominated by
+					// current instruction's region.
+					input_is_available = _is_region_dominated_by(dom_tree,
+							instr_scheduled_region[input.value],
 							current_region_id);
 
-					if (!input_is_available) {
-						debug_log_error(
-								"Input '%u' for value definition '%u' is not available on this "
-								"control path\n"
-								"\n"
-								"Def '%u' is scheduled to execute in region with id '%u'\n"
-								"Input '%u' is scheduled to execute in region with id '%u'\n",
-								(uint32_t)input.value,
-								(uint32_t)scheduled.instr[i].value,
-
-								(uint32_t)scheduled.instr[i].value,
-								(uint32_t)current_region_id,
-
-								(uint32_t)input.value,
-								(uint32_t)region_assigned_to_input);
-
-						valid = false;
-					}
 				}
+
+				if (input_is_available) {
+					continue;
+				}
+
+				debug_log_error(
+						"Input '%u' for value definition '%u' is not available on this "
+						"control path\n"
+						"\n"
+						"Def '%u' is scheduled to execute in region with id '%u' at index '%u'\n"
+						"Input '%u' is scheduled to execute in region with id '%u' at index '%u'\n",
+						(uint32_t)input.value,
+						(uint32_t)scheduled.instr[i].value,
+
+						(uint32_t)scheduled.instr[i].value,
+						(uint32_t)current_region_id,
+						(uint32_t)instr_position_in_region[i],
+
+						(uint32_t)input.value,
+						(uint32_t)instr_scheduled_region[input.value],
+						(uint32_t)instr_position_in_region[input.value]);
+
+				valid = false;
 			}
 
 			arena_end_temp(inner_temp);
 		}
-
-		bit_array_set(&visited_instr, scheduled.instr[i].value, true);
 	}
 	
-	arena_end_temp(temp);
 	profile_scope_end();
 	return valid;
 }
@@ -2576,6 +2584,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
 		scheduling_is_valid &= _validate_instr_scheduling_for_region(&gen->instr_buffer,
 				scheduling_result.instr_scheduled_region,
+				scheduling_result.instr_position_in_region,
 				instr->region.id,
 				scheduled,
 				&dom_tree,

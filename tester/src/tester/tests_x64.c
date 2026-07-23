@@ -88,11 +88,8 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 				resolver(&func.func_ref_table, resolver_data);
 			}
 
-			instr_replace_dead_instr(func.instr_buffer, func.live_ranges);
-
 			X64CodeGenerator gen = {};
 			gen.instr_buffer = func.instr_buffer;
-			gen.live_ranges = func.live_ranges;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func.func_ref_table;

@@ -86,7 +86,6 @@ typedef struct {
 typedef struct {
 	InstrBuffer instr_buffer;
 	InstrIndex start_region;
-	InstrLiveRange* live_ranges;
 
 	FunctionRefTable func_ref_table;
 

@@ -2525,6 +2525,13 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 			gen->temp_allocator,
 			gen->allocator);
 
+	gen->live_ranges = instr_compute_live_ranges(gen->instr_buffer,
+			root_region,
+			// use `temp_allocator` as a persitent, since live ranges aren't needed outside this
+			// function
+			gen->temp_allocator, 
+			gen->allocator);
+
 	// Print scheduled instructions
 	if (has_flag(gen->flags, X64_PRINT_SCHEDULED_IR)) {
 		const InstrBuffer* instr_buffer = &gen->instr_buffer;

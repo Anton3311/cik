@@ -185,14 +185,9 @@ int main(int argc, char *argv[]) {
 				CompiledFunction func = function_compiler_compile(&c);
 				compiler_resolve_default_func_refs(&func.func_ref_table);
 
-				if (!has_flag(flags, C_FLAG_KEEP_DEAD_INSTR)) {
-					instr_replace_dead_instr(func.instr_buffer, func.live_ranges);
-				}
-
 				X64CodeGenerator gen = {};
 				gen.flags = backend_flags;
 				gen.instr_buffer = func.instr_buffer;
-				gen.live_ranges = func.live_ranges;
 				gen.allocator = &arena;
 				gen.temp_allocator = &temp_arena;
 				gen.ref_table = &func.func_ref_table;

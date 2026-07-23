@@ -70,7 +70,6 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 
 			CompiledFunction func = function_compiler_compile(&c);
 
-			instr_replace_dead_instr(func.instr_buffer, func.live_ranges);
 			instr_print_all(func.instr_buffer, context->temp_arena);
 
 			return func;

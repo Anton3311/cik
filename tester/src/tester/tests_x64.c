@@ -851,11 +851,6 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	}
 
 	// Compute live ranges
-	InstrLiveRange* live_ranges = instr_compute_live_ranges(*instr_buffer,
-			region_index,
-			context->arena,
-			context->temp_arena);
-
 	X64Register reg_configurations[3][3] = {
 		{ X64_REG_A, X64_REG_C, X64_REG_D }, // 0 - left_operand, 1 - right_operand, 2 - bin_op
 		{ X64_REG_A, X64_REG_C, X64_REG_A },
@@ -876,7 +871,6 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		X64CodeGenerator gen = {};
 		gen.flags = X64_SKIP_REG_ALLOC | X64_PRINT_SCHEDULED_IR;
 		gen.instr_buffer = *instr_buffer;
-		gen.live_ranges = live_ranges;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.ref_table = &func_ref_table;
@@ -968,11 +962,6 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	}
 
 	// Compute live ranges
-	InstrLiveRange* live_ranges = instr_compute_live_ranges(*instr_buffer,
-			region_index,
-			context->arena,
-			context->temp_arena);
-
 	X64Register reg_configurations[6][4] = {
 		{ X64_REG_A, X64_REG_C, X64_REG_D, X64_REG_B }, // 0 - left_operand, 1 - right_operand, 2 - bin_op
 		{ X64_REG_C, X64_REG_A, X64_REG_D, X64_REG_B },
@@ -997,7 +986,6 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 		X64CodeGenerator gen = {};
 		gen.flags = X64_SKIP_REG_ALLOC | X64_PRINT_SCHEDULED_IR;
 		gen.instr_buffer = *instr_buffer;
-		gen.live_ranges = live_ranges;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.ref_table = &func_ref_table;
@@ -1078,11 +1066,6 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	}
 
 	// Compute live ranges
-	InstrLiveRange* live_ranges = instr_compute_live_ranges(*instr_buffer,
-			region_index,
-			context->arena,
-			context->temp_arena);
-
 	X64Register registers[] = { X64_REG_A, X64_REG_D, X64_REG_C };
 	X64Register reg_configurations[3 * 3 * 3][4];
 
@@ -1151,7 +1134,6 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			X64CodeGenerator gen = {};
 			gen.flags = X64_SKIP_REG_ALLOC;
 			gen.instr_buffer = *instr_buffer;
-			gen.live_ranges = live_ranges;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func_ref_table;
@@ -1233,11 +1215,6 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	}
 
 	// Compute live ranges
-	InstrLiveRange* live_ranges = instr_compute_live_ranges(*instr_buffer,
-			region_index,
-			context->arena,
-			context->temp_arena);
-
 	X64Register registers[] = { X64_REG_A, X64_REG_D, X64_REG_C };
 	X64Register reg_configurations[3 * 3 * 3][4];
 
@@ -1306,7 +1283,6 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			X64CodeGenerator gen = {};
 			gen.flags = X64_SKIP_REG_ALLOC;
 			gen.instr_buffer = *instr_buffer;
-			gen.live_ranges = live_ranges;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func_ref_table;
@@ -1388,11 +1364,6 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 	}
 
 	// Compute live ranges
-	InstrLiveRange* live_ranges = instr_compute_live_ranges(*instr_buffer,
-			region_index,
-			context->arena,
-			context->temp_arena);
-
 	X64Register registers[] = { X64_REG_A, X64_REG_D, X64_REG_C };
 	X64Register reg_configurations[3 * 3 * 3][4];
 
@@ -1461,7 +1432,6 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 			X64CodeGenerator gen = {};
 			gen.flags = X64_SKIP_REG_ALLOC;
 			gen.instr_buffer = *instr_buffer;
-			gen.live_ranges = live_ranges;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func_ref_table;

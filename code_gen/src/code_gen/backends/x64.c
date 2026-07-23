@@ -2569,6 +2569,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 	gen->live_ranges = instr_compute_live_ranges(gen->instr_buffer,
 			root_region,
+			scheduling_result.scheduled_instr,
 			// use `temp_allocator` as a persistent, since live ranges aren't needed outside this
 			// function
 			gen->temp_allocator, 

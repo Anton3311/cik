@@ -58,19 +58,19 @@ static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_s
 
 			InstrLiveRange live_range_b = live_ranges[instr_with_storage_requirement.instr[j].value];
 
-			uint16_t max_start = max(live_range_a.start.value, live_range_b.start.value);
-			uint16_t min_end = min(live_range_a.end.value, live_range_b.end.value);
+			uint16_t max_start = max(live_range_a.start, live_range_b.start);
+			uint16_t min_end = min(live_range_a.end, live_range_b.end);
 
 			// Check whether live ranges overlap.
 			bool overlap = min_end >= max_start;
 
 #if 1
 			// If the ranges only overlap at their ends, then don't consider them overlapping
-			if (live_range_a.end.value == live_range_b.start.value) {
+			if (live_range_a.end == live_range_b.start) {
 				overlap = false;
 			}
 
-			if (live_range_a.start.value == live_range_b.end.value) {
+			if (live_range_a.start == live_range_b.end) {
 				overlap = false;
 			}
 #endif
@@ -89,11 +89,11 @@ static UInt16Array* _build_interference_graph(const InstrIndexArray instr_with_s
 
 inline bool _instr_allowed_to_share_a_register(InstrLiveRange live_range_a,
 		InstrLiveRange live_range_b) {
-	if (live_range_a.end.value == live_range_b.start.value) {
+	if (live_range_a.end == live_range_b.start) {
 		return true;
 	}
 
-	if (live_range_a.start.value == live_range_b.end.value) {
+	if (live_range_a.start == live_range_b.end) {
 		return true;
 	}
 

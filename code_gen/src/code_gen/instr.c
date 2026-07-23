@@ -361,7 +361,7 @@ void instr_push_input_dependencies(const InstrBuffer* buffer,
 //
 
 inline bool _live_range_is_valid(const InstrLiveRange range) {
-	return range.value != UINT32_MAX && range.start.value <= range.end.value;
+	return range.value != UINT32_MAX && range.start <= range.end;
 }
 
 inline bool _live_range_is_empty(const InstrLiveRange range) {
@@ -370,26 +370,38 @@ inline bool _live_range_is_empty(const InstrLiveRange range) {
 
 inline InstrLiveRange _live_range_merge(InstrLiveRange a, InstrLiveRange b) {
 	InstrLiveRange out = {};
-	out.start.value = min(a.start.value, b.start.value);
-	out.end.value = max(a.end.value, b.end.value);
+	out.start = min(a.start, b.start);
+	out.end = max(a.end, b.end);
 	return out;
 }
 
 // Returns a new range that includes the given instruction index
-inline InstrLiveRange _live_range_extended(const InstrLiveRange range, InstrIndex instr_index) {
+inline InstrLiveRange _live_range_extended(const InstrLiveRange range, uint64_t global_position) {
 	InstrLiveRange new_range;
-	new_range.start.value = min(range.start.value, instr_index.value);
-	new_range.end.value = max(range.end.value, instr_index.value);
+	new_range.start = min(range.start, global_position);
+	new_range.end = max(range.end, global_position);
 	return new_range;
 }
 
 InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
+		InstrIndexArray* scheduled_instr,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	uint16_t* instr_global_position = arena_alloc_array(temp_allocator, uint16_t, buffer.count);
+
+	uint16_t next_global_position = 0;
+	for (uint16_t region_index = 0; region_index < buffer.region_count; region_index += 1) {
+		InstrIndexArray instr = scheduled_instr[region_index];
+		for (size_t i = 0; i < instr.count; i += 1) {
+			instr_global_position[instr.instr[i].value] = next_global_position;
+			next_global_position += 1;
+		}
+	}
 
 	InstrLiveRange* live_ranges = arena_alloc_array(allocator, InstrLiveRange, buffer.count);
 	memset(live_ranges, 0xff, sizeof(*live_ranges) * buffer.count);
@@ -417,10 +429,10 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		if (_live_range_is_valid(live_ranges[instr_index.value])) {
 			live_ranges[instr_index.value] = _live_range_extended(
 					live_ranges[instr_index.value],
-					instr_index);
+					instr_global_position[instr_index.value]);
 		} else if (_live_range_is_empty(live_ranges[instr_index.value])) {
-			live_ranges[instr_index.value].start = instr_index;
-			live_ranges[instr_index.value].end = instr_index;
+			live_ranges[instr_index.value].start = instr_global_position[instr_index.value];
+			live_ranges[instr_index.value].end = instr_global_position[instr_index.value];
 		} else {
 			panic("InstrLiveRange has invalid state");
 		}
@@ -446,10 +458,12 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 
 			InstrLiveRange live_range = live_ranges[dep_index.value];
 			if (_live_range_is_valid(live_range)) {
-				live_range = _live_range_extended(live_range, instr_index);
+				live_range = _live_range_extended(
+						live_range,
+						instr_global_position[instr_index.value]);
 			} else if (_live_range_is_empty(live_range)) {
-				live_range.start = instr_index;
-				live_range.end = instr_index;
+				live_range.start = instr_global_position[instr_index.value];
+				live_range.end = instr_global_position[instr_index.value];
 			} else {
 				panic("InstrLiveRange has invalid state");
 			}
@@ -495,7 +509,7 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 				//       placed.
 				*variant_live_range = _live_range_extended(
 						*variant_live_range,
-						region->region.last_instr);
+						instr_global_position[region->region.last_instr.value]);
 
 				phi_live_range = _live_range_merge(phi_live_range, *variant_live_range);
 			}

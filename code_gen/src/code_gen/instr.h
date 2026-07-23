@@ -483,8 +483,8 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
 
 union InstrLiveRange {
 	struct {
-		InstrIndex start;
-		InstrIndex end;
+		uint16_t start;
+		uint16_t end;
 	};
 
 	uint32_t value;
@@ -493,6 +493,7 @@ union InstrLiveRange {
 // Returns an array of `InstrLiveRange` of size `buffer->count`
 InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
+		InstrIndexArray* scheduled_instr,
 		Arena* allocator,
 		Arena* temp_allocator);
 

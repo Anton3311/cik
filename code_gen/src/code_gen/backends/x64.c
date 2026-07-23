@@ -2344,24 +2344,12 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 		if (bit_array_get(&already_assigned, i)) {
 			continue;
 		}
-
-		const Instr* instr = &instr_buffer->instr[i];
-
-		bool skip = false;
-		switch (instr->kind) {
-		case INSTR_BRANCH:
-		case INSTR_JUMP:
-		case INSTR_RET:
-		case INSTR_RETURN_VALUE:
-			skip = true;
-			break;
-		default:
-			break;
-		}
-
-		if (skip) {
+		
+		if (instr_is_control(instr_buffer, (InstrIndex) { i })) {
 			continue;
 		}
+
+		const Instr* instr = &instr_buffer->instr[i];
 
 		uint16_t region_id = states[i].decided_region_id;
 		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];

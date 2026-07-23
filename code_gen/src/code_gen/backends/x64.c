@@ -1045,7 +1045,11 @@ void _emit_bitwise_shift(CodeBuffer* buffer,
 	}
 }
 
-void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffer* buffer) {
+static void _lower_instr(X64CodeGenerator* gen,
+		InstrIndex instr_index,
+		uint16_t region_id,
+		CodeBuffer* buffer) {
+
 	assert(instr_index.value < gen->instr_buffer.count);
 
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;
@@ -1471,31 +1475,28 @@ void _x64_generate_code(X64CodeGenerator* gen, InstrIndex instr_index, CodeBuffe
 				has_flag(INSTR_FEATURES[condition_instr->kind], INSTR_FEATURE_BOOL),
 				"A condition instruction for `INSTR_BRANCH` must produce a boolean value");
 
-		// HACK: Need to store somewhere the currently processed region
-		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
-		_x64_generate_phi_copies(gen, current_region_id, buffer);
+		_x64_generate_phi_copies(gen, region_id, buffer);
 		return;
 	}
 	case INSTR_JUMP: {
-		// HACK: Need to store somewhere the currently processed region
-		uint16_t current_region_id = (uint16_t)(buffer - gen->per_region_code_buffer);
-
-		_x64_generate_phi_copies(gen, current_region_id, buffer);
+		_x64_generate_phi_copies(gen, region_id, buffer);
 		return;
 	}
 
-	case INSTR_RETURN_VALUE:
-		const InstrStorageLocation return_value_loc = gen->instr_storage[instr->return_value.value.value];
+	case INSTR_RETURN_VALUE: {
+		InstrIndex return_value = instr->return_value.value;
+		const InstrStorageLocation return_value_loc = gen->instr_storage[return_value.value];
 		assert(return_value_loc.kind == INSTR_STORAGE_REG);
 
 		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 
-		// NOTE: Don't need to generate a `ret` instruction, since it is done later when the
-		//       control instructions at the end of each code blocks are generated
+		// Don't need to generate a `ret` instruction, since it is done later when the control
+		// instructions at the end of each code block are generated
 		return;
+	}
 	case INSTR_RET:
-		// NOTE: Don't need to generate a `ret` instruction, since it is done later when the
-		//       control instructions at the end of each code blocks are generated
+		// Don't need to generate a `ret` instruction, since it is done later when the control
+		// instructions at the end of each code block are generated
 		return;
 	
 	case INSTR_IO_STATE:
@@ -1769,8 +1770,10 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 	result = x64_alloc_regs(&gen->instr_buffer,
 			gen->live_ranges,
 			allowed_registers,
-			gen->allocator,
-			gen->temp_allocator);
+			// Use `temp_allocator` as a persistent one, since register allocations are only used
+			// within the backend
+			gen->temp_allocator,
+			gen->allocator);
 
 	gen->instr_with_storage_requirement = result.instr_with_storage_requirement;
 	gen->instr_storage = result.allocations;
@@ -2498,7 +2501,10 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 
 	// use `temp_allocator` as a persitent allocator and `allocator` is a temporary
-	gen->phi_sizes = _arrange_phis_for_size_computation(&gen->instr_buffer, gen->temp_allocator, gen->allocator);
+	gen->phi_sizes = _arrange_phis_for_size_computation(&gen->instr_buffer,
+			// Only used within the backend -> can use `temp_allocator` as a persistent
+			gen->temp_allocator,
+			gen->allocator);
 
 	bool validation_result = _x64_validate(gen);
 	assert(validation_result);
@@ -2527,7 +2533,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 	gen->live_ranges = instr_compute_live_ranges(gen->instr_buffer,
 			root_region,
-			// use `temp_allocator` as a persitent, since live ranges aren't needed outside this
+			// use `temp_allocator` as a persistent, since live ranges aren't needed outside this
 			// function
 			gen->temp_allocator, 
 			gen->allocator);
@@ -2594,7 +2600,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
 		for (size_t j = 0; j < scheduled.count; j += 1) {
-			_x64_generate_code(gen, scheduled.instr[j], code_buffer);
+			_lower_instr(gen, scheduled.instr[j], instr->region.id, code_buffer);
 		}
 	}
 

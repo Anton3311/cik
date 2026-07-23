@@ -96,8 +96,6 @@ typedef struct {
 	// All the string constants used in the source code, are turned into null-terminated strings
 	// and then stored sequentionally in this buffer.
 	char* merged_strings_buffer;
-
-	uint16_t current_linearized_region_id;
 } X64CodeGenerator;
 
 typedef struct {

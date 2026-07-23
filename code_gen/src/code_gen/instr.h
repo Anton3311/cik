@@ -496,11 +496,6 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		Arena* allocator,
 		Arena* temp_allocator);
 
-InstrIndexArray _instr_gather_regions_in_dfs_order(const InstrBuffer instr_buffer,
-		Arena* allocator,
-		Arena* temp_allocator,
-		InstrIndex start_region);
-
 String instr_name(InstrKind instr_kind);
 String instr_bin_op_name(InstrBinOp op_kind);
 String instr_compare_kind_name(InstrCompareKind kind);

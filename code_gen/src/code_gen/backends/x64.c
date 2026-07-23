@@ -2228,7 +2228,12 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 }
 
 typedef struct {
-	uint16_t* region_assigned_to_instr;
+	// For each instruction in `instr_buffer` stores the `region_id` of the region, where this
+	// instruction is scheduled.
+	uint16_t* instr_scheduled_region;
+
+	// Accompanies the above array providing the index of that instruction in the scheduled region.
+	uint16_t* instr_position_in_region;
 
 	// An array that for each region stores an array of instructions that belong to it.
 	InstrIndexArray* scheduled_instr;
@@ -2288,7 +2293,7 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 
 	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
 		if (states[i].decided_region_id == UINT16_MAX) {
-			// This instruction doesn't belong to any of regions.
+			// This instruction doesn't belong to any of the regions.
 			continue;
 		}
 
@@ -2305,6 +2310,16 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 				instr_count_per_region[i]);
 		scheduled_instr_per_region[i].count = 0;
 	}
+
+	uint16_t* instr_scheduled_region = arena_alloc_array(allocator,
+			uint16_t,
+			instr_buffer->count);
+	uint16_t* instr_position_in_region = arena_alloc_array(allocator,
+			uint16_t,
+			instr_buffer->count);
+
+	memset(instr_scheduled_region, 0xff, sizeof(*instr_scheduled_region) * instr_buffer->count);
+	memset(instr_position_in_region, 0xff, sizeof(*instr_position_in_region) * instr_buffer->count);
 
 	// Now append each instruction to the corresponding region.
 	// 
@@ -2365,6 +2380,9 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 					continue;
 				}
 
+				instr_scheduled_region[select_index.value] = region_id;
+				instr_position_in_region[select_index.value] = region_instr_array->count;
+
 				region_instr_array->instr[region_instr_array->count] = select_index;
 				region_instr_array->count += 1;
 
@@ -2373,6 +2391,9 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 		}
 
 		bit_array_set(&already_assigned, i, true);
+
+		instr_scheduled_region[i] = region_id;
+		instr_position_in_region[i] = region_instr_array->count;
 
 		region_instr_array->instr[region_instr_array->count] = (InstrIndex) { i };
 		region_instr_array->count += 1;
@@ -2389,25 +2410,18 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];
 		assert(region_instr_array->count + 1 == instr_count_per_region[region_id]);
 
+		instr_scheduled_region[last_instr.value] = region_id;
+		instr_position_in_region[last_instr.value] = region_instr_array->count;
+
 		region_instr_array->instr[region_instr_array->count] = last_instr;
 		region_instr_array->count += 1;
 	}
 
 	arena_end_temp(temp);
 
-	uint16_t* region_assigned_to_instr = arena_alloc_array(allocator,
-			uint16_t,
-			instr_buffer->count);
-
-	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
-		InstrIndexArray instr = scheduled_instr_per_region[i];
-		for (uint16_t j = 0; j < instr.count; j += 1) {
-			region_assigned_to_instr[instr.instr[j].value] = i;
-		}
-	}
-
-	out_result->region_assigned_to_instr = region_assigned_to_instr;
+	out_result->instr_scheduled_region = instr_scheduled_region;
 	out_result->scheduled_instr = scheduled_instr_per_region;
+	out_result->instr_position_in_region = instr_position_in_region;
 
 	profile_scope_end();
 }
@@ -2573,7 +2587,7 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 
 		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
 		scheduling_is_valid &= _validate_instr_scheduling_for_region(&gen->instr_buffer,
-				scheduling_result.region_assigned_to_instr,
+				scheduling_result.instr_scheduled_region,
 				instr->region.id,
 				scheduled,
 				&dom_tree,

@@ -94,6 +94,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func.func_ref_table;
 			gen.string_consts = str_storage_to_array(&c.str_storage);
+			gen.flags = X64_PRINT_SCHEDULED_IR;
 
 			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
 

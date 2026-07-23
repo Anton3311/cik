@@ -2037,7 +2037,7 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 
 						(uint32_t)scheduled.instr[i].value,
 						(uint32_t)current_region_id,
-						(uint32_t)instr_position_in_region[i],
+						(uint32_t)instr_position_in_region[scheduled.instr[i].value],
 
 						(uint32_t)input.value,
 						(uint32_t)instr_scheduled_region[input.value],
@@ -2069,6 +2069,10 @@ typedef struct {
 	// For each region stores a monotonically increasing integer.
 	// This integer tells the order in which each instruction was added to this region.
 	uint16_t* next_position_in_region;
+
+	uint16_t current_region_id;
+	uint16_t current_order;
+	InstrIndex def;
 } InstrSchedulingContext;
 
 // Checks whether the `input_instr_index` is guaranteed to be available in the `region_id`.
@@ -2089,6 +2093,19 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 		context->states[input_instr_index.value].order_in_region = order_in_region;
 		instr_queue_push_back(queue, input_instr_index);
 		return;
+	}
+
+	if (input_instr_region_id == context->current_region_id) {
+		if (context->states[input_instr_index.value].order_in_region < context->current_order) {
+			uint16_t order_in_region = context->next_position_in_region[region_id];
+			context->next_position_in_region[region_id] += 1;
+
+			context->states[input_instr_index.value].decided_region_id = region_id;
+			context->states[input_instr_index.value].order_in_region = order_in_region;
+			instr_queue_push_back(queue, input_instr_index);
+
+			return;
+		}
 	}
 
 	bool is_input_dominated = _is_region_dominated_by(context->dom_tree,
@@ -2127,6 +2144,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	uint16_t current_region_id = context->states[instr_index.value].decided_region_id;
 	assert_msg(current_region_id != UINT16_MAX,
 			"Instr at `instr_index` must have an already assigned region id");
+
+	context->current_region_id = current_region_id;
+	context->current_order = context->states[instr_index.value].order_in_region;
+	context->def = instr_index;
 
 	switch (instr->kind) {
 	case INSTR_NO_OP:
@@ -2241,6 +2262,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	}
 	case INSTR_SELECT: {
 		uint16_t region_id = instr_region_id(instr_buffer, instr->select.region);
+		// NOTE: Here we expect the value to be available at ehd END of the region with id
+		//       `region_id`
+		context->current_region_id = region_id;
+		context->current_order = 0;
 		_try_enqueue_for_scheduling(queue, context, region_id, instr->select.value);
 		break;
 	}
@@ -2249,6 +2274,25 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	}
 
 	profile_scope_end();
+}
+
+// Sorts instructions in descending order based on `order_in_region` stored in
+// `InstrSchedulingState`
+static void _sort_scheduled_instr(InstrIndexArray instr_array, const InstrSchedulingState* states) {
+	for (size_t i = 0; i < instr_array.count; i += 1) {
+		for (size_t j = 1; j < instr_array.count; j += 1) {
+			InstrIndex instr_a = instr_array.instr[j - 1];
+			InstrIndex instr_b = instr_array.instr[j];
+
+			uint16_t order_a = states[instr_a.value].order_in_region;
+			uint16_t order_b = states[instr_b.value].order_in_region;
+
+			if (order_a < order_b) {
+				instr_array.instr[j] = instr_a;
+				instr_array.instr[j - 1] = instr_b;
+			}
+		}
+	}
 }
 
 typedef struct {
@@ -2289,6 +2333,21 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 	context.next_position_in_region = next_position_in_region;
 
 	{
+		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+			InstrIndex root_region_index = scheduled_regions.instr[i];
+			const Instr* root_region = instr_buffer_at(instr_buffer, root_region_index);
+
+			uint16_t current_region_id = root_region->region.id;
+
+			uint16_t order_in_region = next_position_in_region[current_region_id];
+			next_position_in_region[current_region_id] += 1;
+
+			states[root_region->region.last_instr.value].decided_region_id = current_region_id;
+			states[root_region->region.last_instr.value].order_in_region = order_in_region;
+		}
+	}
+
+	{
 		ArenaRegion temp1 = arena_begin_temp(temp_allocator);
 
 		InstrQueue queue;
@@ -2300,12 +2359,6 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 
 			const Instr* root_region = instr_buffer_at(instr_buffer, root_region_index);
 			instr_queue_push_back(&queue, root_region->region.last_instr);
-
-			uint16_t order_in_region = next_position_in_region[current_region_id];
-			next_position_in_region[current_region_id] += 1;
-
-			states[root_region->region.last_instr.value].decided_region_id = current_region_id;
-			states[root_region->region.last_instr.value].order_in_region = order_in_region;
 
 			while (queue.count) {
 				InstrIndex instr_index = instr_queue_pop_front(&queue);
@@ -2379,15 +2432,18 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 			continue;
 		}
 		
+#if 0
 		if (instr_is_control(instr_buffer, (InstrIndex) { i })) {
 			continue;
 		}
+#endif
 
 		const Instr* instr = &instr_buffer->instr[i];
 
 		uint16_t region_id = states[i].decided_region_id;
 		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];
 
+#if 0
 		if (instr->kind == INSTR_PHI) {
 			InstrInputs variants = instr->phi.variants;
 			for (uint16_t i = 0; i < variants.count; i += 1) {
@@ -2411,16 +2467,20 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 				bit_array_set(&already_assigned, select_index.value, true);
 			}
 		}
+#endif
 
 		bit_array_set(&already_assigned, i, true);
 
 		instr_scheduled_region[i] = region_id;
+#if 0
 		instr_position_in_region[i] = region_instr_array->count;
+#endif
 
 		region_instr_array->instr[region_instr_array->count] = (InstrIndex) { i };
 		region_instr_array->count += 1;
 	}
 
+#if 0
 	// Now the second pass. Append control instructions.
 	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrIndex region_index = scheduled_regions.instr[i];
@@ -2437,6 +2497,38 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 
 		region_instr_array->instr[region_instr_array->count] = last_instr;
 		region_instr_array->count += 1;
+	}
+#endif
+
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
+		uint16_t region_id = instr_region_id(instr_buffer, scheduled_regions.instr[i]);
+
+		InstrIndexArray region_instr_array = scheduled_instr_per_region[region_id];
+
+		printf("region %u:\n", region_id);
+		for (size_t j = 0; j < region_instr_array.count; j += 1) {
+			uint16_t k = region_instr_array.instr[j].value;
+			Instr instr = instr_buffer->instr[k];
+
+			printf("\t%%%u %.*s:\t\tregion=%u\torder=%u\n",
+					k,
+					STR_FMT(instr_name(instr.kind)),
+					states[k].decided_region_id,
+					states[k].order_in_region);
+		}
+	}
+
+	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
+		uint32_t region_id = instr_region_id(instr_buffer, scheduled_regions.instr[i]);
+
+		InstrIndexArray region_instr_array = scheduled_instr_per_region[region_id];
+		_sort_scheduled_instr(region_instr_array, states);
+
+		for (size_t j = 0; j < region_instr_array.count; j += 1) {
+			InstrIndex instr = region_instr_array.instr[j];
+
+			instr_position_in_region[instr.value] = (uint16_t)j;
+		}
 	}
 
 	arena_end_temp(temp);

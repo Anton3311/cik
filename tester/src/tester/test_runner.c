@@ -592,8 +592,8 @@ typedef struct {
 } Mode;
 
 int main(int argc, char* argv[]) {
-	Arena arena = { .capacity = 128 * 4096 };
-	Arena temp_arena = { .capacity = 128 * 4096 };
+	Arena arena = { .capacity = 4096 * 4096 };
+	Arena temp_arena = { .capacity = 4096 * 4096 };
 
 	TestStorage test_storage = {};
 	if (!extract_test_suites(&test_storage, &arena, &temp_arena)) {

@@ -2056,6 +2056,7 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 
 typedef struct {
 	uint16_t decided_region_id;
+	uint16_t order_in_region;
 } InstrSchedulingState;
 
 typedef struct {
@@ -2064,6 +2065,10 @@ typedef struct {
 	const CFGDominatorTree* dom_tree;
 
 	Arena* temp_allocator;
+
+	// For each region stores a monotonically increasing integer.
+	// This integer tells the order in which each instruction was added to this region.
+	uint16_t* next_position_in_region;
 } InstrSchedulingContext;
 
 // Checks whether the `input_instr_index` is guaranteed to be available in the `region_id`.
@@ -2077,7 +2082,11 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 
 	uint16_t input_instr_region_id = context->states[input_instr_index.value].decided_region_id;
 	if (input_instr_region_id == UINT16_MAX) {
+		uint16_t order_in_region = context->next_position_in_region[region_id];
+		context->next_position_in_region[region_id] += 1;
+
 		context->states[input_instr_index.value].decided_region_id = region_id;
+		context->states[input_instr_index.value].order_in_region = order_in_region;
 		instr_queue_push_back(queue, input_instr_index);
 		return;
 	}
@@ -2090,13 +2099,20 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 	if (is_input_dominated) {
 		return;
 	}
+
+	// The input is not guaranteed to appear before the def, so we need to uplift it to the common
+	// region.
 	
 	uint16_t common_region_id = _find_control_flow_split(context->dom_tree,
 			context->states[input_instr_index.value].decided_region_id,
 			region_id,
 			context->temp_allocator);
 
+	uint16_t order_in_region = context->next_position_in_region[common_region_id];
+	context->next_position_in_region[common_region_id] += 1;
+
 	context->states[input_instr_index.value].decided_region_id = common_region_id;
+	context->states[input_instr_index.value].order_in_region = order_in_region;
 
 	instr_queue_push_back(queue, input_instr_index);
 }
@@ -2261,11 +2277,16 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 			instr_buffer->count);
 	memset(states, 0xff, sizeof(*states) * instr_buffer->count);
 
+	uint16_t* next_position_in_region = arena_alloc_array_zeroed(temp_allocator,
+			uint16_t,
+			instr_buffer->region_count);
+
 	InstrSchedulingContext context;
 	context.instr_buffer = instr_buffer;
 	context.states = states;
 	context.dom_tree = dom_tree;
 	context.temp_allocator = temp_allocator;
+	context.next_position_in_region = next_position_in_region;
 
 	{
 		ArenaRegion temp1 = arena_begin_temp(temp_allocator);
@@ -2279,7 +2300,12 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 
 			const Instr* root_region = instr_buffer_at(instr_buffer, root_region_index);
 			instr_queue_push_back(&queue, root_region->region.last_instr);
+
+			uint16_t order_in_region = next_position_in_region[current_region_id];
+			next_position_in_region[current_region_id] += 1;
+
 			states[root_region->region.last_instr.value].decided_region_id = current_region_id;
+			states[root_region->region.last_instr.value].order_in_region = order_in_region;
 
 			while (queue.count) {
 				InstrIndex instr_index = instr_queue_pop_front(&queue);

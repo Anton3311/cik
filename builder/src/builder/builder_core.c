@@ -516,15 +516,7 @@ static void _print_result(bool success, String operation_name, String message) {
 	}
 }
 
-typedef struct {
-	String cmd_log;
-} BuildResult;
-
-static bool _run_build_process(BuildContext* context,
-		String project_name,
-		bool cmd_log_enabled,
-		BuildResult* out_result) {
-
+static bool _run_build_process(BuildContext* context, String project_name) {
 	BuildQueue build_queue = _build_build_queue(context, project_name);
 
 	if (build_queue.count == 0) {
@@ -547,7 +539,6 @@ static bool _run_build_process(BuildContext* context,
 			UnitStatus,
 			context->unit_count);
 
-	StringBuilder cmd_log = { .arena = context->unit_allocator };
 	for (size_t i = 0; i < build_queue.count; i += 1) {
 		ArenaRegion temp = arena_begin_temp(context->allocator);
 
@@ -633,12 +624,6 @@ static bool _run_build_process(BuildContext* context,
 			unreachable();
 		}
 
-		if (cmd_log_enabled) {
-			str_builder_append(&cmd_log, cmd_builder.string);
-			str_builder_append_char(&cmd_log, '\n');
-			status[unit_id.value] = UNIT_STATUS_DONE;
-		}
-
 		int32_t exit_code = 0;
 		bool success = process_run(exe_path,
 					STR_LIT("."),
@@ -656,10 +641,6 @@ static bool _run_build_process(BuildContext* context,
 		_print_result(status[unit_id.value] == UNIT_STATUS_DONE, step_name, unit->name);
 
 		arena_end_temp(temp);
-	}
-
-	if (cmd_log_enabled) {
-		out_result->cmd_log = cmd_log.string;
 	}
 
 	return result;
@@ -787,23 +768,9 @@ static const char* s_help_message =
 	"    help                  show help message\n";
 
 int32_t build_run(BuildContext* context) {
-	BuildResult result = {};
-	int32_t exit_code = _run_build_process(context,
-			context->target_project_name,
-			context->command_log_enabled,
-			&result)
+	int32_t exit_code = _run_build_process(context, context->target_project_name)
 		? EXIT_SUCCESS
 		: EXIT_FAILURE;
-
-	if (context->command_log_enabled) {
-		const char* build_all_path = "scripts/build_all.bat";
-		bool written = write_str_to_file(build_all_path, result.cmd_log);
-		_print_result(written, str_from_cstr(build_all_path), (String) {});
-
-		if (!written) {
-			exit_code = EXIT_FAILURE;
-		}
-	}
 
 	return exit_code;
 }
@@ -844,10 +811,6 @@ void build_init(BuildContext* context,
 					context->target_project_name = str_from_cstr(argv[arg_index]);
 					arg_index += 1;
 				}
-			}
-
-			if (context->target_project_name.length == 0) {
-				context->command_log_enabled = true;
 			}
 
 			String compiler_paths_prefix = STR_LIT("--compiler-paths=");

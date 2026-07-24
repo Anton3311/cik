@@ -2112,13 +2112,16 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 
 	if (input_instr_region_id == context->current_region_id) {
 		if (context->states[input_instr_index.value].order_in_region < context->current_order) {
+			// Both the def and the input appear in the same region. However the input comes after
+			// the def (input has a lower order), thus readd the input instruction to the start of 
+			// this region.
+
 			uint16_t order_in_region = context->next_position_in_region[region_id];
 			context->next_position_in_region[region_id] += 1;
 
 			context->states[input_instr_index.value].decided_region_id = region_id;
 			context->states[input_instr_index.value].order_in_region = order_in_region;
 			instr_queue_push_front(queue, input_instr_index);
-
 			return;
 		}
 	}
@@ -2347,19 +2350,19 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 	context.temp_allocator = temp_allocator;
 	context.next_position_in_region = next_position_in_region;
 
-	{
-		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
-			InstrIndex root_region_index = scheduled_regions.instr[i];
-			const Instr* root_region = instr_buffer_at(instr_buffer, root_region_index);
+	// Assign the lowest order number to each control instruction, so that they appear right at the
+	// end of the corresponding region.
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		InstrIndex root_region_index = scheduled_regions.instr[i];
+		const Instr* root_region = instr_buffer_at(instr_buffer, root_region_index);
 
-			uint16_t current_region_id = root_region->region.id;
+		uint16_t current_region_id = root_region->region.id;
 
-			uint16_t order_in_region = next_position_in_region[current_region_id];
-			next_position_in_region[current_region_id] += 1;
+		uint16_t order_in_region = next_position_in_region[current_region_id];
+		next_position_in_region[current_region_id] += 1;
 
-			states[root_region->region.last_instr.value].decided_region_id = current_region_id;
-			states[root_region->region.last_instr.value].order_in_region = order_in_region;
-		}
+		states[root_region->region.last_instr.value].decided_region_id = current_region_id;
+		states[root_region->region.last_instr.value].order_in_region = order_in_region;
 	}
 
 	{
@@ -2424,115 +2427,33 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 	memset(instr_position_in_region, 0xff, sizeof(*instr_position_in_region) * instr_buffer->count);
 
 	// Now append each instruction to the corresponding region.
-	// 
-	// Instructions are appended in the same order they appear in the `instr_buffer`. After
-	// appending the control instruction to this region, we might still encounter some instruction
-	// that should also belong in this region.
-	//
-	// These instructions are defined later in the `instr_buffer`, and were uplifted to this region.
-	// We shouldn't simply add these uplifted instruction after the control instruction. The control
-	// instruction must be the last one in the region.
-	//
-	// To handle this correctly, during the first pass, control instructions are skipped, and later
-	// during the second pass they are added to the end of each region.
-	BitArray already_assigned = bit_array_alloc(temp_allocator, instr_buffer->count);
-	bit_array_clear(&already_assigned);
-
 	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
 		if (states[i].decided_region_id == UINT16_MAX) {
 			continue;
 		}
-
-		if (bit_array_get(&already_assigned, i)) {
-			continue;
-		}
-		
-#if 0
-		if (instr_is_control(instr_buffer, (InstrIndex) { i })) {
-			continue;
-		}
-#endif
 
 		const Instr* instr = &instr_buffer->instr[i];
 
 		uint16_t region_id = states[i].decided_region_id;
 		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];
 
-#if 0
-		if (instr->kind == INSTR_PHI) {
-			InstrInputs variants = instr->phi.variants;
-			for (uint16_t i = 0; i < variants.count; i += 1) {
-				InstrIndex select_index = instr_buffer->inputs_buffer[variants.start + i];
-
-				if (bit_array_get(&already_assigned, select_index.value)) {
-					continue;
-				}
-
-				uint16_t region_of_select = states[select_index.value].decided_region_id;
-				if (region_of_select != region_id) {
-					continue;
-				}
-
-				instr_scheduled_region[select_index.value] = region_id;
-				instr_position_in_region[select_index.value] = region_instr_array->count;
-
-				region_instr_array->instr[region_instr_array->count] = select_index;
-				region_instr_array->count += 1;
-
-				bit_array_set(&already_assigned, select_index.value, true);
-			}
-		}
-#endif
-
-		bit_array_set(&already_assigned, i, true);
-
 		instr_scheduled_region[i] = region_id;
-#if 0
-		instr_position_in_region[i] = region_instr_array->count;
-#endif
 
 		region_instr_array->instr[region_instr_array->count] = (InstrIndex) { i };
 		region_instr_array->count += 1;
 	}
 
-#if 0
-	// Now the second pass. Append control instructions.
-	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
-		InstrIndex region_index = scheduled_regions.instr[i];
-		const Instr* instr = instr_buffer_at(instr_buffer, region_index);
-
-		InstrIndex last_instr = instr->region.last_instr;
-		uint32_t region_id = instr->region.id;
-
-		InstrIndexArray* region_instr_array = &scheduled_instr_per_region[region_id];
-		assert(region_instr_array->count + 1 == instr_count_per_region[region_id]);
-
-		instr_scheduled_region[last_instr.value] = region_id;
-		instr_position_in_region[last_instr.value] = region_instr_array->count;
-
-		region_instr_array->instr[region_instr_array->count] = last_instr;
-		region_instr_array->count += 1;
-	}
-#endif
-
-	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
-		uint16_t region_id = instr_region_id(instr_buffer, scheduled_regions.instr[i]);
-
-		InstrIndexArray region_instr_array = scheduled_instr_per_region[region_id];
-
-		printf("region %u:\n", region_id);
-		for (size_t j = 0; j < region_instr_array.count; j += 1) {
-			uint16_t k = region_instr_array.instr[j].value;
-			Instr instr = instr_buffer->instr[k];
-
-			printf("\t%%%u %.*s:\t\tregion=%u\torder=%u\n",
-					k,
-					STR_FMT(instr_name(instr.kind)),
-					states[k].decided_region_id,
-					states[k].order_in_region);
-		}
-	}
-
+	// During scheduling each instruction get assigned an order number, upon being added to a
+	// specific region.
+	//
+	// Lower order number means - the instruction must appear later in the region.
+	//
+	// Since in the above loop the instructions were added in the same order they appear in the
+	// `instr_buffer`, it means they don't necessarily follow the order they were assigned during
+	// scheduling.
+	//
+	// To correct this, and satisfy the order rules, just sort all the instruction of each regions,
+	// based on that order number.
 	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		uint32_t region_id = instr_region_id(instr_buffer, scheduled_regions.instr[i]);
 

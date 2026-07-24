@@ -2295,23 +2295,33 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	profile_scope_end();
 }
 
+static int _compare_scheduled_instr(void* context_ptr, const void* a_ptr, const void* b_ptr) {
+	InstrIndex a = *(InstrIndex*)a_ptr;
+	InstrIndex b = *(InstrIndex*)b_ptr;
+
+	const InstrPosition* positions = (const InstrPosition*)context_ptr;
+	uint16_t order_a = positions[a.value].order_in_region;
+	uint16_t order_b = positions[b.value].order_in_region;
+
+	if (order_a == order_b) {
+		return 0;
+	}
+
+	return order_a < order_b ? 1 : -1;
+}
+
 // Sorts instructions in descending order based on `order_in_region` stored in
 // `InstrSchedulingState`
-static void _sort_scheduled_instr(InstrIndexArray instr_array, const InstrPosition* positions) {
-	for (size_t i = 0; i < instr_array.count; i += 1) {
-		for (size_t j = 1; j < instr_array.count; j += 1) {
-			InstrIndex instr_a = instr_array.instr[j - 1];
-			InstrIndex instr_b = instr_array.instr[j];
+static void _sort_scheduled_instr(InstrIndexArray instr_array, InstrPosition* positions) {
+	profile_scope_start(__func__);
 
-			uint16_t order_a = positions[instr_a.value].order_in_region;
-			uint16_t order_b = positions[instr_b.value].order_in_region;
+	qsort_s(instr_array.instr,
+			instr_array.count,
+			sizeof(*instr_array.instr),
+			_compare_scheduled_instr,
+			positions);
 
-			if (order_a < order_b) {
-				instr_array.instr[j] = instr_a;
-				instr_array.instr[j - 1] = instr_b;
-			}
-		}
-	}
+	profile_scope_end();
 }
 
 typedef struct {

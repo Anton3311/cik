@@ -1957,8 +1957,21 @@ static bool _validate_instr_scheduling_for_region(const InstrBuffer* instr_buffe
 		const CFGDominatorTree* dom_tree,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
+	
+	assert(scheduled.count > 0);
 
 	bool valid = true;
+
+	if (!instr_is_control(instr_buffer, scheduled.instr[scheduled.count - 1])) {
+		const Instr* last_instr = instr_buffer_at(instr_buffer, scheduled.instr[scheduled.count - 1]);
+		debug_log_error(
+				"The last instruction in the region must be a control instruction.\n"
+				"The last instruction of the region '%u' is '%.*s'\n",
+				current_region_id,
+				STR_FMT(instr_name(last_instr->kind)));
+
+		valid = false;
+	}
 
 	for (size_t i = 0; i < scheduled.count; i += 1) {
 		InstrIndex current_instr = scheduled.instr[i];

@@ -351,6 +351,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		}
 
 		_compile_assignment(compiler, target, value_instr);
+		profile_scope_end();
 		return value_instr;
 	}
 
@@ -750,8 +751,11 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		profile_scope_end();
 		return compiler->arg_states[arg_index];
 	}
-	case EXPR_UNARY:
-		return _compile_unary_expr(compiler, expr);
+	case EXPR_UNARY: {
+		InstrIndex instr_index = _compile_unary_expr(compiler, expr);
+		profile_scope_end();
+		return instr_index;
+	}
 	case EXPR_CHAR_LITERAL: {
 		assert(expr->char_literal.value <= 0xff);
 

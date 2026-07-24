@@ -2130,6 +2130,7 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 	// The input is guaranteed to appear before the `expected_position`
 	if (is_input_region_dominated
 			&& input_position->order_in_region > expected_position.order_in_region) {
+		profile_scope_end();
 		return;
 	}
 

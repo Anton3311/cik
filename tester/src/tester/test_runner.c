@@ -49,6 +49,7 @@ typedef struct {
 
 typedef struct {
 	size_t passed_count;
+	size_t failed_count;
 } Summary;
 
 //
@@ -364,7 +365,6 @@ void report_test_result(String test_name,
 bool run_test_and_report_result(TestStorage* storage,
 		size_t suite_index,
 		size_t test_index,
-		Summary* summary,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	assert(suite_index < storage->suite_count);
@@ -419,10 +419,6 @@ bool run_test_and_report_result(TestStorage* storage,
 		}
 
 		printf("    exit code: %d\n", result.exit_code);
-	}
-
-	if (pass) {
-		summary->passed_count += 1;
 	}
 
 	arena_end_temp(temp1);
@@ -596,6 +592,7 @@ typedef enum {
 typedef enum {
 	FLAG_NONE         = 0,
 	FLAG_DEBUG_FAILED = 1 << 0,
+	FLAG_STOP_ON_FAIL = 1 << 1,
 } Flags;
 
 typedef struct {
@@ -612,6 +609,19 @@ typedef struct {
 		} all;
 	};
 } Mode;
+
+static const char* s_help_message =
+	"  Running all of the tests:\n"
+	"    --debug-failed                 Add failed tests as targets to RAD Debugger.\n"
+	"                                   By default looks for 'raddbg.exe' in 'PATH'\n"
+	"\n"
+	"    --stop-on-fail                 Stop at the first test that fails.\n"
+	"\n"
+	"    --raddbg-path=<path>           Specify the path to 'raddbg.exe'. This must be a path to\n"
+	"                                   the '.exe' file, not the parent directory.\n"
+	"\n"
+	"  Running a single test:\n"
+	"    run-test <test-name>           Run a single test\n";
 
 int main(int argc, char* argv[]) {
 	Arena arena = { .capacity = 4096 * 4096 };
@@ -666,8 +676,14 @@ int main(int argc, char* argv[]) {
 						STR_FMT(test_case_name));
 				return EXIT_FAILURE;
 			}
+		} else if (strcmp(argv[arg_index], "--help") == 0) {
+			printf("%s", s_help_message);
+			return EXIT_SUCCESS;
 		} else if (mode.kind == MODE_ALL && strcmp(argv[arg_index], "--debug-failed") == 0) {
 			mode.all.flags |= FLAG_DEBUG_FAILED;
+			arg_index += 1;
+		} else if (mode.kind == MODE_ALL && strcmp(argv[arg_index], "--stop-on-fail") == 0) {
+			mode.all.flags |= FLAG_STOP_ON_FAIL;
 			arg_index += 1;
 		} else if (mode.kind == MODE_ALL && str_starts_with(arg, STR_LIT("--raddbg-path="))) {
 			size_t split_position = str_find_char(arg, '=');
@@ -693,17 +709,18 @@ int main(int argc, char* argv[]) {
 	bool has_failed_tests = false;
 
 	switch (mode.kind) {
-	case MODE_ALL:
+	case MODE_ALL: {
 		if (has_flag(mode.all.flags, FLAG_DEBUG_FAILED) && mode.all.raddbg_path.length == 0) {
 			bool result = try_find_raddbg_in_path(&mode.all.raddbg_path, &arena, &temp_arena);
 
 			if (!result) {
 				fprintf(stderr, "Failed to find 'raddbg.exe' in PATH.\n");
-				fprintf(stderr, "Try using '--raddbg-path=<path>' to provide an explicit path\.n");
+				fprintf(stderr, "Try using '--raddbg-path=<path>' to provide an explicit path.\n");
 				return EXIT_FAILURE;
 			}
 		}
 
+		bool stop = false;
 		for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
 			printf("\n --- %.*s\n\n", STR_FMT(test_storage.suites[suite_index].name));
 
@@ -714,9 +731,14 @@ int main(int argc, char* argv[]) {
 				bool passed = run_test_and_report_result(&test_storage,
 						suite_index,
 						test_index,
-						&summary,
 						&arena,
 						&temp_arena);
+
+				if (passed) {
+					summary.passed_count += 1;
+				} else {
+					summary.failed_count += 1;
+				}
 
 				if (!passed && has_flag(mode.all.flags, FLAG_DEBUG_FAILED)) {
 					add_test_as_raddbg_target(
@@ -724,40 +746,49 @@ int main(int argc, char* argv[]) {
 							tests.tests[test_index].name,
 							&temp_arena);
 				}
+
+				if (!passed && has_flag(mode.all.flags, FLAG_STOP_ON_FAIL)) {
+					stop = true;
+					break;
+				}
 			}
 
 			printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m Skipped: %zu/%zu\n",
 					summary.passed_count,
 					tests.count,
-					tests.count - summary.passed_count,
+					summary.failed_count,
 					tests.count,
-					(size_t)0,
+					tests.count - (summary.passed_count + summary.failed_count),
 					tests.count);
 
 			if (summary.passed_count < tests.count) {
 				has_failed_tests = true;
 			}
+
+			if (stop) {
+				break;
+			}
 		}
 		break;
+	}
 	case MODE_SINGLE: {
-		Summary summary = {};
-
-		run_test_and_report_result(&test_storage,
+		bool passed = run_test_and_report_result(&test_storage,
 				mode.single.suite_index,
 				mode.single.test_index,
-				&summary,
 				&arena,
 				&temp_arena);
 
+		size_t passed_count = passed ? 1 : 0;
+		size_t failed_count = passed ? 0 : 1;
 		size_t test_count = 1;
 		printf("\n  Passed: \033[1;32m%zu/%zu\033[0m Failed: \033[1;31m%zu/%zu\033[0m Skipped: %zu\n",
-				summary.passed_count,
+				passed_count,
 				test_count,
-				test_count - summary.passed_count,
+				failed_count,
 				test_count,
 				test_storage.suites[mode.single.suite_index].tests.count - test_count);
 
-		if (summary.passed_count < test_count) {
+		if (!passed) {
 			has_failed_tests = true;
 		}
 		break;

@@ -343,6 +343,12 @@ static uint16_t _find_control_flow_split(const CFGDominatorTree* tree,
 		uint16_t region_b_id,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
+
+	if (region_a_id == region_b_id) {
+		profile_scope_end();
+		return region_b_id;
+	}
+
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 	BitArray visited_regions = bit_array_alloc(temp_allocator, tree->region_count);
 	bit_array_clear(&visited_regions);
@@ -2075,6 +2081,11 @@ typedef struct {
 } InstrSchedulingState;
 
 typedef struct {
+	uint16_t region_id;
+	uint16_t order_in_region;
+} InstrPosition;
+
+typedef struct {
 	const InstrBuffer* instr_buffer;
 	InstrSchedulingState* states;
 	const CFGDominatorTree* dom_tree;
@@ -2084,63 +2095,49 @@ typedef struct {
 	// For each region stores a monotonically increasing integer.
 	// This integer tells the order in which each instruction was added to this region.
 	uint16_t* next_position_in_region;
-
-	uint16_t current_region_id;
-	uint16_t current_order;
 	InstrIndex def;
 } InstrSchedulingContext;
 
-// Checks whether the `input_instr_index` is guaranteed to be available in the `region_id`.
+// Checks whether the `input_instr_index` is guaranteed to be available at position
+// `expected_position`
 //
 // If it's not, uplifts `input_instr_index`. And pushes it onto the queue, since now
 // `input_instr_index` and it's dependencies need to be rescheduled.
 static void _try_enqueue_for_scheduling(InstrQueue* queue,
 		InstrSchedulingContext* context,
-		uint16_t region_id,
+		InstrPosition expected_position,
 		InstrIndex input_instr_index) {
+	profile_scope_start(__func__);
 
 	uint16_t input_instr_region_id = context->states[input_instr_index.value].decided_region_id;
-	if (input_instr_region_id == UINT16_MAX) {
-		uint16_t order_in_region = context->next_position_in_region[region_id];
-		context->next_position_in_region[region_id] += 1;
+	uint16_t input_order_in_region = context->states[input_instr_index.value].order_in_region;
 
-		context->states[input_instr_index.value].decided_region_id = region_id;
+	if (input_instr_region_id == UINT16_MAX) {
+		uint16_t order_in_region = context->next_position_in_region[expected_position.region_id];
+		context->next_position_in_region[expected_position.region_id] += 1;
+
+		context->states[input_instr_index.value].decided_region_id = expected_position.region_id;
 		context->states[input_instr_index.value].order_in_region = order_in_region;
 		instr_queue_push_front(queue, input_instr_index);
+
+		profile_scope_end();
 		return;
 	}
 
-	if (input_instr_region_id == context->current_region_id) {
-		if (context->states[input_instr_index.value].order_in_region < context->current_order) {
-			// Both the def and the input appear in the same region. However the input comes after
-			// the def (input has a lower order), thus readd the input instruction to the start of 
-			// this region.
+	bool is_input_region_dominated = _is_region_dominated_by(context->dom_tree,
+			input_instr_region_id,
+			expected_position.region_id);
 
-			uint16_t order_in_region = context->next_position_in_region[region_id];
-			context->next_position_in_region[region_id] += 1;
-
-			context->states[input_instr_index.value].decided_region_id = region_id;
-			context->states[input_instr_index.value].order_in_region = order_in_region;
-			instr_queue_push_front(queue, input_instr_index);
-			return;
-		}
-	}
-
-	bool is_input_dominated = _is_region_dominated_by(context->dom_tree,
-				input_instr_region_id,
-				region_id);
-
-	// The input is guaranteed to appear before the instr at `instr_index`
-	if (is_input_dominated) {
+	// The input is guaranteed to appear before the `expected_position`
+	if (is_input_region_dominated && input_order_in_region > expected_position.order_in_region) {
 		return;
 	}
 
-	// The input is not guaranteed to appear before the def, so we need to uplift it to the common
-	// region.
-	
+	// The input is not guaranteed to appear before `expected_position`, so we need to uplift it to
+	// the common region.
 	uint16_t common_region_id = _find_control_flow_split(context->dom_tree,
 			context->states[input_instr_index.value].decided_region_id,
-			region_id,
+			expected_position.region_id,
 			context->temp_allocator);
 
 	uint16_t order_in_region = context->next_position_in_region[common_region_id];
@@ -2149,7 +2146,9 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 	context->states[input_instr_index.value].decided_region_id = common_region_id;
 	context->states[input_instr_index.value].order_in_region = order_in_region;
 
+	// Since we've uplifted this instruction, now its inputs have be rescheduled
 	instr_queue_push_front(queue, input_instr_index);
+	profile_scope_end();
 }
 
 static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
@@ -2159,13 +2158,17 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	const InstrBuffer* instr_buffer = context->instr_buffer;
 	const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
-	uint16_t current_region_id = context->states[instr_index.value].decided_region_id;
-	assert_msg(current_region_id != UINT16_MAX,
+	InstrPosition current_position = (InstrPosition) {
+		.region_id = context->states[instr_index.value].decided_region_id,
+		.order_in_region = context->states[instr_index.value].order_in_region
+	};
+
+	assert_msg(current_position.region_id != UINT16_MAX,
 			"Instr at `instr_index` must have an already assigned region id");
 
-	context->current_region_id = current_region_id;
-	context->current_order = context->states[instr_index.value].order_in_region;
-	context->def = instr_index;
+	uint16_t max_valid_order = context->next_position_in_region[current_position.region_id];
+	assert_msg(current_position.order_in_region < max_valid_order,
+			"Instr at `instr_index` has invalid position in the assigned region");
 
 	switch (instr->kind) {
 	case INSTR_NO_OP:
@@ -2183,23 +2186,23 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_BIN_OP_16:
 	case INSTR_BIN_OP_32:
 	case INSTR_BIN_OP_64:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bin_op.left);
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bin_op.right);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->bin_op.left);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->bin_op.right);
 		break;
 	case INSTR_PTR_LOAD_8:
 	case INSTR_PTR_LOAD_16:
 	case INSTR_PTR_LOAD_32:
 	case INSTR_PTR_LOAD_64:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.io_state);
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_load.ptr);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_load.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_load.ptr);
 		break;
 	case INSTR_PTR_STORE_8:
 	case INSTR_PTR_STORE_16:
 	case INSTR_PTR_STORE_32:
 	case INSTR_PTR_STORE_64:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.io_state);
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.ptr);
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ptr_store.value);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_store.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_store.ptr);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_store.value);
 		break;
 	case INSTR_LOAD_ARG_8:
 	case INSTR_LOAD_ARG_16:
@@ -2207,63 +2210,63 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_LOAD_ARG_64:
 		break;
 	case INSTR_NOT:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->not.operand);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->not.operand);
 		break;
 	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:
 	case INSTR_COMPARE_32:
 	case INSTR_COMPARE_64:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->compare.left);
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->compare.right);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->compare.left);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->compare.right);
 		break;
 	case INSTR_BOOL_TO_INT:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bool_to_int.operand);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->bool_to_int.operand);
 		break;
 	case INSTR_NEGATE_8:
 	case INSTR_NEGATE_16:
 	case INSTR_NEGATE_32:
 	case INSTR_NEGATE_64:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->negate.operand);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->negate.operand);
 		break;
 	case INSTR_BITWISE_NOT_8:
 	case INSTR_BITWISE_NOT_16:
 	case INSTR_BITWISE_NOT_32:
 	case INSTR_BITWISE_NOT_64:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->bitwise_not.operand);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->bitwise_not.operand);
 		break;
 	case INSTR_CAST_TO_8:
 	case INSTR_CAST_TO_16:
 	case INSTR_CAST_TO_32:
 	case INSTR_CAST_TO_64:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->cast.value);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->cast.value);
 		break;
 	case INSTR_BRANCH:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->branch.io_state);
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->branch.condition);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->branch.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->branch.condition);
 		break;
 	case INSTR_JUMP:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->jump.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->jump.io_state);
 		break;
 	case INSTR_RETURN_VALUE:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->return_value.io_state);
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->return_value.value);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->return_value.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->return_value.value);
 		break;
 	case INSTR_RET:
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->ret.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->ret.io_state);
 		break;
 	case INSTR_IO_STATE:
 		if (instr->io_state.producer.value != INVALID_INSTR_INDEX.value) {
-			_try_enqueue_for_scheduling(queue, context, current_region_id, instr->io_state.producer);
+			_try_enqueue_for_scheduling(queue, context, current_position, instr->io_state.producer);
 		}
 
 		break;
 	case INSTR_CALL_INDIRECT: {
-		_try_enqueue_for_scheduling(queue, context, current_region_id, instr->call_indirect.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->call_indirect.io_state);
 
 		InstrInputs args = instr->call_indirect.args;
 		for (uint16_t i = 0; i < args.count; i += 1) {
 			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + i];
-			_try_enqueue_for_scheduling(queue, context, current_region_id, arg_instr);
+			_try_enqueue_for_scheduling(queue, context, current_position, arg_instr);
 		}
 
 		break;
@@ -2274,17 +2277,18 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		InstrInputs variants = instr->phi.variants;
 		for (uint16_t i = 0; i < variants.count; i += 1) {
 			InstrIndex variant = instr_buffer->inputs_buffer[variants.start + i];
-			_try_enqueue_for_scheduling(queue, context, current_region_id, variant);
+			_try_enqueue_for_scheduling(queue, context, current_position, variant);
 		}
 		break;
 	}
 	case INSTR_SELECT: {
 		uint16_t region_id = instr_region_id(instr_buffer, instr->select.region);
-		// NOTE: Here we expect the value to be available at ehd END of the region with id
-		//       `region_id`
-		context->current_region_id = region_id;
-		context->current_order = 0;
-		_try_enqueue_for_scheduling(queue, context, region_id, instr->select.value);
+		_try_enqueue_for_scheduling(queue,
+				context,
+				// NOTE: Here we expect the value to be available at ehd END of the region with id
+				//       `region_id`
+				(InstrPosition) { .region_id = region_id, .order_in_region = 0 },
+				instr->select.value);
 		break;
 	}
 	case INSTR_COUNT:

@@ -7,6 +7,7 @@
 #include <dbghelp.h>
 #include <shlwapi.h> 
 #include <pathcch.h>
+#include <threads.h>
 
 bool is_debugger_connected() {
 	return IsDebuggerPresent();

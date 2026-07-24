@@ -354,6 +354,14 @@ inline void instr_queue_init(InstrQueue* queue, InstrIndex* backing_buffer, size
 	queue->capacity = capacity;
 }
 
+inline void instr_queue_push_front(InstrQueue* queue, InstrIndex instr) {
+	assert_msg(queue->count != queue->capacity, "Queue is full");
+
+	queue->head = (queue->head + queue->capacity - 1) % queue->capacity;
+	queue->buffer[queue->head] = instr;
+	queue->count += 1;
+}
+
 inline void instr_queue_push_back(InstrQueue* queue, InstrIndex instr) {
 	assert_msg(queue->count != queue->capacity, "Queue is full");
 

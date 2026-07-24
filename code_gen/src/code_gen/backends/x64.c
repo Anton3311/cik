@@ -2091,7 +2091,7 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 
 		context->states[input_instr_index.value].decided_region_id = region_id;
 		context->states[input_instr_index.value].order_in_region = order_in_region;
-		instr_queue_push_back(queue, input_instr_index);
+		instr_queue_push_front(queue, input_instr_index);
 		return;
 	}
 
@@ -2102,7 +2102,7 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 
 			context->states[input_instr_index.value].decided_region_id = region_id;
 			context->states[input_instr_index.value].order_in_region = order_in_region;
-			instr_queue_push_back(queue, input_instr_index);
+			instr_queue_push_front(queue, input_instr_index);
 
 			return;
 		}
@@ -2131,7 +2131,7 @@ static void _try_enqueue_for_scheduling(InstrQueue* queue,
 	context->states[input_instr_index.value].decided_region_id = common_region_id;
 	context->states[input_instr_index.value].order_in_region = order_in_region;
 
-	instr_queue_push_back(queue, input_instr_index);
+	instr_queue_push_front(queue, input_instr_index);
 }
 
 static void _enqueue_inputs_for_scheduling(InstrQueue* queue,

@@ -336,6 +336,33 @@ String str_from_wstr(WideString string, Arena* allocator) {
 	return (String) { .v = buffer, .length = required_size };
 }
 
+String str_split_next(String* string, char by_char) {
+	if (string->length == 0) {
+		return (String) {};
+	}
+
+	const char* chr_position = memchr(
+			string->v,
+			by_char,
+			string->length);
+
+	if (chr_position) {
+		String part = (String) {
+			.v = string->v,
+			.length = (size_t)(chr_position - string->v)
+		};
+
+		string->v = chr_position + 1;
+		string->length -= part.length - 1;
+		return part;
+	}
+
+	String part = *string;
+	string->v += string->length;
+	string->length = 0;
+	return part;
+}
+
 //
 // String Builder
 //

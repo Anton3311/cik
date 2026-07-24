@@ -485,6 +485,11 @@ inline String str_trim_line_ending(String str) {
 	return (String) {};
 }
 
+// Splits `string` at `by_char`, returns the part before the `by_char`, the part after `by_char`
+// is stored back in `string`. In case the end has been reached, returns a string with an underlying
+// pointer being NULL.
+String str_split_next(String* string, char by_char);
+
 //
 // String Builder
 //

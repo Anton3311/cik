@@ -748,18 +748,9 @@ static bool _find_compiler_in_path(String paths,
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
+	String path;
 	bool result = false;
-	while (paths.length) {
-		String path = paths;
-		for (size_t i = 0; i < paths.length; i += 1) {
-			if (paths.v[i] == ';') {
-				path = sub_str(paths, 0, i);
-				paths.v += i + 1;
-				paths.length -= i + 1;
-				break;
-			}
-		}
-
+	while ((path = str_split_next(&paths, ';')).v) {
 		switch (s_current_compiler) {
 		case COMPILER_KIND_MSVC:
 			result = _try_resolve_msvc_exes(path, &s_msvc_compiler_path, allocator);
@@ -770,10 +761,6 @@ static bool _find_compiler_in_path(String paths,
 		}
 
 		if (result) {
-			break;
-		}
-
-		if (str_equal(path, paths)) {
 			break;
 		}
 	}

@@ -445,6 +445,28 @@ bool raddbg_ipc_run_cmd(String raddbg_path, String args, Arena* temp_allocator) 
 	return true;
 }
 
+static bool try_find_raddbg_in_path(String* out_path, Arena* allocator, Arena* temp_allocator) {
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	String paths = env_get("PATH", temp_allocator);
+
+	String path;
+	while ((path = str_split_next(&paths, ';')).v) {
+		ArenaRegion inner_temp = arena_begin_temp(allocator);
+		String maybe_path = path_append(path, STR_LIT("raddbg.exe"), allocator);
+
+		if (path_exists(temp_allocator, maybe_path)) {
+			arena_end_temp(temp);
+			*out_path = maybe_path;
+			return true;
+		}
+
+		arena_end_temp(inner_temp);
+	}
+
+	arena_end_temp(temp);
+	return false;
+}
+
 void add_test_as_raddbg_target(String raddbg_path, String test_name, Arena* temp_allocator) {
 	if (is_debugger_connected()) {
 		fprintf(stderr,
@@ -672,6 +694,16 @@ int main(int argc, char* argv[]) {
 
 	switch (mode.kind) {
 	case MODE_ALL:
+		if (has_flag(mode.all.flags, FLAG_DEBUG_FAILED) && mode.all.raddbg_path.length == 0) {
+			bool result = try_find_raddbg_in_path(&mode.all.raddbg_path, &arena, &temp_arena);
+
+			if (!result) {
+				fprintf(stderr, "Failed to find 'raddbg.exe' in PATH.\n");
+				fprintf(stderr, "Try using '--raddbg-path=<path>' to provide an explicit path\.n");
+				return EXIT_FAILURE;
+			}
+		}
+
 		for (size_t suite_index = 0; suite_index < test_storage.suite_count; suite_index += 1) {
 			printf("\n --- %.*s\n\n", STR_FMT(test_storage.suites[suite_index].name));
 

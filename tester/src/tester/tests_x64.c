@@ -918,21 +918,11 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	InstrIndex return_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex region_index = instr_new_region(instr_buffer, instr_allocator);
 
-	{
-		Instr* left_operand = instr_buffer_at(instr_buffer, left_operand_index);
-		left_operand->kind = INSTR_CONST_8;
-		left_operand->const_32.u = 16;
-	}
+	Instr* left_operand = instr_buffer_at(instr_buffer, left_operand_index);
+	Instr* right_operand = instr_buffer_at(instr_buffer, right_operand_index);
+	Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
 
 	{
-		Instr* right_operand = instr_buffer_at(instr_buffer, right_operand_index);
-		right_operand->kind = INSTR_CONST_8;
-		right_operand->const_32.u = 73;
-	}
-
-	{
-		Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
-		bin_op->kind = INSTR_BIN_OP_8;
 		bin_op->bin_op.kind = INSTR_BIN_IMUL;
 		bin_op->bin_op.left = left_operand_index;
 		bin_op->bin_op.right = right_operand_index;
@@ -963,15 +953,27 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	}
 
 	// Compute live ranges
-	X64Register reg_configurations[6][4] = {
-		{ X64_REG_A, X64_REG_C, X64_REG_D, X64_REG_B }, // 0 - left_operand, 1 - right_operand, 2 - bin_op
-		{ X64_REG_C, X64_REG_A, X64_REG_D, X64_REG_B },
-		{ X64_REG_8, X64_REG_A, X64_REG_D, X64_REG_B },
+	X64Register registers[] = { X64_REG_A, X64_REG_D, X64_REG_C };
+	X64Register reg_configurations[3 * 3 * 3][4];
 
-		{ X64_REG_A, X64_REG_C, X64_REG_A, X64_REG_B },
-		{ X64_REG_C, X64_REG_A, X64_REG_A, X64_REG_B },
-		{ X64_REG_8, X64_REG_A, X64_REG_A, X64_REG_B },
-	};
+	// Generate all the permutations for the first 3 register locations.
+	// The 4 one is always `X64_REG_B`
+	uint32_t indices[3] = { 0, 0, 0 };
+	for (size_t i = 0; i < 3 * 3 * 3; i += 1) {
+		reg_configurations[i][0] = registers[indices[0]];
+		reg_configurations[i][1] = registers[indices[1]];
+		reg_configurations[i][2] = registers[indices[2]];
+		reg_configurations[i][3] = X64_REG_B;
+
+		uint32_t carry = 1;
+		carry = (indices[2] += carry) / 3;
+		carry = (indices[1] += carry) / 3;
+		carry = (indices[0] += carry) / 3;
+
+		indices[0] %= 3;
+		indices[1] %= 3;
+		indices[2] %= 3;
+	}
 
 	InstrStorageLocation* instr_storage = arena_alloc_array_zeroed(context->arena,
 			InstrStorageLocation,
@@ -983,38 +985,69 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	}
 
 	FunctionRefTable func_ref_table = {};
-	for (size_t i = 0; i < array_size(reg_configurations); i += 1) {
-		X64CodeGenerator gen = {};
-		gen.flags = X64_SKIP_REG_ALLOC | X64_PRINT_SCHEDULED_IR;
-		gen.instr_buffer = *instr_buffer;
-		gen.allocator = context->arena;
-		gen.temp_allocator = context->temp_arena;
-		gen.ref_table = &func_ref_table;
-		gen.string_consts = (StringArray) {};
-		gen.instr_storage = instr_storage;
+	for (size_t bit_count_index = 0; bit_count_index < 4; bit_count_index += 1) {
+		printf("Bit Count: %zu\n", (size_t)(1 << (bit_count_index + 3)));
 
-		{
-			instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;
-			instr_storage[left_operand_index.value].reg = reg_configurations[i][0];
+		left_operand->kind = INSTR_CONST_8 + bit_count_index;
+		right_operand->kind = INSTR_CONST_8 + bit_count_index;
+		bin_op->kind = INSTR_BIN_OP_8 + bit_count_index;
 
-			instr_storage[right_operand_index.value].kind = INSTR_STORAGE_REG;
-			instr_storage[right_operand_index.value].reg = reg_configurations[i][1];
-
-			instr_storage[bin_op_index.value].kind = INSTR_STORAGE_REG;
-			instr_storage[bin_op_index.value].reg = reg_configurations[i][2];
-
-			instr_storage[cast_index.value].kind = INSTR_STORAGE_REG;
-			instr_storage[cast_index.value].reg = reg_configurations[i][3];
+		switch (bit_count_index) {
+		case 0:
+			left_operand->const_8.u = 16;
+			right_operand->const_8.u = 9;
+			break;
+		case 1:
+			left_operand->const_16.u = 16;
+			right_operand->const_16.u = 9;
+			break;
+		case 2:
+			left_operand->const_64.u = 16;
+			right_operand->const_64.u = 9;
+			break;
+		case 3:
+			left_operand->const_64.u = 16;
+			right_operand->const_64.u = 9;
+			break;
 		}
 
-		MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
-		
-		typedef uint64_t(*Function)();
+		for (size_t i = 0; i < array_size(reg_configurations); i += 1) {
+			if (reg_configurations[i][0] == reg_configurations[i][1]) {
+				continue;
+			}
 
-		Function function = (Function)machine_code.code;
-		uint64_t result = function();
+			X64CodeGenerator gen = {};
+			gen.flags = X64_SKIP_REG_ALLOC | X64_PRINT_SCHEDULED_IR;
+			gen.instr_buffer = *instr_buffer;
+			gen.allocator = context->arena;
+			gen.temp_allocator = context->temp_arena;
+			gen.ref_table = &func_ref_table;
+			gen.string_consts = (StringArray) {};
+			gen.instr_storage = instr_storage;
 
-		assert(result == 144);
+			{
+				instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;
+				instr_storage[left_operand_index.value].reg = reg_configurations[i][0];
+
+				instr_storage[right_operand_index.value].kind = INSTR_STORAGE_REG;
+				instr_storage[right_operand_index.value].reg = reg_configurations[i][1];
+
+				instr_storage[bin_op_index.value].kind = INSTR_STORAGE_REG;
+				instr_storage[bin_op_index.value].reg = reg_configurations[i][2];
+
+				instr_storage[cast_index.value].kind = INSTR_STORAGE_REG;
+				instr_storage[cast_index.value].reg = reg_configurations[i][3];
+			}
+
+			MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
+			
+			typedef uint64_t(*Function)();
+
+			Function function = (Function)machine_code.code;
+			uint64_t result = function();
+
+			assert(result == 144);
+		}
 	}
 
 	instr_buffer_release(instr_buffer);
@@ -1066,7 +1099,6 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		region->region.last_instr = return_index;
 	}
 
-	// Compute live ranges
 	X64Register registers[] = { X64_REG_A, X64_REG_D, X64_REG_C };
 	X64Register reg_configurations[3 * 3 * 3][4];
 

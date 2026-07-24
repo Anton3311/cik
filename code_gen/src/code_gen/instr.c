@@ -400,6 +400,14 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		for (size_t i = 0; i < instr.count; i += 1) {
 			instr_global_position[instr.instr[i].value] = next_global_position;
 			next_global_position += 1;
+
+			InstrKind kind = buffer.instr[instr.instr[i].value].kind;
+			if (kind == INSTR_LOAD_ARG_8
+					|| kind == INSTR_LOAD_ARG_16
+					|| kind == INSTR_LOAD_ARG_32
+					|| kind == INSTR_LOAD_ARG_64) {
+				instr_global_position[instr.instr[i].value] = 0;
+			}
 		}
 	}
 

@@ -4,6 +4,7 @@
 #include "parser/preprocessor.h"
 #include "parser/parser.h"
 #include "code_gen/backends/x64.h"
+#include "code_gen/backends/x64_linker.h"
 
 #define DEFAULT_SOURCE_FILE_PATH "test.c"
 
@@ -63,49 +64,85 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		panic("Failed to parse");
 	}
 
+	Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
+
+	size_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-		if (node->kind == AST_NODE_FUNCTION) {
-			if (node->function_def->body == NULL) {
-				continue;
-			}
-
-			Arena symbol_arena = arena_alloc_sub_arena(context->arena, 1024);
-			Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
-
-			FunctionCompiler c = {};
-			c.function = node->function_def;
-			c.allocator = context->arena;
-			c.instr_allocator = context->arena;
-			c.temp_allocator = context->temp_arena;
-			c.pointer_type_layout = type_layout_new(8, 8);
-			c.func_ref_table.allocator = arena_allocator_new(&symbol_arena);
-			c.str_storage.allocator = arena_allocator_new(&strings_arena);
-
-			CompiledFunction func = function_compiler_compile(&c);
-			compiler_resolve_default_func_refs(&func.func_ref_table);
-
-			if (resolver) {
-				resolver(&func.func_ref_table, resolver_data);
-			}
-
-			X64CodeGenerator gen = {};
-			gen.instr_buffer = func.instr_buffer;
-			gen.allocator = context->arena;
-			gen.temp_allocator = context->temp_arena;
-			gen.ref_table = &func.func_ref_table;
-			gen.string_consts = str_storage_to_array(&c.str_storage);
-			gen.flags = X64_PRINT_SCHEDULED_IR;
-
-			MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
-
-			instr_buffer_release(&gen.instr_buffer);
-
-			return machine_code;
+		if (node->kind != AST_NODE_FUNCTION) {
+			continue;
 		}
+
+		if (node->function_def->body == NULL) {
+			continue;
+		}
+
+		function_count += 1;
 	}
 
-	panic("No function to compile");
-	return (MachineCodeBuffer) {};
+	LoweredFunction* lowered_functions = arena_alloc_array(context->arena,
+			LoweredFunction,
+			function_count);
+
+	FunctionRefTable ref_table = {};
+	ref_table.allocator = heap_allocator_new();
+
+	StringStorage string_storage = {};
+	string_storage.allocator = arena_allocator_new(&strings_arena);
+
+	size_t function_index = 0;
+	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+		if (node->kind != AST_NODE_FUNCTION) {
+			continue;
+		}
+
+		if (node->function_def->body == NULL) {
+			continue;
+		}
+
+		uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
+		ref_table.refs[ref_index].address = NULL;
+		ref_table.refs[ref_index].function_index = function_index;
+
+		FunctionCompiler c = {};
+		c.function = node->function_def;
+		c.allocator = context->arena;
+		c.instr_allocator = context->arena;
+		c.temp_allocator = context->temp_arena;
+		c.pointer_type_layout = type_layout_new(8, 8);
+		c.func_ref_table = &ref_table;
+		c.str_storage = &string_storage;
+
+		CompiledFunction func = function_compiler_compile(&c);
+
+		X64CodeGenerator gen = {};
+		gen.instr_buffer = func.instr_buffer;
+		gen.allocator = context->arena;
+		gen.temp_allocator = context->temp_arena;
+		gen.ref_table = &ref_table;
+		gen.string_consts = str_storage_to_array(&string_storage);
+		gen.flags = X64_PRINT_SCHEDULED_IR;
+
+		lowered_functions[function_index] = x64_generate_code(&gen, func.start_region);
+
+		instr_buffer_release(&gen.instr_buffer);
+		function_index += 1;
+	}
+
+	compiler_resolve_default_func_refs(&ref_table);
+
+	if (resolver) {
+		resolver(&ref_table, resolver_data);
+	}
+
+	uint16_t entry_point_id = func_ref_table_entry_index(&ref_table, STR_LIT("main"));
+	const FunctionRef* entry_point_ref = &ref_table.refs[entry_point_id];
+
+	assert_msg(entry_point_ref->address == NULL, "Entry point not found");
+
+	LinkedProgram linked = linker_link(lowered_functions, function_count, &ref_table, context->arena);
+	MachineCodeBuffer machine_code = linked.machine_code;
+
+	return machine_code;
 }
 
 static MachineCodeBuffer _compile(TestContext* context, String source_code) {
@@ -868,6 +905,11 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	}
 
 	FunctionRefTable func_ref_table = {};
+	func_ref_table.allocator = panic_allocator_new();
+
+	StringStorage string_storage = {};
+	string_storage.allocator = panic_allocator_new();
+
 	for (size_t i = 0; i < array_size(reg_configurations); i += 1) {
 		X64CodeGenerator gen = {};
 		gen.flags = X64_SKIP_REG_ALLOC | X64_PRINT_SCHEDULED_IR;
@@ -875,7 +917,7 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.ref_table = &func_ref_table;
-		gen.string_consts = (StringArray) {};
+		gen.string_consts = str_storage_to_array(&string_storage);
 		gen.instr_storage = instr_storage;
 
 		{
@@ -889,7 +931,11 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			instr_storage[bin_op_index.value].reg = reg_configurations[i][2];
 		}
 
-		MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
+		LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+		MachineCodeBuffer machine_code = linker_link(
+				&lowered_function, 1,
+				&func_ref_table,
+				context->arena).machine_code;
 		
 		typedef uint64_t(*Function)();
 
@@ -985,6 +1031,11 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	}
 
 	FunctionRefTable func_ref_table = {};
+	func_ref_table.allocator = panic_allocator_new();
+
+	StringStorage string_storage = {};
+	string_storage.allocator = panic_allocator_new();
+
 	for (size_t bit_count_index = 0; bit_count_index < 4; bit_count_index += 1) {
 		printf("Bit Count: %zu\n", (size_t)(1 << (bit_count_index + 3)));
 
@@ -1022,7 +1073,7 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func_ref_table;
-			gen.string_consts = (StringArray) {};
+			gen.string_consts = str_storage_to_array(&string_storage);
 			gen.instr_storage = instr_storage;
 
 			{
@@ -1039,7 +1090,11 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 				instr_storage[cast_index.value].reg = reg_configurations[i][3];
 			}
 
-			MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
+			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			MachineCodeBuffer machine_code = linker_link(
+					&lowered_function, 1,
+					&func_ref_table,
+					context->arena).machine_code;
 			
 			typedef uint64_t(*Function)();
 
@@ -1187,7 +1242,11 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 				instr_storage[cast_index.value].reg = reg_configurations[i][3];
 			}
 
-			MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
+			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			MachineCodeBuffer machine_code = linker_link(
+					&lowered_function, 1,
+					&func_ref_table,
+					context->arena).machine_code;
 			
 			typedef uint64_t(*Function)();
 
@@ -1336,7 +1395,11 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 				instr_storage[cast_index.value].reg = reg_configurations[i][3];
 			}
 
-			MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
+			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			MachineCodeBuffer machine_code = linker_link(
+					&lowered_function, 1,
+					&func_ref_table,
+					context->arena).machine_code;
 			
 			typedef uint64_t(*Function)();
 
@@ -1429,6 +1492,11 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 	}
 
 	FunctionRefTable func_ref_table = {};
+	func_ref_table.allocator = panic_allocator_new();
+
+	StringStorage string_storage = {};
+	string_storage.allocator = panic_allocator_new();
+
 	for (size_t bit_count_index = 0; bit_count_index < 4; bit_count_index += 1) {
 		printf("Bit Count: %zu\n", (size_t)(1 << (bit_count_index + 3)));
 
@@ -1468,7 +1536,7 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
 			gen.ref_table = &func_ref_table;
-			gen.string_consts = (StringArray) {};
+			gen.string_consts = str_storage_to_array(&string_storage);
 			gen.instr_storage = instr_storage;
 
 			{
@@ -1485,7 +1553,11 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 				instr_storage[cast_index.value].reg = reg_configurations[i][3];
 			}
 
-			MachineCodeBuffer machine_code = x64_generate_code(&gen, region_index);
+			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			MachineCodeBuffer machine_code = linker_link(
+					&lowered_function, 1,
+					&func_ref_table,
+					context->arena).machine_code;
 			
 			typedef uint64_t(*Function)();
 

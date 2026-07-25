@@ -6,6 +6,7 @@
 typedef struct {
 	String name;
 	const void* address;
+	size_t function_index;
 } FunctionRef;
 
 // Supports only insertion and lookup

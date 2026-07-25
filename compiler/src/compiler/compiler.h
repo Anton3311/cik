@@ -75,8 +75,8 @@ typedef struct {
 
 	TypeLayout pointer_type_layout;
 
-	StringStorage str_storage;
-	FunctionRefTable func_ref_table;
+	StringStorage* str_storage;
+	FunctionRefTable* func_ref_table;
 
 	AstNode* current_loop;
 	LoopControlStmt* current_loop_control_stmts;

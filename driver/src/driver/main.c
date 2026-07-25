@@ -7,6 +7,7 @@
 #include "parser/parser.h"
 #include "compiler/compiler.h"
 #include "code_gen/backends/x64.h"
+#include "code_gen/backends/x64_linker.h"
 
 static bool enum_installed_win_sdks(String sdk_install_path,
 		Arena* allocator,
@@ -167,50 +168,94 @@ int main(int argc, char *argv[]) {
 			return EXIT_FAILURE;
 		}
 
+		size_t function_count = 0;
 		for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-			if (node->kind == AST_NODE_FUNCTION) {
-				if (node->function_def->body == NULL) {
-					continue;
-				}
-
-				FunctionCompiler c = {};
-				c.function = node->function_def;
-				c.allocator = &arena;
-				c.instr_allocator = &arena;
-				c.temp_allocator = &temp_arena;
-				c.pointer_type_layout = type_layout_new(8, 8);
-				c.func_ref_table.allocator = heap_allocator_new();
-				c.str_storage.allocator = heap_allocator_new();
-
-				CompiledFunction func = function_compiler_compile(&c);
-				compiler_resolve_default_func_refs(&func.func_ref_table);
-
-				X64CodeGenerator gen = {};
-				gen.flags = backend_flags;
-				gen.instr_buffer = func.instr_buffer;
-				gen.allocator = &arena;
-				gen.temp_allocator = &temp_arena;
-				gen.ref_table = &func.func_ref_table;
-				gen.string_consts = str_storage_to_array(&c.str_storage);
-
-				MachineCodeBuffer machine_code = x64_generate_code(&gen, func.start_region);
-
-				instr_buffer_release(&gen.instr_buffer);
-				// Free function symbol table
-				func_ref_table_release(&func.func_ref_table);
-				// Free string storage
-				str_storage_release(&c.str_storage);
-
-				typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
-				ExecutableFunction executable_function = (ExecutableFunction)machine_code.code;
-
-				uint64_t result = executable_function(argc, argv);
-
-				free_executable(machine_code.code, machine_code.size_in_bytes);
-
-				printf("%llu\n", result);
+			if (node->kind != AST_NODE_FUNCTION) {
+				continue;
 			}
+
+			if (node->function_def->body == NULL) {
+				continue;
+			}
+
+			function_count += 1;
 		}
+
+		LoweredFunction* lowered_functions = arena_alloc_array(&arena,
+				LoweredFunction,
+				function_count);
+
+		FunctionRefTable ref_table = {};
+		ref_table.allocator = heap_allocator_new();
+
+		StringStorage string_storage = {};
+		string_storage.allocator = heap_allocator_new();
+
+		size_t function_index = 0;
+		for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+			if (node->kind != AST_NODE_FUNCTION) {
+				continue;
+			}
+
+			if (node->function_def->body == NULL) {
+				continue;
+			}
+
+			uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
+			ref_table.refs[ref_index].address = NULL;
+			ref_table.refs[ref_index].function_index = function_index;
+
+			FunctionCompiler c = {};
+			c.function = node->function_def;
+			c.allocator = &arena;
+			c.instr_allocator = &arena;
+			c.temp_allocator = &temp_arena;
+			c.str_storage = &string_storage;
+			c.func_ref_table = &ref_table;
+			c.pointer_type_layout = type_layout_new(8, 8);
+
+			CompiledFunction func = function_compiler_compile(&c);
+
+			X64CodeGenerator gen = {};
+			gen.flags = backend_flags;
+			gen.instr_buffer = func.instr_buffer;
+			gen.allocator = &arena;
+			gen.temp_allocator = &temp_arena;
+			gen.ref_table = &ref_table;
+			gen.string_consts = str_storage_to_array(c.str_storage);
+
+			lowered_functions[function_index] = x64_generate_code(&gen, func.start_region);
+
+			instr_buffer_release(&gen.instr_buffer);
+			function_index += 1;
+		}
+
+		compiler_resolve_default_func_refs(&ref_table);
+
+		uint16_t entry_point_id = func_ref_table_entry_index(&ref_table, STR_LIT("main"));
+		const FunctionRef* entry_point_ref = &ref_table.refs[entry_point_id];
+
+		assert(entry_point_ref->address == NULL);
+
+		LinkedProgram linked = linker_link(lowered_functions, function_count, &ref_table, &temp_arena);
+		MachineCodeBuffer machine_code = linked.machine_code;
+
+		size_t entry_point_offset = linked .function_offsets[entry_point_ref->function_index];
+		void* entry_point_address = (uint8_t*)machine_code.code + entry_point_offset;
+
+		typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
+		ExecutableFunction entry_point = (ExecutableFunction)entry_point_address;
+
+		uint64_t result = entry_point(argc, argv);
+
+		free_executable(machine_code.code, machine_code.size_in_bytes);
+
+		printf("%llu\n", result);
+
+		// Free function symbol table
+		func_ref_table_release(&ref_table);
+		// Free string storage
+		str_storage_release(&string_storage);
 
 		ident_storage_release(&ident_storage);
 

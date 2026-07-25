@@ -702,7 +702,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 		String func_name = callable->function_ref.func->proto.name;
 		call_instr->call_indirect.function_index = func_ref_table_get_or_insert(
-				&compiler->func_ref_table,
+				compiler->func_ref_table,
 				func_name);
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
@@ -737,7 +737,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 	}
 	case EXPR_STRING_LITERAL: {
 		String string = expr->string_literal.full_string;
-		uint32_t string_id = str_storage_append(&compiler->str_storage, string);
+		uint32_t string_id = str_storage_append(compiler->str_storage, string);
 
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, instr_index);
@@ -2020,7 +2020,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	CompiledFunction compiled_function;
 	compiled_function.instr_buffer = compiler->instr_buffer;
 	compiled_function.start_region = region;
-	compiled_function.func_ref_table = compiler->func_ref_table;
 
 	profile_scope_end();
 	return compiled_function;

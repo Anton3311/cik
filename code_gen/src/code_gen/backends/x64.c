@@ -1595,6 +1595,20 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 		_emit_load_const_64(buffer, X64_REG_A, (uint64_t)ref->address);
 
+		{
+			assert(gen->call_addr_placeholder_count < gen->call_addr_placeholder_capacity);
+			size_t index = gen->call_addr_placeholder_count;
+			gen->call_addr_placeholder_count += 1;
+
+			CallAddressPlaceholder* addr_placeholder = &gen->call_addr_placeholders[index];
+			addr_placeholder->instruction_end_offset = buffer->size;
+			addr_placeholder->addr_offset = buffer->size - 8;
+			addr_placeholder->function_index = instr->call_indirect.function_index;
+			addr_placeholder->kind = CALL_ADDR_ABSOLUTE;
+
+			gen->call_addr_placeholder_regions[index] = region_id;
+		}
+
 		// push shadow space
 		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
 
@@ -2563,7 +2577,7 @@ static InstrIndexArray _gather_scheduled_regions(X64CodeGenerator* gen, InstrInd
 	return regions;
 }
 
-MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
+LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region) {
 	profile_scope_start(__func__);
 
 	_init_storage_requiremenets();
@@ -2577,8 +2591,10 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 			gen->temp_allocator,
 			gen->allocator);
 
+#if 0
 	bool validation_result = _x64_validate(gen);
 	assert(validation_result);
+#endif
 
 	_merge_string_consts(gen);
 
@@ -2659,6 +2675,35 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		_run_reg_allocator(gen);
 	}
 
+	gen->call_addr_placeholders = NULL;
+	gen->call_addr_placeholder_count = 0;
+	gen->call_addr_placeholder_capacity = 0;
+
+	for (size_t i = 0; i < scheduled_regions.count; i += 1) {
+		const InstrBuffer* instr_buffer = &gen->instr_buffer;
+
+		InstrIndex region_instr = scheduled_regions.instr[i];
+		const Instr* instr = &gen->instr_buffer.instr[region_instr.value];
+
+		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
+		for (size_t j = 0; j < scheduled.count; j++) {
+			InstrIndex instr_index = scheduled.instr[j];
+			const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+			if (instr->kind == INSTR_CALL_INDIRECT) {
+				gen->call_addr_placeholder_capacity += 1;
+			}
+		}
+	}
+
+	gen->call_addr_placeholders = arena_alloc_array(gen->allocator,
+			CallAddressPlaceholder,
+			gen->call_addr_placeholder_capacity);
+
+	gen->call_addr_placeholder_regions = arena_alloc_array(gen->temp_allocator,
+			uint16_t,
+			gen->call_addr_placeholder_capacity);
+
 	uint16_t region_count = gen->instr_buffer.region_count;
 	gen->per_region_code_buffer = arena_alloc_array_zeroed(gen->temp_allocator,
 			CodeBuffer,
@@ -2695,7 +2740,21 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		final_code_size += control_instr_size[region_id];
 	}
 
-	void* executable_memory = allocate_executable(final_code_size);
+	// Correct call address placeholders, now that we have a clear idea of where each block will be
+	// located in the memory.
+	//
+	// When these placeholder were just being created, all the offsets were relative to the block.
+	// However, in order to compute the relative offsets for the call instructions, we need these
+	// offsets to be relative to the whole program.
+	for (size_t i = 0; i < gen->call_addr_placeholder_count; i += 1) {
+		uint16_t placeholder_region_id = gen->call_addr_placeholder_regions[i];
+
+		size_t block_offset = code_block_offsets[placeholder_region_id];
+		gen->call_addr_placeholders[i].instruction_end_offset += block_offset;
+		gen->call_addr_placeholders[i].addr_offset += block_offset;
+	}
+
+	uint8_t* final_code = arena_alloc_aligned(gen->allocator, final_code_size, 16);
 	for (uint16_t i = 0; i < scheduled_regions.count; i += 1) {
 		InstrBuffer* instr_buffer = &gen->instr_buffer;
 
@@ -2705,13 +2764,13 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 		size_t block_size = gen->per_region_code_buffer[region_id].size;
 		size_t block_offset = code_block_offsets[region_id];
 
-		memcpy((uint8_t*)executable_memory + block_offset,
+		memcpy(final_code + block_offset,
 				gen->per_region_code_buffer[region_id].buffer,
 				block_size);
 
 		CodeBuffer control_instr_buffer = {};
 		code_buffer_wrap(&control_instr_buffer,
-				(uint8_t*)executable_memory + block_offset + block_size,
+				final_code + block_offset + block_size,
 				control_instr_size[region_id]);
 
 		_encode_control_instr(
@@ -2728,9 +2787,11 @@ MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_regio
 	size_t entry_point_offset = code_block_offsets[instr_region_id(instr_buffer, root_region)];
 	assert(entry_point_offset == 0);
 
-	MachineCodeBuffer machine_code;
-	machine_code.code = executable_memory;
+	LoweredFunction machine_code;
+	machine_code.code = final_code;
 	machine_code.size_in_bytes = final_code_size;
+	machine_code.call_addr_placeholder_count = gen->call_addr_placeholder_count;
+	machine_code.call_addr_placeholders = gen->call_addr_placeholders;
 
 	arena_end_temp(temp);
 	profile_scope_end();

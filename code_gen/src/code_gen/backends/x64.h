@@ -54,6 +54,25 @@ typedef struct {
 	};
 } InstrStorageLocation;
 
+typedef enum {
+	CALL_ADDR_ABSOLUTE,
+	CALL_ADDR_RELATIVE,
+} CallAddressKind;
+
+typedef struct {
+	// At which byte offset does, the instruction requiring the function address end.
+	//
+	// This is required, because calls use relative offsets from the end of the call instruction.
+	size_t instruction_end_offset;
+
+	// At which offset in the code, does the address value appear.
+	size_t addr_offset;
+
+	CallAddressKind kind;
+
+	uint8_t function_index;
+} CallAddressPlaceholder;
+
 typedef struct {
 	X64BackendFlags flags;
 
@@ -96,6 +115,15 @@ typedef struct {
 	// All the string constants used in the source code, are turned into null-terminated strings
 	// and then stored sequentionally in this buffer.
 	char* merged_strings_buffer;
+
+	CallAddressPlaceholder* call_addr_placeholders;
+	size_t call_addr_placeholder_count;
+	size_t call_addr_placeholder_capacity;
+
+	// Stores the region id, where this palceholder was generated. Later used to transform the
+	// offsets from code buffer/region local to global offsets (offsets in the buffer where all the
+	// code from all regions is merged together).
+	uint16_t* call_addr_placeholder_regions;
 } X64CodeGenerator;
 
 typedef struct {
@@ -103,7 +131,15 @@ typedef struct {
 	size_t size_in_bytes;
 } MachineCodeBuffer;
 
-MachineCodeBuffer x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
+typedef struct {
+	const void* code;
+	size_t size_in_bytes;
+
+	CallAddressPlaceholder* call_addr_placeholders;
+	size_t call_addr_placeholder_count;
+} LoweredFunction;
+
+LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
 
 //
 // Internal

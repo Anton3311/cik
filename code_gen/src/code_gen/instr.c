@@ -247,6 +247,8 @@ InstrIndex instr_new_return_value(InstrBuffer* buffer,
 	instr->kind = INSTR_RETURN_VALUE;
 	instr->return_value.value = value;
 	instr->return_value.io_state = *io_state;
+
+	*io_state = INVALID_INSTR_INDEX;
 	return i;
 }
 
@@ -258,6 +260,8 @@ InstrIndex instr_new_return(InstrBuffer* buffer, Arena* allocator, InstrIndex* i
 	Instr* instr = instr_buffer_at(buffer, i);
 	instr->kind = INSTR_RET;
 	instr->ret.io_state = *io_state;
+
+	*io_state = INVALID_INSTR_INDEX;
 	return i;
 }
 

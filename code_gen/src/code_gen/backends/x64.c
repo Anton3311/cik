@@ -9,6 +9,28 @@ inline uint8_t _bit_count_from_index(uint8_t i) {
 static bool s_instr_storage_requiremenets_initialized = false;
 X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT];
 
+static X64Register CDECL_CALLER_SAVED[] = {
+	X64_REG_A,
+	X64_REG_C,
+	X64_REG_D,
+	X64_REG_8,
+	X64_REG_9,
+	X64_REG_10,
+	X64_REG_11
+};
+
+static X64Register CDECL_CALLEE_SAVED[] = {
+	X64_REG_B,
+	X64_REG_BP,
+	X64_REG_DI,
+	X64_REG_SI,
+	X64_REG_SP,
+	X64_REG_12,
+	X64_REG_13,
+	X64_REG_14,
+	X64_REG_15,
+};
+
 static void _init_storage_requiremenets() {
 	if (s_instr_storage_requiremenets_initialized) {
 		return;
@@ -1051,6 +1073,22 @@ void _emit_bitwise_shift(CodeBuffer* buffer,
 	}
 }
 
+static void _save_callee_saved_regs(CodeBuffer* buffer) {
+	for (size_t i = 0; i < array_size(CDECL_CALLEE_SAVED); i += 1) {
+		encode_1(buffer, MNEMONIC_PUSH, operand_reg(CDECL_CALLEE_SAVED[i], 64));
+	}
+
+	_emit_sub_rsp(buffer, 8);
+}
+
+static void _restore_callee_saved_regs(CodeBuffer* buffer) {
+	_emit_add_rsp(buffer, 8);
+
+	for (size_t i = array_size(CDECL_CALLEE_SAVED); i > 0; i -= 1) {
+		encode_1(buffer, MNEMONIC_POP, operand_reg(CDECL_CALLEE_SAVED[i - 1], 64));
+	}
+}
+
 static void _lower_instr(X64CodeGenerator* gen,
 		InstrIndex instr_index,
 		uint16_t region_id,
@@ -1498,11 +1536,15 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 
+		_restore_callee_saved_regs(buffer);
+
 		// Don't need to generate a `ret` instruction, since it is done later when the control
 		// instructions at the end of each code block are generated
 		return;
 	}
 	case INSTR_RET:
+		_restore_callee_saved_regs(buffer);
+
 		// Don't need to generate a `ret` instruction, since it is done later when the control
 		// instructions at the end of each code block are generated
 		return;
@@ -1515,23 +1557,13 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 		const uint32_t SHADOW_SPACE_SIZE = 32;
 
-		X64Register saved_registers[] = {
-			X64_REG_A,
-			X64_REG_C,
-			X64_REG_D,
-			X64_REG_8,
-			X64_REG_9,
-			X64_REG_10,
-			X64_REG_11,
-		};
-
 		InstrInputs args = instr->call_indirect.args;
 
 		// Push saved registers
-		for (size_t i = 0; i < array_size(saved_registers); i += 1) {
+		for (size_t i = 0; i < array_size(CDECL_CALLER_SAVED); i += 1) {
 			encode_1(buffer,
 					MNEMONIC_PUSH,
-					operand_reg(saved_registers[i], 64));
+					operand_reg(CDECL_CALLER_SAVED[i], 64));
 		}
 
 		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
@@ -1622,9 +1654,9 @@ static void _lower_instr(X64CodeGenerator* gen,
 		_emit_mov_regs(buffer, X64_REG_A, instr_storage.reg, 64);
 
 		// Pop saved registers in reverse order
-		for (size_t i = array_size(saved_registers); i > 0; i -= 1) {
+		for (size_t i = array_size(CDECL_CALLER_SAVED); i > 0; i -= 1) {
 
-			X64Register reg = saved_registers[i - 1];
+			X64Register reg = CDECL_CALLER_SAVED[i - 1];
 			bool should_restore = instr_storage.reg != reg;
 			if (should_restore) {
 				encode_1(buffer,
@@ -2715,6 +2747,10 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 
 		CodeBuffer* code_buffer = &gen->per_region_code_buffer[instr->region.id];
 		code_buffer_init(code_buffer, gen->temp_allocator);
+
+		if (region_instr.value == root_region.value) {
+			_save_callee_saved_regs(code_buffer);
+		}
 
 		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];
 		for (size_t j = 0; j < scheduled.count; j += 1) {

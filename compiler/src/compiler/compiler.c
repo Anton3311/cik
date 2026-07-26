@@ -2002,8 +2002,8 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			assert(region_instr->region.last_instr.value == INVALID_INSTR_INDEX.value);
 			assert_msg(compiler->io_state.value != INVALID_INSTR_INDEX.value,
 					"The final region of the function is still unifinished, "
-					"which means the `io_state` must still be valid, util it "
-					"gets by a control instruction");
+					"which means the `io_state` must still be valid, until it "
+					"gets consumed by a control instruction");
 
 			InstrIndex final_return_index = instr_new_return(instr_buffer,
 					instr_allocator,

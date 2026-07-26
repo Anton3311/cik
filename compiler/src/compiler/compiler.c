@@ -1701,6 +1701,8 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 							instr_allocator,
 							post_branch_region_index,
 							&compiler->io_state);
+				} else if (compiler->io_state.value == INVALID_INSTR_INDEX.value) {
+					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 				}
 
 				compiler->var_values = var_values_for_false_path;
@@ -1720,6 +1722,8 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 							instr_allocator,
 							post_branch_region_index,
 							&compiler->io_state);
+				} else if (compiler->io_state.value == INVALID_INSTR_INDEX.value) {
+					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 				}
 
 				const Scope* if_parent_scope = node->parent_scope;

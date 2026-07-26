@@ -3020,7 +3020,13 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 
 	{
 		ident_storage_begin_scope(parser->ident_storage);
+
+		Scope* true_node_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+		true_node_scope->id = parser->ident_storage->current_scope->id;
+
 		true_node = _parser_parse_single_node(parser, true_node_token);
+		true_node->parent_scope = true_node_scope;
+
 		ident_storage_end_scope(parser->ident_storage);
 	}
 
@@ -3041,7 +3047,14 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 
 		{
 			ident_storage_begin_scope(parser->ident_storage);
+
+			Scope* false_node_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+			false_node_scope->id = parser->ident_storage->current_scope->id;
+
 			false_node = _parser_parse_single_node(parser, false_node_token);
+
+			false_node->parent_scope = false_node_scope;
+
 			ident_storage_end_scope(parser->ident_storage);
 		}
 

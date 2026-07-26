@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-void assert(uint64_t);
-void panic(const char*);
+extern void assert(uint64_t);
+extern void panic(const char*);
 
 int main(int argc, char* argv[]) {
 	int initial_argc = argc;

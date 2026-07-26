@@ -99,6 +99,7 @@ typedef enum {
 	INSTR_SELECT,
 
 	INSTR_CALL_INDIRECT,
+	INSTR_CALL_DIRECT,
 
 	INSTR_COUNT,
 } InstrKind;
@@ -266,10 +267,14 @@ struct Instr {
 		} io_state;
 
 		struct {
+			uint8_t function_index;
+		} load_function_addr;
+
+		struct {
 			InstrInputs args;
 			InstrIndex io_state;
 			uint16_t function_index;
-		} call_indirect;
+		} call;
 
 		struct {
 			uint16_t id;

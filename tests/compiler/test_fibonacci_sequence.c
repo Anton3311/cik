@@ -1,8 +1,8 @@
 #include <stdint.h>
 
-void assert(uint64_t);
-int* malloc(size_t);
-void free(int*);
+extern void assert(uint64_t);
+extern int* malloc(size_t);
+extern void free(int*);
 
 int main(int argc, char* argv[]) {
 	int i = 0;

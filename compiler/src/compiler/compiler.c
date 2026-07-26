@@ -694,16 +694,20 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 			instr_buffer->inputs_buffer[arg_inputs.start + i] = arg_instr;
 		}
 
-		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
-		call_instr->kind = INSTR_CALL_INDIRECT;
-		call_instr->call_indirect.args = arg_inputs;
-		call_instr->call_indirect.io_state = compiler->io_state;
+		const Function* func = callable->function_ref.func;
+		bool is_indirect_call = func->storage_specifier == STORAGE_SPEC_EXTERNAL;
 
-		String func_name = callable->function_ref.func->proto.name;
-		call_instr->call_indirect.function_index = func_ref_table_get_or_insert(
+		String func_name = func->proto.name;
+		uint8_t function_index = func_ref_table_get_or_insert(
 				compiler->func_ref_table,
 				func_name);
+
+		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
+		call_instr->kind = is_indirect_call ? INSTR_CALL_INDIRECT : INSTR_CALL_DIRECT;
+		call_instr->call.args = arg_inputs;
+		call_instr->call.io_state = compiler->io_state;
+		call_instr->call.function_index = function_index;
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		profile_scope_end();

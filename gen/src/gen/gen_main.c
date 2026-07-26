@@ -181,6 +181,8 @@ static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 		return STR_LIT("load_arg");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_BITWISE_NOT_"))) {
 		return STR_LIT("bitwise_not");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_CALL_"))) {
+		return STR_LIT("call");
 	}
 
 	return str_to_lower(

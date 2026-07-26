@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-void assert(uint64_t);
+extern void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
 	assert((0b101i8 << 3i8) == 0b101000i8);

@@ -2,8 +2,8 @@
 
 #define NULL ((void*)0)
 
-void printf(const char*, ...);
-void assert(uint64_t);
+extern void printf(const char*, ...);
+extern void assert(uint64_t);
 
 int strcmp(const char* a, const char* b) {
 

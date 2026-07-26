@@ -1,4 +1,4 @@
-void panic(const char*);
+extern void panic(const char*);
 
 int main(int argc, char* argv[]) {
 	if (10) {

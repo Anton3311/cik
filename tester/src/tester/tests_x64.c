@@ -410,9 +410,9 @@ static void _resolve_symbols_for_call_inside_inner_scope(FunctionRefTable* table
 void test_call_inside_inner_scope(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"void store_1(uint64_t* out);\n"
-			"void store_2(uint64_t* out);\n"
-			"void store_3(uint64_t* out);\n"
+			"extern void store_1(uint64_t* out);\n"
+			"extern void store_2(uint64_t* out);\n"
+			"extern void store_3(uint64_t* out);\n"
 			"uint64_t main(uint64_t* out) {\n"
 			"    store_1(out + 0);\n"
 			"    {\n"
@@ -444,9 +444,9 @@ void test_call_inside_inner_scope(TestContext* context) {
 void test_conditional_call_1(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"void store_1(uint64_t* out);\n"
-			"void store_2(uint64_t* out);\n"
-			"void store_3(uint64_t* out);\n"
+			"extern void store_1(uint64_t* out);\n"
+			"extern void store_2(uint64_t* out);\n"
+			"extern void store_3(uint64_t* out);\n"
 			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
 			"    if (cond == 1) {\n"
 			"        store_1(out);\n"
@@ -474,9 +474,9 @@ void test_conditional_call_1(TestContext* context) {
 void test_conditional_call_2(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"void store_1(uint64_t* out);\n"
-			"void store_2(uint64_t* out);\n"
-			"void store_3(uint64_t* out);\n"
+			"extern void store_1(uint64_t* out);\n"
+			"extern void store_2(uint64_t* out);\n"
+			"extern void store_3(uint64_t* out);\n"
 			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
 			"    if (cond == 1) {\n"
 			"        store_1(out);\n"
@@ -505,10 +505,10 @@ void test_conditional_call_2(TestContext* context) {
 static MachineCodeBuffer _compile_conditional_call_between_two_calls(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"void store_1(uint64_t* out);\n"
-			"void store_2(uint64_t* out);\n"
-			"void store_3(uint64_t* out);\n"
-			"void store_4(uint64_t* out);\n"
+			"extern void store_1(uint64_t* out);\n"
+			"extern void store_2(uint64_t* out);\n"
+			"extern void store_3(uint64_t* out);\n"
+			"extern void store_4(uint64_t* out);\n"
 			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
 			"    store_1(out + 0);"
 			"    if (cond == 1) {\n"
@@ -1583,7 +1583,7 @@ static void _resolve_memory_operation_symbols(FunctionRefTable* table, void* dat
 void test_memory_operations_are_synchronized_with_calls(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"uint64_t store(uint64_t* out);\n"
+			"extern uint64_t store(uint64_t* out);\n"
 			"uint64_t main(uint64_t* out) {\n"
 			"    uint64_t value = *out;\n"
 			"    store(out);\n"
@@ -1628,7 +1628,7 @@ void test_ptr_store_instr(TestContext* context) {
 void test_ptr_store_synced_with_calls(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"uint64_t store(uint64_t* out);\n"
+			"extern uint64_t store(uint64_t* out);\n"
 			"uint64_t main(uint64_t* out) {\n"
 			"    store(out);\n"
 			"    *out = 100;\n"

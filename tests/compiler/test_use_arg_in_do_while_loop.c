@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-void assert(uint64_t);
+extern void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
 	int iter_count = 0;

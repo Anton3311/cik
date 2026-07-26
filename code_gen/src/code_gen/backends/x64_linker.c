@@ -37,7 +37,7 @@ LinkedProgram linker_link(const LoweredFunction* functions,
 
 			CallAddressPlaceholder placeholder = func->call_addr_placeholders[placeholder_index];
 			
-			uint64_t instruction_end_offset = (uint64_t)placeholder.addr_offset + (uint64_t)function_offset;
+			uint64_t instruction_end_offset = (uint64_t)placeholder.instruction_end_offset + (uint64_t)function_offset;
 
 			const FunctionRef* callee = &ref_table->refs[placeholder.function_index];
 			uint64_t callee_address;

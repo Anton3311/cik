@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-void assert(uint64_t);
+extern void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
 	assert(20ui8 / 8ui8 == 2ui8);

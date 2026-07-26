@@ -1,4 +1,4 @@
-void assert(unsigned long long);
+extern void assert(unsigned long long);
 
 typedef enum {
 	zero,

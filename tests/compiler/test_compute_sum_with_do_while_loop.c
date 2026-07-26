@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-void assert(uint64_t);
-void printf(const char*, ...);
+extern void assert(uint64_t);
+extern void printf(const char*, ...);
 
 int main(int argc, char* argv[]) {
 	int i = 0;

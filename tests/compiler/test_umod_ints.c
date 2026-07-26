@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-void assert(uint64_t predicate);
+extern void assert(uint64_t predicate);
 
 int main(int argc, char* argv[]) {
 	assert(20ui8 % 3ui8 == 2ui8);

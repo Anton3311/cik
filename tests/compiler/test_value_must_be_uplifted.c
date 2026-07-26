@@ -1,7 +1,7 @@
 typedef unsigned long long uint64_t;
 
-uint64_t identity(uint64_t);
-void assert(uint64_t);
+extern uint64_t identity(uint64_t);
+extern void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
 	uint64_t cond = 10;

@@ -1876,29 +1876,6 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 	}
 }
 
-static bool _x64_validate(X64CodeGenerator* gen) {
-	profile_scope_start(__func__);
-
-	bool result = true;
-
-	// Validate symbols
-	assert(gen->ref_table);
-
-	const FunctionRefTable* ref_table = gen->ref_table;
-	for (uint16_t i = 0; i < ref_table->size; i += 1) {
-		const FunctionRef* ref = &ref_table->refs[i];
-
-		if (ref->address == NULL) {
-			printf("unresolved function symbol %.*s\n", STR_FMT(ref->name));
-			result = false;
-		}
-	}
-
-	profile_scope_end();
-	return result;
-}
-
-
 static void _merge_string_consts(X64CodeGenerator* gen) {
 	profile_scope_start(__func__);
 
@@ -2638,11 +2615,6 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 			// Only used within the backend -> can use `temp_allocator` as a persistent
 			gen->temp_allocator,
 			gen->allocator);
-
-#if 0
-	bool validation_result = _x64_validate(gen);
-	assert(validation_result);
-#endif
 
 	_merge_string_consts(gen);
 

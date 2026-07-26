@@ -204,8 +204,8 @@ int main(int argc, char *argv[]) {
 			}
 
 			uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
-			ref_table.refs[ref_index].address = NULL;
-			ref_table.refs[ref_index].function_index = function_index;
+			ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
+			ref_table.refs[ref_index].internal_function_index = function_index;
 
 			FunctionCompiler c = {};
 			c.function = node->function_def;
@@ -237,12 +237,12 @@ int main(int argc, char *argv[]) {
 		uint16_t entry_point_id = func_ref_table_entry_index(&ref_table, STR_LIT("main"));
 		const FunctionRef* entry_point_ref = &ref_table.refs[entry_point_id];
 
-		assert(entry_point_ref->address == NULL);
+		assert(entry_point_ref->impl_kind == FUNCTION_IMPL_INTERNAL);
 
 		LinkedProgram linked = linker_link(lowered_functions, function_count, &ref_table, &temp_arena);
 		MachineCodeBuffer machine_code = linked.machine_code;
 
-		size_t entry_point_offset = linked .function_offsets[entry_point_ref->function_index];
+		size_t entry_point_offset = linked.function_offsets[entry_point_ref->internal_function_index];
 		void* entry_point_address = (uint8_t*)machine_code.code + entry_point_offset;
 
 		typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);

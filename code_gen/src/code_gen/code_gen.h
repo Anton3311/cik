@@ -3,10 +3,21 @@
 
 #include "core/core.h"
 
+typedef enum {
+	FUNCTION_IMPL_NONE,
+	FUNCTION_IMPL_INTERNAL,
+	FUNCTION_IMPL_EXTERNAL,
+} FunctionImplKind;
+
 typedef struct {
 	String name;
-	const void* address;
-	size_t function_index;
+	
+	FunctionImplKind impl_kind;
+
+	union {
+		const void* external_address;
+		size_t internal_function_index;
+	};
 } FunctionRef;
 
 // Supports only insertion and lookup

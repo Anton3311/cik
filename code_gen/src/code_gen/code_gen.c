@@ -24,12 +24,13 @@ bool func_ref_table_resolve_ref_to(FunctionRefTable* table, String name, void* i
 	}
 
 	FunctionRef* ref = &table->refs[entry_index];
-	if (ref->address != NULL) {
+	if (ref->external_address != NULL) {
 		profile_scope_end();
 		return false;
 	}
 
-	ref->address = impl_address;
+	ref->impl_kind = FUNCTION_IMPL_EXTERNAL;
+	ref->external_address = impl_address;
 	profile_scope_end();
 	return true;
 }
@@ -64,7 +65,7 @@ uint16_t func_ref_table_insert(FunctionRefTable* table, String name) {
 	table->size += 1;
 
 	ref->name = name;
-	ref->address = NULL;
+	ref->external_address = NULL;
 	profile_scope_end();
 	return id;
 }

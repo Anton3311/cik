@@ -41,10 +41,16 @@ LinkedProgram linker_link(const LoweredFunction* functions,
 
 			const FunctionRef* callee = &ref_table->refs[placeholder.function_index];
 			uint64_t callee_address;
-			if (callee->address == NULL) {
-				callee_address = (uint64_t)machine_code.code + function_offsets[callee->function_index];
-			} else {
-				callee_address = (uint64_t)callee->address;
+
+			switch (callee->impl_kind) {
+			case FUNCTION_IMPL_INTERNAL:
+				callee_address = (uint64_t)machine_code.code + function_offsets[callee->internal_function_index];
+				break;
+			case FUNCTION_IMPL_EXTERNAL:
+				callee_address = (uint64_t)callee->external_address;
+				break;
+			case FUNCTION_IMPL_NONE:
+				unreachable();
 			}
 
 			void* addr_offset = (uint8_t*)function_offset + placeholder.addr_offset;

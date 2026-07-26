@@ -100,8 +100,8 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		}
 
 		uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
-		ref_table.refs[ref_index].address = NULL;
-		ref_table.refs[ref_index].function_index = function_index;
+		ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
+		ref_table.refs[ref_index].internal_function_index = function_index;
 
 		FunctionCompiler c = {};
 		c.function = node->function_def;
@@ -137,7 +137,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	uint16_t entry_point_id = func_ref_table_entry_index(&ref_table, STR_LIT("main"));
 	const FunctionRef* entry_point_ref = &ref_table.refs[entry_point_id];
 
-	assert_msg(entry_point_ref->address == NULL, "Entry point not found");
+	assert_msg(entry_point_ref->impl_kind == FUNCTION_IMPL_INTERNAL, "Entry point not found");
 
 	LinkedProgram linked = linker_link(lowered_functions, function_count, &ref_table, context->arena);
 	MachineCodeBuffer machine_code = linked.machine_code;

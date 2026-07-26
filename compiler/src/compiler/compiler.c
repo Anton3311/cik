@@ -687,10 +687,11 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		assert(expr->call.args.count <= UINT16_MAX);
 
 		InstrInputs arg_inputs = instr_allocate_inputs_array(instr_buffer, expr->call.args.count);
-
 		for (uint16_t i = 0; i < arg_inputs.count; i += 1) {
 			Expr* arg = expr->call.args.exprs[i];
-			instr_buffer->inputs_buffer[arg_inputs.start + i] = _compile_expr(compiler, arg);
+
+			InstrIndex arg_instr = _compile_expr(compiler, arg);
+			instr_buffer->inputs_buffer[arg_inputs.start + i] = arg_instr;
 		}
 
 		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);

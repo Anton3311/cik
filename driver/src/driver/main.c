@@ -104,6 +104,8 @@ int main(int argc, char *argv[]) {
 				backend_flags |= X64_DEBUG_LOG;
 			} else if (str_equal(arg, STR_LIT("--x64-show-instr-loc"))) {
 				backend_flags |= X64_PRINT_ASSIGNED_STORAGE_LOC;
+			} else if (str_equal(arg, STR_LIT("--"))) {
+				break;
 			} else {
 				fprintf(stderr, "Unknown argument '%s'", argv[i]);
 				return EXIT_FAILURE;
@@ -246,7 +248,15 @@ int main(int argc, char *argv[]) {
 		typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
 		ExecutableFunction entry_point = (ExecutableFunction)entry_point_address;
 
-		uint64_t result = entry_point(argc, argv);
+		int32_t arg_start = argc;
+		for (int32_t i = 0; i < argc; i += 1) {
+			if (strcmp(argv[i], "--") == 0) {
+				arg_start = i + 1;
+				break;
+			}
+		}
+
+		uint64_t result = entry_point(argc - arg_start, argv + arg_start);
 
 		free_executable(machine_code.code, machine_code.size_in_bytes);
 

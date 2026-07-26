@@ -3,6 +3,8 @@
 extern void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
+	argc = 10;
+
 	int iter_count = 0;
 	int initial_argc = argc;
 

@@ -50,9 +50,9 @@ static void _init_storage_requiremenets() {
 	s[INSTR_BOOL_TO_INT]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 
 	s[INSTR_NEGATE_8]               = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
-	s[INSTR_NEGATE_16]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
-	s[INSTR_NEGATE_32]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
-	s[INSTR_NEGATE_64]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
+	s[INSTR_NEGATE_16]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };
+	s[INSTR_NEGATE_32]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
+	s[INSTR_NEGATE_64]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
 	s[INSTR_CAST_TO_8]              = (T) { .allowed_registers = UINT16_MAX, .reg_size = 8 };
 	s[INSTR_CAST_TO_16]             = (T) { .allowed_registers = UINT16_MAX, .reg_size = 16 };

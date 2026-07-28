@@ -941,7 +941,12 @@ String path_get_parent(String path) {
 		}
 	}
 
-	return sub_str(path, 0, parent_path_end);
+	String parent_path = sub_str(path, 0, parent_path_end);
+	if (parent_path.length == 0) {
+		return STR_LIT("./");
+	}
+
+	return parent_path;
 }
 
 String path_append(String parent, String path, Arena* allocator) {

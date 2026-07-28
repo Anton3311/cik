@@ -76,7 +76,10 @@ int main(int argc, char *argv[]) {
 		String shared_include_path = path_append(sdk_path, STR_LIT("shared"), &arena);
 
 		StringArray include_dirs = {};
-		include_dirs.values = arena_alloc_array(&arena, String, 0);
+		str_array_reserve(&include_dirs, &arena, argc + 3);
+		
+		StringArray source_files = {};
+		str_array_reserve(&source_files, &arena, argc);
 
 		for (size_t i = 2; i < (size_t)argc; i += 1) {
 			String arg = str_from_cstr(argv[i]);
@@ -89,7 +92,10 @@ int main(int argc, char *argv[]) {
 				}
 
 				assert(include_path.length > 0);
-				str_array_append(&include_dirs, &arena, include_path);
+
+				str_array_append_assume_cap(&include_dirs, include_path);
+			} else if (str_ends_with(arg, STR_LIT(".c"))) {
+				str_array_append_assume_cap(&source_files, arg);
 			} else if (str_equal(arg, STR_LIT("--no-win-sdk"))) {
 				flags |= C_FLAG_DO_NOT_INCLUDE_WIN_SDK;
 			} else if (str_equal(arg, STR_LIT("--show-ir"))) {
@@ -109,9 +115,9 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (!has_flag(flags, C_FLAG_DO_NOT_INCLUDE_WIN_SDK)) {
-			str_array_append(&include_dirs, &arena, um_include_path);
-			str_array_append(&include_dirs, &arena, ucrt_include_path);
-			str_array_append(&include_dirs, &arena, shared_include_path);
+			str_array_append_assume_cap(&include_dirs, um_include_path);
+			str_array_append_assume_cap(&include_dirs, ucrt_include_path);
+			str_array_append_assume_cap(&include_dirs, shared_include_path);
 		}
 
 		source_storage_init(&source_storage,

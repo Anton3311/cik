@@ -361,10 +361,26 @@ typedef struct {
 typedef struct {
 	String* values;
 	size_t count;
+	size_t capacity;
 } StringArray;
 
+inline void str_array_reserve(StringArray* array, Arena* allocator, size_t capacity) {
+	array->values = arena_alloc_array(allocator, String, capacity);
+	array->count = 0;
+	array->capacity = capacity;
+}
+
 inline void str_array_append(StringArray* array, Arena* allocator, String value) {
+	assert(array->count == array->capacity);
+
 	*arena_alloc(allocator, String) = value;
+	array->count += 1;
+}
+
+inline void str_array_append_assume_cap(StringArray* array, String value) {
+	assert(array->count < array->capacity);
+
+	array->values[array->count] = value;
 	array->count += 1;
 }
 
@@ -440,6 +456,14 @@ inline bool str_starts_with(String str, String prefix) {
 	}
 
 	return memcmp(str.v, prefix.v, prefix.length) == 0;
+}
+
+inline bool str_ends_with(String str, String sufix) {
+	if (sufix.length > str.length) {
+		return false;
+	}
+
+	return memcmp(str.v + str.length - sufix.length, sufix.v, sufix.length) == 0;
 }
 
 inline size_t str_find_char(String str, char c) {

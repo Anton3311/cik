@@ -39,6 +39,152 @@ static const char* s_help_menu =
 	"    --x64-debug-log        log results of intermediate operations for debugging\n"
 	"    --x64-show-instr-loc   print which storage locations were assigned to each instruction";
 
+typedef struct {
+	Arena* arena;
+	Arena* temp_arena;
+	Arena* ident_arena;
+	Arena* ast_arena;
+	Arena* generated_tokens_arena;
+
+	CompilerFlags flags;
+	X64BackendFlags backend_flags;
+
+	String source_file_path;
+
+	Diagnostics* diagnostics;
+	SourceStorage* source_storage;
+
+	FunctionRefTable ref_table;
+	LoweredFunction* lowered_functions;
+	size_t function_count;
+} CompilationUnitContext;
+
+void compile_unit(CompilationUnitContext* context) {
+	profile_scope_start(__func__);
+
+	SourceFile* source_file = source_storage_append_from_path(
+			context->source_storage,
+			context->source_file_path,
+			context->temp_arena);
+
+	Preprocessor preprocessor = {};
+	preprocessor_init(&preprocessor,
+			context->source_storage,
+			source_file,
+			context->diagnostics,
+			heap_allocator_new(),
+			context->arena,
+			context->temp_arena,
+			context->generated_tokens_arena);
+
+	IdentifierStorage ident_storage = {};
+	ident_storage_init(&ident_storage, heap_allocator_new(), context->ident_arena);
+
+	Parser parser = {};
+	parser_init(&parser,
+			context->ast_arena,
+			context->temp_arena,
+			&ident_storage,
+			&preprocessor,
+			context->diagnostics);
+
+	AST parsed_ast = {};
+
+	{
+		profile_scope_start("parse");
+		parser_parse(&parser, &parsed_ast);
+		profile_scope_end();
+	}
+
+	preprocessor_release(&preprocessor);
+
+	if (context->diagnostics->first != NULL) {
+		diagnostics_print(context->diagnostics);
+		profile_scope_end();
+		return;
+	}
+
+	if (has_flag(context->flags, C_FLAG_PRINT_AST) && parsed_ast.root_nodes.first) {
+		print_parsed_node(parsed_ast.root_nodes.first);
+	}
+
+	size_t function_count = 0;
+	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+		if (node->kind != AST_NODE_FUNCTION) {
+			continue;
+		}
+
+		if (node->function_def->body == NULL) {
+			continue;
+		}
+
+		function_count += 1;
+	}
+
+	LoweredFunction* lowered_functions = arena_alloc_array(context->arena,
+			LoweredFunction,
+			function_count);
+
+	FunctionRefTable ref_table = {};
+	ref_table.allocator = heap_allocator_new();
+
+	StringStorage string_storage = {};
+	string_storage.allocator = heap_allocator_new();
+
+	size_t function_index = 0;
+	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
+		if (node->kind != AST_NODE_FUNCTION) {
+			continue;
+		}
+
+		if (node->function_def->body == NULL) {
+			continue;
+		}
+
+		uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
+		ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
+		ref_table.refs[ref_index].internal_function_index = function_index;
+
+		FunctionCompiler c = {};
+		c.function = node->function_def;
+		c.allocator = context->arena;
+		c.instr_allocator = context->arena;
+		c.temp_allocator = context->temp_arena;
+		c.str_storage = &string_storage;
+		c.func_ref_table = &ref_table;
+		c.pointer_type_layout = type_layout_new(8, 8);
+
+		CompiledFunction func = function_compiler_compile(&c);
+
+		X64CodeGenerator gen = {};
+		gen.flags = context->backend_flags;
+		gen.instr_buffer = func.instr_buffer;
+		gen.allocator = context->arena;
+		gen.temp_allocator = context->temp_arena;
+		gen.ref_table = &ref_table;
+		gen.string_consts = str_storage_to_array(c.str_storage);
+
+		lowered_functions[function_index] = x64_generate_code(&gen, func.start_region);
+
+		instr_buffer_release(&gen.instr_buffer);
+		function_index += 1;
+	}
+
+	compiler_resolve_default_func_refs(&ref_table);
+
+	context->function_count = function_count;
+	context->lowered_functions = lowered_functions;
+
+	// Free function symbol table
+	func_ref_table_release(&ref_table);
+	// Free string storage
+	str_storage_release(&string_storage);
+
+	ident_storage_release(&ident_storage);
+
+	profile_scope_end();
+}
+
 int main(int argc, char *argv[]) {
 	Arena arena = {};
 	arena.capacity = align_to_page_size(512 * 8 * 4096);
@@ -124,118 +270,31 @@ int main(int argc, char *argv[]) {
 				include_dirs,
 				&arena);
 
-		SourceFile* source_file = source_storage_append_from_path(&source_storage, str_from_cstr(argv[1]), &temp_arena);
-
-		Diagnostics diagnostics = (Diagnostics) {
-			.allocator = &diagnostics_arena,
-		};
-
-		Arena generated_tokens_arena = {};
-		generated_tokens_arena.capacity = 128 * 4096;
-
-		Preprocessor preprocessor = {};
-		preprocessor_init(&preprocessor,
-				&source_storage,
-				source_file,
-				&diagnostics,
-				heap_allocator_new(),
-				&arena,
-				&temp_arena,
-				&generated_tokens_arena);
-
+		Arena generated_tokens_arena = { .capacity = 128 * 4096 };
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 512 * 4096 };
 
-		IdentifierStorage ident_storage = {};
-		ident_storage_init(&ident_storage, heap_allocator_new(), &ident_arena);
+		for (size_t i = 0; i < source_files.count; i += 1) {
+			Diagnostics diagnostics = (Diagnostics) {
+				.allocator = &diagnostics_arena,
+			};
 
-		Parser parser = {};
-		parser_init(&parser, &ast_arena, &temp_arena, &ident_storage, &preprocessor, &diagnostics);
+			CompilationUnitContext context = {};
+			context.flags = flags;
+			context.backend_flags = backend_flags;
+			context.arena = &arena;
+			context.temp_arena = &temp_arena;
+			context.ident_arena = &ident_arena;
+			context.ast_arena = &ast_arena;
+			context.generated_tokens_arena = &generated_tokens_arena;
+			context.source_file_path = source_files.values[i];
+			context.diagnostics = &diagnostics;
+			context.source_storage = &source_storage;
 
-		AST parsed_ast = {};
-		{
-			profile_scope_start("parse");
-			parser_parse(&parser, &parsed_ast);
-			profile_scope_end();
+			compile_unit(&context);
 		}
 
-		preprocessor_release(&preprocessor);
-
-		if (has_flag(flags, C_FLAG_PRINT_AST)) {
-			if (parsed_ast.root_nodes.first) {
-				print_parsed_node(parsed_ast.root_nodes.first);
-			}
-		}
-
-		if (diagnostics.first != NULL) {
-			diagnostics_print(&diagnostics);
-			return EXIT_FAILURE;
-		}
-
-		size_t function_count = 0;
-		for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-			if (node->kind != AST_NODE_FUNCTION) {
-				continue;
-			}
-
-			if (node->function_def->body == NULL) {
-				continue;
-			}
-
-			function_count += 1;
-		}
-
-		LoweredFunction* lowered_functions = arena_alloc_array(&arena,
-				LoweredFunction,
-				function_count);
-
-		FunctionRefTable ref_table = {};
-		ref_table.allocator = heap_allocator_new();
-
-		StringStorage string_storage = {};
-		string_storage.allocator = heap_allocator_new();
-
-		size_t function_index = 0;
-		for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-			if (node->kind != AST_NODE_FUNCTION) {
-				continue;
-			}
-
-			if (node->function_def->body == NULL) {
-				continue;
-			}
-
-			uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
-			ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
-			ref_table.refs[ref_index].internal_function_index = function_index;
-
-			FunctionCompiler c = {};
-			c.function = node->function_def;
-			c.allocator = &arena;
-			c.instr_allocator = &arena;
-			c.temp_allocator = &temp_arena;
-			c.str_storage = &string_storage;
-			c.func_ref_table = &ref_table;
-			c.pointer_type_layout = type_layout_new(8, 8);
-
-			CompiledFunction func = function_compiler_compile(&c);
-
-			X64CodeGenerator gen = {};
-			gen.flags = backend_flags;
-			gen.instr_buffer = func.instr_buffer;
-			gen.allocator = &arena;
-			gen.temp_allocator = &temp_arena;
-			gen.ref_table = &ref_table;
-			gen.string_consts = str_storage_to_array(c.str_storage);
-
-			lowered_functions[function_index] = x64_generate_code(&gen, func.start_region);
-
-			instr_buffer_release(&gen.instr_buffer);
-			function_index += 1;
-		}
-
-		compiler_resolve_default_func_refs(&ref_table);
-
+#if 0
 		uint16_t entry_point_id = func_ref_table_entry_index(&ref_table, STR_LIT("main"));
 		const FunctionRef* entry_point_ref = &ref_table.refs[entry_point_id];
 
@@ -263,13 +322,8 @@ int main(int argc, char *argv[]) {
 		free_executable(machine_code.code, machine_code.size_in_bytes);
 
 		printf("%llu\n", result);
+#endif
 
-		// Free function symbol table
-		func_ref_table_release(&ref_table);
-		// Free string storage
-		str_storage_release(&string_storage);
-
-		ident_storage_release(&ident_storage);
 
 		arena_release(&ident_arena);
 		arena_release(&ast_arena);

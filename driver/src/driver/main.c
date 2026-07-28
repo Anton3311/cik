@@ -20,9 +20,8 @@ static bool enum_installed_win_sdks(String sdk_install_path,
 
 typedef enum {
 	C_FLAG_NONE                    = 0,
-	C_FLAG_KEEP_DEAD_INSTR         = 1 << 0,
-	C_FLAG_DO_NOT_INCLUDE_WIN_SDK  = 1 << 1,
-	C_FLAG_PRINT_AST               = 1 << 2,
+	C_FLAG_DO_NOT_INCLUDE_WIN_SDK  = 1 << 0,
+	C_FLAG_PRINT_AST               = 1 << 1,
 } CompilerFlags;
 
 static const char* s_help_menu = 
@@ -36,7 +35,6 @@ static const char* s_help_menu =
 	"    --show-ast             print AST after parsing\n"
 	"\n"
 	"  Backend flags:           \n"
-	"    --keep-dead-instr      don't eliminate dead instructions\n"
 	"    --show-ir              print generated IR instructions\n"
 	"    --x64-debug-log        log results of intermediate operations for debugging\n"
 	"    --x64-show-instr-loc   print which storage locations were assigned to each instruction";
@@ -94,8 +92,6 @@ int main(int argc, char *argv[]) {
 				str_array_append(&include_dirs, &arena, include_path);
 			} else if (str_equal(arg, STR_LIT("--no-win-sdk"))) {
 				flags |= C_FLAG_DO_NOT_INCLUDE_WIN_SDK;
-			} else if (str_equal(arg, STR_LIT("--keep-dead-instr"))) {
-				flags |= C_FLAG_KEEP_DEAD_INSTR;
 			} else if (str_equal(arg, STR_LIT("--show-ir"))) {
 				backend_flags |= X64_PRINT_SCHEDULED_IR;
 			} else if (str_equal(arg, STR_LIT("--show-ast"))) {

@@ -134,7 +134,6 @@ Building with the profiler support requires only passing the `--profiler` flag t
     --show-ast             print AST after parsing
 
   Backend flags:
-    --keep-dead-instr      don't eliminate dead instructions
     --show-ir              print generated IR instructions
     --x64-debug-log        log results of intermediate operations for debugging
     --x64-show-instr-loc   print which storage locations were assigned to each instruction

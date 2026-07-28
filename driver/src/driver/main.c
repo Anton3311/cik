@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
 		StringArray source_files = {};
 		str_array_reserve(&source_files, &arena, argc);
 
-		for (size_t i = 2; i < (size_t)argc; i += 1) {
+		for (size_t i = 1; i < (size_t)argc; i += 1) {
 			String arg = str_from_cstr(argv[i]);
 			if (arg.length >= 2 && arg.v[0] == '-' && arg.v[1] == 'I') {
 				String include_path = sub_str(arg, 2, arg.length - 2);

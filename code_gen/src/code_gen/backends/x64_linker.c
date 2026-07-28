@@ -50,6 +50,7 @@ LinkedProgram linker_link(const LoweredFunction* functions,
 				callee_address = (uint64_t)callee->external_address;
 				break;
 			case FUNCTION_IMPL_NONE:
+				printf("unresolved reference to '%.*s'\n", STR_FMT(callee->name));
 				unreachable();
 			}
 

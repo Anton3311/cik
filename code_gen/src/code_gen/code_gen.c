@@ -65,6 +65,7 @@ uint16_t func_ref_table_insert(FunctionRefTable* table, String name) {
 	table->size += 1;
 
 	ref->name = name;
+	ref->impl_kind = FUNCTION_IMPL_NONE;
 	ref->external_address = NULL;
 	profile_scope_end();
 	return id;

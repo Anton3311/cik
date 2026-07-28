@@ -3,6 +3,7 @@
 #include "core/core.h"
 
 #include "tester/tester_core.h"
+#include "tester/tests_core.h"
 #include "tester/tests.h"
 #include "tester/tests_x64.h"
 #include "tester/tests_compiler.h"
@@ -95,6 +96,10 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 
 int main(int argc, char* argv[]) {
 	srand(2153);
+
+	TestCase core_tests[] = {
+		test(test_alloc_array_using_empty_arena),
+	};
 
 	TestCase source_info_tests[] = {
 		test(test_text_start_position_to_source_location),
@@ -239,6 +244,7 @@ int main(int argc, char* argv[]) {
 	};
 
 	TestSuite s_test_suites[] = {
+		test_suite(core_tests),
 		test_suite(source_info_tests),
 		test_suite(tokenizer_tests),
 		test_suite(preprocessor_tests),

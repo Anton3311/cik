@@ -1546,6 +1546,195 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	return post_loop_region;
 }
 
+static InstrIndex _compile_if_statement(FunctionCompiler* compiler,
+		AstNode* node,
+		InstrIndex region_instr_index) {
+
+	profile_scope_start(__func__);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	// NOTE: How are branches compiled:
+	//       
+	//       Branches split the flow of the program into two possible paths,
+	//       and at the end those two paths need to be merged back into one.
+	//       
+	//       For each alternative path we create a region, the branch instruction
+	//       jumps to one of them, based on the condition.
+	//       
+	//       To merge these two paths we end both alternative paths with an
+	//       unconditional jump to a third region. This third region is where
+	//       the program flow continues further after the branch.
+	InstrIndex branch_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* branch_instr = instr_buffer_at(instr_buffer, branch_instr_index);
+	branch_instr->kind = INSTR_BRANCH;
+	branch_instr->branch.condition = _compile_expr_to_bool(compiler, &node->if_stmt.condition);
+	branch_instr->branch.io_state = compiler->io_state;
+
+	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
+	InstrIndex post_branch_region_index = instr_new_region(instr_buffer, instr_allocator);
+
+	CompiledBlockRegions true_block;
+	CompiledBlockRegions false_block;
+
+	{
+		// NOTE: Here is the fun part: placing phi nodes
+		//       We have an array where each variable stores it's currently
+		//       assigned instruction (value).
+		//       
+		//       To decide where to place the phi nodes, we need to track
+		//       which variables get assigned a new value during the compilation
+		//       of each of the branch's alternative paths.
+		//       
+		//       This is done by creating copies of the original array of variable
+		//       values for each branch path, then compiling the paths with the
+		//       replaced arrays for variable values. In that way we gather newly
+		//       assigned value and later are able to make a placement decision.
+
+		ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
+
+		InstrIndex* original_var_values = compiler->var_values;
+		InstrIndex* original_arg_values = compiler->arg_states;
+
+		// Create copies of variable value arrays
+		InstrIndex* var_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
+				InstrIndex,
+				compiler->var_count);
+
+		arena_alloc_guard(compiler->temp_allocator);
+
+		InstrIndex* var_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
+				InstrIndex,
+				compiler->var_count);
+
+		arena_alloc_guard(compiler->temp_allocator);
+
+		array_copy(var_values_for_true_path, compiler->var_values, compiler->var_count);
+		array_copy(var_values_for_false_path, compiler->var_values, compiler->var_count);
+
+		size_t arg_count = compiler->function->proto.parameter_count;
+		InstrIndex* arg_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
+				InstrIndex,
+				arg_count);
+
+		arena_alloc_guard(compiler->temp_allocator);
+
+		InstrIndex* arg_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
+				InstrIndex,
+				arg_count);
+
+		arena_alloc_guard(compiler->temp_allocator);
+
+		array_copy(arg_values_for_true_path, compiler->arg_states, arg_count);
+		array_copy(arg_values_for_false_path, compiler->arg_states, arg_count);
+
+		compiler->var_values = var_values_for_true_path;
+		compiler->arg_states = arg_values_for_true_path;
+
+		true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
+
+		if (!instr_region_finished(instr_buffer, true_block.final_region)) {
+			Instr* true_region = instr_buffer_at(instr_buffer, true_block.final_region);
+			true_region->region.last_instr = instr_new_jump(instr_buffer,
+					instr_allocator,
+					post_branch_region_index,
+					&compiler->io_state);
+		} else if (compiler->io_state.value == INVALID_INSTR_INDEX.value) {
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+		}
+
+		compiler->var_values = var_values_for_false_path;
+		compiler->arg_states = arg_values_for_false_path;
+
+		if (node->if_stmt.false_node) {
+			false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
+		} else {
+			InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);
+			false_block.initial_region = false_region_index;
+			false_block.final_region = false_region_index;
+		}
+
+		if (!instr_region_finished(instr_buffer, false_block.final_region)) {
+			Instr* false_region = instr_buffer_at(instr_buffer, false_block.final_region);
+			false_region->region.last_instr = instr_new_jump(instr_buffer,
+					instr_allocator,
+					post_branch_region_index,
+					&compiler->io_state);
+		} else if (compiler->io_state.value == INVALID_INSTR_INDEX.value) {
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+		}
+
+		const Scope* if_parent_scope = node->parent_scope;
+		for (size_t i = 0; i < compiler->var_count; i += 1) {
+			if (compiler->vars[i] == NULL) {
+				continue;
+			}
+
+			const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+			if (var_parent_scope->id > if_parent_scope->id) {
+				// The variable is defined deeper down the scopes hierarachy,
+				// so it must have been defined in one of the if statement
+				// branches. Which means phi placement doesn't apply here.
+				continue;
+			}
+
+			bool assigned_in_true_path =
+				var_values_for_true_path[i].value != original_var_values[i].value;
+			bool assigned_in_false_path =
+				var_values_for_false_path[i].value != original_var_values[i].value;
+
+			if (!assigned_in_true_path && !assigned_in_false_path) {
+				// No need to place a phi node, since no new values were assigned
+				continue;
+			}
+
+			InstrIndex phi = _create_phi_of_2_variants(compiler,
+					var_values_for_true_path[i],
+					true_block.final_region,
+					var_values_for_false_path[i],
+					false_block.final_region);
+
+			original_var_values[i] = phi;
+		}
+		
+		for (size_t i = 0; i < arg_count; i += 1) {
+			bool assigned_in_true_path =
+				arg_values_for_true_path[i].value != original_arg_values[i].value;
+			bool assigned_in_false_path =
+				arg_values_for_false_path[i].value != original_arg_values[i].value;
+
+			if (!assigned_in_true_path && !assigned_in_false_path) {
+				// No need to place a phi node, since no new values were assigned
+				continue;
+			}
+
+			InstrIndex phi = _create_phi_of_2_variants(compiler,
+					arg_values_for_true_path[i],
+					true_block.final_region,
+					arg_values_for_false_path[i],
+					false_block.final_region);
+
+			original_arg_values[i] = phi;
+		}
+
+		arena_end_temp(temp);
+
+		// Reset back to the original array of values
+		compiler->var_values = original_var_values;
+		compiler->arg_states = original_arg_values;
+	}
+
+	branch_instr->branch.true_region = true_block.initial_region;
+	branch_instr->branch.false_region = false_block.initial_region;
+
+	instr_region_set_last(instr_buffer, region_instr_index, branch_instr_index);
+
+	profile_scope_end();
+	return post_branch_region_index;
+}
+
 static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 	profile_scope_start(__func__);
 
@@ -1619,186 +1808,9 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		case AST_NODE_VARIABLE:
 			_compile_statement(compiler, node);
 			break;
-		case AST_NODE_IF: {
-			// NOTE: How are branches compiled:
-			//       
-			//       Branches split the flow of the program into two possible paths,
-			//       and at the end those two paths need to be merged back into one.
-			//       
-			//       For each alternative path we create a region, the branch instruction
-			//       jumps to one of them, based on the condition.
-			//       
-			//       To merge these two paths we end both alternative paths with an
-			//       unconditional jump to a third region. This third region is where
-			//       the program flow continues further after the branch.
-			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
-			instr->kind = INSTR_BRANCH;
-			instr->branch.condition = _compile_expr_to_bool(compiler, &node->if_stmt.condition);
-			instr->branch.io_state = compiler->io_state;
-
-			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
-
-			InstrIndex post_branch_region_index = instr_new_region(instr_buffer, instr_allocator);
-
-			CompiledBlockRegions true_block;
-			CompiledBlockRegions false_block;
-
-			{
-				// NOTE: Here is the fun part: placing phi nodes
-				//       We have an array where each variable stores it's currently
-				//       assigned instruction (value).
-				//       
-				//       To decide where to place the phi nodes, we need to track
-				//       which variables get assigned a new value during the compilation
-				//       of each of the branch's alternative paths.
-				//       
-				//       This is done by creating copies of the original array of variable
-				//       values for each branch path, then compiling the paths with the
-				//       replaced arrays for variable values. In that way we gather newly
-				//       assigned value and later are able to make a placement decision.
-
-				ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
-
-				InstrIndex* original_var_values = compiler->var_values;
-				InstrIndex* original_arg_values = compiler->arg_states;
-
-				// Create copies of variable value arrays
-				InstrIndex* var_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
-						InstrIndex,
-						compiler->var_count);
-
-				arena_alloc_guard(compiler->temp_allocator);
-
-				InstrIndex* var_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
-						InstrIndex,
-						compiler->var_count);
-
-				arena_alloc_guard(compiler->temp_allocator);
-
-				array_copy(var_values_for_true_path, compiler->var_values, compiler->var_count);
-				array_copy(var_values_for_false_path, compiler->var_values, compiler->var_count);
-
-				size_t arg_count = compiler->function->proto.parameter_count;
-				InstrIndex* arg_values_for_true_path = arena_alloc_array(compiler->temp_allocator,
-						InstrIndex,
-						arg_count);
-
-				arena_alloc_guard(compiler->temp_allocator);
-
-				InstrIndex* arg_values_for_false_path = arena_alloc_array(compiler->temp_allocator,
-						InstrIndex,
-						arg_count);
-
-				arena_alloc_guard(compiler->temp_allocator);
-
-				array_copy(arg_values_for_true_path, compiler->arg_states, arg_count);
-				array_copy(arg_values_for_false_path, compiler->arg_states, arg_count);
-
-				compiler->var_values = var_values_for_true_path;
-				compiler->arg_states = arg_values_for_true_path;
-
-				true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
-
-				if (!instr_region_finished(instr_buffer, true_block.final_region)) {
-					Instr* true_region = instr_buffer_at(instr_buffer, true_block.final_region);
-					true_region->region.last_instr = instr_new_jump(instr_buffer,
-							instr_allocator,
-							post_branch_region_index,
-							&compiler->io_state);
-				} else if (compiler->io_state.value == INVALID_INSTR_INDEX.value) {
-					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
-				}
-
-				compiler->var_values = var_values_for_false_path;
-				compiler->arg_states = arg_values_for_false_path;
-
-				if (node->if_stmt.false_node) {
-					false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
-				} else {
-					InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);
-					false_block.initial_region = false_region_index;
-					false_block.final_region = false_region_index;
-				}
-
-				if (!instr_region_finished(instr_buffer, false_block.final_region)) {
-					Instr* false_region = instr_buffer_at(instr_buffer, false_block.final_region);
-					false_region->region.last_instr = instr_new_jump(instr_buffer,
-							instr_allocator,
-							post_branch_region_index,
-							&compiler->io_state);
-				} else if (compiler->io_state.value == INVALID_INSTR_INDEX.value) {
-					compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
-				}
-
-				const Scope* if_parent_scope = node->parent_scope;
-				for (size_t i = 0; i < compiler->var_count; i += 1) {
-					if (compiler->vars[i] == NULL) {
-						continue;
-					}
-
-					const Scope* var_parent_scope = compiler->var_parent_scopes[i];
-					if (var_parent_scope->id > if_parent_scope->id) {
-						// The variable is defined deeper down the scopes hierarachy,
-						// so it must have been defined in one of the if statement
-						// branches. Which means phi placement doesn't apply here.
-						continue;
-					}
-
-					bool assigned_in_true_path =
-						var_values_for_true_path[i].value != original_var_values[i].value;
-					bool assigned_in_false_path =
-						var_values_for_false_path[i].value != original_var_values[i].value;
-
-					if (!assigned_in_true_path && !assigned_in_false_path) {
-						// No need to place a phi node, since no new values were assigned
-						continue;
-					}
-
-					InstrIndex phi = _create_phi_of_2_variants(compiler,
-							var_values_for_true_path[i],
-							true_block.final_region,
-							var_values_for_false_path[i],
-							false_block.final_region);
-
-					original_var_values[i] = phi;
-				}
-				
-				for (size_t i = 0; i < arg_count; i += 1) {
-					bool assigned_in_true_path =
-						arg_values_for_true_path[i].value != original_arg_values[i].value;
-					bool assigned_in_false_path =
-						arg_values_for_false_path[i].value != original_arg_values[i].value;
-
-					if (!assigned_in_true_path && !assigned_in_false_path) {
-						// No need to place a phi node, since no new values were assigned
-						continue;
-					}
-
-					InstrIndex phi = _create_phi_of_2_variants(compiler,
-							arg_values_for_true_path[i],
-							true_block.final_region,
-							arg_values_for_false_path[i],
-							false_block.final_region);
-
-					original_arg_values[i] = phi;
-				}
-
-				arena_end_temp(temp);
-
-				// Reset back to the original array of values
-				compiler->var_values = original_var_values;
-				compiler->arg_states = original_arg_values;
-			}
-
-			instr->branch.true_region = true_block.initial_region;
-			instr->branch.false_region = false_block.initial_region;
-
-			region_instr->region.last_instr = instr_index;
-
-			region_instr_index = post_branch_region_index;
+		case AST_NODE_IF:
+			region_instr_index = _compile_if_statement(compiler, node, region_instr_index);
 			break;
-		}
 		case AST_NODE_BLOCK: {
 			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer,
 					instr_allocator,

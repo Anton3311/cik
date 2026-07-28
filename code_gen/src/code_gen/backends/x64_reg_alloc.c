@@ -167,13 +167,6 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		UInt16Array edges = interference_graph[i];
 		for (size_t j = 0; j < edges.count; j += 1) {
 			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-#if 0
-			if (!_instr_allowed_to_share_a_register(live_ranges[instr_index.value],
-						live_ranges[interfering_instr.value])) {
-				continue;
-			}
-#endif
-
 			potential_instr_registers[interfering_instr.value] &= ~(1 << reg);
 		}
 	}
@@ -199,13 +192,6 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		UInt16Array edges = interference_graph[i];
 		for (size_t j = 0; j < edges.count; j += 1) {
 			InstrIndex interfering_instr = instr_with_storage_requirement.instr[edges.values[j]];
-#if 0
-			if (!_instr_allowed_to_share_a_register(live_ranges[instr_index.value],
-						live_ranges[interfering_instr.value])) {
-				continue;
-			}
-#endif
-
 			potential_instr_registers[interfering_instr.value] &= ~(1 << first_potential_register);
 		}
 	}

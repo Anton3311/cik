@@ -1873,6 +1873,58 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 
 			arena_end_temp(temp);
 		}
+
+		// Gather stats
+		uint32_t max_register_pressure = 0;
+		uint16_t used_registers = 0;
+
+		for (size_t i = 0; i < result.instr_with_storage_requirement.count; i += 1) {
+			InstrIndex instr_index = result.instr_with_storage_requirement.instr[i];
+
+			if (result.allocations[instr_index.value].kind == INSTR_STORAGE_REG) {
+				used_registers |= result.allocations[instr_index.value].reg;
+			}
+
+			UInt16Array edges = result.interference_graph[i];
+
+			uint16_t interfering_regs = 0;
+			for (size_t edge_index = 0; edge_index < edges.count; edge_index += 1) {
+				InstrIndex interfering_instr = 
+					result.instr_with_storage_requirement.instr[edges.values[edge_index]];
+
+				if (result.allocations[interfering_instr.value].kind != INSTR_STORAGE_REG) {
+					continue;
+				}
+
+				interfering_regs |= (1 << result.allocations[interfering_instr.value].reg);
+			}
+
+			uint32_t pressure = 0;
+			for (uint16_t r = 0; r < X64_REG_COUNT; r += 1) {
+				if ((interfering_regs & (1 << r))) {
+					pressure += 1;
+				}
+			}
+
+			max_register_pressure = max(max_register_pressure, pressure);
+		}
+
+		ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+
+		StringBuilder builder = { .arena = gen->temp_allocator };
+
+		for (uint16_t i = 0; i < X64_REG_COUNT; i += 1) {
+			_format_reg_name(&builder,
+					(X64Register)i,
+					64);
+			str_builder_append_char(&builder, ' ');
+		}
+
+		printf("\nRegister allocation stats:\n");
+		printf("max register pressure: %u\n", max_register_pressure);
+		printf("       used registers: %.*s\n", STR_FMT(builder.string));
+
+		arena_end_temp(temp);
 	}
 }
 

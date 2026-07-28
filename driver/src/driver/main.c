@@ -57,6 +57,7 @@ typedef struct {
 	SourceStorage* source_storage;
 
 	FunctionRefTable* ref_table;
+	SymbolMap* symbol_map;
 } CompilationUnitContext;
 
 static LoweredUnit compile_unit(CompilationUnitContext* context) {
@@ -152,6 +153,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		c.temp_allocator = context->temp_arena;
 		c.str_storage = &string_storage;
 		c.func_ref_table = ref_table;
+		c.symbol_map = context->symbol_map;
 		c.pointer_type_layout = type_layout_new(8, 8);
 
 		CompiledFunction func = function_compiler_compile(&c);
@@ -270,6 +272,9 @@ int main(int argc, char *argv[]) {
 		FunctionRefTable ref_table = {};
 		ref_table.allocator = heap_allocator_new();
 
+		SymbolMap symbol_map = {};
+		symbol_map_init(&symbol_map, heap_allocator_new());
+
 		Arena generated_tokens_arena = { .capacity = 128 * 4096 };
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 512 * 4096 };
@@ -292,6 +297,7 @@ int main(int argc, char *argv[]) {
 			context.generated_tokens_arena = &generated_tokens_arena;
 			context.source_file_path = source_files.values[i];
 			context.ref_table = &ref_table;
+			context.symbol_map = &symbol_map;
 			context.diagnostics = &diagnostics;
 			context.source_storage = &source_storage;
 
@@ -329,6 +335,7 @@ int main(int argc, char *argv[]) {
 
 		printf("%llu\n", result);
 
+		symbol_map_release(&symbol_map);
 		func_ref_table_release(&ref_table);
 
 		arena_release(&ident_arena);

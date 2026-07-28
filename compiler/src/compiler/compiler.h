@@ -77,6 +77,7 @@ typedef struct {
 
 	StringStorage* str_storage;
 	FunctionRefTable* func_ref_table;
+	SymbolMap* symbol_map;
 
 	AstNode* current_loop;
 	LoopControlStmt* current_loop_control_stmts;

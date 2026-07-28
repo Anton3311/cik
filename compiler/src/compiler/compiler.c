@@ -697,6 +697,16 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		const Function* func = callable->function_ref.func;
 		bool is_indirect_call = func->storage_specifier == STORAGE_SPEC_EXTERNAL;
 
+		Symbol symbol = {};
+		symbol.name = func->proto.name;
+		symbol.linkage = is_indirect_call 
+			? SYMBOL_LINKAGE_EXTERNAL
+			: SYMBOL_LINKAGE_INTERNAL;
+		symbol.link_mode = SYMBOL_LINK_STATIC;
+
+		SymbolId function_id = symbol_map_insert(compiler->symbol_map, &symbol);
+		printf("added symbol %.*s at %u\n", STR_FMT(func->proto.name), function_id);
+
 		String func_name = func->proto.name;
 		uint8_t function_index = func_ref_table_get_or_insert(
 				compiler->func_ref_table,

@@ -77,3 +77,123 @@ void func_ref_table_release(FunctionRefTable* table) {
 	}
 	*table = (FunctionRefTable) {};
 }
+
+//
+// SymbolMap
+//
+
+static const size_t SYMBOL_MAP_INITIAL_CAPACITY = 16;
+
+inline size_t _symbol_look_up_by_name_and_linkage(const SymbolMap* map, String name) {
+	return SIZE_MAX;
+}
+
+static void _symbol_map_grow(SymbolMap* map) {
+	
+}
+
+void symbol_map_init(SymbolMap* map, Allocator allocator) {
+	profile_scope_start(__func__);
+
+	map->allocator = allocator;
+
+	map->count = 0;
+	map->capacity = SYMBOL_MAP_INITIAL_CAPACITY;
+	map->symbols = allocator_alloc_array(allocator, Symbol, SYMBOL_MAP_INITIAL_CAPACITY);
+
+	size_t map_entry_count = map->capacity * 100 / 80;
+	map->map_capacity = map_entry_count;
+	map->keys = allocator_alloc_array(allocator, SymbolKey, map_entry_count);
+	map->values = allocator_alloc_array(allocator, uint32_t, map_entry_count);
+
+	memset(map->keys, 0, sizeof(*map->keys) * map_entry_count);
+
+	profile_scope_end();
+}
+
+void symbol_map_release(SymbolMap* map) {
+	profile_scope_start(__func__);
+
+	if (map->symbols) {
+		allocator_release(map->allocator, map->symbols);
+	}
+
+	if (map->keys) {
+		allocator_release(map->allocator, map->keys);
+	}
+
+	if (map->values) {
+		allocator_release(map->allocator, map->values);
+	}
+
+	memset(map, 0, sizeof(*map));
+	profile_scope_end();
+}
+
+SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
+	assert(map->count < map->capacity);
+
+	size_t hash = hash_string(symbol->name);
+
+	for (size_t i = 0; i < map->map_capacity; i += 1) {
+		size_t index = (hash + i) % map->map_capacity;
+
+		if (map->keys[index].name.v == NULL) {
+			SymbolId id = (SymbolId)map->count;
+
+			map->symbols[id] = *symbol;
+			map->keys[id] = (SymbolKey) {
+				.name = symbol->name,
+				.linkage = symbol->linkage,
+				.link_mode = symbol->link_mode,
+			};
+
+			map->count += 1;
+			return id;
+		}
+	}
+
+	return SYMBOL_ID_INVALID;
+}
+
+inline bool _symbol_key_equal(const SymbolKey a, const SymbolKey b) {
+	if (a.linkage == b.linkage) {
+		return true;
+	}
+
+	if (a.link_mode == b.link_mode) {
+		return true;
+	}
+
+	return str_equal(a.name, b.name);
+}
+
+SymbolId symbol_map_find(const SymbolMap* map, SymbolScope scope, String name) {
+	profile_scope_start(__func__);
+
+	SymbolKey key = (SymbolKey) {
+		.name = name,
+		.linkage = scope == SYMBOL_SCOPE_UNIT
+			? SYMBOL_LINKAGE_INTERNAL
+			: SYMBOL_LINKAGE_EXTERNAL,
+		.link_mode = SYMBOL_LINK_STATIC,
+	};
+
+	size_t hash = hash_string(name);
+	for (size_t i = 0; i < map->map_capacity; i += 1) {
+		size_t index = (hash + i) % map->map_capacity;
+
+		if (map->symbols[index].name.v == NULL) {
+			profile_scope_end();
+			return SYMBOL_ID_INVALID;
+		}
+
+		if (_symbol_key_equal(map->keys[index], key)) {
+			profile_scope_end();
+			return map->values[index];
+		}
+	}
+
+	profile_scope_end();
+	return SYMBOL_ID_INVALID;
+}

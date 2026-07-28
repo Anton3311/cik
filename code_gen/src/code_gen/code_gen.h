@@ -48,4 +48,78 @@ inline uint16_t func_ref_table_get_or_insert(FunctionRefTable* table, String nam
 	return index;
 }
 
+//
+// SymbolMap
+//
+
+typedef uint32_t SymbolId;
+
+#define SYMBOL_ID_INVALID ((SymbolId)UINT32_MAX)
+
+typedef enum {
+	SYMBOL_FUNCTION,
+	SYMBOL_VARIABLE,
+} SymbolKind;
+
+typedef enum {
+	SYMBOL_SCOPE_UNIT,
+	SYMBOL_SCOPE_GLOBAL,
+} SymbolScope;
+
+typedef enum {
+	SYMBOL_LINKAGE_INTERNAL,
+	SYMBOL_LINKAGE_EXTERNAL,
+} SymbolLinkage;
+
+typedef enum {
+	SYMBOL_LINK_STATIC,
+	SYMBOL_LINK_DYNAMIC,
+} SymbolLinkMode;
+
+typedef struct {
+	String name;
+	SymbolLinkage linkage;
+	SymbolLinkMode link_mode;
+} SymbolKey;
+
+typedef struct {
+	String name;
+	SymbolLinkage linkage;
+	SymbolLinkMode link_mode;
+
+	union {
+		// SYMBOL_FUNCTION
+		uint32_t func_index;
+
+		// TODO: Add `SYMBOL_VARIABLE` data when implementing globals
+	} data;
+
+	union {
+		struct {
+			uint32_t compilation_unit_id;
+		} internal;
+	} linkage_data;
+} Symbol;
+
+typedef struct {
+	Symbol* symbols;
+	size_t count;
+	size_t capacity;
+
+	SymbolKey* keys;
+	SymbolId* values;
+	size_t map_capacity;
+
+	Allocator allocator;
+} SymbolMap;
+
+void symbol_map_init(SymbolMap* map, Allocator allocator);
+void symbol_map_release(SymbolMap* map);
+
+// Returns `SYMBOL_ID_INVALID`, on failure
+SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol);
+
+// Returns `SYMBOL_ID_INVALID`, on failure
+SymbolId symbol_map_find(const SymbolMap* map, SymbolScope scope, String name);
+
 #endif

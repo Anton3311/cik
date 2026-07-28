@@ -2,32 +2,46 @@
 
 #include "core/core.h"
 
-LinkedProgram linker_link(const LoweredFunction* functions,
-		size_t function_count,
-		const FunctionRefTable* ref_table,
-		Arena* allocator) {
+static uint64_t _compute_total_program_size_and_func_offsets(const LoweredUnit* units,
+		size_t unit_count,
+		Arena* allocator,
+		LinkedUnitState** out_states) {
+
 	profile_scope_start(__func__);
 
-	MachineCodeBuffer machine_code = {};
+	LinkedUnitState* states = arena_alloc_array(allocator, LinkedUnitState, unit_count);
+	for (size_t unit_index = 0; unit_index < unit_count; unit_index += 1) {
+		states[unit_index].func_offsets = arena_alloc_array(allocator,
+				uint64_t,
+				units[unit_index].function_count);
+	}
 
-	size_t* function_offsets = arena_alloc_array(allocator, size_t, function_count);
-
-	{
-		size_t offset = 0;
-		for (size_t i = 0; i < function_count; i += 1) {
-			function_offsets[i] = offset;
-
-			machine_code.size_in_bytes += functions[i].size_in_bytes;
-			offset += functions[i].size_in_bytes;
+	uint64_t size = 0;
+	for (size_t unit_index = 0; unit_index < unit_count; unit_index += 1) {
+		LoweredUnit unit = units[unit_index];
+		LinkedUnitState unit_state = states[unit_index];
+		for (size_t i = 0; i < unit.function_count; i += 1) {
+			unit_state.func_offsets[i] = size;
+			size += unit.functions[i].size_in_bytes;
 		}
 	}
 
-	machine_code.code = allocate_executable(machine_code.size_in_bytes);
+	*out_states = states;
+	profile_scope_end();
+	return size;
+}
 
-	for (size_t i = 0; i < function_count; i += 1) {
-		const LoweredFunction* func = &functions[i];
+static void _link_unit(size_t lowered_unit_index,
+		const LoweredUnit lowered_unit,
+		const LinkedUnitState* unit_states,
+		const FunctionRefTable* ref_table,
+		MachineCodeBuffer machine_code) {
+	profile_scope_start(__func__);
 
-		void* function_offset = (uint8_t*)machine_code.code + function_offsets[i];
+	for (size_t i = 0; i < lowered_unit.function_count; i += 1) {
+		const LoweredFunction* func = &lowered_unit.functions[i];
+
+		void* function_offset = (uint8_t*)machine_code.code + unit_states[lowered_unit_index].func_offsets[i];
 		memcpy(function_offset, func->code, func->size_in_bytes);
 
 		size_t placeholder_count = func->call_addr_placeholder_count;
@@ -43,9 +57,13 @@ LinkedProgram linker_link(const LoweredFunction* functions,
 			uint64_t callee_address;
 
 			switch (callee->impl_kind) {
-			case FUNCTION_IMPL_INTERNAL:
-				callee_address = (uint64_t)machine_code.code + function_offsets[callee->internal_function_index];
+			case FUNCTION_IMPL_INTERNAL: {
+				size_t unit_index = callee->internal.compilation_unit_index;
+				size_t function_index = callee->internal.function_index;
+				uint64_t callee_offset = unit_states[unit_index].func_offsets[function_index];
+				callee_address = (uint64_t)machine_code.code + callee_offset;
 				break;
+			}
 			case FUNCTION_IMPL_EXTERNAL:
 				callee_address = (uint64_t)callee->external_address;
 				break;
@@ -78,10 +96,54 @@ LinkedProgram linker_link(const LoweredFunction* functions,
 		}
 	}
 
+	profile_scope_end();
+}
+
+LinkedProgram linker_link(const LoweredUnit* units,
+		size_t unit_count,
+		const FunctionRefTable* ref_table,
+		Arena* allocator) {
+	profile_scope_start(__func__);
+
+	LinkedUnitState* unit_states = NULL;
+	size_t code_size = _compute_total_program_size_and_func_offsets(units,
+			unit_count,
+			allocator,
+			&unit_states);
+
+	MachineCodeBuffer machine_code = {};
+	machine_code.size_in_bytes = code_size;
+	machine_code.code = allocate_executable(code_size);
+
+	for (size_t i = 0; i < unit_count; i += 1) {
+		_link_unit(i, units[i], unit_states, ref_table, machine_code);
+	}
+
 	LinkedProgram linked = {};
 	linked.machine_code = machine_code;
-	linked.function_offsets = function_offsets;
+	linked.unit_count = unit_count;
+	linked.unit_states = unit_states;
 
 	profile_scope_end();
 	return linked;
+}
+
+uint64_t linker_resolve_func_address(const LinkedProgram* linked_program,
+		const FunctionRefTable* ref_table,
+		String name) {
+	profile_scope_start(__func__);
+
+	uint16_t ref_id = func_ref_table_entry_index(ref_table, name);
+	if (ref_id == UINT16_MAX) {
+		profile_scope_end();
+		return UINT64_MAX;
+	} 
+
+	const FunctionRef* ref = &ref_table->refs[ref_id];
+
+	size_t unit_index = ref->internal.compilation_unit_index;
+	LinkedUnitState unit_state = linked_program->unit_states[unit_index];
+
+	profile_scope_end();
+	return unit_state.func_offsets[ref->internal.function_index];
 }

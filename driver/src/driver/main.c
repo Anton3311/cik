@@ -46,6 +46,8 @@ typedef struct {
 	Arena* ast_arena;
 	Arena* generated_tokens_arena;
 
+	size_t unit_index;
+
 	CompilerFlags flags;
 	X64BackendFlags backend_flags;
 
@@ -54,12 +56,10 @@ typedef struct {
 	Diagnostics* diagnostics;
 	SourceStorage* source_storage;
 
-	FunctionRefTable ref_table;
-	LoweredFunction* lowered_functions;
-	size_t function_count;
+	FunctionRefTable* ref_table;
 } CompilationUnitContext;
 
-void compile_unit(CompilationUnitContext* context) {
+static LoweredUnit compile_unit(CompilationUnitContext* context) {
 	profile_scope_start(__func__);
 
 	SourceFile* source_file = source_storage_append_from_path(
@@ -101,7 +101,7 @@ void compile_unit(CompilationUnitContext* context) {
 	if (context->diagnostics->first != NULL) {
 		diagnostics_print(context->diagnostics);
 		profile_scope_end();
-		return;
+		return (LoweredUnit) {};
 	}
 
 	if (has_flag(context->flags, C_FLAG_PRINT_AST) && parsed_ast.root_nodes.first) {
@@ -125,11 +125,10 @@ void compile_unit(CompilationUnitContext* context) {
 			LoweredFunction,
 			function_count);
 
-	FunctionRefTable ref_table = {};
-	ref_table.allocator = heap_allocator_new();
-
 	StringStorage string_storage = {};
 	string_storage.allocator = heap_allocator_new();
+
+	FunctionRefTable* ref_table = context->ref_table;
 
 	size_t function_index = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
@@ -141,9 +140,10 @@ void compile_unit(CompilationUnitContext* context) {
 			continue;
 		}
 
-		uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
-		ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
-		ref_table.refs[ref_index].internal_function_index = function_index;
+		uint16_t ref_index = func_ref_table_get_or_insert(ref_table, node->function_def->proto.name);
+		ref_table->refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
+		ref_table->refs[ref_index].internal.function_index = function_index;
+		ref_table->refs[ref_index].internal.compilation_unit_index = context->unit_index;
 
 		FunctionCompiler c = {};
 		c.function = node->function_def;
@@ -151,7 +151,7 @@ void compile_unit(CompilationUnitContext* context) {
 		c.instr_allocator = context->arena;
 		c.temp_allocator = context->temp_arena;
 		c.str_storage = &string_storage;
-		c.func_ref_table = &ref_table;
+		c.func_ref_table = ref_table;
 		c.pointer_type_layout = type_layout_new(8, 8);
 
 		CompiledFunction func = function_compiler_compile(&c);
@@ -161,7 +161,7 @@ void compile_unit(CompilationUnitContext* context) {
 		gen.instr_buffer = func.instr_buffer;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
-		gen.ref_table = &ref_table;
+		gen.ref_table = ref_table;
 		gen.string_consts = str_storage_to_array(c.str_storage);
 
 		lowered_functions[function_index] = x64_generate_code(&gen, func.start_region);
@@ -170,19 +170,16 @@ void compile_unit(CompilationUnitContext* context) {
 		function_index += 1;
 	}
 
-	compiler_resolve_default_func_refs(&ref_table);
-
-	context->function_count = function_count;
-	context->lowered_functions = lowered_functions;
-
-	// Free function symbol table
-	func_ref_table_release(&ref_table);
 	// Free string storage
 	str_storage_release(&string_storage);
 
 	ident_storage_release(&ident_storage);
 
 	profile_scope_end();
+	return (LoweredUnit) {
+		.functions = lowered_functions,
+		.function_count = function_count,
+	};
 }
 
 int main(int argc, char *argv[]) {
@@ -270,9 +267,14 @@ int main(int argc, char *argv[]) {
 				include_dirs,
 				&arena);
 
+		FunctionRefTable ref_table = {};
+		ref_table.allocator = heap_allocator_new();
+
 		Arena generated_tokens_arena = { .capacity = 128 * 4096 };
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 512 * 4096 };
+
+		LoweredUnit* lowered_units = arena_alloc_array(&arena, LoweredUnit, source_files.count);
 
 		for (size_t i = 0; i < source_files.count; i += 1) {
 			Diagnostics diagnostics = (Diagnostics) {
@@ -280,6 +282,7 @@ int main(int argc, char *argv[]) {
 			};
 
 			CompilationUnitContext context = {};
+			context.unit_index = i;
 			context.flags = flags;
 			context.backend_flags = backend_flags;
 			context.arena = &arena;
@@ -288,22 +291,25 @@ int main(int argc, char *argv[]) {
 			context.ast_arena = &ast_arena;
 			context.generated_tokens_arena = &generated_tokens_arena;
 			context.source_file_path = source_files.values[i];
+			context.ref_table = &ref_table;
 			context.diagnostics = &diagnostics;
 			context.source_storage = &source_storage;
 
-			compile_unit(&context);
+		 	lowered_units[i] = compile_unit(&context);
 		}
 
-#if 0
-		uint16_t entry_point_id = func_ref_table_entry_index(&ref_table, STR_LIT("main"));
-		const FunctionRef* entry_point_ref = &ref_table.refs[entry_point_id];
+		compiler_resolve_default_func_refs(&ref_table);
 
-		assert(entry_point_ref->impl_kind == FUNCTION_IMPL_INTERNAL);
-
-		LinkedProgram linked = linker_link(lowered_functions, function_count, &ref_table, &temp_arena);
+		LinkedProgram linked = linker_link(lowered_units, source_files.count, &ref_table, &arena);
 		MachineCodeBuffer machine_code = linked.machine_code;
 
-		size_t entry_point_offset = linked.function_offsets[entry_point_ref->internal_function_index];
+		uint64_t entry_point_offset = linker_resolve_func_address(
+				&linked,
+				&ref_table,
+				STR_LIT("main"));
+
+		assert(entry_point_offset != UINT64_MAX);
+
 		void* entry_point_address = (uint8_t*)machine_code.code + entry_point_offset;
 
 		typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
@@ -322,8 +328,8 @@ int main(int argc, char *argv[]) {
 		free_executable(machine_code.code, machine_code.size_in_bytes);
 
 		printf("%llu\n", result);
-#endif
 
+		func_ref_table_release(&ref_table);
 
 		arena_release(&ident_arena);
 		arena_release(&ast_arena);

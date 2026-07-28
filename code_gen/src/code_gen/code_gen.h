@@ -16,7 +16,11 @@ typedef struct {
 
 	union {
 		const void* external_address;
-		size_t internal_function_index;
+
+		struct {
+			size_t function_index;
+			size_t compilation_unit_index;
+		} internal;
 	};
 } FunctionRef;
 

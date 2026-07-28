@@ -101,7 +101,8 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 
 		uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
 		ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
-		ref_table.refs[ref_index].internal_function_index = function_index;
+		ref_table.refs[ref_index].internal.function_index = function_index;
+		ref_table.refs[ref_index].internal.compilation_unit_index = 0;
 
 		FunctionCompiler c = {};
 		c.function = node->function_def;
@@ -139,7 +140,11 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 
 	assert_msg(entry_point_ref->impl_kind == FUNCTION_IMPL_INTERNAL, "Entry point not found");
 
-	LinkedProgram linked = linker_link(lowered_functions, function_count, &ref_table, context->arena);
+	LoweredUnit unit = {};
+	unit.functions = lowered_functions;
+	unit.function_count = function_count;
+
+	LinkedProgram linked = linker_link(&unit, 1, &ref_table, context->arena);
 	MachineCodeBuffer machine_code = linked.machine_code;
 
 	return machine_code;
@@ -932,8 +937,9 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		}
 
 		LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+		LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
 		MachineCodeBuffer machine_code = linker_link(
-				&lowered_function, 1,
+				&unit, 1,
 				&func_ref_table,
 				context->arena).machine_code;
 		
@@ -1091,8 +1097,9 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
 			MachineCodeBuffer machine_code = linker_link(
-					&lowered_function, 1,
+					&unit, 1,
 					&func_ref_table,
 					context->arena).machine_code;
 			
@@ -1243,8 +1250,9 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
 			MachineCodeBuffer machine_code = linker_link(
-					&lowered_function, 1,
+					&unit, 1,
 					&func_ref_table,
 					context->arena).machine_code;
 			
@@ -1396,8 +1404,9 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
 			MachineCodeBuffer machine_code = linker_link(
-					&lowered_function, 1,
+					&unit, 1,
 					&func_ref_table,
 					context->arena).machine_code;
 			
@@ -1554,8 +1563,9 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
+			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
 			MachineCodeBuffer machine_code = linker_link(
-					&lowered_function, 1,
+					&unit, 1,
 					&func_ref_table,
 					context->arena).machine_code;
 			

@@ -82,7 +82,7 @@ void func_ref_table_release(FunctionRefTable* table) {
 // SymbolMap
 //
 
-static const size_t SYMBOL_MAP_INITIAL_CAPACITY = 16;
+static const size_t SYMBOL_MAP_INITIAL_CAPACITY = 32;
 
 inline size_t _symbol_look_up_by_name_and_linkage(const SymbolMap* map, String name) {
 	return SIZE_MAX;

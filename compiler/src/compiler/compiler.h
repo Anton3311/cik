@@ -94,6 +94,6 @@ typedef struct {
 } CompiledFunction;
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);
-void compiler_resolve_default_func_refs(FunctionRefTable* table);
+void compiler_resolve_default_func_refs(SymbolMap* map);
 
 #endif

@@ -2095,19 +2095,31 @@ static FILE* _internal_fopen(const char* path, const char* mode) {
 	return f;
 }
 
-void compiler_resolve_default_func_refs(FunctionRefTable* table) {
-	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
-	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
-	func_ref_table_resolve_ref_to(table, STR_LIT("printf"), printf);
-	func_ref_table_resolve_ref_to(table, STR_LIT("panic"), _internal_panic);
-	func_ref_table_resolve_ref_to(table, STR_LIT("identity"), _internal_identity);
-	func_ref_table_resolve_ref_to(table, STR_LIT("store_u64"), _internal_identity);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fopen"), _internal_fopen);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fclose"), fclose);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fread"), fread);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fwrite"), fwrite);
-	func_ref_table_resolve_ref_to(table, STR_LIT("ftell"), ftell);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fseek"), fseek);
-	func_ref_table_resolve_ref_to(table, STR_LIT("malloc"), malloc);
-	func_ref_table_resolve_ref_to(table, STR_LIT("free"), free);
+static void _resolve_symbol(SymbolMap* map, String name, void* impl) {
+	Symbol symbol;
+	memset(&symbol, 0xff, sizeof(symbol));
+
+	symbol.name = name;
+	symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
+	symbol.linkage_data.external_dynamic.impl = impl;
+
+	SymbolId id = symbol_map_insert(map, &symbol);
+	assert(id != SYMBOL_ID_INVALID);
+}
+
+void compiler_resolve_default_func_refs(SymbolMap* map) {
+	_resolve_symbol(map, STR_LIT("assert"), _internal_assert);
+	_resolve_symbol(map, STR_LIT("print_string"), _internal_print_string);
+	_resolve_symbol(map, STR_LIT("printf"), printf);
+	_resolve_symbol(map, STR_LIT("panic"), _internal_panic);
+	_resolve_symbol(map, STR_LIT("identity"), _internal_identity);
+	_resolve_symbol(map, STR_LIT("store_u64"), _internal_identity);
+	_resolve_symbol(map, STR_LIT("fopen"), _internal_fopen);
+	_resolve_symbol(map, STR_LIT("fclose"), fclose);
+	_resolve_symbol(map, STR_LIT("fread"), fread);
+	_resolve_symbol(map, STR_LIT("fwrite"), fwrite);
+	_resolve_symbol(map, STR_LIT("ftell"), ftell);
+	_resolve_symbol(map, STR_LIT("fseek"), fseek);
+	_resolve_symbol(map, STR_LIT("malloc"), malloc);
+	_resolve_symbol(map, STR_LIT("free"), free);
 }

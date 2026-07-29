@@ -1,4 +1,4 @@
-extern void panic(const char* message);
+__declspec(dllimport) void panic(const char* message);
 
 int main(int argc, char* argv[]) {
 	if (-10) {

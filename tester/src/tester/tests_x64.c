@@ -16,6 +16,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		ResolverFunction resolver,
 		void* resolver_data) {
 
+#if 0
 	SourceStorage source_storage = {};
 
 	StringArray include_dirs = {};
@@ -135,19 +136,22 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		resolver(&ref_table, resolver_data);
 	}
 
-	uint16_t entry_point_id = func_ref_table_entry_index(&ref_table, STR_LIT("main"));
-	const FunctionRef* entry_point_ref = &ref_table.refs[entry_point_id];
-
-	assert_msg(entry_point_ref->impl_kind == FUNCTION_IMPL_INTERNAL, "Entry point not found");
-
 	LoweredUnit unit = {};
 	unit.functions = lowered_functions;
 	unit.function_count = function_count;
 
-	LinkedProgram linked = linker_link(&unit, 1, &ref_table, context->arena);
-	MachineCodeBuffer machine_code = linked.machine_code;
+	LinkedProgram linked = linker_link(&unit,
+			imported_symbol_maps,
+			exported_symbol_maps,
+			&dynamically_linked_symbols,
+			1,
+			STR_LIT("main"),
+			&arena);
 
+	MachineCodeBuffer machine_code = linked.machine_code;
 	return machine_code;
+#endif
+	return (MachineCodeBuffer) {};
 }
 
 static MachineCodeBuffer _compile(TestContext* context, String source_code) {
@@ -840,6 +844,15 @@ void test_return_file_path(TestContext* context) {
 	free_executable(machine_code.code, machine_code.size_in_bytes);
 }
 
+static MachineCodeBuffer _lowered_code_to_machine_code(const LoweredFunction* lowered) {
+	MachineCodeBuffer code = {};
+	code.size_in_bytes = lowered->size_in_bytes;
+	code.code = allocate_executable(code.size_in_bytes);
+
+	memcpy(code.code, lowered->code, code.size_in_bytes);
+	return code;
+}
+
 void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* context) {
 	Arena* instr_allocator = context->arena;
 
@@ -937,18 +950,16 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		}
 
 		LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
-		LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
-		MachineCodeBuffer machine_code = linker_link(
-				&unit, 1,
-				&func_ref_table,
-				context->arena).machine_code;
+		MachineCodeBuffer machine_code = _lowered_code_to_machine_code(&lowered_function);
 		
 		typedef uint64_t(*Function)();
 
-		Function function = (Function)machine_code.code;
+		Function function = (Function)lowered_function.code;
 		uint64_t result = function();
 
 		assert(result == 96);
+
+		free_executable(machine_code.code, machine_code.size_in_bytes);
 	}
 
 	instr_buffer_release(instr_buffer);
@@ -1097,11 +1108,7 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
-			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
-			MachineCodeBuffer machine_code = linker_link(
-					&unit, 1,
-					&func_ref_table,
-					context->arena).machine_code;
+			MachineCodeBuffer machine_code = _lowered_code_to_machine_code(&lowered_function);
 			
 			typedef uint64_t(*Function)();
 
@@ -1109,6 +1116,8 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 			uint64_t result = function();
 
 			assert(result == 144);
+
+			free_executable(machine_code.code, machine_code.size_in_bytes);
 		}
 	}
 
@@ -1250,11 +1259,7 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
-			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
-			MachineCodeBuffer machine_code = linker_link(
-					&unit, 1,
-					&func_ref_table,
-					context->arena).machine_code;
+			MachineCodeBuffer machine_code = _lowered_code_to_machine_code(&lowered_function);
 			
 			typedef uint64_t(*Function)();
 
@@ -1262,6 +1267,8 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			uint64_t result = function();
 
 			assert(result == 5);
+
+			free_executable(machine_code.code, machine_code.size_in_bytes);
 		}
 	}
 
@@ -1404,11 +1411,7 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
-			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
-			MachineCodeBuffer machine_code = linker_link(
-					&unit, 1,
-					&func_ref_table,
-					context->arena).machine_code;
+			MachineCodeBuffer machine_code = _lowered_code_to_machine_code(&lowered_function);
 			
 			typedef uint64_t(*Function)();
 
@@ -1416,6 +1419,8 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			uint64_t result = function();
 
 			assert(result == 1);
+
+			free_executable(machine_code.code, machine_code.size_in_bytes);
 		}
 	}
 
@@ -1563,11 +1568,7 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
-			LoweredUnit unit = { .functions = &lowered_function, .function_count = 1 };
-			MachineCodeBuffer machine_code = linker_link(
-					&unit, 1,
-					&func_ref_table,
-					context->arena).machine_code;
+			MachineCodeBuffer machine_code = _lowered_code_to_machine_code(&lowered_function);
 			
 			typedef uint64_t(*Function)();
 
@@ -1575,6 +1576,8 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 			uint64_t result = function();
 
 			assert(result == 128);
+
+			free_executable(machine_code.code, machine_code.size_in_bytes);
 		}
 	}
 

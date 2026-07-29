@@ -313,17 +313,7 @@ int main(int argc, char *argv[]) {
 		SymbolMap dynamically_linked_symbols = {};
 		symbol_map_init(&dynamically_linked_symbols, heap_allocator_new());
 
-		{
-			Symbol symbol;
-			memset(&symbol, 0xff, sizeof(symbol));
-
-			symbol.name = STR_LIT("printf");
-			symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
-			symbol.linkage_data.external_dynamic.impl = printf;
-
-			SymbolId id = symbol_map_insert(&dynamically_linked_symbols, &symbol);
-			assert(id != SYMBOL_ID_INVALID);
-		}
+		compiler_resolve_default_func_refs(&dynamically_linked_symbols);
 
 		for (size_t i = 0; i < source_files.count; i += 1) {
 			Diagnostics diagnostics = (Diagnostics) {
@@ -348,8 +338,6 @@ int main(int argc, char *argv[]) {
 
 		 	lowered_units[i] = compile_unit(&context);
 		}
-
-		compiler_resolve_default_func_refs(&ref_table);
 
 		LinkedProgram linked = linker_link(lowered_units,
 				imported_symbol_maps,

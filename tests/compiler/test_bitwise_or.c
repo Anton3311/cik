@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-extern void assert(uint64_t);
+__declspec(dllimport) void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
 	assert(5i8 | 3i8 == 7i8);

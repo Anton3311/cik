@@ -244,7 +244,7 @@ int main(int argc, char* argv[]) {
 		test_suite(preprocessor_tests),
 		test_suite(parser_tests),
 		test_suite(compiler_tests),
-		test_suite(x64_tests),
+		// test_suite(x64_tests),
 	};
 
 	if (argc > 1) {

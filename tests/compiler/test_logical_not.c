@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-extern void assert(uint64_t);
-extern void panic(const char*);
+__declspec(dllimport) void assert(uint64_t);
+__declspec(dllimport) void panic(const char*);
 
 int main(int argc, char* argv[]) {
 	assert(!(0i8 == 0i8) == 0);

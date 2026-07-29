@@ -1,8 +1,8 @@
 #include <stdint.h>
 
-extern void assert(uint64_t);
-extern int* malloc(size_t);
-extern void free(void*);
+__declspec(dllimport) void assert(uint64_t);
+__declspec(dllimport) int* malloc(size_t);
+__declspec(dllimport) void free(void*);
 
 int main(int argc, char* argv[]) {
 	int* array = malloc(20);

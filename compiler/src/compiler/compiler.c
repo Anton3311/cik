@@ -697,27 +697,28 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		const Function* func = callable->function_ref.func;
 		bool is_indirect_call = func->storage_specifier == STORAGE_SPEC_EXTERNAL;
 
-		Symbol symbol = {};
-		symbol.name = func->proto.name;
-		symbol.linkage = is_indirect_call 
-			? SYMBOL_LINKAGE_EXTERNAL
-			: SYMBOL_LINKAGE_INTERNAL;
-		symbol.link_mode = SYMBOL_LINK_STATIC;
+		SymbolId func_symbol_id;
 
-		SymbolId function_id = symbol_map_insert(compiler->symbol_map, &symbol);
-		printf("added symbol %.*s at %u\n", STR_FMT(func->proto.name), function_id);
+		{
+			Symbol symbol;
+			memset(&symbol, 0xff, sizeof(symbol));
 
-		String func_name = func->proto.name;
-		uint8_t function_index = func_ref_table_get_or_insert(
-				compiler->func_ref_table,
-				func_name);
+			symbol.name = func->proto.name;
+			symbol.linkage = func->storage_specifier == STORAGE_SPEC_STATIC
+				? SYMBOL_LINKAGE_INTERNAL
+				: SYMBOL_LINKAGE_EXTERNAL;
+			symbol.link_mode = SYMBOL_LINK_STATIC;
+
+			func_symbol_id = symbol_map_insert(compiler->symbol_map, &symbol);
+			assert(func_symbol_id != SYMBOL_ID_INVALID);
+		}
 
 		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
 		call_instr->kind = is_indirect_call ? INSTR_CALL_INDIRECT : INSTR_CALL_DIRECT;
 		call_instr->call.args = arg_inputs;
 		call_instr->call.io_state = compiler->io_state;
-		call_instr->call.function_index = function_index;
+		call_instr->call.function_index = func_symbol_id;
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		profile_scope_end();

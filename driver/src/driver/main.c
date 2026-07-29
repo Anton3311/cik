@@ -57,7 +57,8 @@ typedef struct {
 	SourceStorage* source_storage;
 
 	FunctionRefTable* ref_table;
-	SymbolMap* symbol_map;
+	SymbolMap* imported_symbol_map;
+	SymbolMap* exported_symbol_map;
 } CompilationUnitContext;
 
 static LoweredUnit compile_unit(CompilationUnitContext* context) {
@@ -109,7 +110,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		print_parsed_node(parsed_ast.root_nodes.first);
 	}
 
-	size_t function_count = 0;
+	uint32_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION) {
 			continue;
@@ -131,14 +132,36 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 
 	FunctionRefTable* ref_table = context->ref_table;
 
-	size_t function_index = 0;
+	uint32_t function_index = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION) {
 			continue;
 		}
 
+		Function* func = node->function_def;
+
 		if (node->function_def->body == NULL) {
 			continue;
+		}
+
+		{
+			Symbol symbol;
+			memset(&symbol, 0xff, sizeof(symbol));
+
+			symbol.name = func->proto.name;
+			symbol.linkage = func->storage_specifier == STORAGE_SPEC_STATIC
+				? SYMBOL_LINKAGE_INTERNAL
+				: SYMBOL_LINKAGE_EXTERNAL;
+			symbol.link_mode = SYMBOL_LINK_STATIC;
+			symbol.data.func_index = function_index;
+
+			if (symbol.linkage == SYMBOL_LINKAGE_INTERNAL) {
+				symbol.linkage_data.internal.compilation_unit_index = context->unit_index;
+			}
+
+			SymbolId symbol_id = symbol_map_insert(context->exported_symbol_map, &symbol);
+			assert_msg(symbol_id != SYMBOL_ID_INVALID,
+					"Duplicate function symbol. Did the parser miss the redefinition?");
 		}
 
 		uint16_t ref_index = func_ref_table_get_or_insert(ref_table, node->function_def->proto.name);
@@ -153,20 +176,20 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		c.temp_allocator = context->temp_arena;
 		c.str_storage = &string_storage;
 		c.func_ref_table = ref_table;
-		c.symbol_map = context->symbol_map;
+		c.symbol_map = context->imported_symbol_map;
 		c.pointer_type_layout = type_layout_new(8, 8);
 
-		CompiledFunction func = function_compiler_compile(&c);
+		CompiledFunction compiled_function = function_compiler_compile(&c);
 
 		X64CodeGenerator gen = {};
 		gen.flags = context->backend_flags;
-		gen.instr_buffer = func.instr_buffer;
+		gen.instr_buffer = compiled_function.instr_buffer;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.ref_table = ref_table;
 		gen.string_consts = str_storage_to_array(c.str_storage);
 
-		lowered_functions[function_index] = x64_generate_code(&gen, func.start_region);
+		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
 
 		instr_buffer_release(&gen.instr_buffer);
 		function_index += 1;
@@ -272,14 +295,34 @@ int main(int argc, char *argv[]) {
 		FunctionRefTable ref_table = {};
 		ref_table.allocator = heap_allocator_new();
 
-		SymbolMap symbol_map = {};
-		symbol_map_init(&symbol_map, heap_allocator_new());
-
 		Arena generated_tokens_arena = { .capacity = 128 * 4096 };
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 512 * 4096 };
 
+		SymbolMap* imported_symbol_maps = arena_alloc_array(&arena, SymbolMap, source_files.count);
+		SymbolMap* exported_symbol_maps = arena_alloc_array(&arena, SymbolMap, source_files.count);
 		LoweredUnit* lowered_units = arena_alloc_array(&arena, LoweredUnit, source_files.count);
+
+		for (size_t i = 0; i < source_files.count; i += 1) {
+			symbol_map_init(&imported_symbol_maps[i], heap_allocator_new());
+		}
+
+		for (size_t i = 0; i < source_files.count; i += 1) {
+			symbol_map_init(&exported_symbol_maps[i], heap_allocator_new());
+		}
+
+		{
+			Symbol symbol;
+			memset(&symbol, 0xff, sizeof(symbol));
+
+			symbol.name = STR_LIT("printf");
+			symbol.linkage = SYMBOL_LINKAGE_EXTERNAL;
+			symbol.link_mode = SYMBOL_LINK_DYNAMIC;
+			symbol.linkage_data.external_dynamic.impl = printf;
+
+			SymbolId id = symbol_map_insert(&exported_symbol_maps[0], &symbol);
+			assert(id != SYMBOL_ID_INVALID);
+		}
 
 		for (size_t i = 0; i < source_files.count; i += 1) {
 			Diagnostics diagnostics = (Diagnostics) {
@@ -297,7 +340,8 @@ int main(int argc, char *argv[]) {
 			context.generated_tokens_arena = &generated_tokens_arena;
 			context.source_file_path = source_files.values[i];
 			context.ref_table = &ref_table;
-			context.symbol_map = &symbol_map;
+			context.exported_symbol_map = &exported_symbol_maps[i];
+			context.imported_symbol_map = &imported_symbol_maps[i];
 			context.diagnostics = &diagnostics;
 			context.source_storage = &source_storage;
 
@@ -306,7 +350,11 @@ int main(int argc, char *argv[]) {
 
 		compiler_resolve_default_func_refs(&ref_table);
 
-		LinkedProgram linked = linker_link(lowered_units, source_files.count, &ref_table, &arena);
+		LinkedProgram linked = linker_link(lowered_units,
+				imported_symbol_maps,
+				exported_symbol_maps,
+				source_files.count,
+				&ref_table, &arena);
 		MachineCodeBuffer machine_code = linked.machine_code;
 
 		uint64_t entry_point_offset = linker_resolve_func_address(
@@ -335,7 +383,14 @@ int main(int argc, char *argv[]) {
 
 		printf("%llu\n", result);
 
-		symbol_map_release(&symbol_map);
+		for (size_t i = 0; i < source_files.count; i += 1) {
+			symbol_map_release(&imported_symbol_maps[i]);
+		}
+
+		for (size_t i = 0; i < source_files.count; i += 1) {
+			symbol_map_release(&exported_symbol_maps[i]);
+		}
+
 		func_ref_table_release(&ref_table);
 
 		arena_release(&ident_arena);

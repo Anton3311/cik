@@ -142,7 +142,8 @@ SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 			SymbolId id = (SymbolId)map->count;
 
 			map->symbols[id] = *symbol;
-			map->keys[id] = (SymbolKey) {
+			map->values[index] = id;
+			map->keys[index] = (SymbolKey) {
 				.name = symbol->name,
 				.linkage = symbol->linkage,
 				.link_mode = symbol->link_mode,
@@ -157,29 +158,21 @@ SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 }
 
 inline bool _symbol_key_equal(const SymbolKey a, const SymbolKey b) {
-	if (a.linkage == b.linkage) {
-		return true;
+	if (a.linkage != b.linkage) {
+		return false;
 	}
 
-	if (a.link_mode == b.link_mode) {
-		return true;
+	if (a.link_mode != b.link_mode) {
+		return false;
 	}
 
 	return str_equal(a.name, b.name);
 }
 
-SymbolId symbol_map_find(const SymbolMap* map, SymbolScope scope, String name) {
+SymbolId symbol_map_find(const SymbolMap* map, SymbolKey key) {
 	profile_scope_start(__func__);
 
-	SymbolKey key = (SymbolKey) {
-		.name = name,
-		.linkage = scope == SYMBOL_SCOPE_UNIT
-			? SYMBOL_LINKAGE_INTERNAL
-			: SYMBOL_LINKAGE_EXTERNAL,
-		.link_mode = SYMBOL_LINK_STATIC,
-	};
-
-	size_t hash = hash_string(name);
+	size_t hash = hash_string(key.name);
 	for (size_t i = 0; i < map->map_capacity; i += 1) {
 		size_t index = (hash + i) % map->map_capacity;
 

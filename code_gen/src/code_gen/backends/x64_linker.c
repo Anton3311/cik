@@ -31,18 +31,131 @@ static uint64_t _compute_total_program_size_and_func_offsets(const LoweredUnit* 
 	return size;
 }
 
-static void _link_unit(size_t lowered_unit_index,
-		const LoweredUnit lowered_unit,
-		const LinkedUnitState* unit_states,
-		const FunctionRefTable* ref_table,
+static void _copy_code(const LoweredUnit lowered_unit,
+		const LinkedUnitState unit_state,
 		MachineCodeBuffer machine_code) {
 	profile_scope_start(__func__);
 
 	for (size_t i = 0; i < lowered_unit.function_count; i += 1) {
 		const LoweredFunction* func = &lowered_unit.functions[i];
+		uint64_t function_offset = unit_state.func_offsets[i];
+		memcpy((uint8_t*)machine_code.code + function_offset, func->code, func->size_in_bytes);
+	}
+
+	profile_scope_end();
+}
+
+typedef struct {
+	size_t count;
+	size_t capacity;
+
+	String* keys;
+	size_t* unit_indices;
+	SymbolId* symbols;
+} GlobalSymbolMap;
+
+static bool _insert_global_symbol(GlobalSymbolMap* map,
+		String name,
+		size_t unit_index,
+		SymbolId symbol) {
+
+	size_t hash = hash_string(name);
+	for (size_t i = 0; i < map->capacity; i += 1) {
+		size_t index = (hash + i) % map->capacity;
+
+		if (map->keys[index].v == NULL) {
+			map->keys[index] = name;
+			map->unit_indices[index] = unit_index;
+			map->symbols[index] = symbol;
+
+			map->count += 1;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static size_t _find_global_symbol(const GlobalSymbolMap* map, String name) {
+	size_t hash = hash_string(name);
+	for (size_t i = 0; i < map->capacity; i += 1) {
+		size_t index = (hash + i) % map->capacity;
+
+		if (str_equal(map->keys[index], name)) {
+			return index;
+		}
+
+		if (map->keys[index].v == NULL) {
+			return SIZE_MAX;
+		}
+	}
+
+	return SIZE_MAX;
+}
+
+static GlobalSymbolMap _collect_global_symbols(const SymbolMap* symbol_maps,
+		size_t unit_count,
+		Arena* allocator) {
+
+	profile_scope_start(__func__);
+
+	size_t global_symbol_count = 0;
+
+	for (size_t i = 0; i < unit_count; i += 1) {
+		const SymbolMap* map = &symbol_maps[i];
+		size_t symbol_count = map->count;
+		for (size_t symbol_index = 0; symbol_index < symbol_count; symbol_index += 1) {
+			const Symbol* symbol = &map->symbols[symbol_index];
+
+			if (symbol->linkage == SYMBOL_LINKAGE_EXTERNAL) {
+				global_symbol_count += 1;
+			}
+		}
+	}
+
+	GlobalSymbolMap map = {};
+	map.count = 0;
+	map.capacity = global_symbol_count * 100 / 80;
+	map.keys = arena_alloc_array_zeroed(allocator, String, map.capacity);
+	map.unit_indices = arena_alloc_array(allocator, size_t, map.capacity);
+	map.symbols = arena_alloc_array(allocator, SymbolId, map.capacity);
+
+	memset(map.unit_indices, 0xff, sizeof(*map.unit_indices) * map.capacity);
+	memset(map.symbols, 0xff, sizeof(*map.symbols) * map.capacity);
+
+	for (size_t i = 0; i < unit_count; i += 1) {
+		const SymbolMap* symbol_map = &symbol_maps[i];
+		size_t symbol_count = symbol_map->count;
+		for (size_t symbol_index = 0; symbol_index < symbol_count; symbol_index += 1) {
+			const Symbol* symbol = &symbol_map->symbols[symbol_index];
+
+			if (symbol->linkage == SYMBOL_LINKAGE_EXTERNAL) {
+				bool inserted = _insert_global_symbol(&map, symbol->name, i, (SymbolId)symbol_index);
+				assert(inserted);
+			}
+		}
+	}
+
+	profile_scope_end();
+	return map;
+}
+
+static void _link_unit(size_t lowered_unit_index,
+		const LoweredUnit lowered_unit,
+		const SymbolMap* imported_symbol_maps,
+		const SymbolMap* exported_symbol_maps,
+		const LinkedUnitState* unit_states,
+		const FunctionRefTable* ref_table,
+		const GlobalSymbolMap* global_symbols,
+		MachineCodeBuffer machine_code) {
+	profile_scope_start(__func__);
+
+	const SymbolMap* imported_symbol_map = &imported_symbol_maps[lowered_unit_index];
+
+	for (size_t i = 0; i < lowered_unit.function_count; i += 1) {
+		const LoweredFunction* func = &lowered_unit.functions[i];
 
 		void* function_offset = (uint8_t*)machine_code.code + unit_states[lowered_unit_index].func_offsets[i];
-		memcpy(function_offset, func->code, func->size_in_bytes);
 
 		size_t placeholder_count = func->call_addr_placeholder_count;
 		for (size_t placeholder_index = 0;
@@ -51,25 +164,55 @@ static void _link_unit(size_t lowered_unit_index,
 
 			CallAddressPlaceholder placeholder = func->call_addr_placeholders[placeholder_index];
 			
+			const Symbol* callee_symbol = &imported_symbol_map->symbols[placeholder.function_index];
+
+			uint64_t callee_address = UINT64_MAX;
 			uint64_t instruction_end_offset = (uint64_t)placeholder.instruction_end_offset + (uint64_t)function_offset;
 
-			const FunctionRef* callee = &ref_table->refs[placeholder.function_index];
-			uint64_t callee_address;
+			switch (callee_symbol->linkage) {
+			case SYMBOL_LINKAGE_INTERNAL: {
+				// Link against an exported symbol in the same unit.
+				const SymbolMap* exported_symbols = &exported_symbol_maps[lowered_unit_index];
+				SymbolId callee_impl_id = symbol_map_find(
+						exported_symbols,
+						symbol_key_from_symbol(callee_symbol));
 
-			switch (callee->impl_kind) {
-			case FUNCTION_IMPL_INTERNAL: {
-				size_t unit_index = callee->internal.compilation_unit_index;
-				size_t function_index = callee->internal.function_index;
-				uint64_t callee_offset = unit_states[unit_index].func_offsets[function_index];
+				if (callee_impl_id == SYMBOL_ID_INVALID) {
+					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
+					continue;
+				}
+
+				const Symbol* callee_impl = &exported_symbols->symbols[callee_impl_id];
+				
+				uint64_t callee_offset = unit_states[lowered_unit_index]
+					.func_offsets[callee_impl->data.func_index];
+
 				callee_address = (uint64_t)machine_code.code + callee_offset;
 				break;
 			}
-			case FUNCTION_IMPL_EXTERNAL:
-				callee_address = (uint64_t)callee->external_address;
+			case SYMBOL_LINKAGE_EXTERNAL: {
+				size_t entry_index = _find_global_symbol(global_symbols, callee_symbol->name);
+				if (entry_index == SIZE_MAX) {
+					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
+					continue;
+				}
+
+				SymbolId callee_impl_id = global_symbols->symbols[entry_index];
+				size_t unit_index = global_symbols->unit_indices[entry_index];
+
+				const Symbol* callee_impl = &exported_symbol_maps[unit_index].symbols[callee_impl_id];
+				uint32_t function_index = callee_impl->data.func_index;
+
+				if (callee_impl->link_mode == SYMBOL_LINK_STATIC) {
+					uint64_t callee_offset = unit_states[unit_index].func_offsets[function_index];
+					callee_address = (uint64_t)machine_code.code + callee_offset;
+				} else if (callee_impl->link_mode == SYMBOL_LINK_DYNAMIC) {
+					callee_address = (uint64_t)callee_impl->linkage_data.external_dynamic.impl;
+				} else {
+					unreachable();
+				}
 				break;
-			case FUNCTION_IMPL_NONE:
-				printf("unresolved reference to '%.*s'\n", STR_FMT(callee->name));
-				unreachable();
+			}
 			}
 
 			void* addr_offset = (uint8_t*)function_offset + placeholder.addr_offset;
@@ -92,7 +235,6 @@ static void _link_unit(size_t lowered_unit_index,
 				break;
 			}
 			}
-
 		}
 	}
 
@@ -100,6 +242,8 @@ static void _link_unit(size_t lowered_unit_index,
 }
 
 LinkedProgram linker_link(const LoweredUnit* units,
+		const SymbolMap* imported_symbol_maps,
+		const SymbolMap* exported_symbol_maps,
 		size_t unit_count,
 		const FunctionRefTable* ref_table,
 		Arena* allocator) {
@@ -116,8 +260,18 @@ LinkedProgram linker_link(const LoweredUnit* units,
 	machine_code.code = allocate_executable(code_size);
 
 	for (size_t i = 0; i < unit_count; i += 1) {
-		_link_unit(i, units[i], unit_states, ref_table, machine_code);
+		_copy_code(units[i], unit_states[i], machine_code);
 	}
+
+	ArenaRegion temp = arena_begin_temp(allocator);
+
+	GlobalSymbolMap global_symbols = _collect_global_symbols(exported_symbol_maps, unit_count, allocator);
+
+	for (size_t i = 0; i < unit_count; i += 1) {
+		_link_unit(i, units[i], imported_symbol_maps, exported_symbol_maps, unit_states, ref_table, &global_symbols, machine_code);
+	}
+
+	arena_end_temp(temp);
 
 	LinkedProgram linked = {};
 	linked.machine_code = machine_code;

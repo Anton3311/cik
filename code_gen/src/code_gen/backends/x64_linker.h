@@ -21,6 +21,8 @@ typedef struct {
 } LinkedProgram;
 
 LinkedProgram linker_link(const LoweredUnit* units,
+		const SymbolMap* imported_symbol_maps,
+		const SymbolMap* exported_symbol_maps,
 		size_t unit_count,
 		const FunctionRefTable* ref_table,
 		Arena* allocator);

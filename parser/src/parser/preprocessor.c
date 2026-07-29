@@ -4,11 +4,7 @@
 
 #define REMOVED_MACRO_FLAG (void*)0x1
 
-#ifdef FEATURE_PROFILER
-	#define PREPROCESSOR_LOG 0
-#else
-	#define PREPROCESSOR_LOG 1
-#endif
+#define PREPROCESSOR_LOG 0
 
 static size_t _macro_table_find_empty_slot(MacroTable* table, String key) {
 	profile_scope_start(__func__);

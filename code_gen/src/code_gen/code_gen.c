@@ -130,6 +130,14 @@ void symbol_map_release(SymbolMap* map) {
 	profile_scope_end();
 }
 
+inline bool _symbol_key_equal(const SymbolKey a, const SymbolKey b) {
+	if (a.linkage != b.linkage) {
+		return false;
+	}
+
+	return str_equal(a.name, b.name);
+}
+
 SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 	assert(map->count < map->capacity);
 
@@ -150,18 +158,12 @@ SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 
 			map->count += 1;
 			return id;
+		} else if (_symbol_key_equal(map->keys[index], symbol_key_from_symbol(symbol))) {
+			return SYMBOL_ID_INVALID;
 		}
 	}
 
 	return SYMBOL_ID_INVALID;
-}
-
-inline bool _symbol_key_equal(const SymbolKey a, const SymbolKey b) {
-	if (a.linkage != b.linkage) {
-		return false;
-	}
-
-	return str_equal(a.name, b.name);
 }
 
 SymbolId symbol_map_find(const SymbolMap* map, SymbolKey key) {

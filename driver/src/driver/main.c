@@ -333,9 +333,14 @@ int main(int argc, char *argv[]) {
 				source_files.count,
 				STR_LIT("main"),
 				&arena,
+				&temp_arena,
 				&linked);
 
 		if (!link_successful) {
+			linker_print_errors(linked.errors,
+					linked.error_count,
+					imported_symbol_maps,
+					exported_symbol_maps);
 			return EXIT_FAILURE;
 		}
 

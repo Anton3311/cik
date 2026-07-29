@@ -170,7 +170,15 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			1,
 			STR_LIT("main"),
 			context->arena,
+			context->temp_arena,
 			&linked);
+
+	if (!link_successful) {
+		linker_print_errors(linked.errors,
+				linked.error_count,
+				&imported_symbol_map,
+				&exported_symbol_map);
+	}
 
 	assert(link_successful);
 

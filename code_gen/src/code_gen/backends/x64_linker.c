@@ -71,6 +71,11 @@ static bool _insert_global_symbol(GlobalSymbolMap* map,
 			map->count += 1;
 			return true;
 		}
+
+		// Duplicate key
+		if (str_equal(map->keys[index], name)) {
+			return false;
+		}
 	}
 
 	return false;
@@ -93,7 +98,20 @@ static size_t _find_global_symbol(const GlobalSymbolMap* map, String name) {
 	return SIZE_MAX;
 }
 
-static GlobalSymbolMap _collect_global_symbols(const SymbolMap* symbol_maps,
+typedef struct {
+	Arena* allocator;
+	LinkerError* errors;
+	size_t count;
+} LinkerErrorArray;
+
+static LinkerError* _append_error(LinkerErrorArray* array, LinkerErrorKind error_kind) {
+	LinkerError* error = arena_alloc(array->allocator, LinkerError);
+	error->kind = error_kind;
+	array->count += 1;
+	return error;
+}
+
+static GlobalSymbolMap _create_global_symbol_map(const SymbolMap* symbol_maps,
 		size_t unit_count,
 		Arena* allocator) {
 
@@ -123,34 +141,62 @@ static GlobalSymbolMap _collect_global_symbols(const SymbolMap* symbol_maps,
 	memset(map.unit_indices, 0xff, sizeof(*map.unit_indices) * map.capacity);
 	memset(map.symbols, 0xff, sizeof(*map.symbols) * map.capacity);
 
-	for (size_t i = 0; i < unit_count; i += 1) {
-		const SymbolMap* symbol_map = &symbol_maps[i];
-		size_t symbol_count = symbol_map->count;
-		for (size_t symbol_index = 0; symbol_index < symbol_count; symbol_index += 1) {
-			const Symbol* symbol = &symbol_map->symbols[symbol_index];
-
-			if (symbol->linkage == SYMBOL_LINKAGE_EXTERNAL_STATIC) {
-				bool inserted = _insert_global_symbol(&map, symbol->name, i, (SymbolId)symbol_index);
-				assert(inserted);
-			}
-		}
-	}
-
 	profile_scope_end();
 	return map;
 }
 
-static bool _link_unit(size_t lowered_unit_index,
+static void _collect_global_symbols(const SymbolMap* symbol_maps,
+		GlobalSymbolMap* global_map,
+		size_t unit_count,
+		LinkerErrorArray* errors) {
+	profile_scope_start(__func__);
+
+	for (size_t i = 0; i < unit_count; i += 1) {
+		const SymbolMap* symbol_map = &symbol_maps[i];
+		size_t symbol_count = symbol_map->count;
+
+		for (size_t symbol_index = 0; symbol_index < symbol_count; symbol_index += 1) {
+			const Symbol* symbol = &symbol_map->symbols[symbol_index];
+
+			if (symbol->linkage != SYMBOL_LINKAGE_EXTERNAL_STATIC) {
+				continue;
+			}
+
+			size_t entry_index = _find_global_symbol(global_map, symbol->name);
+			if (entry_index != SIZE_MAX) {
+				// We have duplicate global symbols
+				LinkerError* error = _append_error(errors, LINKER_ERROR_DUPLICATE_SYMBOLS);
+				error->duplicate.first_unit_index = global_map->unit_indices[entry_index];
+				error->duplicate.first_symbol_id = global_map->symbols[entry_index];
+
+				error->duplicate.first_unit_index = i;
+				error->duplicate.first_symbol_id = (SymbolId)symbol_index;
+				continue;
+			}
+
+			bool inserted = _insert_global_symbol(global_map,
+					symbol->name,
+					i,
+					(SymbolId)symbol_index);
+
+			assert(inserted);
+		}
+	}
+
+	profile_scope_end();
+}
+
+static void _link_unit(size_t lowered_unit_index,
 		const LoweredUnit lowered_unit,
 		const SymbolMap* imported_symbol_maps,
 		const SymbolMap* exported_symbol_maps,
 		const SymbolMap* dynamically_linked_symbols,
 		const LinkedUnitState* unit_states,
 		const GlobalSymbolMap* global_symbols,
-		MachineCodeBuffer machine_code) {
+		MachineCodeBuffer machine_code,
+		LinkerErrorArray* errors) {
 	profile_scope_start(__func__);
 
-	bool result = true;
 	const SymbolMap* imported_symbol_map = &imported_symbol_maps[lowered_unit_index];
 
 	for (size_t i = 0; i < lowered_unit.function_count; i += 1) {
@@ -179,8 +225,9 @@ static bool _link_unit(size_t lowered_unit_index,
 						symbol_key_from_symbol(callee_symbol));
 
 				if (callee_impl_id == SYMBOL_ID_INVALID) {
-					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
-					result = false;
+					LinkerError* error = _append_error(errors, LINKER_ERROR_UNRESOLVED_SYMBOL);
+					error->unresolved.unit_index = lowered_unit_index;
+					error->unresolved.symbol_id = (SymbolId)placeholder.function_index;
 					continue;
 				}
 
@@ -195,8 +242,9 @@ static bool _link_unit(size_t lowered_unit_index,
 			case SYMBOL_LINKAGE_EXTERNAL_STATIC: {
 				size_t entry_index = _find_global_symbol(global_symbols, callee_symbol->name);
 				if (entry_index == SIZE_MAX) {
-					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
-					result = false;
+					LinkerError* error = _append_error(errors, LINKER_ERROR_UNRESOLVED_SYMBOL);
+					error->unresolved.unit_index = lowered_unit_index;
+					error->unresolved.symbol_id = (SymbolId)placeholder.function_index;
 					continue;
 				}
 
@@ -216,8 +264,9 @@ static bool _link_unit(size_t lowered_unit_index,
 						symbol_key_from_symbol(callee_symbol));
 
 				if (symbol_impl_id == SYMBOL_ID_INVALID) {
-					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
-					result = false;
+					LinkerError* error = _append_error(errors, LINKER_ERROR_UNRESOLVED_SYMBOL);
+					error->unresolved.unit_index = lowered_unit_index;
+					error->unresolved.symbol_id = (SymbolId)placeholder.function_index;
 					continue;
 				}
 
@@ -251,7 +300,6 @@ static bool _link_unit(size_t lowered_unit_index,
 	}
 
 	profile_scope_end();
-	return result;
 }
 
 bool linker_link(const LoweredUnit* units,
@@ -261,6 +309,7 @@ bool linker_link(const LoweredUnit* units,
 		size_t unit_count,
 		String entry_point_name,
 		Arena* allocator,
+		Arena* temp_allocator,
 		LinkedProgram* out_linked) {
 	profile_scope_start(__func__);
 
@@ -278,22 +327,32 @@ bool linker_link(const LoweredUnit* units,
 		_copy_code(units[i], unit_states[i], machine_code);
 	}
 
-	ArenaRegion temp = arena_begin_temp(allocator);
+	LinkerErrorArray errors = {};
+	errors.allocator = allocator;
+	errors.errors = arena_alloc_array(errors.allocator, LinkerError, 0);
+	errors.count = 0;
 
-	GlobalSymbolMap global_symbols = _collect_global_symbols(exported_symbol_maps,
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	GlobalSymbolMap global_symbols = _create_global_symbol_map(exported_symbol_maps,
 			unit_count,
-			allocator);
+			temp_allocator);
 
-	bool result = true;
+	_collect_global_symbols(exported_symbol_maps,
+			&global_symbols,
+			unit_count,
+			&errors);
+
 	for (size_t i = 0; i < unit_count; i += 1) {
-		result = result && _link_unit(i,
+		_link_unit(i,
 				units[i],
 				imported_symbol_maps,
 				exported_symbol_maps,
 				dynamically_linked_symbols,
 				unit_states,
 				&global_symbols,
-				machine_code);
+				machine_code,
+				&errors);
 	}
 
 	void* entry_point_address = NULL;
@@ -301,8 +360,8 @@ bool linker_link(const LoweredUnit* units,
 	{
 		size_t entry_index = _find_global_symbol(&global_symbols, entry_point_name);
 		if (entry_index == SIZE_MAX) {
-			printf("unresolved reference to '%.*s'\n", STR_FMT(entry_point_name));
-			result = false;
+			LinkerError* error = _append_error(&errors, LINKER_ERROR_UNRESOLVED_ENTRY_POINT);
+			error->entry_point.name = entry_point_name;
 		} else {
 			SymbolId entry_point_impl_id = global_symbols.symbols[entry_index];
 			size_t unit_index = global_symbols.unit_indices[entry_index];
@@ -321,7 +380,40 @@ bool linker_link(const LoweredUnit* units,
 	out_linked->unit_count = unit_count;
 	out_linked->unit_states = unit_states;
 	out_linked->entry_point_address = entry_point_address;
+	out_linked->errors = errors.errors;
+	out_linked->error_count = errors.count;
 
 	profile_scope_end();
-	return result;
+	return errors.count == 0;
+}
+
+void linker_print_errors(const LinkerError* errors,
+		size_t error_count,
+		const SymbolMap* imported_symbol_maps,
+		const SymbolMap* exported_symbol_maps) {
+
+	for (size_t i = 0; i < error_count; i += 1) {
+		LinkerError error = errors[i];
+		switch (error.kind) {
+		case LINKER_ERROR_UNRESOLVED_ENTRY_POINT:
+			printf("unresolved reference to entry point '%.*s'\n", STR_FMT(error.entry_point.name));
+			break;
+		case LINKER_ERROR_DUPLICATE_SYMBOLS: {
+			String symbol_name = exported_symbol_maps[error.duplicate.first_unit_index]
+				.symbols[error.duplicate.first_symbol_id]
+				.name;
+
+			printf("duplicate defintions for '%.*s'\n", STR_FMT(symbol_name));
+			break;
+		}
+		case LINKER_ERROR_UNRESOLVED_SYMBOL: {
+			String symbol_name = imported_symbol_maps[error.unresolved.unit_index]
+				.symbols[error.unresolved.symbol_id]
+				.name;
+
+			printf("unresolved reference to '%.*s'\n", STR_FMT(symbol_name));
+			break;
+		}
+		}
+	}
 }

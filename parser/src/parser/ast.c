@@ -1255,7 +1255,8 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 	case AST_NODE_ENUM:
 		print_enum_def(printer, node->enum_def);
 		break;
-	case AST_NODE_FUNCTION:
+	case AST_NODE_FUNCTION_DEF:
+	case AST_NODE_FUNCTION_DECL:
 		print_function_def(printer, node->function_def);
 		break;
 	case AST_NODE_EXPR:

@@ -1943,7 +1943,8 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		case AST_NODE_UNION:
 		case AST_NODE_ENUM:
 			break;
-		case AST_NODE_FUNCTION:
+		case AST_NODE_FUNCTION_DEF:
+		case AST_NODE_FUNCTION_DECL:
 			panic("Function is not allowed here");
 		}
 	}

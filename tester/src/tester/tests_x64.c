@@ -66,7 +66,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 
 	size_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-		if (node->kind != AST_NODE_FUNCTION) {
+		if (node->kind != AST_NODE_FUNCTION_DEF) {
 			continue;
 		}
 
@@ -105,7 +105,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 
 	size_t function_index = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-		if (node->kind != AST_NODE_FUNCTION) {
+		if (node->kind != AST_NODE_FUNCTION_DEF) {
 			continue;
 		}
 

@@ -56,7 +56,7 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 	}
 
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-		if (node->kind == AST_NODE_FUNCTION) {
+		if (node->kind == AST_NODE_FUNCTION_DEF) {
 			if (node->function_def->body == NULL) {
 				continue;
 			}

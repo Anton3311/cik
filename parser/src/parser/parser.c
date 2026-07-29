@@ -2655,7 +2655,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 	}
 
 	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
-	node->kind = AST_NODE_FUNCTION;
+	node->kind = function_def->is_forward_declared ? AST_NODE_FUNCTION_DECL : AST_NODE_FUNCTION_DEF;
 	node->function_def = function_def;
 	profile_scope_end();
 	return node;

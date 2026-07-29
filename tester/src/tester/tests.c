@@ -976,7 +976,7 @@ void test_parse_function_def(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 
 	AstNode* first = ast.root_nodes.first;
-	assert(first->kind == AST_NODE_FUNCTION);
+	assert(first->kind == AST_NODE_FUNCTION_DECL);
 
 	Function* function_def = first->function_def;
 	assert(str_equal(function_def->proto.name, STR_LIT("func")));
@@ -1080,7 +1080,7 @@ void test_parse_forward_declared_function(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 
 	AstNode* first_def = ast.root_nodes.first;
-	assert(first_def->kind == AST_NODE_FUNCTION);
+	assert(first_def->kind == AST_NODE_FUNCTION_DECL);
 	assert(first_def->function_def->is_forward_declared);
 	assert(first_def->function_def->body == NULL);
 }
@@ -1102,11 +1102,11 @@ void test_parse_forward_declared_function_followed_by_definition(TestContext* co
 	assert(ast.root_nodes.count == 2);
 
 	AstNode* first_def = ast.root_nodes.first;
-	assert(first_def->kind == AST_NODE_FUNCTION);
+	assert(first_def->kind == AST_NODE_FUNCTION_DECL);
 	assert(first_def->next != NULL);
 
 	AstNode* second_def = first_def->next;
-	assert(second_def->kind == AST_NODE_FUNCTION);
+	assert(second_def->kind == AST_NODE_FUNCTION_DEF);
 
 	assert(!first_def->function_def->is_forward_declared);
 	assert(first_def->function_def == second_def->function_def);
@@ -1127,7 +1127,7 @@ void test_parse_function_ref_expr(TestContext* context) {
 	assert(ast.root_nodes.count == 2);
 
 	AstNode* first_def = ast.root_nodes.first;
-	assert(first_def->kind == AST_NODE_FUNCTION);
+	assert(first_def->kind == AST_NODE_FUNCTION_DECL);
 	assert(first_def->function_def->body != NULL);
 	assert(first_def->function_def->body->nodes.count == 1);
 
@@ -1330,7 +1330,7 @@ void test_parse_return_stmt(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 
 	AstNode* node = ast.root_nodes.first;
-	assert(node->kind == AST_NODE_FUNCTION);
+	assert(node->kind == AST_NODE_FUNCTION_DEF);
 
 	Function* function = node->function_def;
 	Scope* body = function->body;
@@ -1351,7 +1351,7 @@ void test_parse_return_stmt_without_value(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 
 	AstNode* node = ast.root_nodes.first;
-	assert(node->kind == AST_NODE_FUNCTION);
+	assert(node->kind == AST_NODE_FUNCTION_DEF);
 
 	Function* function = node->function_def;
 	Scope* body = function->body;
@@ -1525,7 +1525,7 @@ void test_parse_recursive_function(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 
 	AstNode* node = ast.root_nodes.first;
-	assert(node->kind == AST_NODE_FUNCTION);
+	assert(node->kind == AST_NODE_FUNCTION_DEF);
 
 	assert(node->function_def->body);
 	const Function* func = node->function_def;
@@ -1555,7 +1555,7 @@ void test_parse_function_param_in_expr(TestContext* context) {
 	assert(ast.root_nodes.count == 1);
 
 	AstNode* node = ast.root_nodes.first;
-	assert(node->kind == AST_NODE_FUNCTION);
+	assert(node->kind == AST_NODE_FUNCTION_DEF);
 
 	assert(node->function_def->body);
 	const Function* func = node->function_def;

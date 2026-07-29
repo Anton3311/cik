@@ -96,11 +96,17 @@ size_t align_to_page_size(size_t bytes);
 	#define profile_func_colored(color) TracyCZoneC(___tracy_scoped_zone, color, true)
 	#define profile_scope_end() TracyCZoneEnd(___tracy_scoped_zone)
 
+	#define profile_message(str) TracyCMessage((str.v), (str.length))
+	#define profile_message_cstr(str) TracyCMessageL(str)
+
 	void profiler_wait_for_connection();
 #else
 	#define profile_scope_start(scope_name)
 	#define profile_func_colored(color)
 	#define profile_scope_end()
+
+	#define profile_message(str)
+	#define profile_message_cstr(str)
 #endif
 
 #define profile_core_func() profile_func_colored(0xa0a010ff)

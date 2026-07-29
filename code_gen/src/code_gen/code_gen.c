@@ -146,7 +146,6 @@ SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 			map->keys[index] = (SymbolKey) {
 				.name = symbol->name,
 				.linkage = symbol->linkage,
-				.link_mode = symbol->link_mode,
 			};
 
 			map->count += 1;
@@ -159,10 +158,6 @@ SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 
 inline bool _symbol_key_equal(const SymbolKey a, const SymbolKey b) {
 	if (a.linkage != b.linkage) {
-		return false;
-	}
-
-	if (a.link_mode != b.link_mode) {
 		return false;
 	}
 

@@ -107,7 +107,7 @@ static GlobalSymbolMap _collect_global_symbols(const SymbolMap* symbol_maps,
 		for (size_t symbol_index = 0; symbol_index < symbol_count; symbol_index += 1) {
 			const Symbol* symbol = &map->symbols[symbol_index];
 
-			if (symbol->linkage == SYMBOL_LINKAGE_EXTERNAL) {
+			if (symbol->linkage == SYMBOL_LINKAGE_EXTERNAL_STATIC) {
 				global_symbol_count += 1;
 			}
 		}
@@ -129,7 +129,7 @@ static GlobalSymbolMap _collect_global_symbols(const SymbolMap* symbol_maps,
 		for (size_t symbol_index = 0; symbol_index < symbol_count; symbol_index += 1) {
 			const Symbol* symbol = &symbol_map->symbols[symbol_index];
 
-			if (symbol->linkage == SYMBOL_LINKAGE_EXTERNAL) {
+			if (symbol->linkage == SYMBOL_LINKAGE_EXTERNAL_STATIC) {
 				bool inserted = _insert_global_symbol(&map, symbol->name, i, (SymbolId)symbol_index);
 				assert(inserted);
 			}
@@ -144,6 +144,7 @@ static void _link_unit(size_t lowered_unit_index,
 		const LoweredUnit lowered_unit,
 		const SymbolMap* imported_symbol_maps,
 		const SymbolMap* exported_symbol_maps,
+		const SymbolMap* dynamically_linked_symbols,
 		const LinkedUnitState* unit_states,
 		const FunctionRefTable* ref_table,
 		const GlobalSymbolMap* global_symbols,
@@ -190,7 +191,7 @@ static void _link_unit(size_t lowered_unit_index,
 				callee_address = (uint64_t)machine_code.code + callee_offset;
 				break;
 			}
-			case SYMBOL_LINKAGE_EXTERNAL: {
+			case SYMBOL_LINKAGE_EXTERNAL_STATIC: {
 				size_t entry_index = _find_global_symbol(global_symbols, callee_symbol->name);
 				if (entry_index == SIZE_MAX) {
 					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
@@ -203,14 +204,22 @@ static void _link_unit(size_t lowered_unit_index,
 				const Symbol* callee_impl = &exported_symbol_maps[unit_index].symbols[callee_impl_id];
 				uint32_t function_index = callee_impl->data.func_index;
 
-				if (callee_impl->link_mode == SYMBOL_LINK_STATIC) {
-					uint64_t callee_offset = unit_states[unit_index].func_offsets[function_index];
-					callee_address = (uint64_t)machine_code.code + callee_offset;
-				} else if (callee_impl->link_mode == SYMBOL_LINK_DYNAMIC) {
-					callee_address = (uint64_t)callee_impl->linkage_data.external_dynamic.impl;
-				} else {
-					unreachable();
+				uint64_t callee_offset = unit_states[unit_index].func_offsets[function_index];
+				callee_address = (uint64_t)machine_code.code + callee_offset;
+				break;
+			}
+			case SYMBOL_LINKAGE_EXTERNAL_DYNAMIC: {
+				SymbolId symbol_impl_id = symbol_map_find(
+						dynamically_linked_symbols,
+						symbol_key_from_symbol(callee_symbol));
+
+				if (symbol_impl_id == SYMBOL_ID_INVALID) {
+					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
+					continue;
 				}
+
+				const Symbol* symbol_impl = &dynamically_linked_symbols->symbols[symbol_impl_id];
+				callee_address = (uint64_t)symbol_impl->linkage_data.external_dynamic.impl;
 				break;
 			}
 			}
@@ -244,6 +253,7 @@ static void _link_unit(size_t lowered_unit_index,
 LinkedProgram linker_link(const LoweredUnit* units,
 		const SymbolMap* imported_symbol_maps,
 		const SymbolMap* exported_symbol_maps,
+		const SymbolMap* dynamically_linked_symbols,
 		size_t unit_count,
 		const FunctionRefTable* ref_table,
 		Arena* allocator) {
@@ -265,10 +275,20 @@ LinkedProgram linker_link(const LoweredUnit* units,
 
 	ArenaRegion temp = arena_begin_temp(allocator);
 
-	GlobalSymbolMap global_symbols = _collect_global_symbols(exported_symbol_maps, unit_count, allocator);
+	GlobalSymbolMap global_symbols = _collect_global_symbols(exported_symbol_maps,
+			unit_count,
+			allocator);
 
 	for (size_t i = 0; i < unit_count; i += 1) {
-		_link_unit(i, units[i], imported_symbol_maps, exported_symbol_maps, unit_states, ref_table, &global_symbols, machine_code);
+		_link_unit(i,
+				units[i],
+				imported_symbol_maps,
+				exported_symbol_maps,
+				dynamically_linked_symbols,
+				unit_states,
+				ref_table,
+				&global_symbols,
+				machine_code);
 	}
 
 	arena_end_temp(temp);

@@ -66,28 +66,20 @@ typedef enum {
 	SYMBOL_SCOPE_GLOBAL,
 } SymbolScope;
 
-// TODO: Merge `SymbolLinkage` and `SymbolLinkMode` into a single enum.
-//       `SYMBOL_LINKAGE_INTERNAL` and `SYMBOL_LINK_DYNAMIC` cannot be combined.
 typedef enum {
 	SYMBOL_LINKAGE_INTERNAL,
-	SYMBOL_LINKAGE_EXTERNAL,
+	SYMBOL_LINKAGE_EXTERNAL_STATIC,
+	SYMBOL_LINKAGE_EXTERNAL_DYNAMIC,
 } SymbolLinkage;
-
-typedef enum {
-	SYMBOL_LINK_STATIC,
-	SYMBOL_LINK_DYNAMIC,
-} SymbolLinkMode;
 
 typedef struct {
 	String name;
 	SymbolLinkage linkage;
-	SymbolLinkMode link_mode;
 } SymbolKey;
 
 typedef struct {
 	String name;
 	SymbolLinkage linkage;
-	SymbolLinkMode link_mode;
 
 	union {
 		// SYMBOL_FUNCTION
@@ -111,7 +103,6 @@ inline SymbolKey symbol_key_from_symbol(const Symbol* symbol) {
 	return (SymbolKey) {
 		.name = symbol->name,
 		.linkage = symbol->linkage,
-		.link_mode = symbol->link_mode,
 	};
 }
 

@@ -695,8 +695,8 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		}
 
 		const Function* func = callable->function_ref.func;
-		bool is_indirect_call = func->storage_specifier == STORAGE_SPEC_EXTERNAL;
 
+		bool is_indirect_call = false;
 		SymbolId func_symbol_id;
 
 		{
@@ -704,10 +704,15 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 			memset(&symbol, 0xff, sizeof(symbol));
 
 			symbol.name = func->proto.name;
-			symbol.linkage = func->storage_specifier == STORAGE_SPEC_STATIC
-				? SYMBOL_LINKAGE_INTERNAL
-				: SYMBOL_LINKAGE_EXTERNAL;
-			symbol.link_mode = SYMBOL_LINK_STATIC;
+
+			if (func->storage_specifier == STORAGE_SPEC_STATIC) {
+				symbol.linkage = SYMBOL_LINKAGE_INTERNAL;
+			} else if (func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT) {
+				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
+				is_indirect_call = true;
+			} else {
+				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_STATIC;
+			}
 
 			func_symbol_id = symbol_map_insert(compiler->symbol_map, &symbol);
 			assert(func_symbol_id != SYMBOL_ID_INVALID);

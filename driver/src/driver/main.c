@@ -151,8 +151,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 			symbol.name = func->proto.name;
 			symbol.linkage = func->storage_specifier == STORAGE_SPEC_STATIC
 				? SYMBOL_LINKAGE_INTERNAL
-				: SYMBOL_LINKAGE_EXTERNAL;
-			symbol.link_mode = SYMBOL_LINK_STATIC;
+				: SYMBOL_LINKAGE_EXTERNAL_STATIC;
 			symbol.data.func_index = function_index;
 
 			if (symbol.linkage == SYMBOL_LINKAGE_INTERNAL) {
@@ -311,16 +310,18 @@ int main(int argc, char *argv[]) {
 			symbol_map_init(&exported_symbol_maps[i], heap_allocator_new());
 		}
 
+		SymbolMap dynamically_linked_symbols = {};
+		symbol_map_init(&dynamically_linked_symbols, heap_allocator_new());
+
 		{
 			Symbol symbol;
 			memset(&symbol, 0xff, sizeof(symbol));
 
 			symbol.name = STR_LIT("printf");
-			symbol.linkage = SYMBOL_LINKAGE_EXTERNAL;
-			symbol.link_mode = SYMBOL_LINK_DYNAMIC;
+			symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
 			symbol.linkage_data.external_dynamic.impl = printf;
 
-			SymbolId id = symbol_map_insert(&exported_symbol_maps[0], &symbol);
+			SymbolId id = symbol_map_insert(&dynamically_linked_symbols, &symbol);
 			assert(id != SYMBOL_ID_INVALID);
 		}
 
@@ -353,6 +354,7 @@ int main(int argc, char *argv[]) {
 		LinkedProgram linked = linker_link(lowered_units,
 				imported_symbol_maps,
 				exported_symbol_maps,
+				&dynamically_linked_symbols,
 				source_files.count,
 				&ref_table, &arena);
 		MachineCodeBuffer machine_code = linked.machine_code;
@@ -382,6 +384,8 @@ int main(int argc, char *argv[]) {
 		free_executable(machine_code.code, machine_code.size_in_bytes);
 
 		printf("%llu\n", result);
+
+		symbol_map_release(&dynamically_linked_symbols);
 
 		for (size_t i = 0; i < source_files.count; i += 1) {
 			symbol_map_release(&imported_symbol_maps[i]);

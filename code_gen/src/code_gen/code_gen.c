@@ -139,6 +139,7 @@ inline bool _symbol_key_equal(const SymbolKey a, const SymbolKey b) {
 }
 
 SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
+	profile_scope_start(__func__);
 	assert(map->count < map->capacity);
 
 	size_t hash = hash_string(symbol->name);
@@ -157,12 +158,15 @@ SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 			};
 
 			map->count += 1;
+			profile_scope_end();
 			return id;
 		} else if (_symbol_key_equal(map->keys[index], symbol_key_from_symbol(symbol))) {
+			profile_scope_end();
 			return SYMBOL_ID_INVALID;
 		}
 	}
 
+	profile_scope_end();
 	return SYMBOL_ID_INVALID;
 }
 

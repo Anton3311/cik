@@ -714,7 +714,11 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_STATIC;
 			}
 
-			func_symbol_id = symbol_map_insert(compiler->symbol_map, &symbol);
+			func_symbol_id = symbol_map_find(compiler->symbol_map, symbol_key_from_symbol(&symbol));
+			if (func_symbol_id == SYMBOL_ID_INVALID) {
+				func_symbol_id = symbol_map_insert(compiler->symbol_map, &symbol);
+			}
+
 			assert(func_symbol_id != SYMBOL_ID_INVALID);
 		}
 

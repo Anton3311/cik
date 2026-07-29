@@ -356,20 +356,14 @@ int main(int argc, char *argv[]) {
 				exported_symbol_maps,
 				&dynamically_linked_symbols,
 				source_files.count,
-				&ref_table, &arena);
+				STR_LIT("main"),
+				&arena);
 		MachineCodeBuffer machine_code = linked.machine_code;
 
-		uint64_t entry_point_offset = linker_resolve_func_address(
-				&linked,
-				&ref_table,
-				STR_LIT("main"));
-
-		assert(entry_point_offset != UINT64_MAX);
-
-		void* entry_point_address = (uint8_t*)machine_code.code + entry_point_offset;
+		assert(linked.entry_point_address);
 
 		typedef uint64_t(*ExecutableFunction)(int argc, char* argv[]);
-		ExecutableFunction entry_point = (ExecutableFunction)entry_point_address;
+		ExecutableFunction entry_point = (ExecutableFunction)linked.entry_point_address;
 
 		int32_t arg_start = argc;
 		for (int32_t i = 0; i < argc; i += 1) {

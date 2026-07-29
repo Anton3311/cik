@@ -18,6 +18,8 @@ typedef struct {
 
 	size_t unit_count;
 	LinkedUnitState* unit_states;
+
+	void* entry_point_address;
 } LinkedProgram;
 
 LinkedProgram linker_link(const LoweredUnit* units,
@@ -25,11 +27,7 @@ LinkedProgram linker_link(const LoweredUnit* units,
 		const SymbolMap* exported_symbol_maps,
 		const SymbolMap* dynamically_linked_symbols,
 		size_t unit_count,
-		const FunctionRefTable* ref_table,
+		String entry_point_name,
 		Arena* allocator);
-
-uint64_t linker_resolve_func_address(const LinkedProgram* linked_program,
-		const FunctionRefTable* ref_table,
-		String name);
 
 #endif

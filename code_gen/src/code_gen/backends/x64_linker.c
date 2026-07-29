@@ -146,7 +146,6 @@ static void _link_unit(size_t lowered_unit_index,
 		const SymbolMap* exported_symbol_maps,
 		const SymbolMap* dynamically_linked_symbols,
 		const LinkedUnitState* unit_states,
-		const FunctionRefTable* ref_table,
 		const GlobalSymbolMap* global_symbols,
 		MachineCodeBuffer machine_code) {
 	profile_scope_start(__func__);
@@ -255,7 +254,7 @@ LinkedProgram linker_link(const LoweredUnit* units,
 		const SymbolMap* exported_symbol_maps,
 		const SymbolMap* dynamically_linked_symbols,
 		size_t unit_count,
-		const FunctionRefTable* ref_table,
+		String entry_point_name,
 		Arena* allocator) {
 	profile_scope_start(__func__);
 
@@ -286,9 +285,26 @@ LinkedProgram linker_link(const LoweredUnit* units,
 				exported_symbol_maps,
 				dynamically_linked_symbols,
 				unit_states,
-				ref_table,
 				&global_symbols,
 				machine_code);
+	}
+
+	void* entry_point_address = NULL;
+
+	{
+		size_t entry_index = _find_global_symbol(&global_symbols, entry_point_name);
+		if (entry_index == SIZE_MAX) {
+			printf("unresolved reference to '%.*s'\n", STR_FMT(entry_point_name));
+		} else {
+			SymbolId entry_point_impl_id = global_symbols.symbols[entry_index];
+			size_t unit_index = global_symbols.unit_indices[entry_index];
+
+			const Symbol* entry_point_impl = &exported_symbol_maps[unit_index].symbols[entry_point_impl_id];
+			uint32_t function_index = entry_point_impl->data.func_index;
+
+			uint64_t entry_point_offset = unit_states[unit_index].func_offsets[function_index];
+			entry_point_address = (uint8_t*)machine_code.code + entry_point_offset;
+		}
 	}
 
 	arena_end_temp(temp);
@@ -297,27 +313,8 @@ LinkedProgram linker_link(const LoweredUnit* units,
 	linked.machine_code = machine_code;
 	linked.unit_count = unit_count;
 	linked.unit_states = unit_states;
+	linked.entry_point_address = entry_point_address;
 
 	profile_scope_end();
 	return linked;
-}
-
-uint64_t linker_resolve_func_address(const LinkedProgram* linked_program,
-		const FunctionRefTable* ref_table,
-		String name) {
-	profile_scope_start(__func__);
-
-	uint16_t ref_id = func_ref_table_entry_index(ref_table, name);
-	if (ref_id == UINT16_MAX) {
-		profile_scope_end();
-		return UINT64_MAX;
-	} 
-
-	const FunctionRef* ref = &ref_table->refs[ref_id];
-
-	size_t unit_index = ref->internal.compilation_unit_index;
-	LinkedUnitState unit_state = linked_program->unit_states[unit_index];
-
-	profile_scope_end();
-	return unit_state.func_offsets[ref->internal.function_index];
 }

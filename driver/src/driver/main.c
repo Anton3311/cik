@@ -56,7 +56,6 @@ typedef struct {
 	Diagnostics* diagnostics;
 	SourceStorage* source_storage;
 
-	FunctionRefTable* ref_table;
 	SymbolMap* imported_symbol_map;
 	SymbolMap* exported_symbol_map;
 } CompilationUnitContext;
@@ -130,8 +129,6 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 	StringStorage string_storage = {};
 	string_storage.allocator = heap_allocator_new();
 
-	FunctionRefTable* ref_table = context->ref_table;
-
 	uint32_t function_index = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION) {
@@ -163,18 +160,12 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 					"Duplicate function symbol. Did the parser miss the redefinition?");
 		}
 
-		uint16_t ref_index = func_ref_table_get_or_insert(ref_table, node->function_def->proto.name);
-		ref_table->refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
-		ref_table->refs[ref_index].internal.function_index = function_index;
-		ref_table->refs[ref_index].internal.compilation_unit_index = context->unit_index;
-
 		FunctionCompiler c = {};
 		c.function = node->function_def;
 		c.allocator = context->arena;
 		c.instr_allocator = context->arena;
 		c.temp_allocator = context->temp_arena;
 		c.str_storage = &string_storage;
-		c.func_ref_table = ref_table;
 		c.symbol_map = context->imported_symbol_map;
 		c.pointer_type_layout = type_layout_new(8, 8);
 
@@ -185,7 +176,6 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		gen.instr_buffer = compiled_function.instr_buffer;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
-		gen.ref_table = ref_table;
 		gen.string_consts = str_storage_to_array(c.str_storage);
 
 		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
@@ -291,9 +281,6 @@ int main(int argc, char *argv[]) {
 				include_dirs,
 				&arena);
 
-		FunctionRefTable ref_table = {};
-		ref_table.allocator = heap_allocator_new();
-
 		Arena generated_tokens_arena = { .capacity = 128 * 4096 };
 		Arena ident_arena = { .capacity = 128 * 4096 };
 		Arena ast_arena = { .capacity = 512 * 4096 };
@@ -330,7 +317,6 @@ int main(int argc, char *argv[]) {
 			context.ast_arena = &ast_arena;
 			context.generated_tokens_arena = &generated_tokens_arena;
 			context.source_file_path = source_files.values[i];
-			context.ref_table = &ref_table;
 			context.exported_symbol_map = &exported_symbol_maps[i];
 			context.imported_symbol_map = &imported_symbol_maps[i];
 			context.diagnostics = &diagnostics;
@@ -376,8 +362,6 @@ int main(int argc, char *argv[]) {
 		for (size_t i = 0; i < source_files.count; i += 1) {
 			symbol_map_release(&exported_symbol_maps[i]);
 		}
-
-		func_ref_table_release(&ref_table);
 
 		arena_release(&ident_arena);
 		arena_release(&ast_arena);

@@ -98,9 +98,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	SymbolMap exported_symbol_map = {};
 	symbol_map_init(&exported_symbol_map, heap_allocator_new());
 
-	FunctionRefTable ref_table = {};
-	ref_table.allocator = heap_allocator_new();
-
 	Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
 
 	StringStorage string_storage = {};
@@ -137,18 +134,12 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 					"Duplicate function symbol. Did the parser miss the redefinition?");
 		}
 
-		uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
-		ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
-		ref_table.refs[ref_index].internal.function_index = function_index;
-		ref_table.refs[ref_index].internal.compilation_unit_index = 0;
-
 		FunctionCompiler c = {};
 		c.function = node->function_def;
 		c.allocator = context->arena;
 		c.instr_allocator = context->arena;
 		c.temp_allocator = context->temp_arena;
 		c.pointer_type_layout = type_layout_new(8, 8);
-		c.func_ref_table = &ref_table;
 		c.symbol_map = &imported_symbol_map;
 		c.str_storage = &string_storage;
 
@@ -158,7 +149,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		gen.instr_buffer = compiled_function.instr_buffer;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
-		gen.ref_table = &ref_table;
 		gen.string_consts = str_storage_to_array(&string_storage);
 		gen.flags = X64_PRINT_SCHEDULED_IR;
 
@@ -956,9 +946,6 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		instr_storage[i].reg = 0;
 	}
 
-	FunctionRefTable func_ref_table = {};
-	func_ref_table.allocator = panic_allocator_new();
-
 	StringStorage string_storage = {};
 	string_storage.allocator = panic_allocator_new();
 
@@ -968,7 +955,6 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		gen.instr_buffer = *instr_buffer;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
-		gen.ref_table = &func_ref_table;
 		gen.string_consts = str_storage_to_array(&string_storage);
 		gen.instr_storage = instr_storage;
 
@@ -1081,9 +1067,6 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 		instr_storage[i].reg = 0;
 	}
 
-	FunctionRefTable func_ref_table = {};
-	func_ref_table.allocator = panic_allocator_new();
-
 	StringStorage string_storage = {};
 	string_storage.allocator = panic_allocator_new();
 
@@ -1123,7 +1106,6 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 			gen.instr_buffer = *instr_buffer;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
-			gen.ref_table = &func_ref_table;
 			gen.string_consts = str_storage_to_array(&string_storage);
 			gen.instr_storage = instr_storage;
 
@@ -1235,7 +1217,6 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		instr_storage[i].reg = 0;
 	}
 
-	FunctionRefTable func_ref_table = {};
 	for (size_t bit_count_index = 0; bit_count_index < 4; bit_count_index += 1) {
 		printf("Bit Count: %zu\n", (size_t)(1 << (bit_count_index + 3)));
 
@@ -1274,7 +1255,6 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			gen.instr_buffer = *instr_buffer;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
-			gen.ref_table = &func_ref_table;
 			gen.string_consts = (StringArray) {};
 			gen.instr_storage = instr_storage;
 
@@ -1387,7 +1367,6 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		instr_storage[i].reg = 0;
 	}
 
-	FunctionRefTable func_ref_table = {};
 	for (size_t bit_count_index = 0; bit_count_index < 4; bit_count_index += 1) {
 		printf("Bit Count: %zu\n", (size_t)(1 << (bit_count_index + 3)));
 
@@ -1426,7 +1405,6 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			gen.instr_buffer = *instr_buffer;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
-			gen.ref_table = &func_ref_table;
 			gen.string_consts = (StringArray) {};
 			gen.instr_storage = instr_storage;
 
@@ -1539,9 +1517,6 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 		instr_storage[i].reg = 0;
 	}
 
-	FunctionRefTable func_ref_table = {};
-	func_ref_table.allocator = panic_allocator_new();
-
 	StringStorage string_storage = {};
 	string_storage.allocator = panic_allocator_new();
 
@@ -1583,7 +1558,6 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 			gen.instr_buffer = *instr_buffer;
 			gen.allocator = context->arena;
 			gen.temp_allocator = context->temp_arena;
-			gen.ref_table = &func_ref_table;
 			gen.string_consts = str_storage_to_array(&string_storage);
 			gen.instr_storage = instr_storage;
 

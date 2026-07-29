@@ -160,7 +160,7 @@ SymbolId symbol_map_find(const SymbolMap* map, SymbolKey key) {
 			return SYMBOL_ID_INVALID;
 		}
 
-		if (_symbol_key_equal(map->keys[index], key)) {
+		if (map->keys[index].linkage == key.linkage && str_equal(map->keys[index].name, key.name)) {
 			profile_scope_end();
 			return map->values[index];
 		}

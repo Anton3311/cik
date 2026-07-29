@@ -170,6 +170,19 @@ SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol) {
 	return SYMBOL_ID_INVALID;
 }
 
+SymbolId symbol_map_insert_dynamically_linked_impl(SymbolMap* map, String name, void* impl) {
+	Symbol symbol;
+	memset(&symbol, 0xff, sizeof(symbol));
+
+	symbol.name = name;
+	symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
+	symbol.linkage_data.external_dynamic.impl = impl;
+
+	SymbolId id = symbol_map_insert(map, &symbol);
+	assert(id != SYMBOL_ID_INVALID);
+	return id;
+}
+
 SymbolId symbol_map_find(const SymbolMap* map, SymbolKey key) {
 	profile_scope_start(__func__);
 
@@ -177,7 +190,7 @@ SymbolId symbol_map_find(const SymbolMap* map, SymbolKey key) {
 	for (size_t i = 0; i < map->map_capacity; i += 1) {
 		size_t index = (hash + i) % map->map_capacity;
 
-		if (map->symbols[index].name.v == NULL) {
+		if (map->keys[index].name.v == NULL) {
 			profile_scope_end();
 			return SYMBOL_ID_INVALID;
 		}

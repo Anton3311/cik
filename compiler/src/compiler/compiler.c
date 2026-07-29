@@ -2095,31 +2095,19 @@ static FILE* _internal_fopen(const char* path, const char* mode) {
 	return f;
 }
 
-static void _resolve_symbol(SymbolMap* map, String name, void* impl) {
-	Symbol symbol;
-	memset(&symbol, 0xff, sizeof(symbol));
-
-	symbol.name = name;
-	symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
-	symbol.linkage_data.external_dynamic.impl = impl;
-
-	SymbolId id = symbol_map_insert(map, &symbol);
-	assert(id != SYMBOL_ID_INVALID);
-}
-
 void compiler_resolve_default_func_refs(SymbolMap* map) {
-	_resolve_symbol(map, STR_LIT("assert"), _internal_assert);
-	_resolve_symbol(map, STR_LIT("print_string"), _internal_print_string);
-	_resolve_symbol(map, STR_LIT("printf"), printf);
-	_resolve_symbol(map, STR_LIT("panic"), _internal_panic);
-	_resolve_symbol(map, STR_LIT("identity"), _internal_identity);
-	_resolve_symbol(map, STR_LIT("store_u64"), _internal_identity);
-	_resolve_symbol(map, STR_LIT("fopen"), _internal_fopen);
-	_resolve_symbol(map, STR_LIT("fclose"), fclose);
-	_resolve_symbol(map, STR_LIT("fread"), fread);
-	_resolve_symbol(map, STR_LIT("fwrite"), fwrite);
-	_resolve_symbol(map, STR_LIT("ftell"), ftell);
-	_resolve_symbol(map, STR_LIT("fseek"), fseek);
-	_resolve_symbol(map, STR_LIT("malloc"), malloc);
-	_resolve_symbol(map, STR_LIT("free"), free);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("assert"), _internal_assert);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("print_string"), _internal_print_string);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("printf"), printf);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("panic"), _internal_panic);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("identity"), _internal_identity);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("store_u64"), _internal_identity);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fopen"), _internal_fopen);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fclose"), fclose);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fread"), fread);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fwrite"), fwrite);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("ftell"), ftell);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fseek"), fseek);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("malloc"), malloc);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("free"), free);
 }

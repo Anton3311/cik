@@ -9,14 +9,13 @@
 #define DEFAULT_SOURCE_FILE_PATH "test.c"
 
 typedef uint64_t(*ExecutableFunction)();
-typedef void(*ResolverFunction)(FunctionRefTable* table, void* data);
+typedef void(*ResolverFunction)(SymbolMap* map, void* data);
 
 static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		String source_code,
 		ResolverFunction resolver,
 		void* resolver_data) {
 
-#if 0
 	SourceStorage source_storage = {};
 
 	StringArray include_dirs = {};
@@ -65,8 +64,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		panic("Failed to parse");
 	}
 
-	Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
-
 	size_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION) {
@@ -80,12 +77,31 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		function_count += 1;
 	}
 
+	assert_msg(function_count == 1, "Multiple functions are not supported in tests");
+
+	size_t unit_count = 1;
 	LoweredFunction* lowered_functions = arena_alloc_array(context->arena,
 			LoweredFunction,
 			function_count);
 
+	SymbolMap dynamically_linked_symbols = {};
+	symbol_map_init(&dynamically_linked_symbols, heap_allocator_new());
+	compiler_resolve_default_func_refs(&dynamically_linked_symbols);
+
+	if (resolver) {
+		resolver(&dynamically_linked_symbols, resolver_data);
+	}
+
+	SymbolMap imported_symbol_map = {};
+	symbol_map_init(&imported_symbol_map, heap_allocator_new());
+
+	SymbolMap exported_symbol_map = {};
+	symbol_map_init(&exported_symbol_map, heap_allocator_new());
+
 	FunctionRefTable ref_table = {};
 	ref_table.allocator = heap_allocator_new();
+
+	Arena strings_arena = arena_alloc_sub_arena(context->arena, 1024);
 
 	StringStorage string_storage = {};
 	string_storage.allocator = arena_allocator_new(&strings_arena);
@@ -100,6 +116,27 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 			continue;
 		}
 
+		Function* func = node->function_def;
+
+		{
+			Symbol symbol;
+			memset(&symbol, 0xff, sizeof(symbol));
+
+			symbol.name = func->proto.name;
+			symbol.linkage = func->storage_specifier == STORAGE_SPEC_STATIC
+				? SYMBOL_LINKAGE_INTERNAL
+				: SYMBOL_LINKAGE_EXTERNAL_STATIC;
+			symbol.data.func_index = function_index;
+
+			if (symbol.linkage == SYMBOL_LINKAGE_INTERNAL) {
+				symbol.linkage_data.internal.compilation_unit_index = 0;
+			}
+
+			SymbolId symbol_id = symbol_map_insert(&exported_symbol_map, &symbol);
+			assert_msg(symbol_id != SYMBOL_ID_INVALID,
+					"Duplicate function symbol. Did the parser miss the redefinition?");
+		}
+
 		uint16_t ref_index = func_ref_table_insert(&ref_table, node->function_def->proto.name);
 		ref_table.refs[ref_index].impl_kind = FUNCTION_IMPL_INTERNAL;
 		ref_table.refs[ref_index].internal.function_index = function_index;
@@ -112,28 +149,23 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		c.temp_allocator = context->temp_arena;
 		c.pointer_type_layout = type_layout_new(8, 8);
 		c.func_ref_table = &ref_table;
+		c.symbol_map = &imported_symbol_map;
 		c.str_storage = &string_storage;
 
-		CompiledFunction func = function_compiler_compile(&c);
+		CompiledFunction compiled_function = function_compiler_compile(&c);
 
 		X64CodeGenerator gen = {};
-		gen.instr_buffer = func.instr_buffer;
+		gen.instr_buffer = compiled_function.instr_buffer;
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.ref_table = &ref_table;
 		gen.string_consts = str_storage_to_array(&string_storage);
 		gen.flags = X64_PRINT_SCHEDULED_IR;
 
-		lowered_functions[function_index] = x64_generate_code(&gen, func.start_region);
+		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
 
 		instr_buffer_release(&gen.instr_buffer);
 		function_index += 1;
-	}
-
-	compiler_resolve_default_func_refs(&ref_table);
-
-	if (resolver) {
-		resolver(&ref_table, resolver_data);
 	}
 
 	LoweredUnit unit = {};
@@ -141,17 +173,19 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	unit.function_count = function_count;
 
 	LinkedProgram linked = linker_link(&unit,
-			imported_symbol_maps,
-			exported_symbol_maps,
+			&imported_symbol_map,
+			&exported_symbol_map,
 			&dynamically_linked_symbols,
 			1,
 			STR_LIT("main"),
-			&arena);
+			context->arena);
 
-	MachineCodeBuffer machine_code = linked.machine_code;
-	return machine_code;
-#endif
-	return (MachineCodeBuffer) {};
+	symbol_map_release(&dynamically_linked_symbols);
+	symbol_map_release(&imported_symbol_map);
+	symbol_map_release(&exported_symbol_map);
+
+	assert(linked.entry_point_address == linked.machine_code.code);
+	return linked.machine_code;
 }
 
 static MachineCodeBuffer _compile(TestContext* context, String source_code) {
@@ -409,19 +443,19 @@ static void _internal_store_4(uint64_t* out) {
 	*out = 4;
 }
 
-static void _resolve_symbols_for_call_inside_inner_scope(FunctionRefTable* table, void* data) {
-	func_ref_table_resolve_ref_to(table, STR_LIT("store_1"), _internal_store_1);
-	func_ref_table_resolve_ref_to(table, STR_LIT("store_2"), _internal_store_2);
-	func_ref_table_resolve_ref_to(table, STR_LIT("store_3"), _internal_store_3);
-	func_ref_table_resolve_ref_to(table, STR_LIT("store_4"), _internal_store_4);
+static void _resolve_symbols_for_call_inside_inner_scope(SymbolMap* map, void* data) {
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("store_1"), _internal_store_1);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("store_2"), _internal_store_2);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("store_3"), _internal_store_3);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("store_4"), _internal_store_4);
 }
 
 void test_call_inside_inner_scope(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"extern void store_1(uint64_t* out);\n"
-			"extern void store_2(uint64_t* out);\n"
-			"extern void store_3(uint64_t* out);\n"
+			"__declspec(dllimport) void store_1(uint64_t* out);\n"
+			"__declspec(dllimport) void store_2(uint64_t* out);\n"
+			"__declspec(dllimport) void store_3(uint64_t* out);\n"
 			"uint64_t main(uint64_t* out) {\n"
 			"    store_1(out + 0);\n"
 			"    {\n"
@@ -453,9 +487,9 @@ void test_call_inside_inner_scope(TestContext* context) {
 void test_conditional_call_1(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"extern void store_1(uint64_t* out);\n"
-			"extern void store_2(uint64_t* out);\n"
-			"extern void store_3(uint64_t* out);\n"
+			"__declspec(dllimport) void store_1(uint64_t* out);\n"
+			"__declspec(dllimport) void store_2(uint64_t* out);\n"
+			"__declspec(dllimport) void store_3(uint64_t* out);\n"
 			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
 			"    if (cond == 1) {\n"
 			"        store_1(out);\n"
@@ -483,9 +517,9 @@ void test_conditional_call_1(TestContext* context) {
 void test_conditional_call_2(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"extern void store_1(uint64_t* out);\n"
-			"extern void store_2(uint64_t* out);\n"
-			"extern void store_3(uint64_t* out);\n"
+			"__declspec(dllimport) void store_1(uint64_t* out);\n"
+			"__declspec(dllimport) void store_2(uint64_t* out);\n"
+			"__declspec(dllimport) void store_3(uint64_t* out);\n"
 			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
 			"    if (cond == 1) {\n"
 			"        store_1(out);\n"
@@ -514,10 +548,10 @@ void test_conditional_call_2(TestContext* context) {
 static MachineCodeBuffer _compile_conditional_call_between_two_calls(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"extern void store_1(uint64_t* out);\n"
-			"extern void store_2(uint64_t* out);\n"
-			"extern void store_3(uint64_t* out);\n"
-			"extern void store_4(uint64_t* out);\n"
+			"__declspec(dllimport) void store_1(uint64_t* out);\n"
+			"__declspec(dllimport) void store_2(uint64_t* out);\n"
+			"__declspec(dllimport) void store_3(uint64_t* out);\n"
+			"__declspec(dllimport) void store_4(uint64_t* out);\n"
 			"uint64_t main(uint64_t cond, uint64_t* out) {\n"
 			"    store_1(out + 0);"
 			"    if (cond == 1) {\n"
@@ -954,7 +988,7 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		
 		typedef uint64_t(*Function)();
 
-		Function function = (Function)lowered_function.code;
+		Function function = (Function)machine_code.code;
 		uint64_t result = function();
 
 		assert(result == 96);
@@ -1589,14 +1623,14 @@ static uint64_t _internal_store(uint64_t* out) {
 	return 0;
 }
 
-static void _resolve_memory_operation_symbols(FunctionRefTable* table, void* data) {
-	func_ref_table_resolve_ref_to(table, STR_LIT("store"), _internal_store);
+static void _resolve_memory_operation_symbols(SymbolMap* map, void* data) {
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("store"), _internal_store);
 }
 
 void test_memory_operations_are_synchronized_with_calls(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"extern uint64_t store(uint64_t* out);\n"
+			"__declspec(dllimport) uint64_t store(uint64_t* out);\n"
 			"uint64_t main(uint64_t* out) {\n"
 			"    uint64_t value = *out;\n"
 			"    store(out);\n"
@@ -1641,7 +1675,7 @@ void test_ptr_store_instr(TestContext* context) {
 void test_ptr_store_synced_with_calls(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef unsigned long long uint64_t;\n"
-			"extern uint64_t store(uint64_t* out);\n"
+			"__declspec(dllimport) uint64_t store(uint64_t* out);\n"
 			"uint64_t main(uint64_t* out) {\n"
 			"    store(out);\n"
 			"    *out = 100;\n"

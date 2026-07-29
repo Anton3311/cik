@@ -124,6 +124,8 @@ void symbol_map_release(SymbolMap* map);
 // Returns `SYMBOL_ID_INVALID`, on failure
 SymbolId symbol_map_insert(SymbolMap* map, const Symbol* symbol);
 
+SymbolId symbol_map_insert_dynamically_linked_impl(SymbolMap* map, String name, void* impl);
+
 // Returns `SYMBOL_ID_INVALID`, on failure
 SymbolId symbol_map_find(const SymbolMap* map, SymbolKey key);
 

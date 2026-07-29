@@ -140,7 +140,7 @@ static GlobalSymbolMap _collect_global_symbols(const SymbolMap* symbol_maps,
 	return map;
 }
 
-static void _link_unit(size_t lowered_unit_index,
+static bool _link_unit(size_t lowered_unit_index,
 		const LoweredUnit lowered_unit,
 		const SymbolMap* imported_symbol_maps,
 		const SymbolMap* exported_symbol_maps,
@@ -150,6 +150,7 @@ static void _link_unit(size_t lowered_unit_index,
 		MachineCodeBuffer machine_code) {
 	profile_scope_start(__func__);
 
+	bool result = true;
 	const SymbolMap* imported_symbol_map = &imported_symbol_maps[lowered_unit_index];
 
 	for (size_t i = 0; i < lowered_unit.function_count; i += 1) {
@@ -179,6 +180,7 @@ static void _link_unit(size_t lowered_unit_index,
 
 				if (callee_impl_id == SYMBOL_ID_INVALID) {
 					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
+					result = false;
 					continue;
 				}
 
@@ -194,6 +196,7 @@ static void _link_unit(size_t lowered_unit_index,
 				size_t entry_index = _find_global_symbol(global_symbols, callee_symbol->name);
 				if (entry_index == SIZE_MAX) {
 					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
+					result = false;
 					continue;
 				}
 
@@ -214,6 +217,7 @@ static void _link_unit(size_t lowered_unit_index,
 
 				if (symbol_impl_id == SYMBOL_ID_INVALID) {
 					printf("unresolved reference to '%.*s'\n", STR_FMT(callee_symbol->name));
+					result = false;
 					continue;
 				}
 
@@ -247,6 +251,7 @@ static void _link_unit(size_t lowered_unit_index,
 	}
 
 	profile_scope_end();
+	return result;
 }
 
 LinkedProgram linker_link(const LoweredUnit* units,
@@ -278,8 +283,9 @@ LinkedProgram linker_link(const LoweredUnit* units,
 			unit_count,
 			allocator);
 
+	bool result = true;
 	for (size_t i = 0; i < unit_count; i += 1) {
-		_link_unit(i,
+		result = result && _link_unit(i,
 				units[i],
 				imported_symbol_maps,
 				exported_symbol_maps,
@@ -314,6 +320,8 @@ LinkedProgram linker_link(const LoweredUnit* units,
 	linked.unit_count = unit_count;
 	linked.unit_states = unit_states;
 	linked.entry_point_address = entry_point_address;
+
+	assert(result);
 
 	profile_scope_end();
 	return linked;

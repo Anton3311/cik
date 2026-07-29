@@ -254,13 +254,14 @@ static bool _link_unit(size_t lowered_unit_index,
 	return result;
 }
 
-LinkedProgram linker_link(const LoweredUnit* units,
+bool linker_link(const LoweredUnit* units,
 		const SymbolMap* imported_symbol_maps,
 		const SymbolMap* exported_symbol_maps,
 		const SymbolMap* dynamically_linked_symbols,
 		size_t unit_count,
 		String entry_point_name,
-		Arena* allocator) {
+		Arena* allocator,
+		LinkedProgram* out_linked) {
 	profile_scope_start(__func__);
 
 	LinkedUnitState* unit_states = NULL;
@@ -301,6 +302,7 @@ LinkedProgram linker_link(const LoweredUnit* units,
 		size_t entry_index = _find_global_symbol(&global_symbols, entry_point_name);
 		if (entry_index == SIZE_MAX) {
 			printf("unresolved reference to '%.*s'\n", STR_FMT(entry_point_name));
+			result = false;
 		} else {
 			SymbolId entry_point_impl_id = global_symbols.symbols[entry_index];
 			size_t unit_index = global_symbols.unit_indices[entry_index];
@@ -315,14 +317,11 @@ LinkedProgram linker_link(const LoweredUnit* units,
 
 	arena_end_temp(temp);
 
-	LinkedProgram linked = {};
-	linked.machine_code = machine_code;
-	linked.unit_count = unit_count;
-	linked.unit_states = unit_states;
-	linked.entry_point_address = entry_point_address;
-
-	assert(result);
+	out_linked->machine_code = machine_code;
+	out_linked->unit_count = unit_count;
+	out_linked->unit_states = unit_states;
+	out_linked->entry_point_address = entry_point_address;
 
 	profile_scope_end();
-	return linked;
+	return result;
 }

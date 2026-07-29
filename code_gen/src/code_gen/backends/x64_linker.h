@@ -22,12 +22,13 @@ typedef struct {
 	void* entry_point_address;
 } LinkedProgram;
 
-LinkedProgram linker_link(const LoweredUnit* units,
+bool linker_link(const LoweredUnit* units,
 		const SymbolMap* imported_symbol_maps,
 		const SymbolMap* exported_symbol_maps,
 		const SymbolMap* dynamically_linked_symbols,
 		size_t unit_count,
 		String entry_point_name,
-		Arena* allocator);
+		Arena* allocator,
+		LinkedProgram* out_linked);
 
 #endif

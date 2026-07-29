@@ -162,13 +162,17 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	unit.functions = lowered_functions;
 	unit.function_count = function_count;
 
-	LinkedProgram linked = linker_link(&unit,
+	LinkedProgram linked;
+	bool link_successful = linker_link(&unit,
 			&imported_symbol_map,
 			&exported_symbol_map,
 			&dynamically_linked_symbols,
 			1,
 			STR_LIT("main"),
-			context->arena);
+			context->arena,
+			&linked);
+
+	assert(link_successful);
 
 	symbol_map_release(&dynamically_linked_symbols);
 	symbol_map_release(&imported_symbol_map);

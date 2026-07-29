@@ -325,13 +325,20 @@ int main(int argc, char *argv[]) {
 		 	lowered_units[i] = compile_unit(&context);
 		}
 
-		LinkedProgram linked = linker_link(lowered_units,
+		LinkedProgram linked;
+		bool link_successful = linker_link(lowered_units,
 				imported_symbol_maps,
 				exported_symbol_maps,
 				&dynamically_linked_symbols,
 				source_files.count,
 				STR_LIT("main"),
-				&arena);
+				&arena,
+				&linked);
+
+		if (!link_successful) {
+			return EXIT_FAILURE;
+		}
+
 		MachineCodeBuffer machine_code = linked.machine_code;
 
 		assert(linked.entry_point_address);

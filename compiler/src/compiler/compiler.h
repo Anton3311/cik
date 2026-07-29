@@ -76,7 +76,7 @@ typedef struct {
 	TypeLayout pointer_type_layout;
 
 	StringStorage* str_storage;
-	FunctionRefTable* func_ref_table;
+	SymbolMap* symbol_map;
 
 	AstNode* current_loop;
 	LoopControlStmt* current_loop_control_stmts;
@@ -87,12 +87,10 @@ typedef struct {
 	InstrBuffer instr_buffer;
 	InstrIndex start_region;
 
-	FunctionRefTable func_ref_table;
-
 	StringArray string_consts;
 } CompiledFunction;
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);
-void compiler_resolve_default_func_refs(FunctionRefTable* table);
+void compiler_resolve_default_func_refs(SymbolMap* map);
 
 #endif

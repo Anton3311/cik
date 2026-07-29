@@ -1626,8 +1626,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 		bool is_direct = instr->kind == INSTR_CALL_DIRECT;
 
 		uint16_t function_id = instr->call.function_index;
-		assert(function_id < gen->ref_table->size);
-		const FunctionRef* ref = &gen->ref_table->refs[function_id];
 
 		CallAddressPlaceholder* addr_placeholder = NULL;
 

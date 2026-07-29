@@ -5,13 +5,29 @@
 #include "code_gen/code_gen.h"
 
 typedef struct {
+	LoweredFunction* functions;
+	size_t function_count;
+} LoweredUnit;
+
+typedef struct {
+	uint64_t* func_offsets;
+} LinkedUnitState;
+
+typedef struct {
 	MachineCodeBuffer machine_code;
-	size_t* function_offsets;
+
+	size_t unit_count;
+	LinkedUnitState* unit_states;
+
+	void* entry_point_address;
 } LinkedProgram;
 
-LinkedProgram linker_link(const LoweredFunction* functions,
-		size_t function_count,
-		const FunctionRefTable* ref_table,
+LinkedProgram linker_link(const LoweredUnit* units,
+		const SymbolMap* imported_symbol_maps,
+		const SymbolMap* exported_symbol_maps,
+		const SymbolMap* dynamically_linked_symbols,
+		size_t unit_count,
+		String entry_point_name,
 		Arena* allocator);
 
 #endif

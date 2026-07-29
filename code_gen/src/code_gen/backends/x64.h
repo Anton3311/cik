@@ -85,8 +85,6 @@ typedef struct {
 
 	CodeBuffer* per_region_code_buffer;
 
-	const FunctionRefTable* ref_table;
-
 	// Temporary structures
 	InstrIndexArray instr_with_storage_requirement;
 

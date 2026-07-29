@@ -1,7 +1,7 @@
 typedef unsigned long long uint64_t;
 
-extern uint64_t identity(uint64_t);
-extern void assert(uint64_t);
+__declspec(dllimport) uint64_t identity(uint64_t);
+__declspec(dllimport) void assert(uint64_t);
 
 int main(int argc, char* argv[]) {
 	uint64_t primary = 10;

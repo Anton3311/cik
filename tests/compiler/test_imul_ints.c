@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-extern void assert(uint64_t predicate);
+__declspec(dllimport) void assert(uint64_t predicate);
 
 int main(int argc, char* argv[]) {
 	assert(2i8 * 4i8 == 8i8);

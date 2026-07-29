@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-extern void assert(uint64_t);
-extern void printf(const char*, ...);
+__declspec(dllimport) void assert(uint64_t);
+__declspec(dllimport) void printf(const char*, ...);
 
 int main(int argc, char* argv[]) {
 	int i = 0;

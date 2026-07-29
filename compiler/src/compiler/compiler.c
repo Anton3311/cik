@@ -695,19 +695,39 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		}
 
 		const Function* func = callable->function_ref.func;
-		bool is_indirect_call = func->storage_specifier == STORAGE_SPEC_EXTERNAL;
 
-		String func_name = func->proto.name;
-		uint8_t function_index = func_ref_table_get_or_insert(
-				compiler->func_ref_table,
-				func_name);
+		bool is_indirect_call = false;
+		SymbolId func_symbol_id;
+
+		{
+			Symbol symbol;
+			memset(&symbol, 0xff, sizeof(symbol));
+
+			symbol.name = func->proto.name;
+
+			if (func->storage_specifier == STORAGE_SPEC_STATIC) {
+				symbol.linkage = SYMBOL_LINKAGE_INTERNAL;
+			} else if (func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT) {
+				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
+				is_indirect_call = true;
+			} else {
+				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_STATIC;
+			}
+
+			func_symbol_id = symbol_map_find(compiler->symbol_map, symbol_key_from_symbol(&symbol));
+			if (func_symbol_id == SYMBOL_ID_INVALID) {
+				func_symbol_id = symbol_map_insert(compiler->symbol_map, &symbol);
+			}
+
+			assert(func_symbol_id != SYMBOL_ID_INVALID);
+		}
 
 		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
 		call_instr->kind = is_indirect_call ? INSTR_CALL_INDIRECT : INSTR_CALL_DIRECT;
 		call_instr->call.args = arg_inputs;
 		call_instr->call.io_state = compiler->io_state;
-		call_instr->call.function_index = function_index;
+		call_instr->call.function_index = func_symbol_id;
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		profile_scope_end();
@@ -2075,19 +2095,19 @@ static FILE* _internal_fopen(const char* path, const char* mode) {
 	return f;
 }
 
-void compiler_resolve_default_func_refs(FunctionRefTable* table) {
-	func_ref_table_resolve_ref_to(table, STR_LIT("assert"), _internal_assert);
-	func_ref_table_resolve_ref_to(table, STR_LIT("print_string"), _internal_print_string);
-	func_ref_table_resolve_ref_to(table, STR_LIT("printf"), printf);
-	func_ref_table_resolve_ref_to(table, STR_LIT("panic"), _internal_panic);
-	func_ref_table_resolve_ref_to(table, STR_LIT("identity"), _internal_identity);
-	func_ref_table_resolve_ref_to(table, STR_LIT("store_u64"), _internal_identity);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fopen"), _internal_fopen);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fclose"), fclose);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fread"), fread);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fwrite"), fwrite);
-	func_ref_table_resolve_ref_to(table, STR_LIT("ftell"), ftell);
-	func_ref_table_resolve_ref_to(table, STR_LIT("fseek"), fseek);
-	func_ref_table_resolve_ref_to(table, STR_LIT("malloc"), malloc);
-	func_ref_table_resolve_ref_to(table, STR_LIT("free"), free);
+void compiler_resolve_default_func_refs(SymbolMap* map) {
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("assert"), _internal_assert);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("print_string"), _internal_print_string);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("printf"), printf);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("panic"), _internal_panic);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("identity"), _internal_identity);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("store_u64"), _internal_identity);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fopen"), _internal_fopen);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fclose"), fclose);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fread"), fread);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fwrite"), fwrite);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("ftell"), ftell);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fseek"), fseek);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("malloc"), malloc);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("free"), free);
 }

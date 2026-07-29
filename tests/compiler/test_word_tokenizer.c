@@ -2,11 +2,11 @@
 
 typedef unsigned long long uint64_t;
 
-extern void assert(uint64_t);
-extern void printf(const char*, ...);
+__declspec(dllimport) void assert(uint64_t);
+__declspec(dllimport) void printf(const char*, ...);
 
-extern void* malloc(size_t count);
-extern void free(void* ptr);
+__declspec(dllimport) void* malloc(size_t count);
+__declspec(dllimport) void free(void* ptr);
 
 int main(int argc, char* argv[]) {
 	const char* source = "hello    world some other word";

@@ -1,4 +1,4 @@
-extern void assert(unsigned long long);
+__declspec(dllimport) void assert(unsigned long long);
 
 typedef enum {
 	zero,

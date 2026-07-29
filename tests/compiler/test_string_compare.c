@@ -2,8 +2,8 @@
 
 #define NULL ((void*)0)
 
-extern void printf(const char*, ...);
-extern void assert(uint64_t);
+__declspec(dllimport) void printf(const char*, ...);
+__declspec(dllimport) void assert(uint64_t);
 
 int strcmp(const char* a, const char* b) {
 

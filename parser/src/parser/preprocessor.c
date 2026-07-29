@@ -4,6 +4,12 @@
 
 #define REMOVED_MACRO_FLAG (void*)0x1
 
+#ifdef FEATURE_PROFILER
+	#define PREPROCESSOR_LOG 0
+#else
+	#define PREPROCESSOR_LOG 1
+#endif
+
 static size_t _macro_table_find_empty_slot(MacroTable* table, String key) {
 	profile_scope_start(__func__);
 
@@ -335,7 +341,9 @@ void _preprocessor_pop_file(Preprocessor* state) {
 	assert(stack->depth > 0);
 
 	const SourceFile* included_file = stack->includes[stack->depth - 1].source_file;
+#if PREPROCESSOR_LOG
 	debug_log_info("end of include %.*s", STR_FMT(included_file->path));
+#endif
 
 	stack->depth -= 1;
 
@@ -1494,7 +1502,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 						builder.string,
 						NULL);
 
+#if PREPROCESSOR_LOG
 				debug_log_error("line: %u include %.*s failed", directive_line, STR_FMT(path_string));
+#endif
 				profile_scope_end();
 				return false;
 			}
@@ -1507,9 +1517,11 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			}
 
 			if (include_history_contains(&state->include_history, included_file)) {
+#if PREPROCESSOR_LOG
 				debug_log_info("lone: %u include %.*s found in include history and was skipped",
 						directive_line,
 						STR_FMT(included_file->path));
+#endif
 			} else {
 				if (!_preprocessor_push_file(state, included_file)) {
 					diagnostics_report_error(state->diagnostics,
@@ -1520,7 +1532,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 					return false;
 				}
 
+#if PREPROCESSOR_LOG
 				debug_log_info("line: %u include %.*s", directive_line, STR_FMT(included_file->path));
+#endif
 			}
 		}
 
@@ -1536,7 +1550,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			tokenizer_reset_to_token(state->tokenizer, token);
 
 			bool inserted = include_history_try_insert(&state->include_history, _preprocessor_current_file(state));
+#if PREPROCESSOR_LOG
 			debug_log_info("inserted file in include history");
+#endif
 			assert(inserted);
 		} else {
 			_preprocessor_skip_until_newline(state);
@@ -1549,7 +1565,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 		MacroDefinition macro = {};
 		if (_preprocessor_parse_macro(state, &macro)) {
 			if (_is_current_region_enabled(state)) {
+#if PREPROCESSOR_LOG
 				debug_log_info("line: %u define %.*s", directive_line, STR_FMT(macro.name.string));
+#endif
 				macro_table_append(&state->macro_table, &macro);
 			}
 		}
@@ -1570,9 +1588,13 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 			bool result = macro_table_remove(&state->macro_table, macro_name.string);
 			if (result) {
+#if PREPROCESSOR_LOG
 				debug_log_info("line: %u undef %.*s", directive_line, STR_FMT(macro_name.string));
+#endif
 			} else {
+#if PREPROCESSOR_LOG
 				debug_log_warn("line: %u undef %.*s failed", directive_line, STR_FMT(macro_name.string));
+#endif
 			}
 		}
 		break;
@@ -1591,7 +1613,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->alternative_branch_is_taken = predicate;
 			branch_state->is_enabled = predicate;
 
+#if PREPROCESSOR_LOG
 			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+#endif
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
@@ -1622,7 +1646,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->alternative_branch_is_taken = predicate;
 			branch_state->is_enabled = predicate;
 
+#if PREPROCESSOR_LOG
 			debug_log_info("line: %u if %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+#endif
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}
@@ -1667,7 +1693,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 
 		if (_is_parent_region_enabled(state)) {
 			branch_state->is_enabled = !branch_state->alternative_branch_is_taken;
+#if PREPROCESSOR_LOG
 			debug_log_info("line: %u else %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+#endif
 		}
 
 		branch_state->current_directive = directive;
@@ -1720,7 +1748,9 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 			branch_state->is_enabled = is_taken;
 			branch_state->alternative_branch_is_taken |= is_taken;
 
+#if PREPROCESSOR_LOG
 			debug_log_info("line: %u elif %s", directive_line, branch_state->is_enabled ? "taken" : "not taken");
+#endif
 		} else {
 			_preprocessor_skip_until_newline(state);
 		}

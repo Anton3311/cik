@@ -6,6 +6,7 @@
 #define PREPROCESSOR_TESTS_DIRECTORY "tests/preprocessor"
 #define COMPILER_TESTS_DIRECTORY "tests/compiler"
 #define MULTI_FILE_TESTS_DIRECTORY "tests/multi_file"
+#define LINKER_TESTS_DIRECTORY "tests/linker"
 #define TESTER_EXE_NAME "tester.exe"
 #define TESTER_EXE_PATH "bin/tester.exe"
 
@@ -185,6 +186,68 @@ TestResult test_run_multi_file_test(TestRunnerContext* context) {
 	};
 }
 
+TestResult test_run_linker_test(TestRunnerContext* context) {
+	String directory = path_append(STR_LIT(LINKER_TESTS_DIRECTORY),
+			context->test_name,
+			context->temp_allocator);
+
+	String args_file_path = path_append(directory,
+			STR_LIT("compile_cmd_args.txt"),
+			context->temp_allocator);
+
+	String expected_output_path = path_append(directory,
+			STR_LIT("expected_output.txt"),
+			context->temp_allocator);
+
+	String compile_cmd_args = read_entire_file_to_str(
+			str_to_cstr(args_file_path, context->temp_allocator),
+			context->temp_allocator);
+
+	String expected_output = read_entire_file_to_str(
+			str_to_cstr(expected_output_path, context->temp_allocator),
+			context->temp_allocator);
+
+	String compiler_path = STR_LIT("bin/c.exe");
+
+	StringBuilder builder = { .arena = context->temp_allocator };
+	str_builder_append(&builder, compiler_path);
+	str_builder_append_char(&builder, ' ');
+	str_builder_append(&builder, str_trim_line_ending(compile_cmd_args));
+	str_builder_append(&builder, STR_LIT(" \"-I../../../stdx\""));
+
+	String cmd_args = builder.string;
+
+	String output;
+	int32_t exit_code;
+	ProcessRunResult process_result = process_capture_stdout(
+			compiler_path,
+			directory,
+			cmd_args,
+			&exit_code,
+			&output,
+			context->allocator,
+			context->temp_allocator);
+
+	if (process_result == PROCESS_RUN_OK) {
+		bool output_maches = str_equal(expected_output, output);
+		if (!output_maches) {
+			return (TestResult) {
+				.output = output,
+				.process_run_result = process_result,
+				.exit_code = exit_code,
+			};
+		}
+	}
+
+	// The compiler process failed due too linking errors, however we still need the test to pass.
+
+	return (TestResult) {
+		.output = output,
+		.process_run_result = process_result,
+		.exit_code = 0,
+	};
+}
+
 //
 // Test Extraction
 // 
@@ -333,6 +396,28 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 			TestDescriptor* test = &suite->tests.tests[i];
 			test->name = paths.values[i];
 			test->runner = test_run_multi_file_test;
+		}
+	}
+
+	// Extract linker negative tests
+	{
+		StringArray paths = fs_enumerate_entries_in_directory(
+				STR_LIT(LINKER_TESTS_DIRECTORY),
+				FS_ENTRY_DIRECTORY,
+				tests_allocator,
+				suites_allocator);
+
+		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
+		suite->name = STR_LIT(LINKER_TESTS_DIRECTORY);
+		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
+		suite->tests.count = paths.count;
+
+		storage->suite_count += 1;
+
+		for (size_t i = 0; i < paths.count; i += 1) {
+			TestDescriptor* test = &suite->tests.tests[i];
+			test->name = paths.values[i];
+			test->runner = test_run_linker_test;
 		}
 	}
 

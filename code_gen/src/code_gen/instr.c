@@ -524,7 +524,17 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 						*variant_live_range,
 						instr_global_position[region->region.last_instr.value]);
 
-				phi_live_range = _live_range_merge(phi_live_range, *variant_live_range);
+				// FIXME: This whole algorithm might not generate a correct live range for a phi,
+				//        in case there is a loop made out of a single region, and the phi is
+				//        located in that loop. The live range will start and end at the same
+				//        program point?
+
+				// Extend the live range of the phi to the end of that same region, where the
+				// variant comes from. Previously the phi was kept alive as long as all of its
+				// variants. Which lead to incresed register pressure.
+				phi_live_range = _live_range_extended(
+						phi_live_range,
+						instr_global_position[region->region.last_instr.value]);
 			}
 
 			live_ranges[i] = phi_live_range;

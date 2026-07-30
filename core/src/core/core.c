@@ -337,6 +337,39 @@ String str_from_wstr(WideString string, Arena* allocator) {
 	return (String) { .v = buffer, .length = required_size };
 }
 
+static String str_format_with_args(Arena* allocator, const char* fmt, va_list args) {
+	va_list args_copy;
+	va_copy(args_copy, args);
+
+	uint32_t bytes_required = vsnprintf(NULL, 0, fmt, args);
+
+	// +1 for the null terminator
+	size_t buffer_capacity = bytes_required + 1;
+
+	char* buffer = arena_alloc_array(allocator, char, buffer_capacity);
+
+	String string = {};
+	string.v = buffer;
+	string.length = vsnprintf_s(buffer, buffer_capacity, bytes_required, fmt, args_copy);
+
+	allocator->allocated -= buffer_capacity - string.length;
+	return string;
+}
+
+String str_format(Arena* allocator, const char* fmt, ...) {
+	profile_core_func();
+
+	va_list args;
+	va_start(args, fmt);
+
+	String string = str_format_with_args(allocator, fmt, args);
+
+	va_end(args);
+
+	profile_scope_end();
+	return string;
+}
+
 String str_split_next(String* string, char by_char) {
 	if (string->length == 0) {
 		return (String) {};

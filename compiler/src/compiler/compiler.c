@@ -2178,11 +2178,10 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	// Free the loop cintrol staff, since it is no longer needed
 	_free_all_loop_control_stmts(compiler);
 
-	InstrIndex region = body_block.initial_region;
-
 	if (compiler->function->proto.return_type.kind == TYPE_VOID) {
-		if (!instr_region_finished(instr_buffer, region)) {
-			Instr* region_instr = instr_buffer_at(instr_buffer, region);
+		InstrIndex final_region = body_block.final_region;
+		if (!instr_region_finished(instr_buffer, final_region)) {
+			Instr* region_instr = instr_buffer_at(instr_buffer, final_region);
 			assert(region_instr->region.last_instr.value == INVALID_INSTR_INDEX.value);
 			assert_msg(compiler->io_state.value != INVALID_INSTR_INDEX.value,
 					"The final region of the function is still unifinished, "
@@ -2203,7 +2202,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	CompiledFunction compiled_function;
 	compiled_function.instr_buffer = compiler->instr_buffer;
-	compiled_function.start_region = region;
+	compiled_function.start_region = body_block.initial_region;
 
 	profile_scope_end();
 	return compiled_function;

@@ -159,6 +159,10 @@ struct Operand {
 
 	union {
 		uint8_t reg;
+		struct {
+			uint8_t base_reg;
+			int32_t disp;
+		} mem;
 		uint64_t imm;
 		int32_t rel;
 	};
@@ -179,7 +183,17 @@ inline Operand operand_reg(uint8_t reg_index, uint8_t bit_count) {
 inline Operand operand_mem(uint8_t reg_index, uint8_t bit_count) {
 	Operand op = {};
 	op.kind = OP_MEM;
-	op.reg = reg_index;
+	op.mem.base_reg = reg_index;
+	op.mem.disp = 0;
+	op.bit_count = bit_count;
+	return op;
+}
+
+inline Operand operand_stack_mem(int32_t offset, uint8_t bit_count) {
+	Operand op = {};
+	op.kind = OP_MEM;
+	op.mem.base_reg = 4 /* X64_REG_SP */;
+	op.mem.disp = offset;
 	op.bit_count = bit_count;
 	return op;
 }

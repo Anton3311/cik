@@ -354,6 +354,8 @@ typedef struct {
 	ModRM mod;
 	uint8_t reg;
 	uint8_t rm;
+
+	int32_t displacement;
 } ModRMFields;
 
 static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
@@ -372,15 +374,25 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 		}
 
 		Operand op = operands[i];
-
 		if (op.kind == OP_MEM) {
 			// NOTE: [bp] and [r13] with MOD_RM_ADDRESS_RM are used for addressing relative to
 			//       instruction pointer. If we want to address bp/r13, we need to use a different
 			//       addressing mode (with 8-bit zero displacement).
-			if (op.reg == 5 || op.reg == 13) {
+			if (op.mem.base_reg == 5 || op.mem.base_reg == 13) {
 				fields.mod = MOD_RM_ADDRESS_RM_DISP_8;
+				fields.displacement = 0;
 			} else {
 				fields.mod = MOD_RM_ADDRESS_RM;
+			}
+
+			if (op.mem.disp == 0) {
+				// No displacement
+			} else if (op.mem.disp <= 255) {
+				fields.mod = MOD_RM_ADDRESS_RM_DISP_8;
+				fields.displacement = op.mem.disp;
+			} else {
+				fields.mod = MOD_RM_ADDRESS_RM_DISP_32;
+				fields.displacement = op.mem.disp;
 			}
 		}
 
@@ -390,7 +402,7 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 			reg = op.reg;
 			break;
 		case OP_MEM:
-			reg = op.reg;
+			reg = op.mem.base_reg;
 			break;
 		case OP_IMM:
 			break;
@@ -400,6 +412,8 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 			fields.rm = reg;
 		} else if (op_mask == OP_REG) {
 			fields.reg = reg;
+		} else if (op_mask == OP_MEM) {
+			fields.rm = reg;
 		} else if (op_mask == OP_IMM) {
 		} else {
 			unreachable();
@@ -478,11 +492,13 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		} else if (operand_count == 2) {
 			fields = _encode_mod_rm(encoding, operands[0], operands[1]);
 
-			if (operands[0].kind == OP_MEM && operands[0].reg == 12) {
+			if (operands[0].kind == OP_MEM &&
+					(operands[0].mem.base_reg == 4 || operands[0].mem.base_reg == 12)) {
 				requires_empty_sib_byte = true;
 			}
 
-			if (operands[1].kind == OP_MEM && operands[1].reg == 12) {
+			if (operands[1].kind == OP_MEM &&
+					(operands[1].mem.base_reg == 4 || operands[1].mem.base_reg == 12)) {
 				requires_empty_sib_byte = true;
 			}
 		} else {
@@ -606,20 +622,19 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 			write_ptr += 1;
 		}
 
-		// disaplacement
-		if (fields.mod == MOD_RM_ADDRESS_RM_DISP_8) {
-			*write_ptr = 0;
-			write_ptr += 1;
-		} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
-			uint32_t disaplacement = 0;
-			memcpy(write_ptr, &disaplacement, 4);
-			write_ptr += 4;
-		}
-
 		// sib byte
 		if (requires_empty_sib_byte) {
 			*write_ptr = 0x24;
 			write_ptr += 1;
+		}
+
+		// disaplacement
+		if (fields.mod == MOD_RM_ADDRESS_RM_DISP_8) {
+			*write_ptr = (int8_t)fields.displacement;
+			write_ptr += 1;
+		} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
+			memcpy(write_ptr, &fields.displacement, 4);
+			write_ptr += 4;
 		}
 
 		// write imm

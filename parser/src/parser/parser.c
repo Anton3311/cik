@@ -1895,7 +1895,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 
 			*out_expr->cast.target_type = cast_target_type;
 
-			ExprParseResult expr_result = _parser_try_parse_expr_operand_without_post_fix_operator(
+			ExprParseResult expr_result = _parser_try_parse_bin_expr_operand(
 					parser,
 					out_expr->cast.expr);
 

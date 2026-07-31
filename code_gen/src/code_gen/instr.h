@@ -506,6 +506,7 @@ union InstrLiveRange {
 // Returns an array of `InstrLiveRange` of size `buffer->count`
 InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
+		InstrIndexArray scheduled_regions,
 		InstrIndexArray* scheduled_instr,
 		Arena* allocator,
 		Arena* temp_allocator);

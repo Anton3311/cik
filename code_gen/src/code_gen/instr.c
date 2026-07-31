@@ -390,6 +390,7 @@ inline InstrLiveRange _live_range_extended(const InstrLiveRange range, uint64_t 
 
 InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
+		InstrIndexArray scheduled_regions,
 		InstrIndexArray* scheduled_instr,
 		Arena* allocator,
 		Arena* temp_allocator) {
@@ -400,8 +401,9 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 	uint16_t* instr_global_position = arena_alloc_array(temp_allocator, uint16_t, buffer.count);
 
 	uint16_t next_global_position = 0;
-	for (uint16_t region_index = 0; region_index < buffer.region_count; region_index += 1) {
-		InstrIndexArray instr = scheduled_instr[region_index];
+	for (uint16_t region_index = 0; region_index < scheduled_regions.count; region_index += 1) {
+		uint16_t region_id = instr_region_id(&buffer, scheduled_regions.instr[region_index]);
+		InstrIndexArray instr = scheduled_instr[region_id];
 		for (size_t i = 0; i < instr.count; i += 1) {
 			instr_global_position[instr.instr[i].value] = next_global_position;
 			next_global_position += 1;

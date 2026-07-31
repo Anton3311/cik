@@ -1061,7 +1061,45 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 	profile_func_colored(PROFILE_COLOR);
 	assert(out_type != NULL);
 
+	// TODO: Migrate from using `_parser_try_parse_type_specifier` to this
 	Token token = preprocessor_view_next(parser->preprocessor);
+	if (token.kind == TOKEN_IDENT) {
+		if (is_digit(token.string.v[0])) {
+			profile_scope_end();
+			return PARSE_TYPE_NOT_PARSED;
+		}
+
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
+				IDENT_NAMESPACE_ALIAS,
+				IDENT_FIND_DEFAULT,
+				token.string);
+		if (entry == NULL) {
+			profile_scope_end();
+			return PARSE_TYPE_NOT_PARSED;
+		}
+
+		switch (entry->kind) {
+		case IDENT_TYPE_DEF:
+			preprocessor_next_token(parser->preprocessor);
+
+			*out_type = entry->type_def->aliased_type;
+			out_type->alias_definition = entry->type_def;
+			profile_scope_end();
+			return PARSE_TYPE_PARSED;
+		case IDENT_FUNCTION:
+		case IDENT_VARIABLE:
+		case IDENT_STRUCT:
+		case IDENT_UNION:
+		case IDENT_ENUM:
+		case IDENT_ENUM_CONSTANT:
+		case IDENT_FUNCTION_PARAM:
+		case IDENT_KIND_MAX:
+			unreachable();
+		}
+
+		unreachable();
+	}
+
 	if (token.kind == TOKEN_KEYWORD_VOID) {
 		preprocessor_next_token(parser->preprocessor);
 		out_type->kind = TYPE_VOID;

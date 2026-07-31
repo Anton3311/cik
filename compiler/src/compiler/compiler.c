@@ -231,6 +231,61 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	return add_instr_index;
 }
 
+static InstrIndex _compile_address_of_field(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
+	assert(expr->kind == EXPR_INDIRECT_FIELD_ACCESS);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	Type compound_pointer_type;
+	expr_get_type(expr->field_access.target, &compound_pointer_type);
+
+	assert(compound_pointer_type.kind == TYPE_POINTER);
+
+	const Struct* compound_type = NULL;
+
+	Type* inner_type = compound_pointer_type.pointer_base_type;
+	if (inner_type->kind == TYPE_STRUCT) {
+		compound_type = inner_type->struct_def;
+	} else if (inner_type->kind == TYPE_UNION) {
+		compound_type = inner_type->union_def;
+	} else {
+		panic("Not a compound type");
+	}
+
+	uint32_t id = compound_type->id;
+	const size_t* field_offsets = compiler->compound_type_layouts->field_offsets[id];
+
+	StructFieldNamespaceEntry entry =
+		compound_type->field_namespace->entries[expr->field_access.field_index];
+
+	assert(entry.struct_def == compound_type);
+
+	size_t field_offset = field_offsets[entry.field_index];
+
+	InstrIndex base_address = _compile_expr(compiler, expr->field_access.target);
+	InstrIndex offset_const = instr_new_int_const(instr_buffer,
+			instr_allocator,
+			field_offset,
+			compiler->pointer_type_layout.size);
+
+	Type field_type;
+	expr_get_type(expr->field_access.target, &field_type);
+
+	TypeLayout field_type_layout = _type_get_layout(compiler, &field_type);
+
+	InstrIndex address_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* address_instr = instr_buffer_at(instr_buffer, address_instr_index);
+	address_instr->bin_op.kind = INSTR_BIN_ADD;
+	address_instr->bin_op.left = base_address;
+	address_instr->bin_op.right = offset_const;
+	address_instr->kind = INSTR_BIN_OP_64;
+
+	profile_scope_end();
+	return address_instr_index;
+}
+
 static void _compile_assignment(FunctionCompiler* compiler,
 		Expr* target,
 		InstrIndex value_instr) {
@@ -304,6 +359,38 @@ static void _compile_assignment(FunctionCompiler* compiler,
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_instr_index);
 
 		switch (element_layout.size) {
+		case 1:
+			store_instr->kind = INSTR_PTR_STORE_8;
+			break;
+		case 2:
+			store_instr->kind = INSTR_PTR_STORE_16;
+			break;
+		case 4:
+			store_instr->kind = INSTR_PTR_STORE_32;
+			break;
+		case 8:
+			store_instr->kind = INSTR_PTR_STORE_64;
+			break;
+		default:
+			panic("Unsupported element size");
+		}
+	} else if (target->kind == EXPR_INDIRECT_FIELD_ACCESS) {
+		Type field_type;
+		expr_get_type(target->field_access.target, &field_type);
+
+		TypeLayout field_type_layout = _type_get_layout(compiler, &field_type);
+
+		InstrIndex field_address = _compile_address_of_field(compiler, target);
+
+		InstrIndex store_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* store_instr = instr_buffer_at(instr_buffer, store_index);
+		store_instr->ptr_store.ptr = field_address;
+		store_instr->ptr_store.value = value_instr;
+		store_instr->ptr_store.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_index);
+
+		switch (field_type_layout.size) {
 		case 1:
 			store_instr->kind = INSTR_PTR_STORE_8;
 			break;
@@ -2111,4 +2198,83 @@ void compiler_resolve_default_func_refs(SymbolMap* map) {
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fseek"), fseek);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("malloc"), malloc);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("free"), free);
+}
+
+CompoundTypeLayouts compute_compound_type_layouts(const AST* ast, Arena* allocator) {
+	profile_scope_start(__func__);
+
+	CompoundTypeLayouts layouts;
+	layouts.layouts = arena_alloc_array_zeroed(allocator,
+			TypeLayout,
+			ast->stats.compound_type_count);
+
+	layouts.field_offsets = arena_alloc_array_zeroed(allocator,
+			size_t*,
+			ast->stats.compound_type_count);
+
+	// FIXME: Get rid of this!
+	FunctionCompiler compiler = {};
+	compiler.compound_type_layouts = &layouts;
+	compiler.pointer_type_layout = type_layout_new(8, 8);
+
+	for (const AstNode* node = ast->root_nodes.first; node != NULL; node = node->next) {
+		const Struct* compound_type = NULL;
+		if (node->kind == AST_NODE_STRUCT) {
+			compound_type = node->struct_def;
+		} else if (node->kind == AST_NODE_UNION) {
+			compound_type = node->union_def;
+		} else {
+			continue;
+		}
+
+		uint32_t id = compound_type->id;
+		assert(layouts.layouts[id].size == 0);
+		assert(layouts.layouts[id].alignment == 0);
+		assert(layouts.field_offsets[id] == NULL);
+
+		layouts.field_offsets[id] = arena_alloc_array(allocator,
+				size_t,
+				compound_type->field_count);
+
+		TypeLayout layout = {};
+		for (size_t i = 0; i < compound_type->field_count; i += 1) {
+			StructField field = compound_type->fields[i];
+
+			TypeLayout field_layout = _type_get_layout(&compiler, &field.type);
+			size_t field_offset;
+
+			if (compound_type->layout_kind == STRUCT_LAYOUT_KIND_STRUCT) {
+				layout.size = align(layout.size, field_layout.alignment);
+				field_offset = layout.size;
+
+				layout.size += field_layout.size;
+				layout.alignment = max(layout.alignment, field_layout.alignment);
+			} else if (compound_type->layout_kind == STRUCT_LAYOUT_KIND_UNION) {
+				field_offset = 0;
+
+				layout.size = max(layout.size, field_layout.size);
+				layout.alignment = max(layout.alignment, field_layout.alignment);
+			} else {
+				unreachable();
+			}
+
+			layouts.field_offsets[id][i] = field_offset;
+			printf("type: %.*s field: %.*s offset: %zu\n",
+					STR_FMT(compound_type->name.string),
+					STR_FMT(field.name.string),
+					field_offset);
+		}
+
+		layout.size = align(layout.size, layout.alignment);
+
+		printf("type: %.*s size: %zu align: %zu\n",
+				STR_FMT(compound_type->name.string),
+				layout.size,
+				layout.alignment);
+
+		layouts.layouts[id] = layout;
+	}
+
+	profile_scope_end();
+	return layouts;
 }

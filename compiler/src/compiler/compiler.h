@@ -5,6 +5,8 @@
 #include "code_gen/instr.h"
 #include "code_gen/code_gen.h"
 
+typedef struct CompoundTypeLayouts CompoundTypeLayouts;
+
 typedef struct {
 	size_t size;
 	size_t alignment;
@@ -74,6 +76,7 @@ typedef struct {
 	InstrIndex* arg_states;
 
 	TypeLayout pointer_type_layout;
+	const CompoundTypeLayouts* compound_type_layouts;
 
 	StringStorage* str_storage;
 	SymbolMap* symbol_map;
@@ -92,5 +95,13 @@ typedef struct {
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);
 void compiler_resolve_default_func_refs(SymbolMap* map);
+
+// Stores precomputed layouts for all the compound types in the AST
+struct CompoundTypeLayouts {
+	TypeLayout* layouts;
+	size_t** field_offsets;
+};
+
+CompoundTypeLayouts compute_compound_type_layouts(const AST* ast, Arena* allocator);
 
 #endif

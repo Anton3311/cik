@@ -109,6 +109,10 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		print_parsed_node(parsed_ast.root_nodes.first);
 	}
 
+	CompoundTypeLayouts compound_type_layouts = compute_compound_type_layouts(
+			&parsed_ast,
+			context->temp_arena);
+
 	uint32_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION_DEF) {
@@ -167,6 +171,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		c.temp_allocator = context->temp_arena;
 		c.str_storage = &string_storage;
 		c.symbol_map = context->imported_symbol_map;
+		c.compound_type_layouts = &compound_type_layouts;
 		c.pointer_type_layout = type_layout_new(8, 8);
 
 		CompiledFunction compiled_function = function_compiler_compile(&c);

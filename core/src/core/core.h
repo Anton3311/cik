@@ -540,6 +540,8 @@ inline void str_builder_append(StringBuilder* builder, String string) {
 	}
 }
 
+void str_builder_format(StringBuilder* builder, const char* fmt, ...);
+
 inline void str_builder_append_cstr(StringBuilder* builder, const char* string) {
 	str_builder_append(builder, str_from_cstr(string));
 }

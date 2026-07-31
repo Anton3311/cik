@@ -401,6 +401,19 @@ String str_split_next(String* string, char by_char) {
 // String Builder
 //
 
+void str_builder_format(StringBuilder* builder, const char* fmt, ...) {
+	profile_core_func();
+
+	va_list args;
+	va_start(args, fmt);
+
+	str_format_with_args(builder->arena, fmt, args);
+
+	va_end(args);
+
+	profile_scope_end();
+}
+
 void str_builder_append_int(StringBuilder* builder, uint64_t value) {
 	if (value == 0) {
 		str_builder_append_char(builder, '0' + value);

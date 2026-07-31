@@ -365,6 +365,7 @@ typedef enum {
 	EXPR_ENUM_CONSTANT,
 	EXPR_FUNCTION_PARAM,
 	EXPR_ARRAY_INDEX,
+	EXPR_INDIRECT_FIELD_ACCESS, // -> operator
 	EXPR_CAST,
 } ExprKind;
 
@@ -407,6 +408,12 @@ struct Expr {
 			Type* target_type;
 			Expr* expr;
 		} cast;
+
+		struct {
+			Expr* target;
+			size_t field_index;
+			PackedSourceRange source_range;
+		} field_access;
 	};
 };
 
@@ -441,7 +448,7 @@ PackedSourceRange expr_get_source_range(const Expr* expr);
 // 2. nested.a;
 // 3. nested.inner_most_value;
 //
-// Thus the hash map would contains other next mappings:
+// Thus the hash map would contain the next mappings:
 // 1. text             -> Nested.text
 // 2. a                -> Nested.Inner1.a
 // 3. inner_most_value -> Nested.Inner1.Inner2.inner_most_value

@@ -619,6 +619,31 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		*out_type = *expr->cast.target_type;
 		return;
 	}
+	case EXPR_INDIRECT_FIELD_ACCESS: {
+		Type type;
+		expr_get_type(expr->field_access.target, &type);
+
+		assert(type.kind == TYPE_POINTER);
+
+		Type* inner_type = type.pointer_base_type;
+		const Struct* compound_type = NULL;
+		if (inner_type->kind == TYPE_STRUCT) {
+			compound_type = inner_type->struct_def;
+		} else if (inner_type->kind == TYPE_UNION) {
+			compound_type = inner_type->union_def;
+		} else {
+			panic("Not a compound type");
+		}
+
+		StructFieldNamespaceEntry entry =
+			compound_type->field_namespace->entries[expr->field_access.field_index];
+
+		assert(entry.struct_def == compound_type);
+
+		StructField field = entry.struct_def->fields[entry.field_index];
+		*out_type = field.type;
+		return;
+	}
 	}
 
 	unreachable_msg("Failed to get expr type");
@@ -655,6 +680,8 @@ ValueKind expr_get_value_kind(Expr* expr) {
 		default:
 			return VALUE_R;
 		}
+	case EXPR_INDIRECT_FIELD_ACCESS:
+		return VALUE_L;
 	default:
 		return VALUE_R;
 	}
@@ -701,8 +728,11 @@ PackedSourceRange expr_get_source_range(const Expr* expr) {
 		return source_range_merge(
 				expr->cast.left_paren_source_range,
 				expr_get_source_range(expr->cast.expr));
+	case EXPR_INDIRECT_FIELD_ACCESS:
+		return expr->field_access.source_range;
 	}
 
+	unreachable();
 	return (PackedSourceRange) {};
 }
 
@@ -932,6 +962,36 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		print_type(printer, expr->cast.target_type);
 		printer_field(printer, "expr");
 		print_expr(printer, expr->cast.expr);
+		printer_end_struct(printer);
+		break;
+	}
+	case EXPR_INDIRECT_FIELD_ACCESS: {
+		Type type;
+		expr_get_type(expr->field_access.target, &type);
+
+		assert(type.kind == TYPE_POINTER);
+
+		Type* inner_type = type.pointer_base_type;
+		const Struct* compound_type = NULL;
+		if (inner_type->kind == TYPE_STRUCT) {
+			compound_type = inner_type->struct_def;
+		} else if (inner_type->kind == TYPE_UNION) {
+			compound_type = inner_type->union_def;
+		} else {
+			panic("Not a compound type");
+		}
+
+		StructFieldNamespaceEntry entry =
+			compound_type->field_namespace->entries[expr->field_access.field_index];
+
+		assert(entry.struct_def == compound_type);
+
+		StructField field = entry.struct_def->fields[entry.field_index];
+
+		printer_begin_struct(printer, "indirect_field_access");
+		printer_field(printer, "target");
+		print_expr(printer, expr->field_access.target);
+		printer_string_field(printer, "field_name", field.name.string);
 		printer_end_struct(printer);
 		break;
 	}

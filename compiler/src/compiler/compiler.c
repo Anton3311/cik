@@ -2268,15 +2268,9 @@ void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* 
 			size_t*,
 			ast->stats.compound_type_count);
 
-	for (const AstNode* node = ast->root_nodes.first; node != NULL; node = node->next) {
-		const Struct* compound_type = NULL;
-		if (node->kind == AST_NODE_STRUCT) {
-			compound_type = node->struct_def;
-		} else if (node->kind == AST_NODE_UNION) {
-			compound_type = node->union_def;
-		} else {
-			continue;
-		}
+	for (const Struct* compound_type = ast->last_compound_type;
+			compound_type != NULL;
+			compound_type = compound_type->prev) {
 
 		uint32_t id = compound_type->id;
 		assert(layouts[id].size == 0);
@@ -2287,7 +2281,7 @@ void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* 
 				size_t,
 				compound_type->field_count);
 
-		TypeLayout layout = {};
+		TypeLayout layout = type_layout_new(0, 1);
 		for (size_t i = 0; i < compound_type->field_count; i += 1) {
 			StructField field = compound_type->fields[i];
 
@@ -2312,7 +2306,7 @@ void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* 
 			field_offsets[id][i] = field_offset;
 		}
 
-		layout.size = align(layout.size, layout.alignment);
+		layout.size = align(max(layout.size, 1), layout.alignment);
 		layouts[id] = layout;
 	}
 

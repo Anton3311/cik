@@ -4,13 +4,11 @@ __declspec(dllimport) void* malloc(size_t);
 __declspec(dllimport) void free(void*);
 __declspec(dllimport) void assert(uint64_t);
 
-typedef struct Type Type;
-
-struct Type {
+typedef struct {
 	int a;
 	int b;
 	int c;
-};
+} Type;
 
 int main(int argc, char* argv[]) {
 	Type* type = malloc(4 * 3);

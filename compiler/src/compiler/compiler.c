@@ -378,7 +378,7 @@ static void _compile_assignment(FunctionCompiler* compiler,
 		}
 	} else if (target->kind == EXPR_INDIRECT_FIELD_ACCESS) {
 		Type field_type;
-		expr_get_type(target->field_access.target, &field_type);
+		expr_get_type(target, &field_type);
 
 		TypeLayout field_type_layout = _type_get_layout(compiler->type_context, &field_type);
 

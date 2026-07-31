@@ -301,10 +301,14 @@ void bin_expr_select_common_type(
 		const Type* right_type,
 		Type* out_type);
 
+// TODO: Include type qualifiers for UNARY_OP_ADDRESS
 struct UnaryExpr {
 	UnaryOpKind op;
 	Expr* operand;
 	PackedSourceRange operator_source_range;
+
+	// For `UNARY_OP_ADDRESS`
+	Type* pointer_base_type;
 };
 
 struct Call {

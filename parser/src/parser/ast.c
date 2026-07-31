@@ -559,7 +559,7 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		case UNARY_OP_PRE_DECREMENT:
 		case UNARY_OP_POST_DECREMENT:
 			expr_get_type(expr->unary.operand, out_type);
-			break;
+			return;
 		case UNARY_OP_DEREFERENCE: {
 			Type operand_type;
 			expr_get_type(expr->unary.operand, &operand_type);
@@ -569,10 +569,15 @@ void expr_get_type(Expr* expr, Type* out_type) {
 
 			const Type* base_type = type_extract_pointer_base_type(&operand_type);
 			*out_type = *base_type;
-			break;
+			return;
 		}
+		case UNARY_OP_ADDRESS:
+			out_type->kind = TYPE_POINTER;
+			out_type->pointer_base_type = expr->unary.pointer_base_type;
+			return;
 		}
 
+		unreachable();
 		return;
 	}
 	case EXPR_FUNCTION_REFERENCE:

@@ -752,6 +752,24 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 		profile_scope_end();
 		return instr_index;
 	}
+	case UNARY_OP_ADDRESS: {
+		Expr* operand = expr->unary.operand;
+
+		InstrIndex address_instr;
+		switch (operand->kind) {
+		case EXPR_INDIRECT_FIELD_ACCESS:
+			address_instr = _compile_address_of_field(compiler, operand);
+			break;
+		case EXPR_ARRAY_INDEX:
+			address_instr = _compile_address_of_array_element(compiler, operand);
+			break;
+		default:
+			panic("Taking an address is not supported for this expression kind");
+		}
+
+		profile_scope_end();
+		return address_instr;
+	}
 	}
 
 	unreachable();

@@ -1637,10 +1637,10 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				parser->preprocessor->source_storage,
 				expr_get_source_range(out_expr->unary.operand));
 
-		if (result == EXPR_PARSE_OK && requires_int_operand) {
-			Type operand_type;
-			expr_get_type(out_expr->unary.operand, &operand_type);
+		Type operand_type;
+		expr_get_type(out_expr->unary.operand, &operand_type);
 
+		if (result == EXPR_PARSE_OK && requires_int_operand) {
 			if (!type_kind_is_int(operand_type.kind)) {
 				StringBuilder builder = { parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Cannot apply '"));
@@ -1664,6 +1664,13 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 						STR_LIT("Expected an l-value"),
 						NULL);
 			}
+		}
+
+		if (unary_op == UNARY_OP_ADDRESS) {
+			Type* pointer_base_type = arena_alloc(parser->ast_allocator, Type);
+			*pointer_base_type = operand_type;
+
+			out_expr->unary.pointer_base_type = pointer_base_type;
 		}
 
 		profile_scope_end();

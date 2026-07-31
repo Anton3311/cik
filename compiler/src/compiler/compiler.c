@@ -432,11 +432,14 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		expr_get_type(target, &target_type);
 
 		InstrIndex value_instr = _compile_expr(compiler, value);
-		if (!type_equal(&value_type, &target_type)) {
-			assert(type_kind_is_int(value_type.kind));
-			assert(type_kind_is_int(target_type.kind));
-
+		if (type_equal(&value_type, &target_type)) {
+			// Nothing to do
+		} else if (value_type.kind == TYPE_POINTER && target_type.kind == TYPE_POINTER) {
+			// Nothing to do
+		} else if (type_kind_is_int(value_type.kind) && type_kind_is_int(target_type.kind)) {
 			value_instr = _compile_int_cast(compiler, &value_type, &target_type, value_instr);
+		} else {
+			panic("todo");
 		}
 
 		_compile_assignment(compiler, target, value_instr);

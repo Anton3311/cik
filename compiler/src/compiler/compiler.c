@@ -81,6 +81,7 @@ static TypeLayout _type_get_layout(const TypeContext* context, const Type* type)
 		return type_layout_new(8, 8);
 
 	case TYPE_SIZE_T:
+		return context->pointer_type_layout;
 
 	case TYPE_FLOAT:
 		return type_layout_new(4, 4);

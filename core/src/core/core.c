@@ -407,7 +407,7 @@ void str_builder_format(StringBuilder* builder, const char* fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 
-	str_format_with_args(builder->arena, fmt, args);
+	builder->string.length += str_format_with_args(builder->arena, fmt, args).length;
 
 	va_end(args);
 

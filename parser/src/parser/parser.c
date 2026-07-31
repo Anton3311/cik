@@ -2333,6 +2333,73 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			out_expr->field_access.source_range = source_range_merge(
 					expr_get_source_range(target),
 					source_range_pack(field_name_token.source_range));
+		} else if (operator_token.kind == TOKEN_DOT) {
+			preprocessor_next_token(parser->preprocessor);
+
+			Token field_name_token = preprocessor_next_token(parser->preprocessor);
+			if (field_name_token.kind != TOKEN_IDENT) {
+				diagnostics_report_error(parser->diagnostics,
+						field_name_token.source_range,
+						STR_LIT("Expected field name after '.'"),
+						NULL);
+
+				return EXPR_PARSE_ERROR;
+			}
+
+			SourceRange target_source_range = source_range_unpack(
+					parser->preprocessor->source_storage,
+					expr_get_source_range(out_expr));
+
+			Type target_type = {};
+			expr_get_type(out_expr, &target_type);
+
+			const Struct* compound_type = NULL;
+			if (target_type.kind == TYPE_STRUCT) {
+				compound_type = target_type.struct_def;
+			} else if (target_type.kind == TYPE_UNION) {
+				compound_type = target_type.union_def;
+			} else {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+				str_builder_append(&builder,
+						STR_LIT("'.' can only be applied to struct or union type. Got '"));
+				type_format(&target_type, &builder);
+				str_builder_append(&builder, STR_LIT("' instead."));
+
+				diagnostics_report_error(parser->diagnostics,
+						target_source_range,
+						builder.string,
+						NULL);
+				return EXPR_PARSE_ERROR;
+			}
+
+			size_t field_index = struct_field_namespace_index_of(
+					compound_type->field_namespace,
+					field_name_token.string);
+
+			if (field_index == SIZE_MAX) {
+				StringBuilder builder = { .arena = parser->diagnostics->allocator };
+
+				str_builder_append(&builder, STR_LIT("'"));
+				type_format(&target_type, &builder);
+				str_builder_format(&builder,
+						"' has no field named '%.*s'", STR_FMT(field_name_token.string));
+
+				diagnostics_report_error(parser->diagnostics,
+						field_name_token.source_range,
+						builder.string,
+						NULL);
+				return EXPR_PARSE_ERROR;
+			}
+
+			Expr* target = arena_alloc(parser->ast_allocator, Expr);
+			memcpy(target, out_expr, sizeof(*out_expr));
+
+			out_expr->kind = EXPR_DIRECT_FIELD_ACCESS;
+			out_expr->field_access.target = target;
+			out_expr->field_access.field_index = field_index;
+			out_expr->field_access.source_range = source_range_merge(
+					expr_get_source_range(target),
+					source_range_pack(field_name_token.source_range));
 		} else {
 			break;
 		}

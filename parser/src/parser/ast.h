@@ -370,6 +370,7 @@ typedef enum {
 	EXPR_FUNCTION_PARAM,
 	EXPR_ARRAY_INDEX,
 	EXPR_INDIRECT_FIELD_ACCESS, // -> operator
+	EXPR_DIRECT_FIELD_ACCESS, // . operator
 	EXPR_CAST,
 } ExprKind;
 

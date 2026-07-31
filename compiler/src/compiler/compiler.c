@@ -89,9 +89,9 @@ static TypeLayout _type_get_layout(const TypeContext* context, const Type* type)
 		return type_layout_new(8, 8);
 
 	case TYPE_STRUCT:
-		break;
+		return context->layouts[type->struct_def->id];
 	case TYPE_UNION:
-		break;
+		return context->layouts[type->union_def->id];
 	case TYPE_ENUM:
 		break;
 

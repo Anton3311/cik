@@ -64,6 +64,13 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		panic("Failed to parse");
 	}
 
+	TypeContext type_context = {};
+	type_context.pointer_type_layout = type_layout_new(8, 8);
+	compute_compound_type_layouts(
+			&type_context,
+			&parsed_ast,
+			context->temp_arena);
+
 	size_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION_DEF) {
@@ -139,9 +146,9 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		c.allocator = context->arena;
 		c.instr_allocator = context->arena;
 		c.temp_allocator = context->temp_arena;
-		c.pointer_type_layout = type_layout_new(8, 8);
 		c.symbol_map = &imported_symbol_map;
 		c.str_storage = &string_storage;
+		c.type_context = &type_context;
 
 		CompiledFunction compiled_function = function_compiler_compile(&c);
 

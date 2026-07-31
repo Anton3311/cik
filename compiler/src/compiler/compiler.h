@@ -5,12 +5,13 @@
 #include "code_gen/instr.h"
 #include "code_gen/code_gen.h"
 
-typedef struct CompoundTypeLayouts CompoundTypeLayouts;
+typedef struct TypeLayout TypeLayout;
+typedef struct TypeContext TypeContext;
 
-typedef struct {
+struct TypeLayout {
 	size_t size;
 	size_t alignment;
-} TypeLayout;
+};
 
 inline TypeLayout type_layout_new(size_t size, size_t alignment) {
 	return (TypeLayout) { .size = size, .alignment = alignment };
@@ -75,8 +76,7 @@ typedef struct {
 	InstrIndex* var_values;
 	InstrIndex* arg_states;
 
-	TypeLayout pointer_type_layout;
-	const CompoundTypeLayouts* compound_type_layouts;
+	const TypeContext* type_context;
 
 	StringStorage* str_storage;
 	SymbolMap* symbol_map;
@@ -97,11 +97,12 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler);
 void compiler_resolve_default_func_refs(SymbolMap* map);
 
 // Stores precomputed layouts for all the compound types in the AST
-struct CompoundTypeLayouts {
+struct TypeContext {
+	TypeLayout pointer_type_layout;
 	TypeLayout* layouts;
 	size_t** field_offsets;
 };
 
-CompoundTypeLayouts compute_compound_type_layouts(const AST* ast, Arena* allocator);
+void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* allocator);
 
 #endif

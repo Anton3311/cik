@@ -55,6 +55,13 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 		panic("Failed to parse");
 	}
 
+	TypeContext type_context = {};
+	type_context.pointer_type_layout = type_layout_new(8, 8);
+	compute_compound_type_layouts(
+			&type_context,
+			&parsed_ast,
+			context->temp_arena);
+
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind == AST_NODE_FUNCTION_DEF) {
 			if (node->function_def->body == NULL) {
@@ -66,7 +73,7 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 			c.allocator = context->arena;
 			c.instr_allocator = context->arena;
 			c.temp_allocator = context->temp_arena;
-			c.pointer_type_layout = type_layout_new(8, 8);
+			c.type_context = &type_context;
 
 			CompiledFunction func = function_compiler_compile(&c);
 

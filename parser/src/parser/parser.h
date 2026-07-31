@@ -167,7 +167,7 @@ typedef struct {
 
 	uint32_t next_var_id;
 
-	ASTStatistics ast_stats;
+	AST* ast;
 } Parser;
 
 void parser_init(Parser* parser,

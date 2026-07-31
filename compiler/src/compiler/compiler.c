@@ -915,6 +915,41 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		profile_scope_end();
 		return load_instr_index;
 	}
+	case EXPR_INDIRECT_FIELD_ACCESS: {
+		Type field_type;
+		expr_get_type(expr->field_access.target, &field_type);
+
+		TypeLayout field_type_layout = _type_get_layout(compiler, &field_type);
+
+		InstrIndex field_address = _compile_address_of_field(compiler, expr);
+
+		InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* load_instr = instr_buffer_at(instr_buffer, load_index);
+		load_instr->ptr_load.ptr = field_address;
+		load_instr->ptr_load.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, load_index);
+
+		switch (field_type_layout.size) {
+		case 1:
+			load_instr->kind = INSTR_PTR_LOAD_8;
+			break;
+		case 2:
+			load_instr->kind = INSTR_PTR_LOAD_16;
+			break;
+		case 4:
+			load_instr->kind = INSTR_PTR_LOAD_32;
+			break;
+		case 8:
+			load_instr->kind = INSTR_PTR_LOAD_64;
+			break;
+		default:
+			panic("Unsupported element size");
+		}
+
+		profile_scope_end();
+		return load_index;
+	}
 	case EXPR_ENUM_CONSTANT: {
 		assert(expr->enum_constant.variant_index < INT32_MAX);
 		InstrIndex instr_index = instr_new_int_const(instr_buffer,

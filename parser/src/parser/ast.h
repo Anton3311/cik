@@ -480,6 +480,7 @@ typedef enum {
 struct Struct {
 	SourceString name;
 	StructLayoutKind layout_kind;
+	uint32_t id;
 
 	bool is_forward_declared;
 
@@ -674,7 +675,12 @@ struct AstNode {
 //
 
 typedef struct {
+	uint32_t compound_type_count;
+} ASTStatistics;
+
+typedef struct {
 	NodeList root_nodes;
+	ASTStatistics stats;
 } AST;
 
 void print_parsed_node(const AstNode* node);

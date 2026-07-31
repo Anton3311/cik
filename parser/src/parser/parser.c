@@ -752,6 +752,9 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 		struct_def->name = struct_name;
 		struct_def->layout_kind = layout_kind;
 		struct_def->is_forward_declared = is_forward_declared;
+
+		struct_def->id = parser->ast_stats.compound_type_count;
+		parser->ast_stats.compound_type_count += 1;
 	}
 
 	if (is_forward_declared) {
@@ -3660,6 +3663,7 @@ void parser_parse(Parser* parser, AST* ast) {
 	profile_func_colored(PROFILE_COLOR);
 
 	ast->root_nodes = (NodeList) {};
+	parser->ast_stats = (ASTStatistics) {};
 
 	bool run = true;
 	while (run) {
@@ -3682,6 +3686,8 @@ void parser_parse(Parser* parser, AST* ast) {
 			preprocessor_next_token(parser->preprocessor);
 		}
 	}
+
+	ast->stats = parser->ast_stats;
 
 	profile_scope_end();
 }

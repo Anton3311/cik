@@ -1006,6 +1006,8 @@ void print_struct_def(PrinterState* printer, const Struct* struct_def) {
 			: "union");
 
 	printer_string_field(printer, "name", struct_def->name.string);
+	printer_field(printer, "id");
+	printf("%u\n", struct_def->id);
 	printer_bool_field(printer, "is_forward_declared", struct_def->is_forward_declared);
 	
 	if (!struct_def->is_forward_declared) {

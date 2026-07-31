@@ -166,6 +166,8 @@ typedef struct {
 	bool inside_a_loop;
 
 	uint32_t next_var_id;
+
+	ASTStatistics ast_stats;
 } Parser;
 
 void parser_init(Parser* parser,

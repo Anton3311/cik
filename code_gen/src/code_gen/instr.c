@@ -147,6 +147,7 @@ InstrInputs instr_allocate_inputs_array(InstrBuffer* buffer, uint16_t count) {
 	assert(buffer->inputs_buffer_capacity >= buffer->inputs_buffer_size);
 
 	if (count == 0) {
+		profile_scope_end();
 		return (InstrInputs) { .start = UINT16_MAX, .count = 0 };
 	}
 

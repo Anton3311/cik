@@ -943,7 +943,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 	}
 	case EXPR_INDIRECT_FIELD_ACCESS: {
 		Type field_type;
-		expr_get_type(expr->field_access.target, &field_type);
+		expr_get_type(expr, &field_type);
 
 		TypeLayout field_type_layout = _type_get_layout(compiler->type_context, &field_type);
 

@@ -493,7 +493,7 @@ struct Struct {
 	size_t field_count;
 
 	StructFieldNamespace* field_namespace;
-	const Struct* prev;
+	const Struct* next;
 };
 
 inline const StructField* struct_find_field(const Struct* struct_def, String field_name) {
@@ -688,7 +688,8 @@ typedef struct {
 	NodeList root_nodes;
 	ASTStatistics stats;
 
-	const Struct* last_compound_type;
+	Struct* first_compound_type;
+	Struct* last_compound_type;
 } AST;
 
 void print_parsed_node(const AstNode* node);

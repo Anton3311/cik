@@ -2329,9 +2329,12 @@ void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* 
 			size_t*,
 			ast->stats.compound_type_count);
 
-	for (const Struct* compound_type = ast->last_compound_type;
+	context->layouts = layouts;
+	context->field_offsets = field_offsets;
+
+	for (const Struct* compound_type = ast->first_compound_type;
 			compound_type != NULL;
-			compound_type = compound_type->prev) {
+			compound_type = compound_type->next) {
 
 		uint32_t id = compound_type->id;
 		assert(layouts[id].size == 0);
@@ -2348,6 +2351,8 @@ void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* 
 
 			TypeLayout field_layout = _type_get_layout(context, &field.type);
 			size_t field_offset;
+
+			assert_msg(field_layout.size != 0, "Field has no size");
 
 			if (compound_type->layout_kind == STRUCT_LAYOUT_KIND_STRUCT) {
 				layout.size = align(layout.size, field_layout.alignment);
@@ -2370,9 +2375,6 @@ void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* 
 		layout.size = align(max(layout.size, 1), layout.alignment);
 		layouts[id] = layout;
 	}
-
-	context->layouts = layouts;
-	context->field_offsets = field_offsets;
 
 	profile_scope_end();
 }

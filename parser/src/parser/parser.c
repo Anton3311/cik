@@ -753,13 +753,23 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 		struct_def->layout_kind = layout_kind;
 		struct_def->is_forward_declared = is_forward_declared;
 
-		assert(struct_def->prev == NULL);
+		assert(struct_def->next == NULL);
 
 		struct_def->id = parser->ast->stats.compound_type_count;
 		parser->ast->stats.compound_type_count += 1;
 
-		struct_def->prev = parser->ast->last_compound_type;
-		parser->ast->last_compound_type = struct_def;
+		AST* ast = parser->ast;
+		if (ast->first_compound_type) {
+			assert(ast->last_compound_type != NULL);
+
+			ast->last_compound_type->next = struct_def;
+			ast->last_compound_type = struct_def;
+		} else {
+			assert(ast->last_compound_type == NULL);
+
+			ast->first_compound_type = struct_def;
+			ast->last_compound_type = struct_def;
+		}
 	}
 
 	if (is_forward_declared) {
@@ -3780,6 +3790,9 @@ void parser_parse(Parser* parser, AST* ast) {
 	profile_func_colored(PROFILE_COLOR);
 
 	ast->root_nodes = (NodeList) {};
+	ast->first_compound_type = NULL;
+	ast->last_compound_type = NULL;
+
 	parser->ast = ast;
 
 	bool run = true;

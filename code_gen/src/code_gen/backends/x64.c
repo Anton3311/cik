@@ -1616,7 +1616,10 @@ static void _lower_instr(X64CodeGenerator* gen,
 					InstrIndex interfering_instr = gen->instr_with_storage_requirement.instr[edges.values[j]];
 					InstrStorageLocation loc = gen->instr_storage[interfering_instr.value];
 
-					assert(loc.kind == INSTR_STORAGE_REG);
+					if (loc.kind != INSTR_STORAGE_REG) {
+						continue;
+					}
+
 					allowed_temp_registers &= ~(1 << loc.reg);
 				}
 			}

@@ -671,6 +671,10 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		*out_type = field.type;
 		return;
 	}
+	case EXPR_SIZE_OF_EXPR:
+	case EXPR_SIZE_OF_TYPE:
+		out_type->kind = TYPE_SIZE_T;
+		return;
 	}
 
 	unreachable_msg("Failed to get expr type");
@@ -760,6 +764,10 @@ PackedSourceRange expr_get_source_range(const Expr* expr) {
 	case EXPR_DIRECT_FIELD_ACCESS:
 	case EXPR_INDIRECT_FIELD_ACCESS:
 		return expr->field_access.source_range;
+	case EXPR_SIZE_OF_EXPR:
+		return expr->size_of_expr.source_range;
+	case EXPR_SIZE_OF_TYPE:
+		return expr->size_of_type.source_range;
 	}
 
 	unreachable();
@@ -1050,6 +1058,22 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		print_expr(printer, expr->field_access.target);
 		printer_string_field(printer, "field_name", field.name.string);
 		printer_end_struct(printer);
+		break;
+	}
+	case EXPR_SIZE_OF_EXPR: {
+		printer_begin_struct(printer, "size_of_expr");
+		printer_field(printer, "expr");
+		print_expr(printer, expr->size_of_expr.expr);
+		printer_end_struct(printer);
+		break;
+		break;
+	}
+	case EXPR_SIZE_OF_TYPE: {
+		printer_begin_struct(printer, "size_of_type");
+		printer_field(printer, "type");
+		print_type(printer, expr->size_of_type.type);
+		printer_end_struct(printer);
+		break;
 		break;
 	}
 	}

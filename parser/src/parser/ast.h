@@ -372,6 +372,8 @@ typedef enum {
 	EXPR_INDIRECT_FIELD_ACCESS, // -> operator
 	EXPR_DIRECT_FIELD_ACCESS, // . operator
 	EXPR_CAST,
+	EXPR_SIZE_OF_EXPR,
+	EXPR_SIZE_OF_TYPE,
 } ExprKind;
 
 struct Expr {
@@ -419,6 +421,16 @@ struct Expr {
 			size_t field_index;
 			PackedSourceRange source_range;
 		} field_access;
+
+		struct {
+			Expr* expr;
+			PackedSourceRange source_range;
+		} size_of_expr;
+		
+		struct {
+			Type* type;
+			PackedSourceRange source_range;
+		} size_of_type;
 	};
 };
 

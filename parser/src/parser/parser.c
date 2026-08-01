@@ -1939,6 +1939,86 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 
 		profile_scope_end();
 		return EXPR_PARSE_OK;
+	} else if (token.kind == TOKEN_KEYWORD_SIZE_OF) {
+		preprocessor_next_token(parser->preprocessor);
+		
+		bool is_wrapped_in_parens = false;
+		Token maybe_paren = preprocessor_view_next(parser->preprocessor);
+
+		PackedSourceRange source_range = source_range_pack(token.source_range);
+
+		if (maybe_paren.kind == TOKEN_LEFT_PAREN) {
+			is_wrapped_in_parens = true;
+			preprocessor_next_token(parser->preprocessor); // consume '('
+		}
+
+		Type target_type;
+		Expr target_expr;
+
+		ExprKind size_of_kind = 0;
+
+		ParseTypeResult type_result = _parser_try_parse_type_name(parser, &target_type);
+		switch (type_result) {
+		case PARSE_TYPE_PARSED:
+			size_of_kind = EXPR_SIZE_OF_TYPE;
+			break;
+		case PARSE_TYPE_NOT_PARSED: {
+			ExprParseResult expr_result = _parser_try_parse_expr(
+					parser,
+					&target_expr);
+
+			switch (expr_result) {
+			case EXPR_PARSE_OK:
+				size_of_kind = EXPR_SIZE_OF_EXPR;
+				break;
+			case EXPR_PARSE_ERROR:
+				profile_scope_end();
+				return EXPR_PARSE_ERROR;
+			case EXPR_PARSE_NOT_PARSED:
+				diagnostics_report_error(parser->diagnostics,
+						source_range_unpack(
+							parser->preprocessor->source_storage,
+							source_range),
+						STR_LIT("Expected an expression or a type after 'sizeof'"),
+						NULL);
+				return EXPR_PARSE_ERROR;
+			}
+
+			break;
+		}
+		case PARSE_TYPE_ERROR:
+			profile_scope_end();
+			return EXPR_PARSE_ERROR;
+		}
+
+		if (is_wrapped_in_parens) {
+			Token right_paren = preprocessor_next_token(parser->preprocessor);
+			if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+				TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						right_paren,
+						expected_tokens,
+						array_size(expected_tokens));
+			}
+
+			source_range = source_range_merge(
+					source_range,
+					source_range_pack(right_paren.source_range));
+		}
+
+		if (size_of_kind == EXPR_SIZE_OF_TYPE) {
+			out_expr->kind = EXPR_SIZE_OF_TYPE;
+			out_expr->size_of_type.type = arena_alloc(parser->ast_allocator, Type);
+			*out_expr->size_of_type.type = target_type;
+			return EXPR_PARSE_OK;
+		} else if (size_of_kind == EXPR_SIZE_OF_EXPR) {
+			out_expr->kind = EXPR_SIZE_OF_EXPR;
+			out_expr->size_of_expr.expr = arena_alloc(parser->ast_allocator, Expr);
+			*out_expr->size_of_expr.expr = target_expr;
+			return EXPR_PARSE_OK;
+		}
+
+		unreachable();
 	}
 
 	profile_scope_end();

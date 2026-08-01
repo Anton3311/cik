@@ -1034,6 +1034,31 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		profile_scope_end();
 		return value;
 	}
+	case EXPR_SIZE_OF_EXPR: {
+		Type type;
+		expr_get_type(expr->size_of_expr.expr, &type);
+
+		TypeLayout type_layout = _type_get_layout(compiler->type_context, &type);
+
+		InstrIndex size_const = instr_new_int_const(instr_buffer,
+				instr_allocator,
+				type_layout.size,
+				compiler->type_context->pointer_type_layout.size);
+
+		profile_scope_end();
+		return size_const;
+	}
+	case EXPR_SIZE_OF_TYPE: {
+		TypeLayout type_layout = _type_get_layout(compiler->type_context, expr->size_of_type.type);
+
+		InstrIndex size_const = instr_new_int_const(instr_buffer,
+				instr_allocator,
+				type_layout.size,
+				compiler->type_context->pointer_type_layout.size);
+
+		profile_scope_end();
+		return size_const;
+	}
 	}
 
 	unreachable();

@@ -97,10 +97,19 @@ static TypeLayout _type_get_layout(const TypeContext* context, const Type* type)
 
 	case TYPE_POINTER:
 		return context->pointer_type_layout;
-	case TYPE_ARRAY:
-		// NOTE: Doesn't account for the array size.
-		//       The array is treated as a pointer.
+	case TYPE_ARRAY: {
+		if (type->array.size) {
+			// NOTE: I think that, if the function param has a type of a sized array, that this
+			//       function should still return `context->pointer_type_layout`
+			assert(type->array.size->kind == EXPR_INTEGER_LITERAL);
+
+			TypeLayout element_type_layout = _type_get_layout(context, type->array.element_type);
+			size_t size = element_type_layout.size * type->array.size->int_literal.value;
+			return type_layout_new(size, element_type_layout.alignment);
+		}
+
 		return context->pointer_type_layout;
+	}
 	case TYPE_FUNCTION:
 		return context->pointer_type_layout;
 	}
@@ -785,7 +794,7 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 		case EXPR_VARIABLE_REFERENCE: {
 			const Variable* var = operand->variable_ref.var;
 
-			if (var->type.kind == TYPE_STRUCT || var->type.kind == TYPE_UNION) {
+			if (var->type.kind == TYPE_STRUCT || var->type.kind == TYPE_UNION || var->type.kind == TYPE_ARRAY) {
 				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
 				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
 				stack_addr->kind = INSTR_STACK_ADDR;
@@ -886,7 +895,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		InstrIndex value_instr = compiler->var_values[expr->variable_ref.var->id];
 		assert(value_instr.value != INVALID_INSTR_INDEX.value);
 
-		if (var->type.kind == TYPE_STRUCT || var->type.kind == TYPE_UNION) {
+		if (var->type.kind == TYPE_STRUCT || var->type.kind == TYPE_UNION || var->type.kind == TYPE_ARRAY) {
 			InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
 			stack_addr->kind = INSTR_STACK_ADDR;
@@ -2001,6 +2010,20 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 					value);
 		} else if (node->variable.type.kind == TYPE_STRUCT
 				|| node->variable.type.kind == TYPE_UNION) {
+
+			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+			instr->kind = INSTR_STACK_ALLOC;
+
+			assert(variable_type_layout.size <= UINT32_MAX);
+			assert(variable_type_layout.alignment <= UINT32_MAX);
+
+			instr->stack_alloc.size = (uint32_t)variable_type_layout.size;
+			instr->stack_alloc.alignment = (uint32_t)variable_type_layout.alignment;
+
+			value_instr = instr_index;
+		} else if (node->variable.type.kind == TYPE_ARRAY) {
+			assert(variable_type.array.size != NULL);
 
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);

@@ -775,12 +775,29 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		InstrIndex address_instr;
 		switch (operand->kind) {
+		case EXPR_DIRECT_FIELD_ACCESS:
 		case EXPR_INDIRECT_FIELD_ACCESS:
 			address_instr = _compile_address_of_field(compiler, operand);
 			break;
 		case EXPR_ARRAY_INDEX:
 			address_instr = _compile_address_of_array_element(compiler, operand);
 			break;
+		case EXPR_VARIABLE_REFERENCE: {
+			const Variable* var = operand->variable_ref.var;
+
+			if (var->type.kind == TYPE_STRUCT || var->type.kind == TYPE_UNION) {
+				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+				stack_addr->kind = INSTR_STACK_ADDR;
+				stack_addr->stack_addr.stack_alloc = compiler->var_values[var->id];
+
+				address_instr = stack_addr_index;
+			} else {
+				panic("Only taking an address of compound types is supported");
+			}
+
+			break;
+		}
 		default:
 			panic("Taking an address is not supported for this expression kind");
 		}

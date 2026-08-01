@@ -233,29 +233,38 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	return add_instr_index;
 }
 
+static const Struct* _resolve_compound_type(Expr* expr) {
+	assert(expr->kind == EXPR_DIRECT_FIELD_ACCESS || expr->kind == EXPR_INDIRECT_FIELD_ACCESS);
+
+	Type target_type;
+	expr_get_type(expr->field_access.target, &target_type);
+
+	const Type* compound_type = NULL;
+	if (expr->kind == EXPR_DIRECT_FIELD_ACCESS) {
+		compound_type = &target_type;
+	} else if (expr->kind == EXPR_INDIRECT_FIELD_ACCESS) {
+		assert(target_type.kind == TYPE_POINTER);
+		compound_type = target_type.pointer_base_type;
+	}
+
+	if (compound_type->kind == TYPE_STRUCT) {
+		return compound_type->struct_def;
+	} else if (compound_type->kind == TYPE_UNION) {
+		return compound_type->union_def;
+	}
+
+	panic("Not a compound type");
+	return NULL;
+}
+
 static InstrIndex _compile_address_of_field(FunctionCompiler* compiler, Expr* expr) {
 	profile_scope_start(__func__);
-	assert(expr->kind == EXPR_INDIRECT_FIELD_ACCESS);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 	const TypeContext* type_context = compiler->type_context;
 
-	Type compound_pointer_type;
-	expr_get_type(expr->field_access.target, &compound_pointer_type);
-
-	assert(compound_pointer_type.kind == TYPE_POINTER);
-
-	const Struct* compound_type = NULL;
-
-	Type* inner_type = compound_pointer_type.pointer_base_type;
-	if (inner_type->kind == TYPE_STRUCT) {
-		compound_type = inner_type->struct_def;
-	} else if (inner_type->kind == TYPE_UNION) {
-		compound_type = inner_type->union_def;
-	} else {
-		panic("Not a compound type");
-	}
+	const Struct* compound_type = _resolve_compound_type(expr);
 
 	uint32_t id = compound_type->id;
 	const size_t* field_offsets = type_context->field_offsets[id];
@@ -377,7 +386,8 @@ static void _compile_assignment(FunctionCompiler* compiler,
 		default:
 			panic("Unsupported element size");
 		}
-	} else if (target->kind == EXPR_INDIRECT_FIELD_ACCESS) {
+	} else if (target->kind == EXPR_INDIRECT_FIELD_ACCESS
+			|| target->kind == EXPR_DIRECT_FIELD_ACCESS) {
 		Type field_type;
 		expr_get_type(target, &field_type);
 
@@ -941,7 +951,8 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		profile_scope_end();
 		return load_instr_index;
 	}
-	case EXPR_INDIRECT_FIELD_ACCESS: {
+	case EXPR_INDIRECT_FIELD_ACCESS:
+	case EXPR_DIRECT_FIELD_ACCESS: {
 		Type field_type;
 		expr_get_type(expr, &field_type);
 

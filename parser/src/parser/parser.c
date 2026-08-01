@@ -1301,8 +1301,12 @@ static ParseTypeResult _parser_try_parse_type_name(Parser* parser, Type* out_typ
 		break;
 	}
 
-	Token maybe_asterisk = preprocessor_view_next(parser->preprocessor);
-	if (maybe_asterisk.kind == TOKEN_ASTERISK) {
+	while (true) {
+		Token maybe_asterisk = preprocessor_view_next(parser->preprocessor);
+		if (maybe_asterisk.kind != TOKEN_ASTERISK) {
+			break;
+		}
+
 		preprocessor_next_token(parser->preprocessor);
 
 		TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);

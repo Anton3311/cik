@@ -13,19 +13,23 @@ static InstrIndexArray _gather_instr_with_storage_requirement(const InstrBuffer*
 	result.instr = arena_alloc_array(allocator, InstrIndex, 0);
 
 	for (size_t i = 0; i < instr_buffer->count; i += 1) {
-		const InstrKind kind = instr_buffer->instr[i].kind;
-		if (!has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			continue;
-		}
-
 		if (live_ranges[i].value == UINT32_MAX) {
 			// Not used
 			continue;
 		}
 
-		arena_alloc(allocator, InstrIndex);
-		result.instr[result.count].value = (uint16_t)i;
-		result.count += 1;
+		const InstrKind kind = instr_buffer->instr[i].kind;
+		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
+			arena_alloc(allocator, InstrIndex);
+			result.instr[result.count].value = (uint16_t)i;
+			result.count += 1;
+		}
+
+		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_STACK_STORAGE)) {
+			arena_alloc(allocator, InstrIndex);
+			result.instr[result.count].value = (uint16_t)i;
+			result.count += 1;
+		}
 	}
 
 	profile_scope_end();
@@ -107,11 +111,16 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		const InstrLiveRange* live_ranges,
 		InstrIndexArray instr_with_storage_requirement,
 		UInt16Array* interference_graph,
-		InstrStorageLocation* instr_storage,
 		uint16_t allowed_registers,
-		Arena* temp_allocator) {
+		Arena* allocator,
+		Arena* temp_allocator,
+		RegisterAllocationResult* out_result) {
 	profile_scope_start(__func__);
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	InstrStorageLocation* instr_storage = arena_alloc_array_zeroed(allocator,
+			InstrStorageLocation,
+			instr_buffer->count);
 
 	uint16_t* potential_instr_registers = arena_alloc_array(temp_allocator,
 			uint16_t,
@@ -172,10 +181,25 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 	}
 
 	// Assign locations to the rest of the instructions
+
+	uint32_t stack_offset = 0;
 	for (size_t i = 0; i < instr_with_storage_requirement.count; i += 1) {
 		InstrIndex instr_index = instr_with_storage_requirement.instr[i];
 
 		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_NONE) {
+			continue;
+		}
+
+		const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+		if (has_flag(INSTR_FEATURES[instr->kind], INSTR_FEATURE_STACK_STORAGE)) {
+			assert(instr->stack_alloc.alignment > 0);
+			assert(is_power_of_2(instr->stack_alloc.alignment));
+
+			stack_offset = align(stack_offset, instr->stack_alloc.alignment);
+
+			instr_storage[instr_index.value].kind = INSTR_STORAGE_STACK;
+			instr_storage[instr_index.value].stack.offset = stack_offset;
+			stack_offset += instr->stack_alloc.size;
 			continue;
 		}
 
@@ -195,6 +219,9 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			potential_instr_registers[interfering_instr.value] &= ~(1 << first_potential_register);
 		}
 	}
+
+	out_result->allocations = instr_storage;
+	out_result->stack_usage = stack_offset;
 
 	arena_end_temp(temp);
 	profile_scope_end();
@@ -216,24 +243,19 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			live_ranges,
 			temp_allocator);
 
-	InstrStorageLocation* storage_locations = arena_alloc_array_zeroed(allocator,
-			InstrStorageLocation,
-			instr_buffer->count);
+	RegisterAllocationResult result;
+	result.instr_with_storage_requirement = instr_with_storage_requirement;
+	result.interference_graph = interference_graph;
 
 	_run_graph_coloring(instr_buffer,
 			live_ranges,
 			instr_with_storage_requirement,
 			interference_graph,
-			storage_locations,
 			allowed_registers,
-			temp_allocator);
-
-	RegisterAllocationResult result;
-	result.allocations = storage_locations;
-	result.instr_with_storage_requirement = instr_with_storage_requirement;
-	result.interference_graph = interference_graph;
+			allocator,
+			temp_allocator,
+			&result);
 
 	profile_scope_end();
-
 	return result;
 }

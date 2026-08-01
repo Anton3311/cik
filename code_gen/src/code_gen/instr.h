@@ -86,6 +86,12 @@ typedef enum {
 	INSTR_LOAD_ARG_32,
 	INSTR_LOAD_ARG_64,
 
+	// Stack operations
+	INSTR_STACK_ALLOC,
+
+	// Used to obtain the address of the `INSTR_STACK_ALLOC`
+	INSTR_STACK_ADDR,
+
 	INSTR_BRANCH,
 	INSTR_JUMP,
 
@@ -139,7 +145,8 @@ typedef enum {
 	INSTR_FEATURE_NONE                 = 0,
 	INSTR_FEATURE_CONTROL              = 1 << 0,
 	INSTR_FEATURE_REG_STORAGE          = 1 << 1,
-	INSTR_FEATURE_BOOL                 = 1 << 2,
+	INSTR_FEATURE_STACK_STORAGE        = 1 << 2,
+	INSTR_FEATURE_BOOL                 = 1 << 3,
 } InstrFeatureFlag;
 
 extern InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT];
@@ -239,6 +246,16 @@ struct Instr {
 		struct {
 			uint8_t index;
 		} load_arg;
+
+		struct {
+			// The number of bytes to allocate on the stack
+			uint32_t size;
+			uint32_t alignment;
+		} stack_alloc;
+
+		struct {
+			InstrIndex stack_alloc;
+		} stack_addr;
 
 		struct {
 			InstrIndex condition;

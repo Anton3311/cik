@@ -757,6 +757,7 @@ PackedSourceRange expr_get_source_range(const Expr* expr) {
 		return source_range_merge(
 				expr->cast.left_paren_source_range,
 				expr_get_source_range(expr->cast.expr));
+	case EXPR_DIRECT_FIELD_ACCESS:
 	case EXPR_INDIRECT_FIELD_ACCESS:
 		return expr->field_access.source_range;
 	}

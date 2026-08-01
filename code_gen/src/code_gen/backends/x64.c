@@ -96,6 +96,9 @@ static void _init_storage_requiremenets() {
 	s[INSTR_LOAD_ARG_32]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 32 };
 	s[INSTR_LOAD_ARG_64]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
+	s[INSTR_STACK_ALLOC]            = (T) { .allowed_registers = 0, .reg_size = 0 },
+	s[INSTR_STACK_ADDR]             = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 },
+
 	s[INSTR_BRANCH]                 = (T) { .allowed_registers = 0, .reg_size = 0 };
 	s[INSTR_JUMP]                   = (T) { .allowed_registers = 0, .reg_size = 0 };
 
@@ -1362,6 +1365,23 @@ static void _lower_instr(X64CodeGenerator* gen,
 		// argument, and during the compilation of other instructions, the allocated
 		// register is used as an input.
 		return;
+	
+	case INSTR_STACK_ALLOC:
+		return;
+	
+	case INSTR_STACK_ADDR: {
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation alloc_loc = gen->instr_storage[instr->stack_addr.stack_alloc.value];
+
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(alloc_loc.kind == INSTR_STORAGE_STACK);
+
+		encode_2(buffer,
+				MNEMONIC_LEA,
+				operand_reg(dst_loc.reg, 64),
+				operand_stack_mem((int32_t)alloc_loc.stack.offset, 64));
+		return;
+	}
 
 	case INSTR_BITWISE_NOT_8:
 	case INSTR_BITWISE_NOT_16:
@@ -1537,6 +1557,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 
+		_emit_add_rsp(buffer, gen->stack_usage);
 		_restore_callee_saved_regs(buffer);
 
 		// Don't need to generate a `ret` instruction, since it is done later when the control
@@ -1544,6 +1565,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 		return;
 	}
 	case INSTR_RET:
+		_emit_add_rsp(buffer, gen->stack_usage);
 		_restore_callee_saved_regs(buffer);
 
 		// Don't need to generate a `ret` instruction, since it is done later when the control
@@ -1845,6 +1867,7 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 	gen->instr_with_storage_requirement = result.instr_with_storage_requirement;
 	gen->instr_storage = result.allocations;
 	gen->interference_graph = result.interference_graph;
+	gen->stack_usage = align(result.stack_usage, 16);
 
 	if (has_flag(gen->flags, X64_PRINT_ASSIGNED_STORAGE_LOC)) {
 		printf("Assigned storage locations:\n");
@@ -2294,6 +2317,11 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_LOAD_ARG_16:
 	case INSTR_LOAD_ARG_32:
 	case INSTR_LOAD_ARG_64:
+		break;
+	case INSTR_STACK_ALLOC:
+		break;
+	case INSTR_STACK_ADDR:
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->stack_addr.stack_alloc);
 		break;
 	case INSTR_NOT:
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->not.operand);
@@ -2789,6 +2817,8 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 
 		if (region_instr.value == root_region.value) {
 			_save_callee_saved_regs(code_buffer);
+
+			_emit_sub_rsp(code_buffer, gen->stack_usage);
 		}
 
 		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];

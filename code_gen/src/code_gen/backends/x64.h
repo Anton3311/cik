@@ -51,6 +51,9 @@ typedef struct {
 	InstrStorageKind kind;
 	union {
 		X64Register reg;
+		struct {
+			uint32_t offset;
+		} stack;
 	};
 } InstrStorageLocation;
 
@@ -122,6 +125,8 @@ typedef struct {
 	// offsets from code buffer/region local to global offsets (offsets in the buffer where all the
 	// code from all regions is merged together).
 	uint16_t* call_addr_placeholder_regions;
+
+	uint32_t stack_usage;
 } X64CodeGenerator;
 
 typedef struct {

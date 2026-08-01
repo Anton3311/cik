@@ -52,6 +52,8 @@ String instr_name(InstrKind variant) {
     case INSTR_LOAD_ARG_16: return STR_LIT("load_arg_16");
     case INSTR_LOAD_ARG_32: return STR_LIT("load_arg_32");
     case INSTR_LOAD_ARG_64: return STR_LIT("load_arg_64");
+    case INSTR_STACK_ALLOC: return STR_LIT("stack_alloc");
+    case INSTR_STACK_ADDR: return STR_LIT("stack_addr");
     case INSTR_BRANCH: return STR_LIT("branch");
     case INSTR_JUMP: return STR_LIT("jump");
     case INSTR_RET: return STR_LIT("ret");
@@ -241,6 +243,11 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         break;
     case INSTR_LOAD_ARG_64:
         break;
+    case INSTR_STACK_ALLOC:
+        break;
+    case INSTR_STACK_ADDR:
+        instr_queue_push_back(out_dependencies, instr->stack_addr.stack_alloc);
+        break;
     case INSTR_BRANCH:
         instr_queue_push_back(out_dependencies, instr->branch.condition);
         instr_queue_push_back(out_dependencies, instr->branch.true_region);
@@ -417,6 +424,12 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_LOAD_ARG_64:
         printf("index: %u ", (uint32_t)instr->load_arg.index);
+        break;
+    case INSTR_STACK_ALLOC:
+        printf("size: %u alignment: %u ", (uint32_t)instr->stack_alloc.size, (uint32_t)instr->stack_alloc.alignment);
+        break;
+    case INSTR_STACK_ADDR:
+        printf("stack_alloc: \033[33;1m%%%u\033[0m ", (uint32_t)instr->stack_addr.stack_alloc.value);
         break;
     case INSTR_BRANCH:
         printf("condition: \033[33;1m%%%u\033[0m true_region: \033[33;1m%%%u\033[0m false_region: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->branch.condition.value, (uint32_t)instr->branch.true_region.value, (uint32_t)instr->branch.false_region.value, (uint32_t)instr->branch.io_state.value);

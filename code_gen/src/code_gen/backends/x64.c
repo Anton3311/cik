@@ -1077,16 +1077,16 @@ void _emit_bitwise_shift(CodeBuffer* buffer,
 	}
 }
 
-static void _save_callee_saved_regs(CodeBuffer* buffer) {
+static void _emit_callee_prologue(X64CodeGenerator* gen, CodeBuffer* buffer) {
 	for (size_t i = 0; i < array_size(CDECL_CALLEE_SAVED); i += 1) {
 		encode_1(buffer, MNEMONIC_PUSH, operand_reg(CDECL_CALLEE_SAVED[i], 64));
 	}
 
-	_emit_sub_rsp(buffer, 8);
+	_emit_sub_rsp(buffer, gen->stack_usage + 8);
 }
 
-static void _restore_callee_saved_regs(CodeBuffer* buffer) {
-	_emit_add_rsp(buffer, 8);
+static void _emit_callee_epilogue(X64CodeGenerator* gen, CodeBuffer* buffer) {
+	_emit_add_rsp(buffer, gen->stack_usage + 8);
 
 	for (size_t i = array_size(CDECL_CALLEE_SAVED); i > 0; i -= 1) {
 		encode_1(buffer, MNEMONIC_POP, operand_reg(CDECL_CALLEE_SAVED[i - 1], 64));
@@ -1557,16 +1557,14 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 
-		_emit_add_rsp(buffer, gen->stack_usage);
-		_restore_callee_saved_regs(buffer);
+		_emit_callee_epilogue(gen, buffer);
 
 		// Don't need to generate a `ret` instruction, since it is done later when the control
 		// instructions at the end of each code block are generated
 		return;
 	}
 	case INSTR_RET:
-		_emit_add_rsp(buffer, gen->stack_usage);
-		_restore_callee_saved_regs(buffer);
+		_emit_callee_epilogue(gen, buffer);
 
 		// Don't need to generate a `ret` instruction, since it is done later when the control
 		// instructions at the end of each code block are generated
@@ -2819,9 +2817,7 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 		code_buffer_init(code_buffer, gen->temp_allocator);
 
 		if (region_instr.value == root_region.value) {
-			_save_callee_saved_regs(code_buffer);
-
-			_emit_sub_rsp(code_buffer, gen->stack_usage);
+			_emit_callee_prologue(gen, code_buffer);
 		}
 
 		InstrIndexArray scheduled = scheduling_result.scheduled_instr[instr->region.id];

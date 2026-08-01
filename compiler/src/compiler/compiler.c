@@ -1049,9 +1049,16 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 		TypeLayout type_layout = _type_get_layout(compiler->type_context, &type);
 
+		size_t type_size = type_layout.size;
+
+		Expr* target_expr = expr->size_of_expr.expr;
+		if (target_expr->kind == EXPR_FUNCTION_PARAM && type.kind == TYPE_ARRAY) {
+			type_size = compiler->type_context->pointer_type_layout.size;
+		}
+
 		InstrIndex size_const = instr_new_int_const(instr_buffer,
 				instr_allocator,
-				type_layout.size,
+				type_size,
 				compiler->type_context->pointer_type_layout.size);
 
 		profile_scope_end();
@@ -2251,7 +2258,13 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 		Instr* instr = instr_buffer_at(instr_buffer, index);
 
 		const FunctionParam* param = &compiler->function->proto.parameters[i];
-		size_t param_type_size = _type_get_layout(compiler->type_context, &param->type).size;
+		size_t param_type_size = 0;
+
+		if (param->type.kind == TYPE_ARRAY) {
+			param_type_size = compiler->type_context->pointer_type_layout.size;
+		} else {
+			param_type_size = _type_get_layout(compiler->type_context, &param->type).size;
+		}
 
 		switch (param_type_size) {
 		case 1:

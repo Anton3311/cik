@@ -93,7 +93,7 @@ typedef struct {
 
 #define OP_RM OP_REG | OP_MEM
 
-static Encoding s_encodings[114];
+static Encoding s_encodings[115];
 
 static EncodingRange s_encoding_ranges[MNEMONIC_COUNT];
 static bool s_encoding_initialized = false;
@@ -219,6 +219,9 @@ void encoding_init() {
 
 	*(e++) = (E) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb0, 0x0, { { OP_REG, 8 },            { OP_IMM, 8 } } };
 	*(e++) = (E) { MNEMONIC_MOV, ENC_ADD_REG_TO_OPCODE, 0xb8, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_IMM, 16 | 32 | 64 } } };
+
+	// lea
+	*(e++) = (E) { MNEMONIC_LEA, ENC_NONE, 0x8d, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_MEM, 8 | 16 | 32 | 64 } } };
 
 	// mul
 	*(e++) = (E) { MNEMONIC_MUL, ENC_NONE, 0xf6, 0x4, { { OP_RM, 8 } } };

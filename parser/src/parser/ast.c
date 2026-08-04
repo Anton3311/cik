@@ -441,6 +441,10 @@ uint32_t bin_op_precedence(BinOpKind op) {
 void bin_expr_select_common_type(const Type* left_type,
 		const Type* right_type,
 		Type* out_type) {
+	if (type_equal(left_type, right_type)) {
+		*out_type = *left_type;
+		return;
+	}
 
 	if (left_type->kind == TYPE_POINTER && type_kind_is_int(right_type->kind)) {
 		*out_type = *left_type;

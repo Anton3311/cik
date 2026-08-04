@@ -390,6 +390,43 @@ static InstrIndex _compile_address_expr(FunctionCompiler* compiler, AddressExpr 
 	return add_instr_index;
 }
 
+static void _compile_assignment_of_compound_types(FunctionCompiler* compiler,
+		Expr* target,
+		AddressExpr value_address) {
+
+	profile_scope_start(__func__);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	Type target_type;
+	expr_get_type(target, &target_type);
+
+	assert(target_type.kind == TYPE_STRUCT || target_type.kind == TYPE_UNION);
+
+	if (target->kind == EXPR_VARIABLE_REFERENCE) {
+		const Variable* variable = target->variable_ref.var;
+
+		InstrIndex src_instr = _compile_address_expr(compiler, value_address);
+
+		InstrIndex dst_address_instr = _compile_address_expr(compiler,
+				_compile_address_of(compiler, target));
+
+		InstrIndex mem_copy_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* mem_copy = instr_buffer_at(instr_buffer, mem_copy_index);
+		mem_copy->kind = INSTR_MEM_COPY_FIXED;
+		mem_copy->mem_copy_fixed.src = src_instr;
+		mem_copy->mem_copy_fixed.dst = dst_address_instr;
+		mem_copy->mem_copy_fixed.size =
+			_type_get_layout(compiler->type_context, &target_type).size;
+		mem_copy->mem_copy_fixed.io_state = compiler->io_state;
+		
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
+	}
+
+	profile_scope_end();
+}
+
 static void _compile_assignment(FunctionCompiler* compiler,
 		Expr* target,
 		InstrIndex value_instr) {
@@ -398,9 +435,29 @@ static void _compile_assignment(FunctionCompiler* compiler,
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
+	Type target_type;
+	expr_get_type(target, &target_type);
+
 	if (target->kind == EXPR_VARIABLE_REFERENCE) {
 		const Variable* variable = target->variable_ref.var;
-		compiler->var_values[variable->id] = value_instr;
+
+		if (target_type.kind == TYPE_STRUCT || target_type.kind == TYPE_UNION) {
+			InstrIndex dst_address = _compile_address_expr(compiler,
+					_compile_address_of(compiler, target));
+
+			InstrIndex mem_copy_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* mem_copy = instr_buffer_at(instr_buffer, mem_copy_index);
+			mem_copy->kind = INSTR_MEM_COPY_FIXED;
+			mem_copy->mem_copy_fixed.src = value_instr;
+			mem_copy->mem_copy_fixed.dst = dst_address;
+			mem_copy->mem_copy_fixed.size =
+				_type_get_layout(compiler->type_context, &target_type).size;
+			mem_copy->mem_copy_fixed.io_state = compiler->io_state;
+			
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
+		} else {
+			compiler->var_values[variable->id] = value_instr;
+		}
 	} else if (target->kind == EXPR_FUNCTION_PARAM) {
 		size_t arg_index = target->function_param.param_index;
 		compiler->arg_states[arg_index] = value_instr;
@@ -535,6 +592,16 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		expr_get_type(value, &value_type);
 		Type target_type;
 		expr_get_type(target, &target_type);
+
+		if (target_type.kind == TYPE_STRUCT || target_type.kind == TYPE_UNION) {
+			assert(type_equal(&value_type, &target_type));
+
+			AddressExpr value_address = _compile_address_of(compiler, value);
+
+			_compile_assignment_of_compound_types(compiler, target, value_address);
+			profile_scope_end();
+			return INVALID_INSTR_INDEX;
+		}
 
 		InstrIndex value_instr = _compile_expr(compiler, value);
 		if (type_equal(&value_type, &target_type)) {
@@ -2079,20 +2146,7 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 				&variable_type);
 
 		InstrIndex value_instr = INVALID_INSTR_INDEX;
-		if (node->variable.value) {
-			Type value_type;
-			expr_get_type(node->variable.value, &value_type);
-
-			InstrIndex value = _compile_expr(compiler, node->variable.value);
-
-			// insert an implicit cast to the variable type
-			value_instr = _compile_int_cast(compiler,
-					&value_type,
-					&node->variable.type,
-					value);
-		} else if (node->variable.type.kind == TYPE_STRUCT
-				|| node->variable.type.kind == TYPE_UNION) {
-
+		if (node->variable.type.kind == TYPE_STRUCT || node->variable.type.kind == TYPE_UNION) {
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 			instr->kind = INSTR_STACK_ALLOC;
@@ -2103,7 +2157,11 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 			instr->stack_alloc.size = (uint32_t)variable_type_layout.size;
 			instr->stack_alloc.alignment = (uint32_t)variable_type_layout.alignment;
 
-			value_instr = instr_index;
+			if (node->variable.value) {
+				panic("todo: implement initialization with a compound literal");
+			} else {
+				value_instr = instr_index;
+			}
 		} else if (node->variable.type.kind == TYPE_ARRAY) {
 			assert(variable_type.array.size != NULL);
 
@@ -2118,6 +2176,17 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 			instr->stack_alloc.alignment = (uint32_t)variable_type_layout.alignment;
 
 			value_instr = instr_index;
+		} else if (node->variable.value) {
+			Type value_type;
+			expr_get_type(node->variable.value, &value_type);
+
+			InstrIndex value = _compile_expr(compiler, node->variable.value);
+
+			// insert an implicit cast to the variable type
+			value_instr = _compile_int_cast(compiler,
+					&value_type,
+					&node->variable.type,
+					value);
 		} else {
 			assert(variable_type_layout.size <= 8);
 

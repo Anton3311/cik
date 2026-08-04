@@ -1940,7 +1940,7 @@ static void _encode_control_instr(const Instr* instr,
 	}
 	case INSTR_RETURN_VALUE:
 	case INSTR_RET:
-		code_buffer_push_8(buffer, 0xc3); // ret
+		encode_n(buffer, MNEMONIC_RET, NULL, 0);
 		break;
 	default:
 		unreachable();

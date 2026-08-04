@@ -406,25 +406,21 @@ static void _compile_assignment_of_compound_types(FunctionCompiler* compiler,
 
 	assert(target_type.kind == TYPE_STRUCT || target_type.kind == TYPE_UNION);
 
-	if (target->kind == EXPR_VARIABLE_REFERENCE) {
-		const Variable* variable = target->variable_ref.var;
+	InstrIndex src_instr = _compile_address_expr(compiler, value_address);
 
-		InstrIndex src_instr = _compile_address_expr(compiler, value_address);
+	InstrIndex dst_address_instr = _compile_address_expr(compiler,
+			_compile_address_of(compiler, target));
 
-		InstrIndex dst_address_instr = _compile_address_expr(compiler,
-				_compile_address_of(compiler, target));
-
-		InstrIndex mem_copy_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* mem_copy = instr_buffer_at(instr_buffer, mem_copy_index);
-		mem_copy->kind = INSTR_MEM_COPY_FIXED;
-		mem_copy->mem_copy_fixed.src = src_instr;
-		mem_copy->mem_copy_fixed.dst = dst_address_instr;
-		mem_copy->mem_copy_fixed.size =
-			_type_get_layout(compiler->type_context, &target_type).size;
-		mem_copy->mem_copy_fixed.io_state = compiler->io_state;
-		
-		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
-	}
+	InstrIndex mem_copy_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* mem_copy = instr_buffer_at(instr_buffer, mem_copy_index);
+	mem_copy->kind = INSTR_MEM_COPY_FIXED;
+	mem_copy->mem_copy_fixed.src = src_instr;
+	mem_copy->mem_copy_fixed.dst = dst_address_instr;
+	mem_copy->mem_copy_fixed.size =
+		_type_get_layout(compiler->type_context, &target_type).size;
+	mem_copy->mem_copy_fixed.io_state = compiler->io_state;
+	
+	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
 
 	profile_scope_end();
 }

@@ -2171,7 +2171,14 @@ bool _preprocessor_expand_builtin_macro(const SourceFile* source_file,
 
 		StringBuilder builder = { .arena = generated_tokens_allocator };
 		str_builder_append_char(&builder, '"');
-		str_builder_append(&builder, source_file->path);
+		for (size_t i = 0; i < source_file->path.length; i += 1) {
+			char c = source_file->path.v[i];
+			if (c == '\\') {
+				str_builder_append(&builder, STR_LIT("\\\\"));
+			} else {
+				str_builder_append_char(&builder, c);
+			}
+		}
 		str_builder_append_char(&builder, '"');
 
 		Token generated_token = (Token) {

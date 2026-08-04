@@ -469,9 +469,30 @@ bool _parser_consume_semicolon(Parser* parser) {
 	return true;
 }
 
+void _parser_skip_until(Parser* parser, TokenKind token_kind_1, TokenKind token_kind_2) {
+	profile_func_colored(PROFILE_COLOR);
+
+	while (true) {
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == token_kind_1) {
+			break;
+		} else if (token.kind == token_kind_2) {
+			break;
+		} else if (token.kind == TOKEN_EOF) {
+			break;
+		}
+
+		preprocessor_next_token(parser->preprocessor);
+	}
+
+	profile_scope_end();
+}
+
 // TODO: Don't reset `ast_allocator` because, during testing that same `ast_allocator`
 //       is used for diagnostics and reseting it corrupts diagnostics state
-static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count, StructField** out_fields) {
+static bool _parser_parse_struct_fields(Parser* parser,
+		size_t* out_field_count,
+		StructField** out_fields) {
 	profile_func_colored(PROFILE_COLOR);
 	assert(out_field_count != NULL);
 	assert(out_fields != NULL);
@@ -498,39 +519,43 @@ static bool _parser_parse_struct_fields(Parser* parser, size_t* out_field_count,
 		field_count += 1;
 
 		if (!_parser_parse_type(parser, &field->type, true)) {
-			arena_end_temp(ast_temp);
-			arena_end_temp(temp);
-			profile_scope_end();
-			return false;
+			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
+		} else if (!_parser_parse_pre_declaration_modifiers(parser, &field->type, &field->type, true)) {
+			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
 		}
 
-		if (!_parser_parse_pre_declaration_modifiers(parser, &field->type, &field->type, true)) {
-			arena_end_temp(ast_temp);
-			arena_end_temp(temp);
-			profile_scope_end();
-			return false;
-		}
-
-		Token name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
-		if (name_or_semilcolon.kind == TOKEN_IDENT) {
-			field->name = source_string_from_token(name_or_semilcolon);
+		Token name_token = preprocessor_view_next(parser->preprocessor);
+		if (name_token.kind == TOKEN_IDENT) {
+			field->name = source_string_from_token(name_token);
 			preprocessor_next_token(parser->preprocessor); // consume name
-
-			name_or_semilcolon = preprocessor_view_next(parser->preprocessor);
 		}
 
-		if (name_or_semilcolon.kind == TOKEN_SEMICOLON) {
+		Token end_token = preprocessor_view_next(parser->preprocessor);
+		if (end_token.kind == TOKEN_SEMICOLON) {
 			// consume semicolon
 			preprocessor_next_token(parser->preprocessor);
+			continue;
+		} else if (end_token.kind == TOKEN_RIGHT_BRACE) {
+			break;
+		}
+
+		// Report unexpected token
+		TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				end_token,
+				expected_tokens,
+				array_size(expected_tokens));
+
+		// And try to recover
+		_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
+		end_token = preprocessor_view_next(parser->preprocessor);
+		if (end_token.kind == TOKEN_SEMICOLON) {
+			preprocessor_next_token(parser->preprocessor);
+			continue;
+		} else if (end_token.kind == TOKEN_RIGHT_BRACE) {
+			break;
 		} else {
-			TokenKind expected_tokens[] = { TOKEN_SEMICOLON };
-			diagnostics_report_unexpected_token(parser->diagnostics,
-					name_or_semilcolon,
-					expected_tokens,
-					array_size(expected_tokens));
-			arena_end_temp(temp);
-			profile_scope_end();
-			return false;
+			break;
 		}
 	}
 
@@ -672,10 +697,7 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 
 	if (token.kind == TOKEN_LEFT_BRACE) {
 		is_forward_declared = false;
-		if (!_parser_parse_struct_fields(parser, &field_count, &fields)) {
-			profile_scope_end();
-			return false;
-		}
+		_parser_parse_struct_fields(parser, &field_count, &fields);
 	}
 
 	bool struct_def_initialized = false;
@@ -1330,9 +1352,15 @@ static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous
 	// First parse qualifiers
 	out_type->qualifiers = _parser_parse_type_qualifiers(parser);
 
+	Token first_token = preprocessor_view_next(parser->preprocessor);
+
 	switch (_parser_try_parse_type_specifier(parser, out_type, is_anonymous)) {
 	case PARSE_TYPE_ERROR:
 	case PARSE_TYPE_NOT_PARSED:
+		diagnostics_report_error(parser->diagnostics,
+				first_token.source_range,
+				STR_LIT("Expected a type name"),
+				NULL);
 		return false;
 	case PARSE_TYPE_PARSED:
 		out_type->qualifiers |= _parser_parse_type_qualifiers(parser);

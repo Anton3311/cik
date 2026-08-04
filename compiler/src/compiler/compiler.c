@@ -274,47 +274,6 @@ static const Struct* _resolve_compound_type(Expr* expr) {
 	return NULL;
 }
 
-static InstrIndex _compile_address_of_field(FunctionCompiler* compiler, Expr* expr) {
-	profile_scope_start(__func__);
-
-	InstrBuffer* instr_buffer = &compiler->instr_buffer;
-	Arena* instr_allocator = compiler->instr_allocator;
-	const TypeContext* type_context = compiler->type_context;
-
-	const Struct* compound_type = _resolve_compound_type(expr);
-
-	uint32_t id = compound_type->id;
-	const size_t* field_offsets = type_context->field_offsets[id];
-
-	StructFieldNamespaceEntry entry =
-		compound_type->field_namespace->entries[expr->field_access.field_index];
-
-	assert(entry.struct_def == compound_type);
-
-	size_t field_offset = field_offsets[entry.field_index];
-
-	InstrIndex base_address = _compile_expr(compiler, expr->field_access.target);
-	InstrIndex offset_const = instr_new_int_const(instr_buffer,
-			instr_allocator,
-			field_offset,
-			type_context->pointer_type_layout.size);
-
-	Type field_type;
-	expr_get_type(expr->field_access.target, &field_type);
-
-	TypeLayout field_type_layout = _type_get_layout(type_context, &field_type);
-
-	InstrIndex address_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-	Instr* address_instr = instr_buffer_at(instr_buffer, address_instr_index);
-	address_instr->bin_op.kind = INSTR_BIN_ADD;
-	address_instr->bin_op.left = base_address;
-	address_instr->bin_op.right = offset_const;
-	address_instr->kind = INSTR_BIN_OP_64;
-
-	profile_scope_end();
-	return address_instr_index;
-}
-
 static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 	profile_scope_start(__func__);
 

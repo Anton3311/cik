@@ -2162,6 +2162,10 @@ static bool _check_is_convertable(Parser* parser,
 		Type* to,
 		SourceRange from_source_range) {
 
+	if (type_equal(from, to)) {
+		return true;
+	}
+
 	if (type_kind_is_int(from->kind) && type_kind_is_int(to->kind)) {
 		return true;
 	}

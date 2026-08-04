@@ -133,17 +133,18 @@ typedef enum {
 
 	TYPE_FLOAT              = 11,
 	TYPE_DOUBLE             = 12,
+	TYPE_LONG_DOUBLE        = 13,
 
-	TYPE_STRUCT             = 13,
-	TYPE_UNION              = 14,
-	TYPE_ENUM               = 15,
+	TYPE_STRUCT             = 14,
+	TYPE_UNION              = 15,
+	TYPE_ENUM               = 16,
 
-	TYPE_POINTER            = 16,
-	TYPE_ARRAY              = 17,
-	TYPE_FUNCTION           = 18,
+	TYPE_POINTER            = 17,
+	TYPE_ARRAY              = 18,
+	TYPE_FUNCTION           = 19,
 
 	// _Bool
-	TYPE_BOOL               = 19,
+	TYPE_BOOL               = 20,
 } TypeKind;
 
 struct Type {

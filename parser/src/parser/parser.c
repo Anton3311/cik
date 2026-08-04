@@ -1208,6 +1208,9 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 		if (next_token.kind == TOKEN_KEYWORD_LONG) {
 			preprocessor_next_token(parser->preprocessor);
 			type_kind = TYPE_LONG_LONG;
+		} else if (next_token.kind == TOKEN_KEYWORD_DOUBLE) {
+			preprocessor_next_token(parser->preprocessor);
+			type_kind = TYPE_LONG_DOUBLE;
 		} else {
 			type_kind = TYPE_LONG;
 		}

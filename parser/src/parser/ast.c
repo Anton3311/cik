@@ -75,6 +75,7 @@ bool type_equal(const Type* a, const Type* b) {
 
 	case TYPE_FLOAT:
 	case TYPE_DOUBLE:
+	case TYPE_LONG_DOUBLE:
 		return true;
 	
 	case TYPE_POINTER:
@@ -228,6 +229,9 @@ void type_format(const Type* type, StringBuilder* builder) {
 		case TYPE_DOUBLE:
 			str_builder_append(builder, STR_LIT("double"));
 			break;
+		case TYPE_LONG_DOUBLE:
+			str_builder_append(builder, STR_LIT("long double"));
+			break;
 		case TYPE_FUNCTION: {
 			const FunctionPrototype* proto = type->function;
 			type_format(&proto->return_type, builder);
@@ -299,6 +303,7 @@ uint32_t type_get_int_convertion_rank(const Type* type) {
 
 	case TYPE_FLOAT:
 	case TYPE_DOUBLE:
+	case TYPE_LONG_DOUBLE:
 		break;
 
 	case TYPE_STRUCT:
@@ -1200,6 +1205,9 @@ void print_type(PrinterState* printer, const Type* type) {
 		break;
 	case TYPE_DOUBLE:
 		printf("double\n");
+		break;
+	case TYPE_LONG_DOUBLE:
+		printf("long double\n");
 		break;
 	case TYPE_POINTER:
 		printer_begin_struct(printer, "pointer_type");

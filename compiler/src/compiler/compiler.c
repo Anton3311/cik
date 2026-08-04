@@ -356,7 +356,12 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			.offset = 0,
 		};
 	}
-	default:
+	default: {
+		Type expr_type;
+		expr_get_type(expr, &expr_type);
+
+		assert(expr_type.kind == TYPE_POINTER);
+
 		AddressExpr addr_expr = {
 			.base = _compile_expr(compiler, expr),
 			.offset = 0,
@@ -364,6 +369,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 
 		profile_scope_end();
 		return addr_expr;
+	}
 	}
 
 	unreachable();

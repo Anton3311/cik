@@ -1457,22 +1457,41 @@ static bool _parser_parse_function_params(Parser* parser,
 			}
 		}
 
+		Type param_type;
+		if (!_parser_parse_type(parser, &param_type, true)) {
+			arena_end_temp(temp);
+			arena_end_temp(ast_temp);
+			profile_scope_end();
+			return false;
+		}
+
+		if (!_parser_parse_pre_declaration_modifiers(parser, &param_type, &param_type, true)) {
+			arena_end_temp(temp);
+			arena_end_temp(ast_temp);
+			profile_scope_end();
+			return false;
+		}
+
+		if (param_type.kind == TYPE_VOID && param_type.qualifiers == TYPE_QUALIFIER_NONE) {
+			assert(param_count == 0);
+
+			Token token = preprocessor_view_next(parser->preprocessor);
+			if (token.kind == TOKEN_RIGHT_PAREN) {
+				preprocessor_next_token(parser->preprocessor);
+				break;
+			} else {
+				TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+				diagnostics_report_unexpected_token(parser->diagnostics,
+						token,
+						expected_tokens,
+						array_size(expected_tokens));
+			}
+		}
+
 		FunctionParam* param = arena_alloc_zeroed(parser->temp_allocator, FunctionParam);
+		param->type = param_type;
+
 		param_count += 1;
-
-		if (!_parser_parse_type(parser, &param->type, true)) {
-			arena_end_temp(temp);
-			arena_end_temp(ast_temp);
-			profile_scope_end();
-			return false;
-		}
-
-		if (!_parser_parse_pre_declaration_modifiers(parser, &param->type, &param->type, true)) {
-			arena_end_temp(temp);
-			arena_end_temp(ast_temp);
-			profile_scope_end();
-			return false;
-		}
 
 		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_IDENT) {

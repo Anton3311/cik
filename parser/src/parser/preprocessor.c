@@ -296,6 +296,21 @@ void preprocessor_init(Preprocessor* state,
 		};
 
 		macro_table_append(&state->macro_table, &stdc_macro);
+
+		MacroDefinition __pragma_macro = {
+			.name = (SourceString) {
+				.string = STR_LIT("__pragma"),
+				.source_file = state->tokenizer->source_file,
+			},
+			.style = MACRO_STYLE_FUNCTION,
+			.builtin_kind = BUILTIN_MACRO_NONE,
+			.has_va_args = true,
+			.token_count = 0,
+			.tokens = NULL,
+			.token_hints = NULL,
+		};
+
+		macro_table_append(&state->macro_table, &__pragma_macro);
 	}
 
 	const size_t call_stack_capacity = 32;

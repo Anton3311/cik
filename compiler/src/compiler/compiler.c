@@ -356,6 +356,15 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			.offset = 0,
 		};
 	}
+	case EXPR_ARRAY_INDEX: {
+		InstrIndex element_addr = _compile_address_of_array_element(compiler, expr);
+
+		profile_scope_end();
+		return (AddressExpr) {
+			.base = element_addr,
+			.offset = 0,
+		};
+	}
 	default: {
 		Type expr_type;
 		expr_get_type(expr, &expr_type);

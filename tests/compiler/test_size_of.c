@@ -61,6 +61,10 @@ int main(int argc, char *argv[]) {
 	assert(sizeof(signed long long) == 8);
 	assert(sizeof(unsigned long long) == 8);
 
+	assert(sizeof(float) == 4);
+	assert(sizeof(double) == 8);
+	assert(sizeof(long double) == 8);
+
 	assert(sizeof(size_t) == 8);
 	assert(sizeof(void*) == 8);
 

@@ -470,13 +470,13 @@ static size_t _select_encoding(MnemonicKind mnemonic,
 	return selected_index;
 }
 
-size_t run_encoding_operation(CodeBuffer* code_buffer,
+void encode_n(CodeBuffer* code_buffer,
 		MnemonicKind mnemonic,
 		const Operand* operands,
-		uint8_t operand_count,
-		EncodingOperation operation) {
-
+		uint8_t operand_count) {
 	profile_scope_start(__func__);
+
+	assert(code_buffer != NULL);
 	assert(operand_count <= MAX_OPERAND_COUNT);
 
 	size_t encoding_index = _select_encoding(mnemonic, operands, operand_count);
@@ -538,127 +538,80 @@ size_t run_encoding_operation(CodeBuffer* code_buffer,
 		}
 	}
 
-	size_t encoding_size = 0;
+	// now fill the bytes
+	uint8_t encoding_buffer[MAX_ENCODING_SIZE];
+
+	uint8_t* buffer = encoding_buffer;
+	uint8_t* write_ptr = buffer;
+
 	// operand size override
-	encoding_size += (is_16_bit || has_flag(encoding.flags, ENC_MANDATORY_66)) ? 1 : 0;
-	// rex prefix
-	encoding_size += (rex_prefix_bits || has_flag(encoding.flags, ENC_MANDATORY_REX_64)) ? 1 : 0;
-	// 0f prefix
-	encoding_size += has_flag(encoding.flags, ENC_HAS_0F_PREFIX) ? 1 : 0;
-	// opcode byte
-	encoding_size += 1;
-	// modrm byte
-	if (s_encoding_extra[encoding_index].has_mod_rm) {
-		encoding_size += 1;
+	if (is_16_bit || has_flag(encoding.flags, ENC_MANDATORY_66)) {
+		*write_ptr = 0x66;
+		write_ptr += 1;
 	}
 
-	// disaplacement
-	if (fields.mod == MOD_RM_ADDRESS_RM_DISP_8) {
-		encoding_size += 1;	
-	} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
-		encoding_size += 4;	
+	// rex prefix
+	if (rex_prefix_bits) {
+		*write_ptr = 0b01000000 | rex_prefix_bits;
+		write_ptr += 1;
+	} else if (has_flag(encoding.flags, ENC_MANDATORY_REX_64)) {
+		*write_ptr = 0b01000000 | 0b1000; // 64-bit operand
+		write_ptr += 1;
+	}
+
+	// 0f prefix
+	if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
+		*write_ptr = 0x0f;
+		write_ptr += 1;
+	}
+
+	// opcode byte
+	if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
+		assert(operands[0].kind == OP_REG);
+		*write_ptr = encoding.opcode + (operands[0].reg & 0b111);
+	} else {
+		*write_ptr = encoding.opcode;
+	}
+
+	write_ptr += 1;
+
+	// morm byte
+	if (s_encoding_extra[encoding_index].has_mod_rm) {
+		*write_ptr = ((fields.reg & 0b111) << 3) | (fields.rm & 0b111) | fields.mod;
+		write_ptr += 1;
 	}
 
 	// sib byte
 	if (requires_empty_sib_byte) {
-		encoding_size += 1;
+		*write_ptr = 0x24;
+		write_ptr += 1;
 	}
 
-	// imm sizes
+	// disaplacement
+	if (fields.mod == MOD_RM_ADDRESS_RM_DISP_8) {
+		*write_ptr = (int8_t)fields.displacement;
+		write_ptr += 1;
+	} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
+		memcpy(write_ptr, &fields.displacement, 4);
+		write_ptr += 4;
+	}
+
+	// write imm
 	for (size_t i = 0; i < operand_count; i += 1) {
 		if (operands[i].kind == OP_IMM) {
-			encoding_size += operands[i].bit_count / 8;
+			memcpy(write_ptr, &operands[i].imm, operands[i].bit_count / 8);
+			write_ptr += operands[i].bit_count / 8;
 		} else if (operands[i].kind == OP_REL) {
-			encoding_size += operands[i].bit_count / 8;
+			memcpy(write_ptr, &operands[i].rel, sizeof(operands[i].rel));
+			write_ptr += sizeof(operands[i].rel);
 		}
 	}
 
-	assert(encoding_size <= 16);
+	size_t encoding_length = write_ptr - buffer;
+	assert(encoding_length <= MAX_ENCODING_SIZE);
 
-	switch (operation) {
-	case ENC_OP_SIZE: {
-		// NOTE: don't forget to end the profiler scope
-		profile_scope_end();
-		return encoding_size;
-	}
-	case ENC_OP_ENCODE: {
-		assert(code_buffer != NULL);
-		// now fill the bytes
+	uint8_t* output_buffer = code_buffer_append(code_buffer, encoding_length);
+	memcpy(output_buffer, encoding_buffer, encoding_length);
 
-		uint8_t* buffer = code_buffer_append(code_buffer, encoding_size);
-		uint8_t* write_ptr = buffer;
-
-		// operand size override
-		if (is_16_bit || has_flag(encoding.flags, ENC_MANDATORY_66)) {
-			*write_ptr = 0x66;
-			write_ptr += 1;
-		}
-
-		// rex prefix
-		if (rex_prefix_bits) {
-			*write_ptr = 0b01000000 | rex_prefix_bits;
-			write_ptr += 1;
-		} else if (has_flag(encoding.flags, ENC_MANDATORY_REX_64)) {
-			*write_ptr = 0b01000000 | 0b1000; // 64-bit operand
-			write_ptr += 1;
-		}
-
-		// 0f prefix
-		if (has_flag(encoding.flags, ENC_HAS_0F_PREFIX)) {
-			*write_ptr = 0x0f;
-			write_ptr += 1;
-		}
-
-		// opcode byte
-		if (has_flag(encoding.flags, ENC_ADD_REG_TO_OPCODE)) {
-			assert(operands[0].kind == OP_REG);
-			*write_ptr = encoding.opcode + (operands[0].reg & 0b111);
-		} else {
-			*write_ptr = encoding.opcode;
-		}
-
-		write_ptr += 1;
-
-		// morm byte
-		if (s_encoding_extra[encoding_index].has_mod_rm) {
-			*write_ptr = ((fields.reg & 0b111) << 3) | (fields.rm & 0b111) | fields.mod;
-			write_ptr += 1;
-		}
-
-		// sib byte
-		if (requires_empty_sib_byte) {
-			*write_ptr = 0x24;
-			write_ptr += 1;
-		}
-
-		// disaplacement
-		if (fields.mod == MOD_RM_ADDRESS_RM_DISP_8) {
-			*write_ptr = (int8_t)fields.displacement;
-			write_ptr += 1;
-		} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
-			memcpy(write_ptr, &fields.displacement, 4);
-			write_ptr += 4;
-		}
-
-		// write imm
-		for (size_t i = 0; i < operand_count; i += 1) {
-			if (operands[i].kind == OP_IMM) {
-				memcpy(write_ptr, &operands[i].imm, operands[i].bit_count / 8);
-				write_ptr += operands[i].bit_count / 8;
-			} else if (operands[i].kind == OP_REL) {
-				memcpy(write_ptr, &operands[i].rel, sizeof(operands[i].rel));
-				write_ptr += sizeof(operands[i].rel);
-			}
-		}
-
-		assert(write_ptr - buffer == encoding_size);
-
-		// NOTE: don't forget to end the profiler scope
-		profile_scope_end();
-		return 0;
-	}
-	}
-
-	unreachable();
-	return 0;
+	profile_scope_end();
 }

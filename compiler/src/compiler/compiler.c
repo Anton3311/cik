@@ -389,14 +389,16 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			.offset = 0,
 		};
 	}
+	default:
+		AddressExpr addr_expr = {
+			.base = _compile_expr(compiler, expr),
+			.offset = 0,
+		};
+		return addr_expr;
 	}
 
-	AddressExpr addr_expr = {
-		.base = _compile_expr(compiler, expr),
-		.offset = 0,
-	};
-
-	return addr_expr;
+	unreachable();
+	return (AddressExpr) {};
 }
 
 static InstrIndex _compile_address_expr(FunctionCompiler* compiler, AddressExpr addr_expr) {

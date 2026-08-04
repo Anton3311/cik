@@ -170,6 +170,14 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		AstNode* first_node);
 static void _compile_statement(FunctionCompiler* compiler, AstNode* node);
 
+typedef struct {
+	// An offset known at compile time
+	uint32_t offset;
+
+	// An instruction that computes the base address
+	InstrIndex base;
+} AddressExpr;
+
 static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const Type* int_type,
 		const Type* target_type,
@@ -307,6 +315,112 @@ static InstrIndex _compile_address_of_field(FunctionCompiler* compiler, Expr* ex
 	return address_instr_index;
 }
 
+static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+	const TypeContext* type_context = compiler->type_context;
+
+	switch (expr->kind) {
+	case EXPR_DIRECT_FIELD_ACCESS: {
+		const Struct* compound_type = _resolve_compound_type(expr);
+
+		uint32_t id = compound_type->id;
+		const size_t* field_offsets = type_context->field_offsets[id];
+
+		StructFieldNamespaceEntry entry =
+			compound_type->field_namespace->entries[expr->field_access.field_index];
+
+		assert(entry.struct_def == compound_type);
+
+		size_t field_offset = field_offsets[entry.field_index];
+
+		AddressExpr target_addr = _compile_address_of(compiler, expr->field_access.target);
+		return (AddressExpr) {
+			.base = target_addr.base,
+			.offset = target_addr.offset + (uint32_t)field_offset,
+		};
+	}
+	case EXPR_INDIRECT_FIELD_ACCESS: {
+		AddressExpr addr_expr = {};
+
+		const Struct* compound_type = _resolve_compound_type(expr);
+
+		uint32_t id = compound_type->id;
+		const size_t* field_offsets = type_context->field_offsets[id];
+
+		StructFieldNamespaceEntry entry =
+			compound_type->field_namespace->entries[expr->field_access.field_index];
+
+		assert(entry.struct_def == compound_type);
+
+		size_t field_offset = field_offsets[entry.field_index];
+
+		Type expr_type;
+		expr_get_type(expr->field_access.target, &expr_type);
+
+		if (expr_type.kind == TYPE_POINTER) {
+			addr_expr.base = _compile_expr(compiler, expr->field_access.target);
+			addr_expr.offset = field_offset;
+			return addr_expr;
+		} else {
+			unreachable();
+		}
+		break;
+	}
+	case EXPR_VARIABLE_REFERENCE: {
+		const Variable* var = compiler->vars[expr->variable_ref.var->id];
+
+		InstrIndex value_instr = compiler->var_values[expr->variable_ref.var->id];
+		if (var->type.kind == TYPE_POINTER) {
+			unreachable();
+			return (AddressExpr) {
+				.base = value_instr,
+				.offset = 0,
+			};
+		}
+
+		InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+		stack_addr->kind = INSTR_STACK_ADDR;
+		stack_addr->stack_addr.stack_alloc = value_instr;
+		
+		return (AddressExpr) {
+			.base = stack_addr_index,
+			.offset = 0,
+		};
+	}
+	}
+
+	AddressExpr addr_expr = {
+		.base = _compile_expr(compiler, expr),
+		.offset = 0,
+	};
+
+	return addr_expr;
+}
+
+static InstrIndex _compile_address_expr(FunctionCompiler* compiler, AddressExpr addr_expr) {
+	if (addr_expr.offset == 0) {
+		return addr_expr.base;
+	}
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	InstrIndex offset_const = instr_new_int_const(instr_buffer,
+			instr_allocator,
+			addr_expr.offset,
+			compiler->type_context->pointer_type_layout.size);
+
+	InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
+	add_instr->kind = INSTR_BIN_OP_64;
+	add_instr->bin_op.kind = INSTR_BIN_ADD;
+	add_instr->bin_op.left = addr_expr.base;
+	add_instr->bin_op.right = offset_const;
+	return add_instr_index;
+}
+
 static void _compile_assignment(FunctionCompiler* compiler,
 		Expr* target,
 		InstrIndex value_instr) {
@@ -402,7 +516,9 @@ static void _compile_assignment(FunctionCompiler* compiler,
 
 		TypeLayout field_type_layout = _type_get_layout(compiler->type_context, &field_type);
 
-		InstrIndex field_address = _compile_address_of_field(compiler, target);
+		InstrIndex field_address = _compile_address_expr(
+				compiler,
+				_compile_address_of(compiler, target));
 
 		InstrIndex store_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* store_instr = instr_buffer_at(instr_buffer, store_index);
@@ -783,28 +899,17 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 		Expr* operand = expr->unary.operand;
 
 		InstrIndex address_instr;
+		address_instr = _compile_address_expr(compiler, _compile_address_of(compiler, operand));
+
+		profile_scope_end();
+		return address_instr;
+
 		switch (operand->kind) {
 		case EXPR_DIRECT_FIELD_ACCESS:
 		case EXPR_INDIRECT_FIELD_ACCESS:
-			address_instr = _compile_address_of_field(compiler, operand);
-			break;
 		case EXPR_ARRAY_INDEX:
-			address_instr = _compile_address_of_array_element(compiler, operand);
-			break;
 		case EXPR_VARIABLE_REFERENCE: {
-			const Variable* var = operand->variable_ref.var;
-
-			if (var->type.kind == TYPE_STRUCT || var->type.kind == TYPE_UNION || var->type.kind == TYPE_ARRAY) {
-				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
-				stack_addr->kind = INSTR_STACK_ADDR;
-				stack_addr->stack_addr.stack_alloc = compiler->var_values[var->id];
-
-				address_instr = stack_addr_index;
-			} else {
-				panic("Only taking an address of compound types is supported");
-			}
-
+			address_instr = _compile_address_expr(compiler, _compile_address_of(compiler, operand));
 			break;
 		}
 		default:
@@ -895,7 +1000,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		InstrIndex value_instr = compiler->var_values[expr->variable_ref.var->id];
 		assert(value_instr.value != INVALID_INSTR_INDEX.value);
 
-		if (var->type.kind == TYPE_STRUCT || var->type.kind == TYPE_UNION || var->type.kind == TYPE_ARRAY) {
+		if (var->type.kind == TYPE_ARRAY) {
 			InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
 			stack_addr->kind = INSTR_STACK_ADDR;
@@ -996,7 +1101,41 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 		TypeLayout field_type_layout = _type_get_layout(compiler->type_context, &field_type);
 
-		InstrIndex field_address = _compile_address_of_field(compiler, expr);
+		const Struct* compound_type = _resolve_compound_type(expr);
+
+		uint32_t id = compound_type->id;
+		const size_t* field_offsets = compiler->type_context->field_offsets[id];
+
+		StructFieldNamespaceEntry entry =
+			compound_type->field_namespace->entries[expr->field_access.field_index];
+
+		assert(entry.struct_def == compound_type);
+
+		size_t field_offset = field_offsets[entry.field_index];
+
+		InstrIndex field_address = INVALID_INSTR_INDEX;
+
+		if (expr->kind == EXPR_DIRECT_FIELD_ACCESS) {
+			AddressExpr addr_expr = _compile_address_of(compiler, expr->field_access.target);
+			addr_expr.offset += (uint32_t)field_offset;
+			field_address = _compile_address_expr(compiler, addr_expr);
+		} else if (expr->kind == EXPR_INDIRECT_FIELD_ACCESS) {
+			InstrIndex base_addr = _compile_expr(compiler, expr->field_access.target);
+
+			InstrIndex offset_const = instr_new_int_const(instr_buffer,
+					instr_allocator,
+					field_offset,
+					compiler->type_context->pointer_type_layout.size);
+
+			InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
+			add_instr->kind = INSTR_BIN_OP_64;
+			add_instr->bin_op.kind = INSTR_BIN_ADD;
+			add_instr->bin_op.left = base_addr;
+			add_instr->bin_op.right = offset_const;
+
+			field_address = add_instr_index;
+		}
 
 		InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* load_instr = instr_buffer_at(instr_buffer, load_index);

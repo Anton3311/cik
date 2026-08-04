@@ -1985,6 +1985,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 							source_range),
 						STR_LIT("Expected an expression or a type after 'sizeof'"),
 						NULL);
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2014,11 +2015,13 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			out_expr->kind = EXPR_SIZE_OF_TYPE;
 			out_expr->size_of_type.type = arena_alloc(parser->ast_allocator, Type);
 			*out_expr->size_of_type.type = target_type;
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		} else if (size_of_kind == EXPR_SIZE_OF_EXPR) {
 			out_expr->kind = EXPR_SIZE_OF_EXPR;
 			out_expr->size_of_expr.expr = arena_alloc(parser->ast_allocator, Expr);
 			*out_expr->size_of_expr.expr = target_expr;
+			profile_scope_end();
 			return EXPR_PARSE_OK;
 		}
 

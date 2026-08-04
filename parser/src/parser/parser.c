@@ -1896,6 +1896,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		case CHAR_STATE_OK:
 			out_expr->kind = EXPR_CHAR_LITERAL;
 			out_expr->char_literal.value = (uint32_t)token.string.v[1];
+			out_expr->char_literal.source_range = source_range_pack(token.source_range);
 			preprocessor_next_token(parser->preprocessor);
 			profile_scope_end();
 			return EXPR_PARSE_OK;

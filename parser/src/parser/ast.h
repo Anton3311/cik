@@ -342,6 +342,7 @@ struct StringLiteral {
 //       instead of adding a flag here.
 struct CharLiteral {
 	uint32_t value;
+	PackedSourceRange source_range;
 };
 
 struct IntegerLiteral {

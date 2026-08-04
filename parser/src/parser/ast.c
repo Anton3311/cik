@@ -752,7 +752,7 @@ PackedSourceRange expr_get_source_range(const Expr* expr) {
 	case EXPR_STRING_LITERAL:
 		return expr->string_literal.source_range;
 	case EXPR_CHAR_LITERAL:
-		unreachable();
+		return expr->char_literal.source_range;
 	case EXPR_ENUM_CONSTANT:
 		return expr->enum_constant.source_range;
 	case EXPR_FUNCTION_PARAM:

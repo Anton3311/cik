@@ -2430,6 +2430,14 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				return EXPR_PARSE_ERROR;
 			}
 
+			if (compound_type->is_forward_declared) {
+				diagnostics_report_error(parser->diagnostics,
+						target_source_range,
+						STR_LIT("Expression has an incomplete type"),
+						NULL);
+				return EXPR_PARSE_ERROR;
+			}
+
 			size_t field_index = struct_field_namespace_index_of(
 					compound_type->field_namespace,
 					field_name_token.string);

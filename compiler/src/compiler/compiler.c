@@ -1101,41 +1101,8 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 		TypeLayout field_type_layout = _type_get_layout(compiler->type_context, &field_type);
 
-		const Struct* compound_type = _resolve_compound_type(expr);
-
-		uint32_t id = compound_type->id;
-		const size_t* field_offsets = compiler->type_context->field_offsets[id];
-
-		StructFieldNamespaceEntry entry =
-			compound_type->field_namespace->entries[expr->field_access.field_index];
-
-		assert(entry.struct_def == compound_type);
-
-		size_t field_offset = field_offsets[entry.field_index];
-
-		InstrIndex field_address = INVALID_INSTR_INDEX;
-
-		if (expr->kind == EXPR_DIRECT_FIELD_ACCESS) {
-			AddressExpr addr_expr = _compile_address_of(compiler, expr->field_access.target);
-			addr_expr.offset += (uint32_t)field_offset;
-			field_address = _compile_address_expr(compiler, addr_expr);
-		} else if (expr->kind == EXPR_INDIRECT_FIELD_ACCESS) {
-			InstrIndex base_addr = _compile_expr(compiler, expr->field_access.target);
-
-			InstrIndex offset_const = instr_new_int_const(instr_buffer,
-					instr_allocator,
-					field_offset,
-					compiler->type_context->pointer_type_layout.size);
-
-			InstrIndex add_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* add_instr = instr_buffer_at(instr_buffer, add_instr_index);
-			add_instr->kind = INSTR_BIN_OP_64;
-			add_instr->bin_op.kind = INSTR_BIN_ADD;
-			add_instr->bin_op.left = base_addr;
-			add_instr->bin_op.right = offset_const;
-
-			field_address = add_instr_index;
-		}
+		InstrIndex field_address = _compile_address_expr(compiler,
+				_compile_address_of(compiler, expr));
 
 		InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* load_instr = instr_buffer_at(instr_buffer, load_index);

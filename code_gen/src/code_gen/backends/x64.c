@@ -1093,6 +1093,44 @@ static void _emit_callee_epilogue(X64CodeGenerator* gen, CodeBuffer* buffer) {
 	}
 }
 
+static uint16_t _collect_available_registers(X64CodeGenerator* gen, InstrIndex instr_index) {
+	ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+	InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
+
+	uint16_t allowed_temp_registers = UINT16_MAX;
+	allowed_temp_registers &= ~(1 << instr_storage.reg);
+
+	allowed_temp_registers &= ~(1 << X64_REG_SP);
+	allowed_temp_registers &= ~(1 << X64_REG_BP);
+
+	// HACK: Some times the register allocator might allocate the whole register
+	//       to some instruction and also it's high part to the other, thus any
+	//       writes by any of the two instructions will be reflected in two places.
+	allowed_temp_registers &= ~(1 << X64_REG_SI);
+	allowed_temp_registers &= ~(1 << X64_REG_DI);
+
+	for (size_t i = 0; i < gen->instr_with_storage_requirement.count; i += 1) {
+		if (gen->instr_with_storage_requirement.instr[i].value != instr_index.value) {
+			continue;
+		}
+
+		UInt16Array edges = gen->interference_graph[i];
+		for (size_t j = 0; j < edges.count; j += 1) {
+			InstrIndex interfering_instr = gen->instr_with_storage_requirement.instr[edges.values[j]];
+			InstrStorageLocation loc = gen->instr_storage[interfering_instr.value];
+
+			if (loc.kind != INSTR_STORAGE_REG) {
+				continue;
+			}
+
+			allowed_temp_registers &= ~(1 << loc.reg);
+		}
+	}
+
+	arena_end_temp(temp);
+	return allowed_temp_registers;
+}
+
 static void _lower_instr(X64CodeGenerator* gen,
 		InstrIndex instr_index,
 		uint16_t region_id,
@@ -1334,6 +1372,61 @@ static void _lower_instr(X64CodeGenerator* gen,
 				operand_mem(ptr_loc.reg, bit_count));
 		return;
 	}
+
+	case INSTR_MEM_COPY_FIXED:
+		uint16_t temp_registers = _collect_available_registers(gen, instr_index);
+		assert(temp_registers != 0);
+
+		const InstrStorageLocation src_loc = gen->instr_storage[instr->mem_copy_fixed.src.value];
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr->mem_copy_fixed.dst.value];
+
+		Operand src_operand;
+		Operand dst_operand;
+		if (src_loc.kind == INSTR_STORAGE_REG) {
+			src_operand = operand_mem(src_loc.reg, 64);
+		} else if (src_loc.kind == INSTR_STORAGE_STACK) {
+			src_operand = operand_stack_mem((int32_t)src_loc.stack.offset, 64);
+		}
+
+		if (dst_loc.kind == INSTR_STORAGE_REG) {
+			dst_operand = operand_mem(dst_loc.reg, 64);
+		} else if (dst_loc.kind == INSTR_STORAGE_STACK) {
+			dst_operand = operand_stack_mem((int32_t)dst_loc.stack.offset, 64);
+		}
+
+		X64Register temp_register = count_trailing_zeros(temp_registers);
+
+		uint16_t sizes[] = { 8, 4, 2, 1 };
+		uint16_t bit_counts[] = { 64, 32, 16, 8 };
+
+		size_t bytes_left = instr->mem_copy_fixed.size;
+		size_t offset = 0;
+		for (uint16_t size_index = 0; size_index < array_size(sizes); size_index += 1) {
+			while (bytes_left >= sizes[size_index]) {
+				Operand sized_src = src_operand;
+				sized_src.bit_count = bit_counts[size_index]; 
+
+				Operand sized_dst = dst_operand;
+				sized_dst.bit_count = bit_counts[size_index]; 
+
+				encode_2(buffer,
+						MNEMONIC_MOV,
+						operand_reg(temp_registers, bit_counts[size_index]),
+						sized_src);
+
+				encode_2(buffer,
+						MNEMONIC_MOV,
+						sized_dst,
+						operand_reg(temp_registers, bit_counts[size_index]));
+
+				src_operand.mem.disp += sizes[size_index];
+				dst_operand.mem.disp += sizes[size_index];
+
+				bytes_left -= sizes[size_index];
+			}
+		}
+
+		return;
 
 	case INSTR_PTR_STORE_8:
 	case INSTR_PTR_STORE_16:
@@ -2313,6 +2406,11 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_store.io_state);
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_store.ptr);
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->ptr_store.value);
+		break;
+	case INSTR_MEM_COPY_FIXED:
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_copy_fixed.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_copy_fixed.src);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_copy_fixed.dst);
 		break;
 	case INSTR_LOAD_ARG_8:
 	case INSTR_LOAD_ARG_16:

@@ -81,6 +81,9 @@ typedef enum {
 	INSTR_PTR_STORE_32,
 	INSTR_PTR_STORE_64,
 
+	// Copies a region of memory of fixed size known at compile time
+	INSTR_MEM_COPY_FIXED,
+
 	INSTR_LOAD_ARG_8,
 	INSTR_LOAD_ARG_16,
 	INSTR_LOAD_ARG_32,
@@ -242,6 +245,15 @@ struct Instr {
 			InstrIndex value;
 			InstrIndex io_state;
 		} ptr_store;
+
+		struct {
+			InstrIndex src;
+			InstrIndex dst;
+			InstrIndex io_state;
+
+			// Size in bytes of the region to copy
+			uint16_t size;
+		} mem_copy_fixed;
 
 		struct {
 			uint8_t index;

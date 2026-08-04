@@ -335,6 +335,8 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		const Variable* var = compiler->vars[expr->variable_ref.var->id];
 
 		InstrIndex value_instr = compiler->var_values[expr->variable_ref.var->id];
+		assert(value_instr.value != INVALID_INSTR_INDEX.value);
+
 		if (var->type.kind == TYPE_POINTER) {
 			unreachable();
 			return (AddressExpr) {
@@ -2134,18 +2136,18 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 
 	switch (node->kind) {
 	case AST_NODE_VARIABLE: {
-		assert(node->variable.id < compiler->var_count);
+		uint32_t var_id = node->variable.id;
+		assert(var_id < compiler->var_count);
 		assert(node->parent_scope);
 
-		compiler->vars[node->variable.id] = &node->variable;
-		compiler->var_parent_scopes[node->variable.id] = node->parent_scope;
+		compiler->vars[var_id] = &node->variable;
+		compiler->var_parent_scopes[var_id] = node->parent_scope;
 
 		Type variable_type = node->variable.type;
 		TypeLayout variable_type_layout = _type_get_layout(
 				compiler->type_context,
 				&variable_type);
 
-		InstrIndex value_instr = INVALID_INSTR_INDEX;
 		if (node->variable.type.kind == TYPE_STRUCT || node->variable.type.kind == TYPE_UNION) {
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
@@ -2157,10 +2159,21 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 			instr->stack_alloc.size = (uint32_t)variable_type_layout.size;
 			instr->stack_alloc.alignment = (uint32_t)variable_type_layout.alignment;
 
+			// Immediately store the new value instruction, since it will be used in the next
+			// `_compile_address_of`
+			compiler->var_values[var_id] = instr_index;
+
 			if (node->variable.value) {
-				panic("todo: implement initialization with a compound literal");
-			} else {
-				value_instr = instr_index;
+				Expr assignment_target = { 
+					.kind = EXPR_VARIABLE_REFERENCE,
+					.variable_ref = &node->variable
+				};
+
+				AddressExpr value_address = _compile_address_of(compiler, node->variable.value);
+
+				_compile_assignment_of_compound_types(compiler,
+						&assignment_target,
+						value_address);
 			}
 		} else if (node->variable.type.kind == TYPE_ARRAY) {
 			assert(variable_type.array.size != NULL);
@@ -2175,7 +2188,7 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 			instr->stack_alloc.size = (uint32_t)variable_type_layout.size;
 			instr->stack_alloc.alignment = (uint32_t)variable_type_layout.alignment;
 
-			value_instr = instr_index;
+			compiler->var_values[var_id] = instr_index;
 		} else if (node->variable.value) {
 			Type value_type;
 			expr_get_type(node->variable.value, &value_type);
@@ -2183,7 +2196,7 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 			InstrIndex value = _compile_expr(compiler, node->variable.value);
 
 			// insert an implicit cast to the variable type
-			value_instr = _compile_int_cast(compiler,
+			compiler->var_values[var_id] = _compile_int_cast(compiler,
 					&value_type,
 					&node->variable.type,
 					value);
@@ -2195,12 +2208,10 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 			instr->kind = INSTR_UNINITIALIZED_8 + bit_count_index;
 
-			value_instr = instr_index;
+			compiler->var_values[var_id] = instr_index;
 		}
 
-		assert(value_instr.value != INVALID_INSTR_INDEX.value);
-
-		compiler->var_values[node->variable.id] = value_instr;
+		assert(compiler->var_values[var_id].value != INVALID_INSTR_INDEX.value);
 		break;
 	}
 	case AST_NODE_EXPR:

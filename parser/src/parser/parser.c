@@ -1157,6 +1157,11 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 		out_type->kind = TYPE_SIZE_T;
 		profile_scope_end();
 		return PARSE_TYPE_PARSED;
+	} else if (token.kind == TOKEN_KEYWORD_BOOL ){
+		preprocessor_next_token(parser->preprocessor);
+		out_type->kind = TYPE_BOOL;
+		profile_scope_end();
+		return PARSE_TYPE_PARSED;
 	}
 
 	TypeKind type_kind = TYPE_VOID;

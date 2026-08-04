@@ -141,6 +141,9 @@ typedef enum {
 	TYPE_POINTER            = 16,
 	TYPE_ARRAY              = 17,
 	TYPE_FUNCTION           = 18,
+
+	// _Bool
+	TYPE_BOOL               = 19,
 } TypeKind;
 
 struct Type {

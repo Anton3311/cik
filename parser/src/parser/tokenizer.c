@@ -133,6 +133,8 @@ String token_kind_to_string(TokenKind kind) {
 	case TOKEN_KEYWORD_INT32: return STR_LIT("__int32");
 	case TOKEN_KEYWORD_INT64: return STR_LIT("__int64");
 
+	case TOKEN_KEYWORD_BOOL: return STR_LIT("_Bool");
+
 	case TOKEN_DECLSPEC: return STR_LIT("__declspec");
 	case TOKEN_COUNT: unreachable();
 	}
@@ -255,6 +257,8 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_INT32;
 	} else if (str_equal(token_string, STR_LIT("__int64"))) {
 		token_kind = TOKEN_KEYWORD_INT64;
+	} else if (str_equal(token_string, STR_LIT("_Bool"))) {
+		token_kind = TOKEN_KEYWORD_BOOL;
 	}
 
 	*out_token = (Token) {

@@ -71,6 +71,8 @@ bool type_equal(const Type* a, const Type* b) {
 	case TYPE_UNSIGNED_INT32:
 	case TYPE_UNSIGNED_INT64:
 
+	case TYPE_BOOL:
+
 	case TYPE_FLOAT:
 	case TYPE_DOUBLE:
 		return true;
@@ -245,6 +247,9 @@ void type_format(const Type* type, StringBuilder* builder) {
 			str_builder_append(builder, STR_LIT(")"));
 			break;
 		}
+		case TYPE_BOOL:
+			str_builder_append(builder, STR_LIT("_Bool"));
+			break;
 		}
 	}
 }
@@ -304,6 +309,9 @@ uint32_t type_get_int_convertion_rank(const Type* type) {
 	case TYPE_POINTER:
 	case TYPE_ARRAY:
 	case TYPE_FUNCTION:
+		break;
+	
+	case TYPE_BOOL:
 		break;
 	}
 
@@ -1210,6 +1218,9 @@ void print_type(PrinterState* printer, const Type* type) {
 		}
 
 		printer_end_struct(printer);
+		break;
+	case TYPE_BOOL:
+		printf("_Bool\n");
 		break;
 	}
 }

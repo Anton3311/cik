@@ -112,6 +112,8 @@ static TypeLayout _type_get_layout(const TypeContext* context, const Type* type)
 	}
 	case TYPE_FUNCTION:
 		return context->pointer_type_layout;
+	case TYPE_BOOL:
+		unreachable();
 	}
 
 	unreachable();

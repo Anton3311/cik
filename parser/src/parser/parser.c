@@ -1652,15 +1652,15 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			|| unary_op == UNARY_OP_PRE_DECREMENT
 			|| unary_op == UNARY_OP_POST_DECREMENT;
 
-		SourceRange operand_source_range = source_range_unpack(
-				parser->preprocessor->source_storage,
-				expr_get_source_range(out_expr->unary.operand));
-
-		Type operand_type;
-		expr_get_type(out_expr->unary.operand, &operand_type);
-
 		if (result == EXPR_PARSE_OK && requires_int_operand) {
+			Type operand_type;
+			expr_get_type(out_expr->unary.operand, &operand_type);
+
 			if (!type_kind_is_int(operand_type.kind)) {
+				SourceRange operand_source_range = source_range_unpack(
+						parser->preprocessor->source_storage,
+						expr_get_source_range(out_expr->unary.operand));
+
 				StringBuilder builder = { parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Cannot apply '"));
 				str_builder_append(&builder, token.string);
@@ -1676,6 +1676,10 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		}
 
 		if (result == EXPR_PARSE_OK && requires_l_value) {
+			SourceRange operand_source_range = source_range_unpack(
+					parser->preprocessor->source_storage,
+					expr_get_source_range(out_expr->unary.operand));
+
 			ValueKind operand_value_kind = expr_get_value_kind(out_expr->unary.operand);
 			if (operand_value_kind != VALUE_L) {
 				diagnostics_report_error(parser->diagnostics,
@@ -1687,7 +1691,12 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 
 		if (unary_op == UNARY_OP_ADDRESS) {
 			Type* pointer_base_type = arena_alloc(parser->ast_allocator, Type);
-			*pointer_base_type = operand_type;
+
+			if (result == EXPR_PARSE_OK) {
+				expr_get_type(out_expr->unary.operand, pointer_base_type);
+			} else {
+				pointer_base_type->kind = TYPE_VOID;
+			}
 
 			out_expr->unary.pointer_base_type = pointer_base_type;
 		}

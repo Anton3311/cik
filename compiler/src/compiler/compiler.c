@@ -316,6 +316,8 @@ static InstrIndex _compile_address_of_field(FunctionCompiler* compiler, Expr* ex
 }
 
 static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
+	profile_scope_start(__func__);
+
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 	const TypeContext* type_context = compiler->type_context;
@@ -335,6 +337,8 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		size_t field_offset = field_offsets[entry.field_index];
 
 		AddressExpr target_addr = _compile_address_of(compiler, expr->field_access.target);
+
+		profile_scope_end();
 		return (AddressExpr) {
 			.base = target_addr.base,
 			.offset = target_addr.offset + (uint32_t)field_offset,
@@ -361,6 +365,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		if (expr_type.kind == TYPE_POINTER) {
 			addr_expr.base = _compile_expr(compiler, expr->field_access.target);
 			addr_expr.offset = field_offset;
+			profile_scope_end();
 			return addr_expr;
 		} else {
 			unreachable();
@@ -384,6 +389,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		stack_addr->kind = INSTR_STACK_ADDR;
 		stack_addr->stack_addr.stack_alloc = value_instr;
 		
+		profile_scope_end();
 		return (AddressExpr) {
 			.base = stack_addr_index,
 			.offset = 0,
@@ -394,6 +400,8 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			.base = _compile_expr(compiler, expr),
 			.offset = 0,
 		};
+
+		profile_scope_end();
 		return addr_expr;
 	}
 

@@ -438,61 +438,6 @@ uint32_t bin_op_precedence(BinOpKind op) {
 	return UINT32_MAX;
 }
 
-void bin_expr_select_common_type(const Type* left_type,
-		const Type* right_type,
-		Type* out_type) {
-	if (type_equal(left_type, right_type)) {
-		*out_type = *left_type;
-		return;
-	}
-
-	if (left_type->kind == TYPE_POINTER && type_kind_is_int(right_type->kind)) {
-		*out_type = *left_type;
-		return;
-	}
-
-	if (left_type->kind == TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
-		type_array_to_pointer(left_type, out_type);
-		return;
-	}
-
-	if (right_type->kind == TYPE_POINTER && type_kind_is_int(left_type->kind)) {
-		*out_type = *right_type;
-		return;
-	}
-
-	if (right_type->kind == TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
-		type_array_to_pointer(right_type, out_type);
-		return;
-	}
-
-	if (left_type->kind == TYPE_POINTER && right_type->kind == TYPE_POINTER) {
-		*out_type = *left_type;
-		return;
-	}
-
-	assert(type_kind_is_int(left_type->kind));
-	assert(type_kind_is_int(right_type->kind));
-
-	uint32_t left_convertion_rank = type_get_int_convertion_rank(left_type);
-	uint32_t right_convertion_rank = type_get_int_convertion_rank(right_type);
-	if (left_convertion_rank == right_convertion_rank) {
-		if (left_type->kind == TYPE_SIZE_T || right_type->kind == TYPE_SIZE_T) {
-			out_type->kind = TYPE_SIZE_T;
-		} else if (has_flag(left_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
-			*out_type = *left_type;
-		} else if (has_flag(right_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
-			*out_type = *right_type;
-		} else {
-			*out_type = *left_type;
-		}
-	} else if (left_convertion_rank > right_convertion_rank) {
-		*out_type = *left_type;
-	} else  {
-		*out_type = *right_type;
-	}
-}
-
 String function_calling_convetion_to_string(FunctionCallingConvention conv) {
 	switch (conv) {
 	case FUNC_CALL_CONV_CDECL:

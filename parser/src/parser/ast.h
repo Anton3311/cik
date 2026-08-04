@@ -296,11 +296,6 @@ struct BinExpr {
 	Expr* right;
 };
 
-void bin_expr_select_common_type(
-		const Type* left_type,
-		const Type* right_type,
-		Type* out_type);
-
 // TODO: Include type qualifiers for UNARY_OP_ADDRESS
 struct UnaryExpr {
 	UnaryOpKind op;

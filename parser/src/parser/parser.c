@@ -2571,6 +2571,78 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 	return EXPR_PARSE_OK;
 }
 
+static void _bin_expr_select_common_type(const Type* left_type,
+		const Type* right_type,
+		Diagnostics* diagnostics,
+		BinOpKind operator,
+		SourceRange source_range,
+		Type* out_type) {
+	out_type->kind = TYPE_VOID;
+
+	if (type_equal(left_type, right_type)) {
+		*out_type = *left_type;
+		return;
+	}
+
+	if (left_type->kind == TYPE_POINTER && type_kind_is_int(right_type->kind)) {
+		*out_type = *left_type;
+		return;
+	}
+
+	if (left_type->kind == TYPE_ARRAY && type_kind_is_int(right_type->kind)) {
+		type_array_to_pointer(left_type, out_type);
+		return;
+	}
+
+	if (right_type->kind == TYPE_POINTER && type_kind_is_int(left_type->kind)) {
+		*out_type = *right_type;
+		return;
+	}
+
+	if (right_type->kind == TYPE_ARRAY && type_kind_is_int(left_type->kind)) {
+		type_array_to_pointer(right_type, out_type);
+		return;
+	}
+
+	if (left_type->kind == TYPE_POINTER && right_type->kind == TYPE_POINTER) {
+		*out_type = *left_type;
+		return;
+	}
+
+	if (!type_kind_is_int(left_type->kind) && !type_kind_is_int(right_type->kind)) {
+		StringBuilder builder = { .arena = diagnostics->allocator };
+		str_builder_format(&builder,
+				"Binary operator '%.*s' is not support between types '",
+				STR_FMT(bin_op_kind_to_string(operator)));
+
+		type_format(left_type, &builder);
+		str_builder_append(&builder, STR_LIT("' and '"));
+		type_format(right_type, &builder);
+		str_builder_append(&builder, STR_LIT("'"));
+
+		diagnostics_report_error(diagnostics, source_range, builder.string, NULL);
+		return;
+	}
+
+	uint32_t left_convertion_rank = type_get_int_convertion_rank(left_type);
+	uint32_t right_convertion_rank = type_get_int_convertion_rank(right_type);
+	if (left_convertion_rank == right_convertion_rank) {
+		if (left_type->kind == TYPE_SIZE_T || right_type->kind == TYPE_SIZE_T) {
+			out_type->kind = TYPE_SIZE_T;
+		} else if (has_flag(left_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
+			*out_type = *left_type;
+		} else if (has_flag(right_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
+			*out_type = *right_type;
+		} else {
+			*out_type = *left_type;
+		}
+	} else if (left_convertion_rank > right_convertion_rank) {
+		*out_type = *left_type;
+	} else  {
+		*out_type = *right_type;
+	}
+}
+
 ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 	profile_func_colored(PROFILE_COLOR);
 
@@ -2643,19 +2715,29 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 				}
 			}
 
-			Type common_type;
-			bin_expr_select_common_type(&left_type, &right_type, &common_type);
-
 			*current_expr = (Expr) {
 				.kind = EXPR_BINARY,
 				.binary = (BinExpr) {
 					.op = current_bin_op,
-					.common_type_kind = common_type.kind,
-					.pointer_base_type = common_type.pointer_base_type,
 					.left = left_operand,
 					.right = right_operand,
 				}
 			};
+
+			SourceRange source_range = source_range_unpack(
+					parser->preprocessor->source_storage,
+					expr_get_source_range(current_expr));
+
+			Type common_type;
+			_bin_expr_select_common_type(&left_type,
+					&right_type,
+					parser->diagnostics,
+					current_bin_op,
+					source_range,
+					&common_type);
+
+			current_expr->binary.common_type_kind = common_type.kind;
+			current_expr->binary.pointer_base_type = common_type.pointer_base_type;
 
 			if (current_op_precedence > next_op_precedence) {
 				current_expr = right_operand;

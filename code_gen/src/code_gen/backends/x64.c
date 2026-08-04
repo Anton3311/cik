@@ -1109,6 +1109,21 @@ static uint16_t _collect_available_registers(X64CodeGenerator* gen, InstrIndex i
 	allowed_temp_registers &= ~(1 << X64_REG_SI);
 	allowed_temp_registers &= ~(1 << X64_REG_DI);
 
+	InstrQueue queue;
+	instr_queue_alloc(&queue, gen->temp_allocator, gen->instr_buffer.count);
+
+	instr_enumerate_uses(&gen->instr_buffer, instr_index, &queue);
+
+	for (size_t i = 0; i < queue.count; i += 1) {
+		InstrStorageLocation loc = gen->instr_storage[queue.buffer[i].value];
+
+		if (loc.kind != INSTR_STORAGE_REG) {
+			continue;
+		}
+
+		allowed_temp_registers &= ~(1 << loc.reg);
+	}
+
 	for (size_t i = 0; i < gen->instr_with_storage_requirement.count; i += 1) {
 		if (gen->instr_with_storage_requirement.instr[i].value != instr_index.value) {
 			continue;
@@ -1411,13 +1426,13 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 				encode_2(buffer,
 						MNEMONIC_MOV,
-						operand_reg(temp_registers, bit_counts[size_index]),
+						operand_reg(temp_register, bit_counts[size_index]),
 						sized_src);
 
 				encode_2(buffer,
 						MNEMONIC_MOV,
 						sized_dst,
-						operand_reg(temp_registers, bit_counts[size_index]));
+						operand_reg(temp_register, bit_counts[size_index]));
 
 				src_operand.mem.disp += sizes[size_index];
 				dst_operand.mem.disp += sizes[size_index];

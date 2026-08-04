@@ -22,7 +22,10 @@ SourceRange source_range_unpack(const SourceStorage* storage, PackedSourceRange 
 }
 
 PackedSourceRange source_range_merge(PackedSourceRange a, PackedSourceRange b) {
-	assert(a.file_id == b.file_id);
+	if (a.file_id != b.file_id) {
+		// FIXME: Need a better way to merge source ranges comming from different files
+		return a;
+	}
 
 	PackedSourceRange result;
 	result.file_id = a.file_id;

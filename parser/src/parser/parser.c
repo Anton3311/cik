@@ -2271,6 +2271,7 @@ static void _type_check_call(Parser* parser, Expr* call) {
 				expr_get_source_range(call),
 				STR_LIT("Too few arguments for a call"),
 				NULL);
+		return;
 	}
 
 	if (!proto->has_va_args && args.count > proto->parameter_count) {
@@ -2278,6 +2279,7 @@ static void _type_check_call(Parser* parser, Expr* call) {
 				expr_get_source_range(call),
 				STR_LIT("Too many arguments for a call"),
 				NULL);
+		return;
 	}
 
 	assert(args.count >= proto->parameter_count);

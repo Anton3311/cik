@@ -1525,22 +1525,12 @@ static bool _parser_parse_function_params(Parser* parser,
 			}
 		}
 
-		Type param_type;
+		Type param_type = {};
 		if (!_parser_parse_type(parser, &param_type, true)) {
-			arena_end_temp(temp);
-			arena_end_temp(ast_temp);
-			profile_scope_end();
-			return false;
-		}
-
-		if (!_parser_parse_pre_declaration_modifiers(parser, &param_type, &param_type, true)) {
-			arena_end_temp(temp);
-			arena_end_temp(ast_temp);
-			profile_scope_end();
-			return false;
-		}
-
-		if (param_type.kind == TYPE_VOID && param_type.qualifiers == TYPE_QUALIFIER_NONE) {
+			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
+		} else if (!_parser_parse_pre_declaration_modifiers(parser, &param_type, &param_type, true)) {
+			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
+		} else if (param_type.kind == TYPE_VOID && param_type.qualifiers == TYPE_QUALIFIER_NONE) {
 			assert(param_count == 0);
 
 			Token token = preprocessor_view_next(parser->preprocessor);
@@ -1553,6 +1543,7 @@ static bool _parser_parse_function_params(Parser* parser,
 						token,
 						expected_tokens,
 						array_size(expected_tokens));
+				break;
 			}
 		}
 
@@ -1571,10 +1562,7 @@ static bool _parser_parse_function_params(Parser* parser,
 		}
 
 		if (!_parser_parse_post_declaration_modifiers(parser, &param->type, &param->type, true)) {
-			arena_end_temp(temp);
-			arena_end_temp(ast_temp);
-			profile_scope_end();
-			return false;
+			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
 		}
 
 		if (token.kind == TOKEN_COMMA) {

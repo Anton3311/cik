@@ -1107,6 +1107,10 @@ void print_type(PrinterState* printer, const Type* type) {
 		printf("const ");
 	}
 
+	if (has_flag(type->qualifiers, TYPE_QUALIFIER_VOLATILE)) {
+		printf("volatile ");
+	}
+
 	switch (type->kind) {
 	case TYPE_STRUCT:
 		print_struct_def(printer, type->struct_def);

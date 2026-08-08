@@ -1103,6 +1103,9 @@ TypeQualifiers _parser_parse_type_qualifiers(Parser* parser) {
 		if (token.kind == TOKEN_KEYWORD_CONST) {
 			preprocessor_next_token(parser->preprocessor);
 			qualifiers |= TYPE_QUALIFIER_CONST;
+		} else if (token.kind == TOKEN_KEYWORD_VOLATILE) {
+			preprocessor_next_token(parser->preprocessor);
+			qualifiers |= TYPE_QUALIFIER_VOLATILE;
 		} else {
 			break;
 		}

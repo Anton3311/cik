@@ -102,6 +102,7 @@ String token_kind_to_string(TokenKind kind) {
 	case TOKEN_KEYWORD_UNION: return STR_LIT("union");
 	case TOKEN_KEYWORD_ENUM: return STR_LIT("enum");
 	case TOKEN_KEYWORD_CONST: return STR_LIT("const");
+	case TOKEN_KEYWORD_VOLATILE: return STR_LIT("volatile");
 	case TOKEN_KEYWORD_RETURN: return STR_LIT("return");
 	case TOKEN_KEYWORD_INLINE: return STR_LIT("inline");
 	case TOKEN_KEYWORD_EXTERN: return STR_LIT("extern");
@@ -201,6 +202,8 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 		token_kind = TOKEN_KEYWORD_ENUM;
 	} else if (str_equal(token_string, STR_LIT("const"))) {
 		token_kind = TOKEN_KEYWORD_CONST;
+	} else if (str_equal(token_string, STR_LIT("volatile"))) {
+		token_kind = TOKEN_KEYWORD_VOLATILE;
 	} else if (str_equal(token_string, STR_LIT("return"))) {
 		token_kind = TOKEN_KEYWORD_RETURN;
 	} else if (str_equal(token_string, STR_LIT("inline"))) {

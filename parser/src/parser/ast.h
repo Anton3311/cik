@@ -86,8 +86,9 @@ struct Block {
 };
 
 typedef enum {
-	TYPE_QUALIFIER_NONE = 0,
-	TYPE_QUALIFIER_CONST = 1 << 0,
+	TYPE_QUALIFIER_NONE     = 0,
+	TYPE_QUALIFIER_CONST    = 1 << 0,
+	TYPE_QUALIFIER_VOLATILE = 1 << 1,
 } TypeQualifiers;
 
 typedef enum {

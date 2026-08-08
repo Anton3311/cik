@@ -53,10 +53,7 @@ bool _parse(GenContext* context,
 
 	{
 		MacroDefinition code_generation_pass = {
-			.name = (SourceString) {
-				.string = STR_LIT("CODE_GENERATION_PASS"),
-				.source_file = source_file,
-			},
+			.name = STR_LIT("CODE_GENERATION_PASS"),
 			.builtin_kind = BUILTIN_MACRO_STDC,
 			.token_count = 1,
 		};

@@ -201,7 +201,8 @@ typedef enum {
 } BuiltinMacroKind;
 
 struct MacroDefinition {
-	SourceString name;
+	String name;
+	PackedSourceRange name_source_range;
 	BuiltinMacroKind builtin_kind;
 
 	MacroStyle style;

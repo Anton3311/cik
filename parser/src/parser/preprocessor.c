@@ -12,7 +12,7 @@ static size_t _macro_table_find_empty_slot(MacroTable* table, String key) {
 	size_t hash = hash_string(key);
 	for (size_t i = 0; i < table->capacity; i += 1) {
 		size_t index = (hash + i) % table->capacity;
-		String macro_name = table->macros[index].name.string;
+		String macro_name = table->macros[index].name;
 
 		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
 			profile_scope_end();
@@ -39,7 +39,7 @@ static void _macro_table_grow(MacroTable* table) {
 	memset(table->macros, 0, new_capacity * sizeof(*table->macros));
 
 	for (size_t i = 0; i < old_capactiy; i += 1) {
-		String key = old_macros[i].name.string;
+		String key = old_macros[i].name;
 		if (key.v == NULL || key.v == REMOVED_MACRO_FLAG ) {
 			continue;
 		}
@@ -59,7 +59,7 @@ void macro_table_append(MacroTable* table, const MacroDefinition* macro) {
 		_macro_table_grow(table);
 	}
 
-	size_t slot = _macro_table_find_empty_slot(table, macro->name.string);
+	size_t slot = _macro_table_find_empty_slot(table, macro->name);
 	assert(slot != SIZE_MAX);
 
 	table->macros[slot] = *macro;
@@ -74,13 +74,13 @@ bool macro_table_remove(MacroTable* table, String name) {
 	size_t hash = hash_string(name);
 	for (size_t i = 0; i < table->capacity; i += 1) {
 		size_t index = (hash + i) % table->capacity;
-		String macro_name = table->macros[index].name.string;
+		String macro_name = table->macros[index].name;
 
 		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
 			profile_scope_end();
 			return false;
 		} else if (str_equal(macro_name, name)) {
-			table->macros[index].name.string.v = REMOVED_MACRO_FLAG;
+			table->macros[index].name.v = REMOVED_MACRO_FLAG;
 			profile_scope_end();
 			return true;
 		}
@@ -96,7 +96,7 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 	size_t hash = hash_string(name);
 	for (size_t i = 0; i < table->capacity; i += 1) {
 		size_t index = (hash + i) % table->capacity;
-		String macro_name = table->macros[index].name.string;
+		String macro_name = table->macros[index].name;
 
 		if (macro_name.v == NULL || macro_name.v == REMOVED_MACRO_FLAG) {
 			profile_scope_end();
@@ -265,10 +265,7 @@ void preprocessor_init(Preprocessor* state,
 
 	{
 		MacroDefinition line_macro = {
-			.name = (SourceString) {
-				.string = STR_LIT("__LINE__"),
-				.source_file = state->tokenizer->source_file,
-			},
+			.name = STR_LIT("__LINE__"),
 			.builtin_kind = BUILTIN_MACRO_LINE,
 			.token_count = 1,
 		};
@@ -276,10 +273,7 @@ void preprocessor_init(Preprocessor* state,
 		macro_table_append(&state->macro_table, &line_macro);
 
 		MacroDefinition file_macro = {
-			.name = (SourceString) {
-				.string = STR_LIT("__FILE__"),
-				.source_file = state->tokenizer->source_file,
-			},
+			.name = STR_LIT("__FILE__"),
 			.builtin_kind = BUILTIN_MACRO_FILE,
 			.token_count = 1,
 		};
@@ -287,10 +281,7 @@ void preprocessor_init(Preprocessor* state,
 		macro_table_append(&state->macro_table, &file_macro);
 
 		MacroDefinition stdc_macro = {
-			.name = (SourceString) {
-				.string = STR_LIT("__STDC__"),
-				.source_file = state->tokenizer->source_file,
-			},
+			.name = STR_LIT("__STDC__"),
 			.builtin_kind = BUILTIN_MACRO_STDC,
 			.token_count = 1,
 		};
@@ -298,10 +289,7 @@ void preprocessor_init(Preprocessor* state,
 		macro_table_append(&state->macro_table, &stdc_macro);
 
 		MacroDefinition __pragma_macro = {
-			.name = (SourceString) {
-				.string = STR_LIT("__pragma"),
-				.source_file = state->tokenizer->source_file,
-			},
+			.name = STR_LIT("__pragma"),
 			.style = MACRO_STYLE_FUNCTION,
 			.builtin_kind = BUILTIN_MACRO_NONE,
 			.has_va_args = true,
@@ -313,10 +301,7 @@ void preprocessor_init(Preprocessor* state,
 		macro_table_append(&state->macro_table, &__pragma_macro);
 
 		MacroDefinition _win64_macro = {
-			.name = (SourceString) {
-				.string = STR_LIT("_WIN64"),
-				.source_file = state->tokenizer->source_file,
-			},
+			.name = STR_LIT("_WIN64"),
 			.style = MACRO_STYLE_DEFAULT,
 			.builtin_kind = BUILTIN_MACRO_NONE,
 			.has_va_args = 0,
@@ -666,7 +651,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 	MacroTokenHint* token_hints = arena_alloc_array(state->temp_allocator, MacroTokenHint, 0);
 	size_t token_hint_count = 0;
 
-	SourceRange macro_name_range = source_string_to_range(macro->name);
+	PackedSourceRange macro_name_range = macro->name_source_range;
 
 	const LineInfo* line_info = &_preprocessor_current_file(state)->line_info;
 	uint32_t expected_token_line = line_info_pos_to_source_location(line_info, macro_name_range.start).line;
@@ -845,7 +830,8 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	}
 
 	macro->style = MACRO_STYLE_DEFAULT;
-	macro->name = source_string_from_token(name_token);
+	macro->name = name_token.string;
+	macro->name_source_range = source_range_pack(name_token.source_range);
 
 	Token maybe_paren = tokenizer_view_next(state->tokenizer);
 
@@ -2292,7 +2278,7 @@ void _preprocessor_macro_call_to_diagnostics(const Preprocessor* state,
 	StringBuilder builder = { .arena = state->diagnostics->allocator };
 
 	str_builder_append(&builder, STR_LIT("Expended from macro '"));
-	str_builder_append(&builder, call->macro->name.string);
+	str_builder_append(&builder, call->macro->name);
 	str_builder_append(&builder, STR_LIT("'\n"));
 
 	for (size_t param_index = 0; param_index < macro->parameter_count; param_index += 1) {
@@ -2518,15 +2504,15 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 			// Not enough macro arguments
 			StringBuilder builder = { state->diagnostics->allocator };
 			str_builder_append(&builder, STR_LIT("Not enough arguments during a call of macro called '"));
-			str_builder_append(&builder, macro->name.string);
+			str_builder_append(&builder, macro->name);
 			str_builder_append(&builder, STR_LIT("'. Expected "));
 			str_builder_append_int(&builder, macro->parameter_count);
 			str_builder_append(&builder, STR_LIT(" but only "));
 			str_builder_append_int(&builder, args.count);
 			str_builder_append(&builder, STR_LIT(" were provided."));
 
-			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
-					source_string_to_range(macro->name),
+			DiagnosticsEntry* error = report_error(state->diagnostics,
+					macro->name_source_range,
 					builder.string,
 					NULL);
 
@@ -2537,15 +2523,15 @@ MacroCall* _preprocessor_init_macro_call(Preprocessor* state,
 			// Too many macro arguments
 			StringBuilder builder = { state->diagnostics->allocator };
 			str_builder_append(&builder, STR_LIT("Too many arguments during a call of macro called '"));
-			str_builder_append(&builder, macro->name.string);
+			str_builder_append(&builder, macro->name);
 			str_builder_append(&builder, STR_LIT("'. Expected "));
 			str_builder_append_int(&builder, macro->parameter_count);
 			str_builder_append(&builder, STR_LIT(" but "));
 			str_builder_append_int(&builder, args.count);
 			str_builder_append(&builder, STR_LIT(" were provided."));
 
-			DiagnosticsEntry* error = diagnostics_report_error(state->diagnostics,
-					source_string_to_range(macro->name),
+			DiagnosticsEntry* error = report_error(state->diagnostics,
+					macro->name_source_range,
 					builder.string,
 					NULL);
 

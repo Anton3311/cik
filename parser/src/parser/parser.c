@@ -1968,7 +1968,19 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		preprocessor_next_token(parser->preprocessor);
 
 		Type cast_target_type;
-		ParseTypeResult type_result = _parser_try_parse_type_name(parser, &cast_target_type);
+		ParseTypeResult type_result = _parser_try_parse_type_specifier(parser,
+				&cast_target_type,
+				false);
+
+		if (type_result == PARSE_TYPE_PARSED) {
+			if (!_parser_parse_pre_declaration_modifiers(parser,
+						&cast_target_type, 
+						&cast_target_type,
+						true)) {
+				type_result = PARSE_TYPE_ERROR;
+			}
+		}
+
 		switch (type_result) {
 		case PARSE_TYPE_PARSED: {
 			Token right_paren = preprocessor_next_token(parser->preprocessor);

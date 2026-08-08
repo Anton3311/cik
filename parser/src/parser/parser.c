@@ -3879,12 +3879,12 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			return_value = arena_alloc(parser->ast_allocator, Expr);
 
 			if (_parser_try_parse_expr(parser, return_value) != EXPR_PARSE_OK) {
-				return NULL;
+				_parser_skip_until_semicolon(parser);
 			}
 		}
 
 		if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after the return"))) {
-			return NULL;
+			_parser_skip_until(parser, TOKEN_RIGHT_BRACE, TOKEN_EOF);
 		}
 
 		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);

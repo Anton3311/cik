@@ -7,11 +7,6 @@ typedef struct SourceFile SourceFile;
 typedef struct SourceStorage SourceStorage;
 
 typedef struct {
-	String string;
-	const SourceFile* source_file;
-} SourceString;
-
-typedef struct {
 	const SourceFile* source_file;
 	size_t start;
 	size_t end;
@@ -101,11 +96,5 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 SourceFile* source_storage_append(SourceStorage* storage, String path, String source_code);
 SourceFile* source_storage_append_from_path(SourceStorage* storage, String path, Arena* temp_allocator);
 SourceFile* source_storage_find_file(SourceStorage* storage, String path); 
-
-inline SourceRange source_string_to_range(SourceString string) {
-	SourceRange range = source_range_from_sub_string(string.source_file->source_code, string.string);
-	range.source_file = string.source_file;
-	return range;
-}
 
 #endif

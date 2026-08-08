@@ -149,13 +149,6 @@ typedef enum {
 	STR_TOKEN_RESULT_EOF_REACHED,
 } StringTokenizerResult;
 
-inline SourceString source_string_from_token(Token token) {
-	return (SourceString) {
-		.source_file = token.source_range.source_file,
-		.string = token.string,
-	};
-}
-
 void tokenizer_init(Tokenizer* tokenizer, const SourceFile* source_file);
 void tokenizer_skip_whitespace_and_comments(Tokenizer* tokenizer);
 

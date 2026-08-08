@@ -850,7 +850,7 @@ void test_parse_type_def_of_primitive_type(TestContext* context) {
 
 	TypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == TYPE_INT);
-	assert(str_equal(type_def->new_name.string, STR_LIT("int32")));
+	assert(str_equal(type_def->new_name, STR_LIT("int32")));
 }
 
 void test_parse_type_def_of_struct_def(TestContext* context) {
@@ -869,10 +869,10 @@ void test_parse_type_def_of_struct_def(TestContext* context) {
 	assert(type_def->aliased_type.kind == TYPE_STRUCT);
 
 	Struct* struct_def = type_def->aliased_type.struct_def;
-	assert(str_equal(struct_def->name.string, STR_LIT("Hello")));
+	assert(str_equal(struct_def->name, STR_LIT("Hello")));
 	assert(struct_def->field_count == 0);
 
-	assert(str_equal(type_def->new_name.string, STR_LIT("World")));
+	assert(str_equal(type_def->new_name, STR_LIT("World")));
 }
 
 void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
@@ -893,10 +893,10 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 
 	TypeDef* type_def = first->type_def;
 	assert(type_def->aliased_type.kind == TYPE_STRUCT);
-	assert(str_equal(type_def->new_name.string, STR_LIT("World")));
+	assert(str_equal(type_def->new_name, STR_LIT("World")));
 
 	Struct* hello_struct_def = type_def->aliased_type.struct_def;
-	assert(str_equal(hello_struct_def->name.string, STR_LIT("Hello")));
+	assert(str_equal(hello_struct_def->name, STR_LIT("Hello")));
 	assert(hello_struct_def->field_count == 3);
 
 	StructField* int_value_field = &hello_struct_def->fields[0];
@@ -913,7 +913,7 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	assert(inner_field->type.kind == TYPE_STRUCT);
 
 	Struct* inner_struct_def = inner_field->type.struct_def;
-	assert(str_equal(inner_struct_def->name.string, STR_LIT("InnerStruct")));
+	assert(str_equal(inner_struct_def->name, STR_LIT("InnerStruct")));
 
 	StructField* inner_value_field = inner_struct_def->fields;
 	assert(inner_value_field->type.kind == TYPE_INT);
@@ -957,14 +957,14 @@ void test_parse_enum_def(TestContext* context) {
 
 	Enum* enum_def = first->enum_def;
 	assert(enum_def != NULL);
-	assert(str_equal(enum_def->name.string, STR_LIT("Type")));
+	assert(str_equal(enum_def->name, STR_LIT("Type")));
 	assert(enum_def->variant_count == 2);
 
 	EnumVariant* first_variant = &enum_def->variants[0];
 	EnumVariant* second_variant = &enum_def->variants[1];
 
-	assert(str_equal(first_variant->name.string, STR_LIT("TYPE_INT")));
-	assert(str_equal(second_variant->name.string, STR_LIT("TYPE_FLOAT")));
+	assert(str_equal(first_variant->name, STR_LIT("TYPE_INT")));
+	assert(str_equal(second_variant->name, STR_LIT("TYPE_FLOAT")));
 }
 
 void test_parse_function_def(TestContext* context) {
@@ -990,10 +990,10 @@ void test_parse_function_def(TestContext* context) {
 	const FunctionParam* first_param = &function_def->proto.parameters[0];
 	const FunctionParam* second_param = &function_def->proto.parameters[1];
 
-	assert(str_equal(first_param->name.string, STR_LIT("a")));
+	assert(str_equal(first_param->name, STR_LIT("a")));
 	assert(first_param->type.kind == TYPE_INT);
 
-	assert(str_equal(second_param->name.string, STR_LIT("b")));
+	assert(str_equal(second_param->name, STR_LIT("b")));
 	assert(second_param->type.kind == TYPE_INT);
 }
 

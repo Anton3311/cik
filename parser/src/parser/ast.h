@@ -495,7 +495,8 @@ typedef enum {
 } StructLayoutKind;
 
 struct Struct {
-	SourceString name;
+	String name;
+	PackedSourceRange name_source_range;
 	StructLayoutKind layout_kind;
 	uint32_t id;
 
@@ -524,12 +525,14 @@ inline const StructField* struct_find_field(const Struct* struct_def, String fie
 //
 
 struct EnumVariant {
-	SourceString name;
+	String name;
+	PackedSourceRange name_source_range;
 	Expr* value;
 };
 
 struct Enum {
-	SourceString name;
+	String name;
+	PackedSourceRange name_source_range;
 
 	bool is_forward_declared;
 
@@ -543,7 +546,8 @@ struct Enum {
 
 struct TypeDef {
 	Type aliased_type;
-	SourceString new_name;
+	String new_name;
+	PackedSourceRange new_name_source_range;
 };
 
 //
@@ -581,7 +585,8 @@ String function_calling_convetion_to_string(FunctionCallingConvention conv);
 
 struct FunctionParam {
 	Type type;
-	SourceString name;
+	String name;
+	PackedSourceRange name_source_range;
 };
 
 struct FunctionPrototype {

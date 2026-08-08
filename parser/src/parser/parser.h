@@ -54,7 +54,8 @@ typedef enum {
 } IdentifierNamespaceKind;
 
 struct IdentifierEntry {
-	SourceString name;
+	String name;
+	PackedSourceRange name_source_range;
 	IdentifierEntryKind kind;
 	IdentifierNamespaceKind owner_namespace;
 
@@ -141,11 +142,12 @@ IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 IdentifierEntry* ident_storage_insert(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
 		IdentifierEntryKind entry_kind,
-		SourceString name);
+		String name,
+		PackedSourceRange name_source_range);
 
 void ident_storage_remove(IdentifierStorage* storage,
 		IdentifierNamespaceKind namespace_kind,
-		SourceString name);
+		String name);
 
 IdentifierScope* ident_storage_begin_scope(IdentifierStorage* storage);
 void ident_storage_end_scope(IdentifierStorage* storage);

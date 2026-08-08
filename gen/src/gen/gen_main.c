@@ -120,7 +120,7 @@ void _emit_enum_to_string_mapping(GenContext* context,
 				"    switch (variant) {\n"));
 
 	for (size_t i = 0; i < enum_def->variant_count; i += 1) {
-		String variant_name = enum_def->variants[i].name.string;
+		String variant_name = enum_def->variants[i].name;
 		String simple_name = sub_str(variant_name, prefix_length, variant_name.length - prefix_length);
 
 		if (skip_last && i == enum_def->variant_count - 1) {
@@ -160,7 +160,7 @@ static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 		Arena* temp_allocator) {
 
 	size_t instr_name_prefix_length = sizeof("INSTR_") - 1; // -1 for the null terminator
-	String variant_name = enum_def->variants[variant_index].name.string;
+	String variant_name = enum_def->variants[variant_index].name;
 	if (str_starts_with(variant_name, STR_LIT("INSTR_BIN_OP_"))) {
 		return STR_LIT("bin_op");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_NEGATE_"))) {
@@ -341,7 +341,7 @@ bool _generate_instr(GenContext* context) {
 		String instr_struct_name = _instr_kind_to_corresponding_instr_field(instr_kind_enum, i, context->temp_allocator);
 
 		str_builder_append(&builder, STR_LIT("    case "));
-		str_builder_append(&builder, instr_kind_enum->variants[i].name.string);
+		str_builder_append(&builder, instr_kind_enum->variants[i].name);
 		str_builder_append(&builder, STR_LIT(":\n"));
 
 		const StructField* field = struct_find_field(instr_struct, instr_struct_name);
@@ -394,7 +394,7 @@ bool _generate_instr(GenContext* context) {
 		// and can't be printed.
 		size_t variant_count = instr_kind_enum->variant_count - 1;
 		for (size_t i = 0; i < variant_count; i += 1) {
-			String variant_name = instr_kind_enum->variants[i].name.string;
+			String variant_name = instr_kind_enum->variants[i].name;
 			size_t name_length = variant_name.length - instr_name_prefix_length;
 			max_instr_name_length = max(max_instr_name_length, name_length);
 		}
@@ -414,7 +414,7 @@ bool _generate_instr(GenContext* context) {
 				"    switch (instr->kind) {\n"));
 
 	for (size_t i = 0; i < instr_kind_enum->variant_count - 1; i += 1) {
-		String variant_name = instr_kind_enum->variants[i].name.string;
+		String variant_name = instr_kind_enum->variants[i].name;
 		String instr_struct_name = _instr_kind_to_corresponding_instr_field(instr_kind_enum, i, context->temp_allocator);
 
 		str_builder_append(&builder, STR_LIT("    case "));

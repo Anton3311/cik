@@ -108,7 +108,7 @@ void type_format(const Type* type, StringBuilder* builder) {
 	}
 
 	if (type->alias_definition) {
-		str_builder_append(builder, type->alias_definition->new_name.string);
+		str_builder_append(builder, type->alias_definition->new_name);
 	} else {
 		switch (type->kind) {
 		case TYPE_POINTER:
@@ -121,15 +121,15 @@ void type_format(const Type* type, StringBuilder* builder) {
 			break;
 		case TYPE_STRUCT:
 			str_builder_append(builder, STR_LIT("struct "));
-			str_builder_append(builder, type->struct_def->name.string);
+			str_builder_append(builder, type->struct_def->name);
 			break;
 		case TYPE_UNION:
 			str_builder_append(builder, STR_LIT("union "));
-			str_builder_append(builder, type->union_def->name.string);
+			str_builder_append(builder, type->union_def->name);
 			break;
 		case TYPE_ENUM:
 			str_builder_append(builder, STR_LIT("enum "));
-			str_builder_append(builder, type->enum_def->name.string);
+			str_builder_append(builder, type->enum_def->name);
 			break;
 		case TYPE_VOID:
 			str_builder_append(builder, STR_LIT("void"));
@@ -932,8 +932,8 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 	case EXPR_ENUM_CONSTANT: {
 		const Enum* enum_def = expr->enum_constant.enum_def;
 		printer_begin_struct(printer, "enum_constant");
-		printer_string_field(printer, "enum_name", enum_def->name.string);
-		printer_string_field(printer, "variant_name", enum_def->variants[expr->enum_constant.variant_index].name.string);
+		printer_string_field(printer, "enum_name", enum_def->name);
+		printer_string_field(printer, "variant_name", enum_def->variants[expr->enum_constant.variant_index].name);
 		printer_end_struct(printer);
 		break;
 	}
@@ -943,7 +943,7 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		printer_string_field(printer, "func_name", func_def->proto.name);
 		printer_string_field(printer,
 				"param_name",
-				func_def->proto.parameters[expr->function_param.param_index].name.string);
+				func_def->proto.parameters[expr->function_param.param_index].name);
 		printer_end_struct(printer);
 		break;
 	}
@@ -1048,7 +1048,7 @@ void print_struct_def(PrinterState* printer, const Struct* struct_def) {
 			? "struct"
 			: "union");
 
-	printer_string_field(printer, "name", struct_def->name.string);
+	printer_string_field(printer, "name", struct_def->name);
 	printer_field(printer, "id");
 	printf("%u\n", struct_def->id);
 	printer_bool_field(printer, "is_forward_declared", struct_def->is_forward_declared);
@@ -1078,7 +1078,7 @@ void print_enum_def(PrinterState* printer, const Enum* enum_def) {
 
 	printer_begin_struct(printer, "enum");
 
-	printer_string_field(printer, "name", enum_def->name.string);
+	printer_string_field(printer, "name", enum_def->name);
 
 	printer_field(printer, "variants");
 	printer_begin_array(printer);
@@ -1088,7 +1088,7 @@ void print_enum_def(PrinterState* printer, const Enum* enum_def) {
 		printer_array_element(printer, i);
 
 		printer_begin_struct(printer, "variant");
-		printer_string_field(printer, "name", variant->name.string);
+		printer_string_field(printer, "name", variant->name);
 
 		if (variant->value) {
 			printer_field(printer, "value");
@@ -1238,7 +1238,7 @@ void print_type_def(PrinterState* printer, const TypeDef* type_def) {
 
 	printer_field(printer, "type");
 	print_type(printer, &type_def->aliased_type);
-	printer_string_field(printer, "name", type_def->new_name.string);
+	printer_string_field(printer, "name", type_def->new_name);
 
 	printer_end_struct(printer);
 }
@@ -1301,8 +1301,8 @@ void print_function_def(PrinterState* printer, const Function* function_def) {
 		printer_array_element(printer, i);
 		printer_begin_struct(printer, "param");
 
-		if (param->name.string.length > 0) {
-			printer_string_field(printer, "name", param->name.string);
+		if (param->name.length > 0) {
+			printer_string_field(printer, "name", param->name);
 		}
 
 		printer_field(printer, "type");

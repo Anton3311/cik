@@ -904,10 +904,10 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 	StructField* inner_field = &hello_struct_def->fields[2];
 	
 	assert(int_value_field->type.kind == TYPE_INT);
-	assert(str_equal(int_value_field->name.string, STR_LIT("int_value")));
+	assert(str_equal(int_value_field->name, STR_LIT("int_value")));
 
 	assert(float_value_field->type.kind == TYPE_FLOAT);
-	assert(str_equal(float_value_field->name.string, STR_LIT("float_value")));
+	assert(str_equal(float_value_field->name, STR_LIT("float_value")));
 
 	// Check InnerStruct
 	assert(inner_field->type.kind == TYPE_STRUCT);
@@ -917,7 +917,7 @@ void test_parse_type_def_of_struct_def_with_fields(TestContext* context) {
 
 	StructField* inner_value_field = inner_struct_def->fields;
 	assert(inner_value_field->type.kind == TYPE_INT);
-	assert(str_equal(inner_value_field->name.string, STR_LIT("inner_value")));
+	assert(str_equal(inner_value_field->name, STR_LIT("inner_value")));
 }
 
 void test_aliased_type_resolution(TestContext* context) {

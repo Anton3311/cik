@@ -485,7 +485,8 @@ struct StructFieldNamespace {
 size_t struct_field_namespace_index_of(const StructFieldNamespace* struct_namespace, String name);
 
 struct StructField {
-	SourceString name;
+	String name;
+	PackedSourceRange name_source_range;
 	Type type;
 };
 

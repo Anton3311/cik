@@ -534,7 +534,8 @@ static bool _parser_parse_struct_fields(Parser* parser,
 
 		Token name_token = preprocessor_view_next(parser->preprocessor);
 		if (name_token.kind == TOKEN_IDENT) {
-			field->name = source_string_from_token(name_token);
+			field->name = name_token.string;
+			field->name_source_range = source_range_pack(name_token.source_range);
 			preprocessor_next_token(parser->preprocessor); // consume name
 		}
 
@@ -601,7 +602,7 @@ static void _parser_gather_named_field_locations_of_anonymous_type_defs(const St
 
 	for (size_t i = 0; i < struct_def->field_count; i += 1) {
 		const StructField* field = &struct_def->fields[i];
-		if (field->name.string.length == 0) {
+		if (field->name.length == 0) {
 			if (field->type.kind == TYPE_STRUCT) {
 				const Struct* inner_def = field->type.struct_def;
 				_parser_gather_named_field_locations_of_anonymous_type_defs(inner_def, out_field_locations);
@@ -651,12 +652,12 @@ static void _parser_initialize_struct_fields_namespace(Struct* struct_def,
 	for (size_t i = 0; i < named_field_locations.count; i += 1) {
 		NamedFieldLocation loc = named_field_locations.locations[i];
 		const StructField* field = &loc.struct_def->fields[loc.field_index];
-		size_t index = hash_string(field->name.string) % field_namespace->capacity;
+		size_t index = hash_string(field->name) % field_namespace->capacity;
 
 		while (true) {
 			String key = field_namespace->keys[index];
 			if (key.v == NULL) {
-				field_namespace->keys[index] = field->name.string;
+				field_namespace->keys[index] = field->name;
 				field_namespace->entries[index] = (StructFieldNamespaceEntry) {
 					.struct_def = loc.struct_def,
 					.field_index = loc.field_index,
@@ -664,7 +665,7 @@ static void _parser_initialize_struct_fields_namespace(Struct* struct_def,
 
 				field_namespace->size += 1;
 				break;
-			} else if (str_equal(key, field->name.string)) {
+			} else if (str_equal(key, field->name)) {
 				panic("Duplicate struct fields. TODO: Handle");
 			}
 

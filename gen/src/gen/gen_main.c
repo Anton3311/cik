@@ -355,13 +355,13 @@ bool _generate_instr(GenContext* context) {
 						str_builder_append(&builder, STR_LIT("        instr_queue_push_back(out_dependencies, instr->"));
 						str_builder_append(&builder, instr_struct_name);
 						str_builder_append_char(&builder, '.');
-						str_builder_append(&builder, instr_struct->fields[j].name.string);
+						str_builder_append(&builder, instr_struct->fields[j].name);
 						str_builder_append(&builder, STR_LIT(");\n"));
 					} else if (type_is_struct(&instr_struct->fields[j].type, instr_inputs_struct)) {
 						str_builder_append(&builder, STR_LIT("        instr_push_input_dependencies(buffer, instr->"));
 						str_builder_append(&builder, instr_struct_name);
 						str_builder_append_char(&builder, '.');
-						str_builder_append(&builder, instr_struct->fields[j].name.string);
+						str_builder_append(&builder, instr_struct->fields[j].name);
 						str_builder_append(&builder, STR_LIT(", out_dependencies);\n"));
 					}
 
@@ -431,7 +431,7 @@ bool _generate_instr(GenContext* context) {
 
 				// First generate the format string
 				for (size_t j = 0; j < instr_struct->field_count; j += 1) {
-					str_builder_append(&builder, instr_struct->fields[j].name.string);
+					str_builder_append(&builder, instr_struct->fields[j].name);
 					str_builder_append(&builder, STR_LIT(": "));
 
 					switch (instr_struct->fields[j].type.kind) {
@@ -567,9 +567,9 @@ bool _generate_instr(GenContext* context) {
 
 					str_builder_append(&builder, pre_arg);
 					str_builder_append(&builder, STR_LIT("instr->"));
-					str_builder_append(&builder, field->name.string);
+					str_builder_append(&builder, field->name);
 					str_builder_append_char(&builder, '.');
-					str_builder_append(&builder, instr_struct->fields[j].name.string);
+					str_builder_append(&builder, instr_struct->fields[j].name);
 					str_builder_append(&builder, post_arg);
 
 					if (j != instr_struct->field_count - 1) {

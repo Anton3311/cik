@@ -991,7 +991,7 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		printer_begin_struct(printer, "indirect_field_access");
 		printer_field(printer, "target");
 		print_expr(printer, expr->field_access.target);
-		printer_string_field(printer, "field_name", field.name.string);
+		printer_string_field(printer, "field_name", field.name);
 		printer_end_struct(printer);
 		break;
 	}
@@ -1018,7 +1018,7 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		printer_begin_struct(printer, "direct_field_access");
 		printer_field(printer, "target");
 		print_expr(printer, expr->field_access.target);
-		printer_string_field(printer, "field_name", field.name.string);
+		printer_string_field(printer, "field_name", field.name);
 		printer_end_struct(printer);
 		break;
 	}
@@ -1061,7 +1061,7 @@ void print_struct_def(PrinterState* printer, const Struct* struct_def) {
 			const StructField* field = &struct_def->fields[i];
 			printer_array_element(printer, i);
 			printer_begin_struct(printer, "field");
-			printer_string_field(printer, "name", field->name.string);
+			printer_string_field(printer, "name", field->name);
 			printer_field(printer, "type");
 			print_type(printer, &field->type);
 			printer_end_struct(printer);

@@ -168,6 +168,8 @@ typedef struct {
 	uint32_t next_var_id;
 
 	AST* ast;
+
+	AstNode* dummy_node;
 } Parser;
 
 void parser_init(Parser* parser,

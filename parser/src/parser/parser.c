@@ -420,12 +420,14 @@ void _parser_skip_until_semicolon(Parser* parser) {
 	profile_func_colored(PROFILE_COLOR);
 
 	while (true) {
-		Token token = preprocessor_next_token(parser->preprocessor);
+		Token token = preprocessor_view_next(parser->preprocessor);
 		if (token.kind == TOKEN_SEMICOLON) {
 			break;
 		} else if (token.kind == TOKEN_EOF) {
 			break;
 		}
+
+		preprocessor_next_token(parser->preprocessor);
 	}
 
 	profile_scope_end();
@@ -1405,8 +1407,9 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 				new_name,
 				expected_tokens,
 				array_size(expected_tokens));
-		profile_scope_end();
-		return NULL;
+
+		_parser_skip_until_semicolon(parser);
+		return parser->dummy_node;
 	}
 
 	Token semicolon = preprocessor_next_token(parser->preprocessor);
@@ -4030,6 +4033,8 @@ void parser_init(Parser* parser,
 	parser->diagnostics = diagnostics;
 	parser->preprocessor = preprocessor;
 	parser->ident_storage = ident_storage;
+
+	parser->dummy_node = arena_alloc_zeroed(ast_allocator, AstNode);
 }
 
 void parser_parse(Parser* parser, AST* ast) {
@@ -4053,6 +4058,10 @@ void parser_parse(Parser* parser, AST* ast) {
 		}
 
 		AstNode* node = _parser_parse_single_node(parser, token);
+		if (node == parser->dummy_node) {
+			continue;
+		}
+
 		if (node) {
 			parsed_node_list_append(&ast->root_nodes, node);
 

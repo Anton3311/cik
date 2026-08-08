@@ -863,7 +863,7 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		break;
 	case EXPR_VARIABLE_REFERENCE:
 		printer_begin_struct(printer, "variable_ref");
-		printer_string_field(printer, "name", expr->variable_ref.var->name.string);
+		printer_string_field(printer, "name", expr->variable_ref.var->name);
 		printer_end_struct(printer);
 		break;
 	case EXPR_BINARY: {
@@ -1329,7 +1329,7 @@ void print_function_def(PrinterState* printer, const Function* function_def) {
 
 void print_variable(PrinterState* printer, const Variable* variable) {
 	printer_begin_struct(printer, "variable");
-	printer_string_field(printer, "name", variable->name.string);
+	printer_string_field(printer, "name", variable->name);
 	printer_field(printer, "type");
 	print_type(printer, &variable->type);
 

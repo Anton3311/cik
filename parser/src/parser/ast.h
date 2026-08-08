@@ -614,7 +614,7 @@ struct Function {
 //
 
 struct Variable {
-	SourceString name;
+	String name;
 	Type type;
 	Expr* value;
 	StorageSpecifier storage_specifier;

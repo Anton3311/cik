@@ -1231,7 +1231,7 @@ void test_parse_variable_declaration(TestContext* context) {
 	assert(first_def->kind == AST_NODE_VARIABLE);
 
 	Variable* variable = &first_def->variable;
-	assert(str_equal(variable->name.string, STR_LIT("a")));
+	assert(str_equal(variable->name, STR_LIT("a")));
 	assert(variable->value == NULL);
 	assert(variable->type.kind == TYPE_INT);
 }

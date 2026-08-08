@@ -3165,8 +3165,6 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		}
 	}
 
-	SourceString name = source_string_from_token(name_token);
-
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_LEFT_PAREN) {
 		profile_scope_end();
@@ -3226,7 +3224,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 
 		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_VARIABLE;
-		node->variable.name = name;
+		node->variable.name = name_token.string;
 		node->variable.type = *type;
 		node->variable.value = value;
 		node->variable.storage_specifier = storage_specifier;
@@ -3237,7 +3235,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				IDENT_VARIABLE,
-				node->variable.name.string,
+				node->variable.name,
 				source_range_pack(name_token.source_range));
 
 		entry->variable = &node->variable;
@@ -3259,7 +3257,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_VARIABLE;
 		node->variable = (Variable) {
-			.name = name,
+			.name = name_token.string,
 			.type = *type,
 			.value = NULL,
 			.storage_specifier = storage_specifier,

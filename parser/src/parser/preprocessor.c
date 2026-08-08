@@ -311,6 +311,21 @@ void preprocessor_init(Preprocessor* state,
 		};
 
 		macro_table_append(&state->macro_table, &__pragma_macro);
+
+		MacroDefinition _win64_macro = {
+			.name = (SourceString) {
+				.string = STR_LIT("_WIN64"),
+				.source_file = state->tokenizer->source_file,
+			},
+			.style = MACRO_STYLE_DEFAULT,
+			.builtin_kind = BUILTIN_MACRO_NONE,
+			.has_va_args = 0,
+			.token_count = 0,
+			.tokens = NULL,
+			.token_hints = NULL,
+		};
+
+		macro_table_append(&state->macro_table, &_win64_macro);
 	}
 
 	const size_t call_stack_capacity = 32;

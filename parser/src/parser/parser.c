@@ -532,6 +532,10 @@ static bool _parser_parse_struct_fields(Parser* parser,
 			preprocessor_next_token(parser->preprocessor); // consume name
 		}
 
+		if (!_parser_parse_post_declaration_modifiers(parser, &field->type, &field->type, true)) {
+			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
+		}
+
 		Token end_token = preprocessor_view_next(parser->preprocessor);
 		if (end_token.kind == TOKEN_SEMICOLON) {
 			// consume semicolon

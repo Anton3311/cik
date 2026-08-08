@@ -30,6 +30,11 @@ typedef struct {
 	char c;  // offset - 7
 } StructWithoutUselessPadding;
 
+typedef struct {
+	unsigned long long big_int;
+	int array[10];
+} StructWithArray;
+
 typedef union {
 	int a;
 } Union_4Bytes;
@@ -76,6 +81,8 @@ int main(int argc, char *argv[]) {
 
 	assert(sizeof StructWithUselessPadding == 16);
 	assert(sizeof StructWithoutUselessPadding == 8);
+
+	assert(sizeof StructWithArray == 48);
 
 	// Unions
 	assert(sizeof(Union_4Bytes) == 4);

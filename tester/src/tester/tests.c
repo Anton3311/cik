@@ -1976,7 +1976,6 @@ void test_invalid_int_literal_sufixes(TestContext* context) {
 		for (size_t j = 0; j < array_size(bit_count); j += 1) {
 			ArenaRegion temp = arena_begin_temp(context->temp_arena);
 
-			Diagnostics diagnostics = { .allocator = context->temp_arena };
 			StringBuilder builder = { .arena = context->temp_arena };
 			str_builder_append(&builder, int_lit);
 			str_builder_append(&builder, std_sufixes[i]);
@@ -1987,6 +1986,12 @@ void test_invalid_int_literal_sufixes(TestContext* context) {
 				.path = STR_LIT(DEFAULT_SOURCE_PATH),
 				.source_code = builder.string,
 				.line_info = line_info_from_source(context->temp_arena, builder.string),
+			};
+
+			SourceStorage source_storage = { .files = &source_file, .count = 1 };
+			Diagnostics diagnostics = {
+				.allocator = context->temp_arena, 
+				.source_storage = &source_storage
 			};
 
 			IntLiteral literal = {};
@@ -2147,12 +2152,21 @@ void test_invalid_escape_sequences(TestContext* context) {
 		String target_string = (String) { .v = source_buffer, .length = 2 };
 
 		ArenaRegion temp = arena_begin_temp(context->arena);
-		Diagnostics diagnostics = { .allocator = context->arena };
 
 		SourceFile source_file = (SourceFile) {
 			.path = STR_LIT(DEFAULT_SOURCE_PATH),
 			.source_code = target_string,
 			.line_info = line_info_from_source(context->arena, target_string),
+		};
+
+		SourceStorage source_storage = {
+			.files = &source_file,
+			.count = 1,
+		};
+
+		Diagnostics diagnostics = {
+			.allocator = context->arena,
+			.source_storage = &source_storage
 		};
 
 		StringBuilder builder = { .arena = context->arena };
@@ -2185,12 +2199,21 @@ void test_hex_escape_sequence(TestContext* context) {
 
 void _test_escape_string_fail(Arena* allocator, String string, String expected_error_message) {
 	ArenaRegion temp = arena_begin_temp(allocator);
-	Diagnostics diagnostics = { .allocator = allocator };
 
 	SourceFile source_file = (SourceFile) {
 		.path = STR_LIT(DEFAULT_SOURCE_PATH),
 		.source_code = string,
 		.line_info = line_info_from_source(allocator, string),
+	};
+
+	SourceStorage source_storage = {
+		.files = &source_file,
+		.count = 1,
+	};
+
+	Diagnostics diagnostics = {
+		.allocator = allocator,
+		.source_storage = &source_storage
 	};
 
 	StringBuilder builder = { .arena = allocator };

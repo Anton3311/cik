@@ -24,15 +24,6 @@ typedef enum {
 } IntegerLiteralSufixKind;
 
 typedef struct {
-	IntergerLiteralFormat format;
-	SourceString int_part_string;
-
-	bool has_sufix;
-	uint8_t sufix_bit_count; // 8, 16, 32 or 64
-	IntegerLiteralSufixKind sufix_kind;
-} IntegerLiteralInfo;
-
-typedef struct {
 	uint64_t value;
 
 	IntergerLiteralFormat format;

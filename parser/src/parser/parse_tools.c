@@ -16,6 +16,21 @@ String int_literal_format_to_string(IntergerLiteralFormat format) {
 	return (String){};
 }
 
+static PackedSourceRange _string_to_packed_source_range(String string,
+		const SourceFile* source_file) {
+	String source_code = source_file->source_code;
+	assert(string.v >= source_code.v);
+	assert(string.v + string.length <= source_code.v + source_code.length);
+
+	size_t range_start = (size_t)(string.v - source_code.v);
+	assert(range_start <= UINT32_MAX);
+	return (PackedSourceRange) {
+		.start = (uint32_t)range_start,
+		.length = (uint16_t)string.length,
+		.file_id = source_file->id,
+	};
+}
+
 // Parse int literal prefixes: 0x, 0 (for octal), and 0b
 // If the token is just a single `0` char, keeps it as decimal.
 //
@@ -168,11 +183,8 @@ static SufixParseResult _parse_int_literal_sufix(String literal_string,
 					literal_string.length - final_sufix_length,
 					final_sufix_length);
 
-			diagnostics_report_error(diagnostics,
-					source_string_to_range((SourceString) {
-						.string = sufix_string,
-						.source_file = source_file,
-					}),
+			report_error(diagnostics,
+					_string_to_packed_source_range(sufix_string, source_file),
 					STR_LIT("Invalid sufix on integer"),
 					NULL);
 
@@ -194,20 +206,29 @@ static void _report_invalid_char_in_interger_literal(Diagnostics* diagnostics,
 		const SourceFile* source_file,
 		size_t invalid_char_position,
 		IntergerLiteralFormat format) {
+	String invalid_char_sub_str = sub_str(literal_string, invalid_char_position, 1);
+
+	String source_code = source_file->source_code;
+	assert(invalid_char_sub_str.v >= source_code.v);
+	assert(invalid_char_sub_str.v + invalid_char_sub_str.length <= source_code.v + source_code.length);
 
 	String format_string = int_literal_format_to_string(format);
-	String invalid_char_sub_str = sub_str(literal_string, invalid_char_position, 1);
+
+	size_t range_start = (size_t)(invalid_char_sub_str.v - source_code.v);
+	assert(range_start <= UINT32_MAX);
+	PackedSourceRange source_range = (PackedSourceRange) {
+		.start = (uint32_t)range_start,
+		.length = 1,
+		.file_id = source_file->id,
+	};
 
 	StringBuilder builder = { .arena = diagnostics->allocator };
 	str_builder_append(&builder, STR_LIT("Unexpected char in "));
 	str_builder_append(&builder, format_string);
 	str_builder_append(&builder, STR_LIT(" integer literal"));
 
-	diagnostics_report_error(diagnostics,
-			source_string_to_range((SourceString) {
-				.string = invalid_char_sub_str,
-				.source_file = source_file,
-			}),
+	report_error(diagnostics,
+			source_range,
 			builder.string,
 			NULL);
 }
@@ -219,11 +240,8 @@ static bool _parse_int_literal_value(Diagnostics* diagnostics,
 		IntergerLiteralFormat format,
 		uint64_t* out_result) {
 	if (string.length == 0) {
-		diagnostics_report_error(diagnostics,
-				source_string_to_range((SourceString) {
-					.string = string,
-					.source_file = source_file,
-				}),
+		report_error(diagnostics,
+				_string_to_packed_source_range(string, source_file),
 				STR_LIT("Invalid integer literal"),
 				NULL);
 		return false;
@@ -328,12 +346,8 @@ static void _report_escape_sequence_error(String string,
 		Diagnostics* diagnostics,
 		String message) {
 
-	SourceRange sequence_start_range = source_string_to_range((SourceString) {
-		.string = string,
-		.source_file = file,
-	});
-
-	diagnostics_report_error(diagnostics,
+	PackedSourceRange sequence_start_range = _string_to_packed_source_range(string, file);
+	report_error(diagnostics,
 			sequence_start_range,
 			message,
 			NULL);

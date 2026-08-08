@@ -1719,10 +1719,6 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			expr_get_type(out_expr->unary.operand, &operand_type);
 
 			if (!type_kind_is_int(operand_type.kind)) {
-				SourceRange operand_source_range = source_range_unpack(
-						parser->preprocessor->source_storage,
-						expr_get_source_range(out_expr->unary.operand));
-
 				StringBuilder builder = { parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Cannot apply '"));
 				str_builder_append(&builder, token.string);
@@ -1730,22 +1726,18 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				type_format(&operand_type, &builder);
 				str_builder_append(&builder, STR_LIT("'"));
 
-				diagnostics_report_error(parser->diagnostics,
-						operand_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(out_expr->unary.operand),
 						builder.string,
 						NULL);
 			}
 		}
 
 		if (result == EXPR_PARSE_OK && requires_l_value) {
-			SourceRange operand_source_range = source_range_unpack(
-					parser->preprocessor->source_storage,
-					expr_get_source_range(out_expr->unary.operand));
-
 			ValueKind operand_value_kind = expr_get_value_kind(out_expr->unary.operand);
 			if (operand_value_kind != VALUE_L) {
-				diagnostics_report_error(parser->diagnostics,
-						operand_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(out_expr->unary.operand),
 						STR_LIT("Expected an l-value"),
 						NULL);
 			}
@@ -2051,10 +2043,8 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			case EXPR_PARSE_NOT_PARSED:
-				diagnostics_report_error(parser->diagnostics,
-						source_range_unpack(
-							parser->preprocessor->source_storage,
-							source_range),
+				report_error(parser->diagnostics,
+						source_range,
 						STR_LIT("Expected an expression or a type after 'sizeof'"),
 						NULL);
 				profile_scope_end();
@@ -2167,7 +2157,7 @@ static ExprParseResult _parser_parse_arg_list(Parser* parser, ExprArray* out_exp
 static bool _check_is_convertable(Parser* parser,
 		Type* from,
 		Type* to,
-		SourceRange from_source_range) {
+		PackedSourceRange from_source_range) {
 
 	if (type_equal(from, to)) {
 		return true;
@@ -2191,7 +2181,7 @@ static bool _check_is_convertable(Parser* parser,
 			type_format(to, &builder);
 			str_builder_append(&builder, STR_LIT("' discards 'const' qualifier"));
 
-			diagnostics_report_error(parser->diagnostics,
+			report_error(parser->diagnostics,
 					from_source_range,
 					builder.string,
 					NULL);
@@ -2219,7 +2209,7 @@ static bool _check_is_convertable(Parser* parser,
 	type_format(to, &builder);
 	str_builder_append(&builder, STR_LIT("'"));
 
-	diagnostics_report_error(parser->diagnostics,
+	report_error(parser->diagnostics,
 			from_source_range,
 			builder.string,
 			NULL);
@@ -2238,10 +2228,8 @@ static void _type_check_call(Parser* parser, Expr* call) {
 	expr_get_type(callable, &callable_type);
 
 	if (callable_type.kind != TYPE_FUNCTION) {
-		diagnostics_report_error(parser->diagnostics,
-				source_range_unpack(
-					parser->preprocessor->source_storage,
-					expr_get_source_range(callable)),
+		report_error(parser->diagnostics,
+				expr_get_source_range(callable),
 				STR_LIT("Expression is not callable"),
 				NULL);
 
@@ -2251,21 +2239,17 @@ static void _type_check_call(Parser* parser, Expr* call) {
 
 	assert(callable_type.kind == TYPE_FUNCTION);
 
-	SourceRange call_source_range = source_range_unpack(
-			parser->preprocessor->source_storage,
-			expr_get_source_range(call));
-
 	const FunctionPrototype* proto = callable_type.function;
 	if (args.count < proto->parameter_count) {
-		diagnostics_report_error(parser->diagnostics,
-				call_source_range,
+		report_error(parser->diagnostics,
+				expr_get_source_range(call),
 				STR_LIT("Too few arguments for a call"),
 				NULL);
 	}
 
 	if (!proto->has_va_args && args.count > proto->parameter_count) {
-		diagnostics_report_error(parser->diagnostics,
-				call_source_range,
+		report_error(parser->diagnostics,
+				expr_get_source_range(call),
 				STR_LIT("Too many arguments for a call"),
 				NULL);
 	}
@@ -2278,9 +2262,7 @@ static void _type_check_call(Parser* parser, Expr* call) {
 		_check_is_convertable(parser,
 				&arg_type,
 				&proto->parameters[i].type,
-				source_range_unpack(
-					parser->preprocessor->source_storage,
-					expr_get_source_range(args.exprs[i])));
+				expr_get_source_range(args.exprs[i]));
 	}
 
 	if (proto->has_va_args) {
@@ -2292,10 +2274,8 @@ static void _type_check_call(Parser* parser, Expr* call) {
 				continue;
 			}
 
-			diagnostics_report_error(parser->diagnostics,
-					source_range_unpack(
-						parser->preprocessor->source_storage,
-						expr_get_source_range(args.exprs[i])),
+			report_error(parser->diagnostics,
+					expr_get_source_range(args.exprs[i]),
 					STR_LIT("Argument has type 'void'"),
 					NULL);
 		}
@@ -2390,10 +2370,6 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			Type operand_type;
 			expr_get_type(operand, &operand_type);
 
-			SourceRange operand_source_range = source_range_unpack(
-					parser->preprocessor->source_storage,
-					expr_get_source_range(operand));
-
 			if (!type_kind_is_int(operand_type.kind)) {
 				StringBuilder builder = { parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Cannot apply '"));
@@ -2402,16 +2378,16 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				type_format(&operand_type, &builder);
 				str_builder_append(&builder, STR_LIT("'"));
 
-				diagnostics_report_error(parser->diagnostics,
-						operand_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(operand),
 						builder.string,
 						NULL);
 			}
 
 			ValueKind operand_value_kind = expr_get_value_kind(operand);
 			if (operand_value_kind != VALUE_L) {
-				diagnostics_report_error(parser->diagnostics,
-						operand_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(operand),
 						STR_LIT("Expected an l-value"),
 						NULL);
 			}
@@ -2436,10 +2412,6 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				return EXPR_PARSE_ERROR;
 			}
 
-			SourceRange target_source_range = source_range_unpack(
-					parser->preprocessor->source_storage,
-					expr_get_source_range(out_expr));
-
 			Type target_type = {};
 			expr_get_type(out_expr, &target_type);
 
@@ -2450,8 +2422,8 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				type_format(&target_type, &builder);
 				str_builder_append(&builder, STR_LIT("' instead."));
 
-				diagnostics_report_error(parser->diagnostics,
-						target_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(out_expr),
 						builder.string,
 						NULL);
 				return EXPR_PARSE_ERROR;
@@ -2471,16 +2443,16 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				type_format(inner_type, &builder);
 				str_builder_append(&builder, STR_LIT("' instead."));
 
-				diagnostics_report_error(parser->diagnostics,
-						target_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(out_expr),
 						builder.string,
 						NULL);
 				return EXPR_PARSE_ERROR;
 			}
 
 			if (compound_type->is_forward_declared) {
-				diagnostics_report_error(parser->diagnostics,
-						target_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(out_expr),
 						STR_LIT("Expression has an incomplete type"),
 						NULL);
 				return EXPR_PARSE_ERROR;
@@ -2527,10 +2499,6 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				return EXPR_PARSE_ERROR;
 			}
 
-			SourceRange target_source_range = source_range_unpack(
-					parser->preprocessor->source_storage,
-					expr_get_source_range(out_expr));
-
 			Type target_type = {};
 			expr_get_type(out_expr, &target_type);
 
@@ -2546,8 +2514,8 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				type_format(&target_type, &builder);
 				str_builder_append(&builder, STR_LIT("' instead."));
 
-				diagnostics_report_error(parser->diagnostics,
-						target_source_range,
+				report_error(parser->diagnostics,
+						expr_get_source_range(out_expr),
 						builder.string,
 						NULL);
 				return EXPR_PARSE_ERROR;
@@ -2565,8 +2533,8 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 				str_builder_format(&builder,
 						"' has no field named '%.*s'", STR_FMT(field_name_token.string));
 
-				diagnostics_report_error(parser->diagnostics,
-						field_name_token.source_range,
+				report_error(parser->diagnostics,
+						source_range_pack(field_name_token.source_range),
 						builder.string,
 						NULL);
 				return EXPR_PARSE_ERROR;
@@ -2594,7 +2562,7 @@ static void _bin_expr_select_common_type(const Type* left_type,
 		const Type* right_type,
 		Diagnostics* diagnostics,
 		BinOpKind operator,
-		SourceRange source_range,
+		PackedSourceRange source_range,
 		Type* out_type) {
 	out_type->kind = TYPE_VOID;
 
@@ -2639,7 +2607,7 @@ static void _bin_expr_select_common_type(const Type* left_type,
 		type_format(right_type, &builder);
 		str_builder_append(&builder, STR_LIT("'"));
 
-		diagnostics_report_error(diagnostics, source_range, builder.string, NULL);
+		report_error(diagnostics, source_range, builder.string, NULL);
 		return;
 	}
 
@@ -2743,16 +2711,12 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 				}
 			};
 
-			SourceRange source_range = source_range_unpack(
-					parser->preprocessor->source_storage,
-					expr_get_source_range(current_expr));
-
 			Type common_type;
 			_bin_expr_select_common_type(&left_type,
 					&right_type,
 					parser->diagnostics,
 					current_bin_op,
-					source_range,
+					expr_get_source_range(current_expr),
 					&common_type);
 
 			current_expr->binary.common_type_kind = common_type.kind;

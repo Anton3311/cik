@@ -30,6 +30,8 @@ struct DiagnosticsEntry {
 typedef struct {
 	Arena* allocator;
 
+	const SourceStorage* source_storage;
+
 	DiagnosticsEntry* first;
 	DiagnosticsEntry* last;
 } Diagnostics;
@@ -45,5 +47,11 @@ void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 		Token actual_token,
 		TokenKind* expected_kinds,
 		size_t expected_kind_count);
+
+DiagnosticsEntry* report_error(
+		Diagnostics* diagnostics, 
+		PackedSourceRange source_range, 
+		String message, 
+		DiagnosticsEntry* parent);
 
 #endif

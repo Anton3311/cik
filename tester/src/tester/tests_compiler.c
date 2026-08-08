@@ -21,6 +21,7 @@ static CompiledFunction _compile(TestContext* context, String source_code) {
 
 	Diagnostics diagnostics = (Diagnostics) {
 		.allocator = context->arena,
+		.source_storage = &source_storage,
 	};
 
 	Arena generated_tokens_arena = {};

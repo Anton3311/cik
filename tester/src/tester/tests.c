@@ -221,6 +221,7 @@ static void init_preprocessor_test(TestContext* context,
 
 	*out_diagnostics = (Diagnostics) {
 		.allocator = context->arena,
+		.source_storage = source_storage,
 	};
 	
 	preprocessor_init(out_preprocessor,
@@ -788,6 +789,7 @@ void run_parser_test_2(TestContext* context,
 
 	*out_diagnostics = (Diagnostics) {
 		.allocator = context->temp_arena,
+		.source_storage = out_source_storage,
 	};
 
 	Arena generated_tokens_arena = arena_alloc_sub_arena(context->arena, 2 * 4096);

@@ -312,6 +312,7 @@ int main(int argc, char *argv[]) {
 		for (size_t i = 0; i < source_files.count; i += 1) {
 			Diagnostics diagnostics = (Diagnostics) {
 				.allocator = &diagnostics_arena,
+				.source_storage = &source_storage,
 			};
 
 			CompilationUnitContext context = {};

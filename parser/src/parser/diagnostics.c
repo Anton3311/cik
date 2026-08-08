@@ -161,3 +161,18 @@ void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 	diagnostics_report_error(diagnostics, actual_token.source_range, builder.string, NULL);
 }
 
+DiagnosticsEntry* report_error(
+		Diagnostics* diagnostics, 
+		PackedSourceRange source_range, 
+		String message, 
+		DiagnosticsEntry* parent) {
+
+	SourceRange unpakced_range = source_range_unpack(
+			diagnostics->source_storage,
+			source_range);
+
+	return diagnostics_report_error(diagnostics,
+			unpakced_range,
+			message,
+			parent);
+}

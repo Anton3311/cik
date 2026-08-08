@@ -3951,6 +3951,18 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		return stmt;
 	}
 	default: {
+		// TODO: Actually use the inline information
+		Token maybe_inline = preprocessor_view_next(parser->preprocessor);
+		if (maybe_inline.kind == TOKEN_KEYWORD_INLINE) {
+			preprocessor_next_token(parser->preprocessor);
+		} else if (maybe_inline.kind == TOKEN_IDENT) {
+			if (str_equal(maybe_inline.string, STR_LIT("__inline"))) {
+				preprocessor_next_token(parser->preprocessor);
+			} else if (str_equal(maybe_inline.string, STR_LIT("__forceinline"))) {
+				preprocessor_next_token(parser->preprocessor);
+			}
+		}
+
 		DeclSpec* decl_spec = _parser_parse_decl_spec(parser);
 		StorageSpecifier storage_specifier = STORAGE_SPEC_NONE;
 

@@ -1707,6 +1707,120 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 	profile_scope_end();
 }
 
+static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
+		CompoundLiteralEntry* out_entry) {
+
+	profile_func_colored(PROFILE_COLOR);
+
+	Token token = preprocessor_view_next(parser->preprocessor);
+	if (token.kind == TOKEN_DOT) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_entry->kind = COMPOUND_LITERAL_FIELD_INIT;
+
+		Token field_name = preprocessor_next_token(parser->preprocessor);
+		if (field_name.kind != TOKEN_IDENT) {
+			TokenKind expected_tokens[] = { TOKEN_IDENT };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					field_name, 
+					expected_tokens, 
+					array_size(expected_tokens));
+			return EXPR_PARSE_ERROR;
+		}
+
+		out_entry->field.name = field_name.string;
+		out_entry->field.index = SIZE_MAX;
+
+		Token equal = preprocessor_next_token(parser->preprocessor);
+		if (equal.kind != TOKEN_EQUAL) {
+			TokenKind expected_tokens[] = { TOKEN_EQUAL };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					equal, 
+					expected_tokens, 
+					array_size(expected_tokens));
+			return EXPR_PARSE_ERROR;
+		}
+	} else if (token.kind == TOKEN_LEFT_BRACKET) {
+		panic("todo!");
+	} else {
+		out_entry->kind = COMPOUND_LITERAL_VALUE;
+	}
+
+	Expr* value = arena_alloc_zeroed(parser->ast_allocator, Expr);
+	out_entry->value = value;
+
+	ExprParseResult expr_result = _parser_try_parse_expr(parser, value);
+
+	if (expr_result != EXPR_PARSE_OK) {
+		_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_BRACE);
+		profile_scope_end();
+		return EXPR_PARSE_ERROR;
+	}
+
+	profile_scope_end();
+	return EXPR_PARSE_OK;
+}
+
+static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
+		CompoundLiteral* out_literal) {
+
+	profile_func_colored(PROFILE_COLOR);
+	assert(preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE);
+
+	preprocessor_next_token(parser->preprocessor); // consume {
+
+	ArenaRegion temp = arena_begin_temp(parser->temp_allocator);
+
+	size_t entry_count = 0;
+	CompoundLiteralEntry* entries = arena_alloc_array(parser->temp_allocator,
+			CompoundLiteralEntry,
+			0);
+
+	while (true) {
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_RIGHT_BRACE) {
+			preprocessor_next_token(parser->preprocessor);
+			break;
+		}
+
+		CompoundLiteralEntry entry;
+		if (_parser_parse_compound_literal_entry(parser, &entry) == EXPR_PARSE_OK) {
+			arena_alloc(parser->temp_allocator, CompoundLiteralEntry);
+			entries[entry_count] = entry;
+			entry_count += 1;
+		} else {
+			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_BRACE);
+		}
+
+		token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_COMMA) {
+			preprocessor_next_token(parser->preprocessor);
+			continue;
+		} else if (token.kind == TOKEN_RIGHT_BRACE) {
+			continue;
+		} else {
+			TokenKind expected_tokens[] = { TOKEN_COMMA, TOKEN_RIGHT_BRACE };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					token,
+					expected_tokens,
+					array_size(expected_tokens));
+			break;
+		}
+	}
+
+	out_literal->entry_count = entry_count;
+	out_literal->entries = arena_alloc_array(parser->ast_allocator, 
+			CompoundLiteralEntry,
+			entry_count);
+
+	array_copy(out_literal->entries, entries, entry_count);
+
+	arena_end_temp(temp);
+
+	profile_scope_end();
+	return EXPR_PARSE_OK;
+}
+
 static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(Parser* parser, Expr* out_expr) {
 	profile_func_colored(PROFILE_COLOR);
 	Token token = preprocessor_view_next(parser->preprocessor);
@@ -2117,6 +2231,11 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		}
 
 		unreachable();
+	} else if (token.kind == TOKEN_LEFT_BRACE) {
+		out_expr->kind = EXPR_COMPOUND_LITERAL;
+		ExprParseResult result = _parser_try_parse_compound_literal(parser, &out_expr->compound_literal);
+		profile_scope_end();
+		return result;
 	}
 
 	profile_scope_end();

@@ -34,6 +34,8 @@ typedef struct IfStmt IfStmt;
 typedef struct WhileLoop WhileLoop;
 typedef struct ForLoop ForLoop;
 typedef struct ArrayIndex ArrayIndex;
+typedef struct CompoundLiteralEntry CompoundLiteralEntry;
+typedef struct CompoundLiteral CompoundLiteral;
 
 //
 // AST
@@ -359,6 +361,36 @@ struct ArrayIndex {
 };
 
 typedef enum {
+	COMPOUND_LITERAL_VALUE,
+	COMPOUND_LITERAL_FIELD_INIT,
+	COMPOUND_LITERAL_ARRAY_ELEMENT_INIT,
+} CompoundLiteralEntryKind;
+
+struct CompoundLiteralEntry {
+	CompoundLiteralEntryKind kind;
+
+	union {
+		struct {
+			String name;
+			size_t index;
+		} field;
+		struct {
+			Expr* index;
+		} array_element;
+	};
+
+	Expr* value;
+};
+
+struct CompoundLiteral {
+	PackedSourceRange source_range;
+	Type* type;
+
+	CompoundLiteralEntry* entries;
+	size_t entry_count;
+};
+
+typedef enum {
 	EXPR_CALL,
 	EXPR_BINARY,
 	EXPR_UNARY,
@@ -367,6 +399,7 @@ typedef enum {
 	EXPR_INTEGER_LITERAL,
 	EXPR_STRING_LITERAL,
 	EXPR_CHAR_LITERAL,
+	EXPR_COMPOUND_LITERAL,
 	EXPR_ENUM_CONSTANT,
 	EXPR_FUNCTION_PARAM,
 	EXPR_ARRAY_INDEX,
@@ -432,6 +465,8 @@ struct Expr {
 			Type* type;
 			PackedSourceRange source_range;
 		} size_of_type;
+
+		CompoundLiteral compound_literal;
 	};
 };
 

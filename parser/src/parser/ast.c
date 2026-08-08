@@ -637,6 +637,10 @@ void expr_get_type(Expr* expr, Type* out_type) {
 	case EXPR_SIZE_OF_TYPE:
 		out_type->kind = TYPE_SIZE_T;
 		return;
+	case EXPR_COMPOUND_LITERAL:
+		assert(expr->compound_literal.type);
+		*out_type = *expr->compound_literal.type;
+		return;
 	}
 
 	unreachable_msg("Failed to get expr type");
@@ -730,6 +734,8 @@ PackedSourceRange expr_get_source_range(const Expr* expr) {
 		return expr->size_of_expr.source_range;
 	case EXPR_SIZE_OF_TYPE:
 		return expr->size_of_type.source_range;
+	case EXPR_COMPOUND_LITERAL:
+		return expr->compound_literal.source_range;
 	}
 
 	unreachable();
@@ -919,13 +925,13 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 
 		printer_field(printer, "args");
 		printer_begin_array(printer);
-		printer_end_array(printer);
 
 		for (size_t i = 0; i < expr->call.args.count; i += 1) {
 			printer_array_element(printer, i);
 			print_expr(printer, expr->call.args.exprs[i]);
 		}
 
+		printer_end_array(printer);
 		printer_end_struct(printer);
 		break;
 	}
@@ -1036,6 +1042,49 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 		print_type(printer, expr->size_of_type.type);
 		printer_end_struct(printer);
 		break;
+	}
+	case EXPR_COMPOUND_LITERAL: {
+		printer_begin_struct(printer, "compound_literal");
+		if (expr->compound_literal.type) {
+			printer_field(printer, "type");
+			print_type(printer, expr->compound_literal.type);
+		}
+
+		printer_field(printer, "entries");
+		printer_begin_array(printer);
+
+		for (size_t i = 0; i < expr->compound_literal.entry_count; i += 1) {
+			printer_array_element(printer, i);
+
+			const CompoundLiteralEntry* entry = &expr->compound_literal.entries[i];
+			switch (entry->kind) {
+			case COMPOUND_LITERAL_VALUE:
+				printer_begin_struct(printer, "value");
+				printer_field(printer, "value");
+				print_expr(printer, entry->value);
+				printer_end_struct(printer);
+				break;
+			case COMPOUND_LITERAL_FIELD_INIT:
+				printer_begin_struct(printer, "field");
+				printer_string_field(printer, "field", entry->field.name);
+				printer_field(printer, "value");
+				print_expr(printer, entry->value);
+				printer_end_struct(printer);
+				break;
+			case COMPOUND_LITERAL_ARRAY_ELEMENT_INIT:
+				printer_begin_struct(printer, "array_element");
+				printer_field(printer, "index");
+				print_expr(printer, entry->array_element.index);
+				printer_field(printer, "value");
+				print_expr(printer, entry->value);
+				printer_end_struct(printer);
+				break;
+			}
+		}
+
+		printer_end_array(printer);
+
+		printer_end_struct(printer);
 		break;
 	}
 	}

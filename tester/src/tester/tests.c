@@ -1851,13 +1851,20 @@ void test_parse_union_def(TestContext* context) {
 	assert(union_def->layout_kind == STRUCT_LAYOUT_KIND_UNION);
 }
 
-inline Token _create_string_token(String str, const SourceFile* file) {
+inline Token _create_string_token(String string, const SourceFile* file) {
+	String source_code = file->source_code;
+	assert(string.v >= source_code.v);
+	assert(string.v + string.length <= source_code.v + source_code.length);
+
+	size_t range_start = (size_t)(string.v - source_code.v);
+
 	return (Token) { .kind = TOKEN_STRING,
-		.string = str,
-		.source_range = source_string_to_range((SourceString) {
-				.string = str,
-				.source_file = file
-				})
+		.string = string,
+		.source_range = (SourceRange) {
+			.source_file = file,
+			.start = range_start,
+			.end = range_start + string.length,
+		},
 	};
 }
 

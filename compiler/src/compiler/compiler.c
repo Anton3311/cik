@@ -182,6 +182,7 @@ typedef struct {
 } AddressExpr;
 
 static InstrIndex _compile_address_expr(FunctionCompiler* compiler, AddressExpr addr_expr);
+static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr);
 
 static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const Type* int_type,
@@ -234,7 +235,7 @@ static void _compile_compound_literal_init(FunctionCompiler* compiler,
 		const CompoundLiteralEntry* entry = &entries[i];
 
 		size_t offset = 0;
-		TypeLayout slot_type_layout;
+		Type slot_type;
 
 		switch (entry->kind) {
 		case COMPOUND_LITERAL_VALUE: {
@@ -245,8 +246,7 @@ static void _compile_compound_literal_init(FunctionCompiler* compiler,
 			assert(entry->not_designated.index < compound_type->field_count);
 			offset = field_offsets[entry->not_designated.index];
 
-			Type* field_type = &compound_type->fields[entry->not_designated.index].type;
-			slot_type_layout = _type_get_layout(type_context, field_type);
+			slot_type = compound_type->fields[entry->not_designated.index].type;
 			break;
 		}
 		case COMPOUND_LITERAL_FIELD_INIT: {
@@ -260,43 +260,65 @@ static void _compile_compound_literal_init(FunctionCompiler* compiler,
 			assert(field_entry.struct_def == compound_type);
 			offset = field_offsets[field_entry.field_index];
 
-			Type* field_type = &compound_type->fields[field_entry.field_index].type;
-			slot_type_layout = _type_get_layout(type_context, field_type);
+			slot_type = compound_type->fields[field_entry.field_index].type;
 			break;
 		}
 		case COMPOUND_LITERAL_ARRAY_ELEMENT_INIT:
 			panic("todo");
 		}
 
-		InstrIndex value_instr = _compile_expr(compiler, entry->value);
+		TypeLayout slot_type_layout = _type_get_layout(type_context, &slot_type);
+		if (slot_type.kind == TYPE_STRUCT
+				|| slot_type.kind == TYPE_UNION
+				|| slot_type.kind == TYPE_ARRAY) {
 
-		InstrIndex slot_address = _compile_address_expr(
-				compiler,
-				(AddressExpr) { .base = addr_instr_index, .offset = (uint32_t)offset });
+			InstrIndex slot_address = _compile_address_expr(
+					compiler,
+					(AddressExpr) { .base = addr_instr_index, .offset = (uint32_t)offset });
 
-		InstrIndex store_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* store_instr = instr_buffer_at(instr_buffer, store_index);
-		store_instr->ptr_store.ptr = slot_address;
-		store_instr->ptr_store.value = value_instr;
-		store_instr->ptr_store.io_state = compiler->io_state;
+			InstrIndex value_address = _compile_address_expr(compiler,
+					_compile_address_of(compiler, entry->value));
 
-		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_index);
+			InstrIndex mem_copy_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* mem_copy = instr_buffer_at(instr_buffer, mem_copy_index);
+			mem_copy->kind = INSTR_MEM_COPY_FIXED;
+			mem_copy->mem_copy_fixed.src = value_address;
+			mem_copy->mem_copy_fixed.dst = slot_address;
+			mem_copy->mem_copy_fixed.size = slot_type_layout.size;
+			mem_copy->mem_copy_fixed.io_state = compiler->io_state;
 
-		switch (slot_type_layout.size) {
-		case 1:
-			store_instr->kind = INSTR_PTR_STORE_8;
-			break;
-		case 2:
-			store_instr->kind = INSTR_PTR_STORE_16;
-			break;
-		case 4:
-			store_instr->kind = INSTR_PTR_STORE_32;
-			break;
-		case 8:
-			store_instr->kind = INSTR_PTR_STORE_64;
-			break;
-		default:
-			panic("Unsupported element size");
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
+		} else {
+			InstrIndex value_instr = _compile_expr(compiler, entry->value);
+
+			InstrIndex slot_address = _compile_address_expr(
+					compiler,
+					(AddressExpr) { .base = addr_instr_index, .offset = (uint32_t)offset });
+
+			InstrIndex store_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* store_instr = instr_buffer_at(instr_buffer, store_index);
+			store_instr->ptr_store.ptr = slot_address;
+			store_instr->ptr_store.value = value_instr;
+			store_instr->ptr_store.io_state = compiler->io_state;
+
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_index);
+
+			switch (slot_type_layout.size) {
+			case 1:
+				store_instr->kind = INSTR_PTR_STORE_8;
+				break;
+			case 2:
+				store_instr->kind = INSTR_PTR_STORE_16;
+				break;
+			case 4:
+				store_instr->kind = INSTR_PTR_STORE_32;
+				break;
+			case 8:
+				store_instr->kind = INSTR_PTR_STORE_64;
+				break;
+			default:
+				panic("Unsupported element size");
+			}
 		}
 	}
 

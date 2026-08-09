@@ -1744,6 +1744,21 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 				compound_type->field_namespace,
 				field_name.string);
 
+		if (out_entry->field.index == SIZE_MAX) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+
+			str_builder_append(&builder, STR_LIT("'"));
+			type_format(type, &builder);
+			str_builder_format(&builder,
+					"' has no field named '%.*s'", STR_FMT(field_name.string));
+
+			report_error(parser->diagnostics,
+					source_range_pack(field_name.source_range),
+					builder.string,
+					NULL);
+			return EXPR_PARSE_ERROR;
+		}
+
 		StructFieldNamespaceEntry field_entry =
 			compound_type->field_namespace->entries[out_entry->field.index];
 
@@ -1782,6 +1797,14 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 
 		Struct* compound_type = type_extract_compound(type);
 		assert(compound_type);
+
+		if (out_entry->not_designated.index >= compound_type->field_count) {
+			report_error(parser->diagnostics,
+					source_range_pack(preprocessor_view_next(parser->preprocessor).source_range),
+					STR_LIT("Too many initializers"),
+					NULL);
+			return EXPR_PARSE_ERROR;
+		}
 
 		expected_slot_type = &compound_type->fields[out_entry->not_designated.index].type;
 	}

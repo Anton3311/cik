@@ -558,7 +558,7 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		s_const_char_type.kind = TYPE_CHAR;
 		s_const_char_type.qualifiers = TYPE_QUALIFIER_CONST;
 
-		out_type->kind = TYPE_POINTER;
+		out_type->kind = TYPE_ARRAY;
 		out_type->array.element_type = &s_const_char_type;
 		out_type->array.size = expr->string_literal.array_size_expr;
 		return;
@@ -910,6 +910,8 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 	case EXPR_STRING_LITERAL:
 		printer_begin_struct(printer, "string");
 		printer_string_field(printer, "value", expr->string_literal.full_string);
+		printer_field(printer, "array_size");
+		print_expr(printer, expr->string_literal.array_size_expr);
 		printer_end_struct(printer);
 		break;
 	case EXPR_CHAR_LITERAL:

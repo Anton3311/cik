@@ -188,6 +188,10 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const Type* int_type,
 		const Type* target_type,
 		InstrIndex value_instr) {
+	if (int_type->kind == TYPE_ARRAY && target_type->kind == TYPE_POINTER) {
+		return value_instr;
+	}
+
 	assert(type_kind_is_int(int_type->kind) || int_type->kind == TYPE_POINTER);
 	assert(type_kind_is_int(target_type->kind) || target_type->kind == TYPE_POINTER);
 

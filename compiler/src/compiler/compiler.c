@@ -1,5 +1,7 @@
 #include "compiler.h"
 
+#include <windows.h>
+
 //
 // StringStorage
 //
@@ -2689,6 +2691,9 @@ void compiler_resolve_default_func_refs(SymbolMap* map) {
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fseek"), fseek);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("malloc"), malloc);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("free"), free);
+
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("VirtualAlloc"), VirtualAlloc);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("VirtualFree"), VirtualFree);
 }
 
 void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* allocator) {

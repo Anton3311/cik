@@ -350,8 +350,8 @@ int main(int argc, char *argv[]) {
 					imported_symbol_maps,
 					exported_symbol_maps);
 #ifdef FEATURE_PROFILER
-	// Wait until the profiler connects to upload all the measurements
-	profiler_wait_for_connection();
+			// Wait until the profiler connects to upload all the measurements
+			profiler_wait_for_connection();
 #endif
 			return EXIT_FAILURE;
 		}
@@ -394,8 +394,8 @@ int main(int argc, char *argv[]) {
 		printf("No input file\n");
 		printf("%s", s_help_menu);
 #ifdef FEATURE_PROFILER
-	// Wait until the profiler connects to upload all the measurements
-	profiler_wait_for_connection();
+		// Wait until the profiler connects to upload all the measurements
+		profiler_wait_for_connection();
 #endif
 		return EXIT_FAILURE;
 	}

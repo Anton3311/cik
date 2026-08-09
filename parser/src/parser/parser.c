@@ -1708,7 +1708,8 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 }
 
 static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
-		const Struct* type,
+		Type* type,
+		size_t* next_value_index,
 		CompoundLiteralEntry* out_entry) {
 
 	profile_func_colored(PROFILE_COLOR);
@@ -1716,6 +1717,8 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_DOT) {
 		preprocessor_next_token(parser->preprocessor);
+
+		Struct* compound_type = type_extract_compound(type);
 
 		out_entry->kind = COMPOUND_LITERAL_FIELD_INIT;
 
@@ -1731,7 +1734,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 
 		out_entry->field.name = field_name.string;
 		out_entry->field.index = struct_field_namespace_index_of(
-				type->field_namespace,
+				compound_type->field_namespace,
 				field_name.string);
 
 		Token equal = preprocessor_next_token(parser->preprocessor);
@@ -1744,9 +1747,25 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 			return EXPR_PARSE_ERROR;
 		}
 	} else if (token.kind == TOKEN_LEFT_BRACKET) {
-		panic("todo!");
+		if (type->kind != TYPE_ARRAY) {
+			StringBuilder builder = { .arena = parser->diagnostics->allocator };
+			str_builder_append(&builder, STR_LIT("Cannot initialize non-array type '"));
+			type_format(type, &builder);
+			str_builder_append_char(&builder, '\'');
+				
+			report_error(parser->diagnostics,
+					source_range_pack(token.source_range),
+					builder.string,
+					NULL);
+			return EXPR_PARSE_ERROR;
+		}
+
+		panic("todo");
 	} else {
 		out_entry->kind = COMPOUND_LITERAL_VALUE;
+		out_entry->not_designated.index = *next_value_index;
+
+		*next_value_index += 1;
 	}
 
 	Expr* value = arena_alloc_zeroed(parser->ast_allocator, Expr);
@@ -1765,7 +1784,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 }
 
 static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
-		const Struct* prefered_type,
+		Type* prefered_type,
 		CompoundLiteral* out_literal) {
 
 	profile_func_colored(PROFILE_COLOR);
@@ -1779,6 +1798,8 @@ static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
 	CompoundLiteralEntry* entries = arena_alloc_array(parser->temp_allocator,
 			CompoundLiteralEntry,
 			0);
+	
+	size_t next_value_index = 0;
 
 	while (true) {
 		Token token = preprocessor_view_next(parser->preprocessor);
@@ -1788,7 +1809,11 @@ static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
 		}
 
 		CompoundLiteralEntry entry;
-		if (_parser_parse_compound_literal_entry(parser, prefered_type, &entry) == EXPR_PARSE_OK) {
+		if (_parser_parse_compound_literal_entry(parser,
+					prefered_type,
+					&next_value_index,
+					&entry) == EXPR_PARSE_OK) {
+
 			arena_alloc(parser->temp_allocator, CompoundLiteralEntry);
 			entries[entry_count] = entry;
 			entry_count += 1;
@@ -2114,14 +2139,11 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			}
 
 			if (preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE) {
-				const Struct* compound_type = type_extract_compound(&cast_target_type);
-				assert(compound_type);
-
 				out_expr->kind = EXPR_COMPOUND_LITERAL;
 				out_expr->compound_literal.type = arena_alloc(parser->ast_allocator, Type);
 				*out_expr->compound_literal.type = cast_target_type;
 				ExprParseResult result = _parser_try_parse_compound_literal(parser,
-						compound_type,
+						&cast_target_type,
 						&out_expr->compound_literal);
 
 				profile_scope_end();

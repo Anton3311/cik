@@ -389,6 +389,9 @@ struct CompoundLiteralEntry {
 		struct {
 			Expr* index;
 		} array_element;
+		struct {
+			size_t index;
+		} not_designated;
 	};
 
 	Expr* value;

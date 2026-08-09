@@ -1060,6 +1060,8 @@ void print_expr(PrinterState* printer, const Expr* expr) {
 			switch (entry->kind) {
 			case COMPOUND_LITERAL_VALUE:
 				printer_begin_struct(printer, "value");
+				printer_field(printer, "index");
+				printf("%zu\n", entry->not_designated.index);
 				printer_field(printer, "value");
 				print_expr(printer, entry->value);
 				printer_end_struct(printer);

@@ -181,6 +181,8 @@ typedef struct {
 	InstrIndex base;
 } AddressExpr;
 
+static InstrIndex _compile_address_expr(FunctionCompiler* compiler, AddressExpr addr_expr);
+
 static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		const Type* int_type,
 		const Type* target_type,
@@ -203,6 +205,102 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 			instr_allocator,
 			value_instr,
 			result_layout.size * 8);
+}
+
+static void _compile_compound_literal_init(FunctionCompiler* compiler,
+		CompoundLiteral* literal,
+		InstrIndex addr_instr_index) {
+	profile_scope_start(__func__);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+	const TypeContext* type_context = compiler->type_context;
+
+	Type* type = literal->type;
+	TypeLayout layout = _type_get_layout(type_context, type);
+
+	InstrIndex mem_zero_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* mem_zero = instr_buffer_at(instr_buffer, mem_zero_index);
+	mem_zero->kind = INSTR_MEM_ZERO_FIXED;
+	mem_zero->mem_zero_fixed.dst = addr_instr_index;
+	mem_zero->mem_zero_fixed.size = layout.size;
+	mem_zero->mem_zero_fixed.io_state = compiler->io_state;
+
+	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_zero_index);
+
+	CompoundLiteralEntry* entries = literal->entries;
+	size_t entry_count = literal->entry_count;
+	for (size_t i = 0; i < entry_count; i += 1) {
+		const CompoundLiteralEntry* entry = &entries[i];
+
+		size_t offset = 0;
+		TypeLayout slot_type_layout;
+
+		switch (entry->kind) {
+		case COMPOUND_LITERAL_VALUE: {
+			assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
+			const Struct* compound_type = type_extract_compound(type);
+			const size_t* field_offsets = type_context->field_offsets[compound_type->id];
+
+			assert(entry->not_designated.index < compound_type->field_count);
+			offset = field_offsets[entry->not_designated.index];
+
+			Type* field_type = &compound_type->fields[entry->not_designated.index].type;
+			slot_type_layout = _type_get_layout(type_context, field_type);
+			break;
+		}
+		case COMPOUND_LITERAL_FIELD_INIT: {
+			assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
+			const Struct* compound_type = type_extract_compound(type);
+			const size_t* field_offsets = type_context->field_offsets[compound_type->id];
+
+			StructFieldNamespaceEntry field_entry =
+				compound_type->field_namespace->entries[entry->field.index];
+
+			assert(field_entry.struct_def == compound_type);
+			offset = field_offsets[field_entry.field_index];
+
+			Type* field_type = &compound_type->fields[field_entry.field_index].type;
+			slot_type_layout = _type_get_layout(type_context, field_type);
+			break;
+		}
+		case COMPOUND_LITERAL_ARRAY_ELEMENT_INIT:
+			panic("todo");
+		}
+
+		InstrIndex value_instr = _compile_expr(compiler, entry->value);
+
+		InstrIndex slot_address = _compile_address_expr(
+				compiler,
+				(AddressExpr) { .base = addr_instr_index, .offset = (uint32_t)offset });
+
+		InstrIndex store_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* store_instr = instr_buffer_at(instr_buffer, store_index);
+		store_instr->ptr_store.ptr = slot_address;
+		store_instr->ptr_store.value = value_instr;
+		store_instr->ptr_store.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_index);
+
+		switch (slot_type_layout.size) {
+		case 1:
+			store_instr->kind = INSTR_PTR_STORE_8;
+			break;
+		case 2:
+			store_instr->kind = INSTR_PTR_STORE_16;
+			break;
+		case 4:
+			store_instr->kind = INSTR_PTR_STORE_32;
+			break;
+		case 8:
+			store_instr->kind = INSTR_PTR_STORE_64;
+			break;
+		default:
+			panic("Unsupported element size");
+		}
+	}
+
+	profile_scope_end();
 }
 
 // Generates a sequence of instructions that compute the address of an array element
@@ -383,14 +481,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		stack_addr->kind = INSTR_STACK_ADDR;
 		stack_addr->stack_addr.stack_alloc = alloc_instr_index;
 
-		InstrIndex mem_zero_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* mem_zero = instr_buffer_at(instr_buffer, mem_zero_index);
-		mem_zero->kind = INSTR_MEM_ZERO_FIXED;
-		mem_zero->mem_zero_fixed.dst = stack_addr_index;
-		mem_zero->mem_zero_fixed.size = layout.size;
-		mem_zero->mem_zero_fixed.io_state = compiler->io_state;
-
-		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_zero_index);
+		_compile_compound_literal_init(compiler, &expr->compound_literal, stack_addr_index);
 
 		return (AddressExpr) { .base = stack_addr_index, .offset = 0 };
 	}

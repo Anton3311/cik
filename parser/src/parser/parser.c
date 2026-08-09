@@ -1719,9 +1719,13 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 
 	profile_func_colored(PROFILE_COLOR);
 
-	Token token = preprocessor_view_next(parser->preprocessor);
+	if (type->kind != TYPE_STRUCT && type->kind != TYPE_UNION) {
+		return EXPR_PARSE_ERROR;
+	}
 
 	Type* expected_slot_type = NULL;
+
+	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_DOT) {
 		preprocessor_next_token(parser->preprocessor);
 

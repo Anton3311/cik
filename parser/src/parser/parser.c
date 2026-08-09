@@ -1439,6 +1439,7 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 				array_size(expected_tokens));
 
 		_parser_skip_until_semicolon(parser);
+		profile_scope_end();
 		return parser->dummy_node;
 	}
 
@@ -2608,6 +2609,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						STR_LIT("Expected field name after '->'"),
 						NULL);
 
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2625,6 +2627,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						expr_get_source_range(out_expr),
 						builder.string,
 						NULL);
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2646,6 +2649,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						expr_get_source_range(out_expr),
 						builder.string,
 						NULL);
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2654,6 +2658,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						expr_get_source_range(out_expr),
 						STR_LIT("Expression has an incomplete type"),
 						NULL);
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2673,6 +2678,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						field_name_token.source_range,
 						builder.string,
 						NULL);
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2695,6 +2701,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						STR_LIT("Expected field name after '.'"),
 						NULL);
 
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2717,6 +2724,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						expr_get_source_range(out_expr),
 						builder.string,
 						NULL);
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 
@@ -2736,6 +2744,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 						source_range_pack(field_name_token.source_range),
 						builder.string,
 						NULL);
+				profile_scope_end();
 				return EXPR_PARSE_ERROR;
 			}
 

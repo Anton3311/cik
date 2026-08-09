@@ -1708,6 +1708,10 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 	profile_scope_end();
 }
 
+static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
+		Type* prefered_type,
+		Expr* out_literal);
+
 static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 		Type* type,
 		size_t* next_value_index,
@@ -1716,6 +1720,8 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 	profile_func_colored(PROFILE_COLOR);
 
 	Token token = preprocessor_view_next(parser->preprocessor);
+
+	Type* expected_slot_type = NULL;
 	if (token.kind == TOKEN_DOT) {
 		preprocessor_next_token(parser->preprocessor);
 
@@ -1737,6 +1743,12 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 		out_entry->field.index = struct_field_namespace_index_of(
 				compound_type->field_namespace,
 				field_name.string);
+
+		StructFieldNamespaceEntry field_entry =
+			compound_type->field_namespace->entries[out_entry->field.index];
+
+		assert(compound_type == field_entry.struct_def);
+		expected_slot_type = &compound_type->fields[field_entry.field_index].type;
 
 		Token equal = preprocessor_next_token(parser->preprocessor);
 		if (equal.kind != TOKEN_EQUAL) {
@@ -1767,12 +1779,22 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 		out_entry->not_designated.index = *next_value_index;
 
 		*next_value_index += 1;
+
+		Struct* compound_type = type_extract_compound(type);
+		assert(compound_type);
+
+		expected_slot_type = &compound_type->fields[out_entry->not_designated.index].type;
 	}
 
 	Expr* value = arena_alloc_zeroed(parser->ast_allocator, Expr);
 	out_entry->value = value;
 
-	ExprParseResult expr_result = _parser_try_parse_expr(parser, value);
+	ExprParseResult expr_result;
+	if (preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE) {
+		expr_result = _parser_try_parse_compound_literal(parser, expected_slot_type, value);
+	} else {
+		expr_result = _parser_try_parse_expr(parser, value);
+	}
 
 	if (expr_result != EXPR_PARSE_OK) {
 		_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_BRACE);
@@ -1786,7 +1808,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 
 static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
 		Type* prefered_type,
-		CompoundLiteral* out_literal) {
+		Expr* out_literal) {
 
 	profile_func_colored(PROFILE_COLOR);
 	assert(preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE);
@@ -1838,12 +1860,14 @@ static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
 		}
 	}
 
-	out_literal->entry_count = entry_count;
-	out_literal->entries = arena_alloc_array(parser->ast_allocator, 
+	out_literal->kind = EXPR_COMPOUND_LITERAL;
+	out_literal->compound_literal.type = prefered_type;
+	out_literal->compound_literal.entry_count = entry_count;
+	out_literal->compound_literal.entries = arena_alloc_array(parser->ast_allocator, 
 			CompoundLiteralEntry,
 			entry_count);
 
-	array_copy(out_literal->entries, entries, entry_count);
+	array_copy(out_literal->compound_literal.entries, entries, entry_count);
 
 	arena_end_temp(temp);
 
@@ -2141,11 +2165,13 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 
 			if (preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE) {
 				out_expr->kind = EXPR_COMPOUND_LITERAL;
-				out_expr->compound_literal.type = arena_alloc(parser->ast_allocator, Type);
-				*out_expr->compound_literal.type = cast_target_type;
+
+				Type* prefered_type = arena_alloc(parser->ast_allocator, Type);
+				*prefered_type = cast_target_type;
+
 				ExprParseResult result = _parser_try_parse_compound_literal(parser,
-						&cast_target_type,
-						&out_expr->compound_literal);
+						prefered_type,
+						out_expr);
 
 				profile_scope_end();
 				return result;
@@ -2281,11 +2307,9 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				STR_LIT("Expected type name before '{"), 
 				NULL);
 
-		ExprParseResult result = _parser_try_parse_compound_literal(parser,
-				NULL,
-				&out_expr->compound_literal);
+		_parser_skip_until(parser, TOKEN_RIGHT_BRACE, TOKEN_RIGHT_BRACE);
 		profile_scope_end();
-		return result;
+		return EXPR_PARSE_ERROR;
 	}
 
 	profile_scope_end();
@@ -3378,7 +3402,17 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		assert(decl_spec == NULL);
 
 		Expr* value = arena_alloc(parser->ast_allocator, Expr);
-		switch (_parser_try_parse_expr(parser, value)) {
+		ExprParseResult expr_result;
+		if (preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE) {
+			Type* prefered_type = arena_alloc(parser->ast_allocator, Type);
+			*prefered_type = *type;
+
+			expr_result = _parser_try_parse_compound_literal(parser, prefered_type, value);
+		} else {
+			expr_result = _parser_try_parse_expr(parser, value);
+		}
+
+		switch (expr_result) {
 		case EXPR_PARSE_OK:
 			break;
 		case EXPR_PARSE_ERROR:

@@ -1378,6 +1378,8 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		profile_scope_end();
 		return size_const;
 	}
+	case EXPR_COMPOUND_LITERAL:
+		unreachable();
 	}
 
 	unreachable();

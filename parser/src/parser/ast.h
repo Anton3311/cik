@@ -201,6 +201,18 @@ inline Type* type_extract_pointer_base_type(Type* type) {
 	return NULL;
 }
 
+inline Struct* type_extract_compound(Type* type) {
+	if (type->kind == TYPE_STRUCT) {
+		return type->struct_def;
+	}
+
+	if (type->kind == TYPE_UNION) {
+		return type->union_def;
+	}
+
+	return NULL;
+}
+
 bool type_is_struct(const Type* type, const Struct* struct_def);
 bool type_is_enum(const Type* type, const Enum* enum_def);
 

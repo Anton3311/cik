@@ -368,6 +368,32 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			.offset = 0,
 		};
 	}
+	case EXPR_COMPOUND_LITERAL: {
+		Type* type = expr->compound_literal.type;
+		TypeLayout layout = _type_get_layout(compiler->type_context, type);
+
+		InstrIndex alloc_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* alloc_instr = instr_buffer_at(instr_buffer, alloc_instr_index);
+		alloc_instr->kind = INSTR_STACK_ALLOC;
+		alloc_instr->stack_alloc.size = layout.size;
+		alloc_instr->stack_alloc.alignment = layout.alignment;
+
+		InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+		stack_addr->kind = INSTR_STACK_ADDR;
+		stack_addr->stack_addr.stack_alloc = alloc_instr_index;
+
+		InstrIndex mem_zero_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* mem_zero = instr_buffer_at(instr_buffer, mem_zero_index);
+		mem_zero->kind = INSTR_MEM_ZERO_FIXED;
+		mem_zero->mem_zero_fixed.dst = stack_addr_index;
+		mem_zero->mem_zero_fixed.size = layout.size;
+		mem_zero->mem_zero_fixed.io_state = compiler->io_state;
+
+		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_zero_index);
+
+		return (AddressExpr) { .base = stack_addr_index, .offset = 0 };
+	}
 	default: {
 		Type expr_type;
 		expr_get_type(expr, &expr_type);

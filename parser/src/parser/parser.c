@@ -1708,6 +1708,7 @@ void _parser_parse_string_literal(Parser* parser, StringLiteral* out_literal) {
 }
 
 static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
+		const Struct* type,
 		CompoundLiteralEntry* out_entry) {
 
 	profile_func_colored(PROFILE_COLOR);
@@ -1729,7 +1730,9 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 		}
 
 		out_entry->field.name = field_name.string;
-		out_entry->field.index = SIZE_MAX;
+		out_entry->field.index = struct_field_namespace_index_of(
+				type->field_namespace,
+				field_name.string);
 
 		Token equal = preprocessor_next_token(parser->preprocessor);
 		if (equal.kind != TOKEN_EQUAL) {
@@ -1762,6 +1765,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 }
 
 static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
+		const Struct* prefered_type,
 		CompoundLiteral* out_literal) {
 
 	profile_func_colored(PROFILE_COLOR);
@@ -1784,7 +1788,7 @@ static ExprParseResult _parser_try_parse_compound_literal(Parser* parser,
 		}
 
 		CompoundLiteralEntry entry;
-		if (_parser_parse_compound_literal_entry(parser, &entry) == EXPR_PARSE_OK) {
+		if (_parser_parse_compound_literal_entry(parser, prefered_type, &entry) == EXPR_PARSE_OK) {
 			arena_alloc(parser->temp_allocator, CompoundLiteralEntry);
 			entries[entry_count] = entry;
 			entry_count += 1;
@@ -2109,6 +2113,21 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 				return EXPR_PARSE_ERROR;
 			}
 
+			if (preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE) {
+				const Struct* compound_type = type_extract_compound(&cast_target_type);
+				assert(compound_type);
+
+				out_expr->kind = EXPR_COMPOUND_LITERAL;
+				out_expr->compound_literal.type = arena_alloc(parser->ast_allocator, Type);
+				*out_expr->compound_literal.type = cast_target_type;
+				ExprParseResult result = _parser_try_parse_compound_literal(parser,
+						compound_type,
+						&out_expr->compound_literal);
+
+				profile_scope_end();
+				return result;
+			}
+
 			out_expr->kind = EXPR_CAST;
 			out_expr->cast.target_type = arena_alloc(parser->ast_allocator, Type);
 			out_expr->cast.expr = arena_alloc(parser->ast_allocator, Expr);
@@ -2233,7 +2252,15 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		unreachable();
 	} else if (token.kind == TOKEN_LEFT_BRACE) {
 		out_expr->kind = EXPR_COMPOUND_LITERAL;
-		ExprParseResult result = _parser_try_parse_compound_literal(parser, &out_expr->compound_literal);
+
+		report_error(parser->diagnostics,
+				source_range_pack(token.source_range), 
+				STR_LIT("Expected type name before '{"), 
+				NULL);
+
+		ExprParseResult result = _parser_try_parse_compound_literal(parser,
+				NULL,
+				&out_expr->compound_literal);
 		profile_scope_end();
 		return result;
 	}

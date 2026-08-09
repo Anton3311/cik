@@ -23,24 +23,26 @@ typedef struct {
 	LinkerErrorKind kind;
 
 	union {
-		// Where was is referenced?
-		uint32_t unit_index;
-		SymbolId symbol_id;
-	} unresolved;
+		struct {
+			// Where was is referenced?
+			uint32_t unit_index;
+			SymbolId symbol_id;
+		} unresolved;
 
-	union {
-		// Where was the first defintion?
-		uint32_t first_unit_index;
-		SymbolId first_symbol_id;
+		struct {
+			// Where was the first defintion?
+			uint32_t first_unit_index;
+			SymbolId first_symbol_id;
 
-		// Where was the second defintion?
-		uint32_t second_unit_index;
-		SymbolId second_symbol_id;
-	} duplicate;
+			// Where was the second defintion?
+			uint32_t second_unit_index;
+			SymbolId second_symbol_id;
+		} duplicate;
 
-	union {
-		String name;
-	} entry_point;
+		struct {
+			String name;
+		} entry_point;
+	};
 } LinkerError;
 
 typedef struct {

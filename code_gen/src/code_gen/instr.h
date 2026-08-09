@@ -84,6 +84,9 @@ typedef enum {
 	// Copies a region of memory of fixed size known at compile time
 	INSTR_MEM_COPY_FIXED,
 
+	// Fills a region of memory of fixed size known at compile time with zeros
+	INSTR_MEM_ZERO_FIXED,
+
 	INSTR_LOAD_ARG_8,
 	INSTR_LOAD_ARG_16,
 	INSTR_LOAD_ARG_32,
@@ -254,6 +257,14 @@ struct Instr {
 			// Size in bytes of the region to copy
 			uint16_t size;
 		} mem_copy_fixed;
+
+		struct {
+			InstrIndex dst;
+			InstrIndex io_state;
+
+			// Size in bytes of the region to fill
+			uint16_t size;
+		} mem_zero_fixed;
 
 		struct {
 			uint8_t index;

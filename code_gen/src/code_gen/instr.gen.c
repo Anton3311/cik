@@ -49,6 +49,7 @@ String instr_name(InstrKind variant) {
     case INSTR_PTR_STORE_32: return STR_LIT("ptr_store_32");
     case INSTR_PTR_STORE_64: return STR_LIT("ptr_store_64");
     case INSTR_MEM_COPY_FIXED: return STR_LIT("mem_copy_fixed");
+    case INSTR_MEM_ZERO_FIXED: return STR_LIT("mem_zero_fixed");
     case INSTR_LOAD_ARG_8: return STR_LIT("load_arg_8");
     case INSTR_LOAD_ARG_16: return STR_LIT("load_arg_16");
     case INSTR_LOAD_ARG_32: return STR_LIT("load_arg_32");
@@ -241,6 +242,10 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         instr_queue_push_back(out_dependencies, instr->mem_copy_fixed.dst);
         instr_queue_push_back(out_dependencies, instr->mem_copy_fixed.io_state);
         break;
+    case INSTR_MEM_ZERO_FIXED:
+        instr_queue_push_back(out_dependencies, instr->mem_zero_fixed.dst);
+        instr_queue_push_back(out_dependencies, instr->mem_zero_fixed.io_state);
+        break;
     case INSTR_LOAD_ARG_8:
         break;
     case INSTR_LOAD_ARG_16:
@@ -421,6 +426,9 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_MEM_COPY_FIXED:
         printf("src: \033[33;1m%%%u\033[0m dst: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m size: %u ", (uint32_t)instr->mem_copy_fixed.src.value, (uint32_t)instr->mem_copy_fixed.dst.value, (uint32_t)instr->mem_copy_fixed.io_state.value, (uint32_t)instr->mem_copy_fixed.size);
+        break;
+    case INSTR_MEM_ZERO_FIXED:
+        printf("dst: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m size: %u ", (uint32_t)instr->mem_zero_fixed.dst.value, (uint32_t)instr->mem_zero_fixed.io_state.value, (uint32_t)instr->mem_zero_fixed.size);
         break;
     case INSTR_LOAD_ARG_8:
         printf("index: %u ", (uint32_t)instr->load_arg.index);

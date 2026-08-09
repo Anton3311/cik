@@ -1388,7 +1388,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 		return;
 	}
 
-	case INSTR_MEM_COPY_FIXED:
+	case INSTR_MEM_COPY_FIXED: {
 		uint16_t temp_registers = _collect_available_registers(gen, instr_index);
 		assert(temp_registers != 0);
 
@@ -1442,6 +1442,47 @@ static void _lower_instr(X64CodeGenerator* gen,
 		}
 
 		return;
+	}
+
+	case INSTR_MEM_ZERO_FIXED: {
+		uint16_t temp_registers = _collect_available_registers(gen, instr_index);
+		assert(temp_registers != 0);
+
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr->mem_zero_fixed.dst.value];
+
+		Operand dst_operand;
+		if (dst_loc.kind == INSTR_STORAGE_REG) {
+			dst_operand = operand_mem(dst_loc.reg, 64);
+		} else if (dst_loc.kind == INSTR_STORAGE_STACK) {
+			dst_operand = operand_stack_mem((int32_t)dst_loc.stack.offset, 64);
+		}
+
+		X64Register temp_register = count_trailing_zeros(temp_registers);
+
+		_emit_load_const_64(buffer, temp_register, 0);
+
+		uint16_t sizes[] = { 8, 4, 2, 1 };
+		uint16_t bit_counts[] = { 64, 32, 16, 8 };
+
+		size_t bytes_left = instr->mem_zero_fixed.size;
+		size_t offset = 0;
+		for (uint16_t size_index = 0; size_index < array_size(sizes); size_index += 1) {
+			while (bytes_left >= sizes[size_index]) {
+				Operand sized_dst = dst_operand;
+				sized_dst.bit_count = bit_counts[size_index]; 
+
+				encode_2(buffer,
+						MNEMONIC_MOV,
+						sized_dst,
+						operand_reg(temp_register, bit_counts[size_index]));
+
+				dst_operand.mem.disp += sizes[size_index];
+
+				bytes_left -= sizes[size_index];
+			}
+		}
+		return;
+	}
 
 	case INSTR_PTR_STORE_8:
 	case INSTR_PTR_STORE_16:
@@ -2426,6 +2467,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_copy_fixed.io_state);
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_copy_fixed.src);
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_copy_fixed.dst);
+		break;
+	case INSTR_MEM_ZERO_FIXED:
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_zero_fixed.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->mem_zero_fixed.dst);
 		break;
 	case INSTR_LOAD_ARG_8:
 	case INSTR_LOAD_ARG_16:

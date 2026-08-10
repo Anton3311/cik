@@ -2749,6 +2749,43 @@ void compiler_collect_imported_symbols(const AST* ast, SymbolMap* imported_symbo
 	profile_scope_end();
 }
 
+void compiler_collect_function_abi_signatures(const AST* ast,
+		const TypeContext* type_context,
+		const SymbolMap* imported_symbols,
+		AbiSignature* out_signatures,
+		Arena* allocator) {
+	profile_scope_start(__func__);
+
+	profile_scope_start(__func__);
+
+	for (const AstNode* node = ast->root_nodes.first; node != NULL; node = node->next) {
+		if (node->kind != AST_NODE_FUNCTION_DEF && node->kind != AST_NODE_FUNCTION_DECL) {
+			continue;
+		}
+
+		const Function* function = node->function_def;
+		SymbolId id;
+
+		{
+			Symbol symbol = {};
+			compiler_create_function_import_symbol(function, &symbol);
+
+			id = symbol_map_find(imported_symbols, symbol_key_from_symbol(&symbol));
+
+			// TODO: Verify that the existing symbol is the actually a function symbol.
+			assert(id != SYMBOL_ID_INVALID);
+		}
+
+		assert(id < imported_symbols->count);
+
+		out_signatures[id] = function_prototype_to_abi_signature(type_context,
+				&function->proto,
+				arena_allocator_new(allocator));
+	}
+
+	profile_scope_end();
+}
+
 void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* allocator) {
 	profile_scope_start(__func__);
 
@@ -2808,4 +2845,78 @@ void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* 
 	}
 
 	profile_scope_end();
+}
+
+AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context,
+		const FunctionPrototype* proto,
+		Allocator allocator) {
+	AbiSignature sig = {};
+
+	switch (proto->calling_convention) {
+	case FUNC_CALL_CONV_CDECL:
+		sig.call_conv = CALL_CONV_CDECL;
+		break;
+	default:
+		unreachable();
+	}
+
+	bool has_return_loc = false;
+	if (proto->return_type.kind == TYPE_VOID) {
+		sig.returns = NULL;
+	} else if (proto->return_type.kind == TYPE_ARRAY) {
+		panic("Arrays are not allowed as return types");
+	} else if (proto->return_type.kind == TYPE_STRUCT || proto->return_type.kind == TYPE_UNION) {
+		sig.returns = allocator_alloc(allocator, AbiParam);
+		*sig.returns = (AbiParam) {
+			.kind = ABI_PARAM_STRUCT,
+			.struct_size = (uint32_t)_type_get_layout(type_context, &proto->return_type).size,
+		};
+
+		has_return_loc = true;
+	} else {
+		assert(_type_get_layout(type_context, &proto->return_type).size <= 8);
+
+		sig.returns = allocator_alloc(allocator, AbiParam);
+		*sig.returns = (AbiParam) { .kind = ABI_PARAM_NORMAL };
+	}
+
+	sig.param_count = (uint32_t)proto->parameter_count;
+	if (has_return_loc) {
+		sig.param_count += 1;
+	}
+
+	sig.params = allocator_alloc_array(allocator, AbiParam, sig.param_count);
+
+	size_t param_index = 0;
+	if (has_return_loc) {
+		sig.params[0] = (AbiParam) {
+			.kind = ABI_PARAM_RETURN_LOCATION,
+		};
+
+		param_index += 1;
+	}
+
+	for (size_t i = 0; i < proto->parameter_count; i += 1, param_index += 1) {
+		Type param_type = proto->parameters[i].type;
+
+		assert(_type_get_layout(type_context, &param_type).size > 0);
+
+		AbiParam abi_param = {};
+		if (param_type.kind == TYPE_VOID) {
+			unreachable();
+		} else if (param_type.kind == TYPE_ARRAY) {
+			abi_param = (AbiParam) { .kind = ABI_PARAM_NORMAL };
+		} else if (param_type.kind == TYPE_STRUCT || param_type.kind == TYPE_UNION) {
+			abi_param = (AbiParam) {
+				.kind = ABI_PARAM_STRUCT,
+				.struct_size = (uint32_t)_type_get_layout(type_context, &param_type).size,
+			};
+		} else {
+			abi_param = (AbiParam) { .kind = ABI_PARAM_NORMAL };
+		}
+
+		sig.params[param_index] = abi_param;
+	}
+
+	return sig;
 }

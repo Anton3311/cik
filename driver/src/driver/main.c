@@ -118,6 +118,16 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 
 	compiler_collect_imported_symbols(&parsed_ast, context->imported_symbol_map);
 
+	AbiSignature* imported_function_signatures = arena_alloc_array_zeroed(context->temp_arena,
+			AbiSignature,
+			context->imported_symbol_map->count);
+
+	compiler_collect_function_abi_signatures(&parsed_ast,
+			&type_context,
+			context->imported_symbol_map,
+			imported_function_signatures,
+			context->temp_arena);
+
 	uint32_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION_DEF) {
@@ -186,6 +196,9 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.string_consts = str_storage_to_array(c.str_storage);
+		gen.function_signature = function_prototype_to_abi_signature(&type_context,
+				&node->function_def->proto,
+				arena_allocator_new(context->temp_arena));
 
 		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
 

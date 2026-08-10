@@ -4,6 +4,7 @@
 #include "code_gen/instr.h"
 #include "code_gen/code_gen.h"
 #include "code_gen/backends/x64_encoding.h"
+#include "code_gen/abi.h"
 
 typedef enum {
 	X64_REG_A,
@@ -124,6 +125,8 @@ typedef struct {
 	uint16_t* call_addr_placeholder_regions;
 
 	uint32_t stack_usage;
+
+	AbiSignature function_signature;
 } X64CodeGenerator;
 
 typedef struct {

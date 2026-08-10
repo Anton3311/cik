@@ -1407,14 +1407,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 		X64Register temp_register = count_trailing_zeros(temp_registers);
 
-		// HACK: Save and restore the temp register, because it is most likely being used by another
-		//       instruciton. This is the case, because `_collect_available_registers` looks at the
-		//       `interference_graph` to decide which registers aren't used at the point when this
-		//       instruction is executed. However, for some instructions, like `INSTR_MEM_ZERO_FIXED`
-		//       and `INSTR_MEM_COPY_FIXED`, that don't have a store location, it fails, simply
-		//       because this instrctions don't appear in the `interference_graph`
-		encode_1(buffer, MNEMONIC_PUSH, operand_reg(temp_register, 64));
-
 		uint16_t sizes[] = { 8, 4, 2, 1 };
 		uint16_t bit_counts[] = { 64, 32, 16, 8 };
 
@@ -1445,8 +1437,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 			}
 		}
 
-		// HACK: Restore `temp_register`
-		encode_1(buffer, MNEMONIC_POP, operand_reg(temp_register, 64));
 		return;
 	}
 
@@ -1464,14 +1454,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 		}
 
 		X64Register temp_register = count_trailing_zeros(temp_registers);
-
-		// HACK: Save and restore the temp register, because it is most likely being used by another
-		//       instruciton. This is the case, because `_collect_available_registers` looks at the
-		//       `interference_graph` to decide which registers aren't used at the point when this
-		//       instruction is executed. However, for some instructions, like `INSTR_MEM_ZERO_FIXED`
-		//       and `INSTR_MEM_COPY_FIXED`, that don't have a store location, it fails, simply
-		//       because this instrctions don't appear in the `interference_graph`
-		encode_1(buffer, MNEMONIC_PUSH, operand_reg(temp_register, 64));
 
 		_emit_load_const_64(buffer, temp_register, 0);
 
@@ -1496,8 +1478,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 			}
 		}
 
-		// HACK: Restore `temp_register`
-		encode_1(buffer, MNEMONIC_POP, operand_reg(temp_register, 64));
 		return;
 	}
 

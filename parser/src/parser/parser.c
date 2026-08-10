@@ -2162,7 +2162,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
 
-		Type cast_target_type;
+		Type cast_target_type = {};
 		ParseTypeResult type_result = _parser_try_parse_type_specifier(parser,
 				&cast_target_type,
 				false);

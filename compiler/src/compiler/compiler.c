@@ -344,7 +344,8 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	expr_get_type(expr->array_index.array, &array_type);
 	expr_get_type(expr->array_index.index, &index_type);
 
-	InstrIndex array = _compile_expr(compiler, expr->array_index.array);
+	InstrIndex array = _compile_address_expr(compiler,
+			_compile_address_of(compiler, expr->array_index.array));
 	InstrIndex index = _compile_expr(compiler, expr->array_index.index);
 
 	const TypeContext* type_context = compiler->type_context;
@@ -467,7 +468,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		assert(value_instr.value != INVALID_INSTR_INDEX.value);
 
 		if (var->type.kind == TYPE_POINTER) {
-			unreachable();
+			profile_scope_end();
 			return (AddressExpr) {
 				.base = value_instr,
 				.offset = 0,
@@ -484,6 +485,20 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			.base = stack_addr_index,
 			.offset = 0,
 		};
+	}
+	case EXPR_FUNCTION_PARAM: {
+		size_t arg_index = expr->function_param.param_index;
+
+		Type type = compiler->function->proto.parameters[arg_index].type;
+		if (type.kind == TYPE_POINTER || type.kind == TYPE_ARRAY) {
+			profile_scope_end();
+			return (AddressExpr) {
+				.base = compiler->arg_states[arg_index],
+				.offset = 0,
+			};
+		}
+
+		unreachable();
 	}
 	case EXPR_ARRAY_INDEX: {
 		InstrIndex element_addr = _compile_address_of_array_element(compiler, expr);

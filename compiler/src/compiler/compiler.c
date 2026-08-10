@@ -344,8 +344,15 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	expr_get_type(expr->array_index.array, &array_type);
 	expr_get_type(expr->array_index.index, &index_type);
 
-	InstrIndex array = _compile_address_expr(compiler,
-			_compile_address_of(compiler, expr->array_index.array));
+	InstrIndex array = INVALID_INSTR_INDEX;
+
+	if (array_type.kind == TYPE_POINTER) {
+		array = _compile_expr(compiler, expr->array_index.array);
+	} else {
+		array = _compile_address_expr(compiler,
+				_compile_address_of(compiler, expr->array_index.array));
+	}
+
 	InstrIndex index = _compile_expr(compiler, expr->array_index.index);
 
 	const TypeContext* type_context = compiler->type_context;

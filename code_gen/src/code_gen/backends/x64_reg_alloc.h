@@ -5,8 +5,7 @@
 
 typedef struct {
 	InstrStorageLocation* allocations;
-	InstrIndexArray instr_with_storage_requirement;
-	UInt16Array* interference_graph;
+	InstrIndexArray* interference_graph;
 
 	uint32_t stack_usage;
 } RegisterAllocationResult;

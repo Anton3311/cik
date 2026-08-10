@@ -1126,22 +1126,16 @@ static uint16_t _collect_available_registers(X64CodeGenerator* gen, InstrIndex i
 		allowed_temp_registers &= ~(1 << loc.reg);
 	}
 
-	for (size_t i = 0; i < gen->instr_with_storage_requirement.count; i += 1) {
-		if (gen->instr_with_storage_requirement.instr[i].value != instr_index.value) {
+	InstrIndexArray edges = gen->interference_graph[instr_index.value];
+	for (size_t j = 0; j < edges.count; j += 1) {
+		InstrIndex interfering_instr = edges.instr[j];
+		InstrStorageLocation loc = gen->instr_storage[interfering_instr.value];
+
+		if (loc.kind != INSTR_STORAGE_REG) {
 			continue;
 		}
 
-		UInt16Array edges = gen->interference_graph[i];
-		for (size_t j = 0; j < edges.count; j += 1) {
-			InstrIndex interfering_instr = gen->instr_with_storage_requirement.instr[edges.values[j]];
-			InstrStorageLocation loc = gen->instr_storage[interfering_instr.value];
-
-			if (loc.kind != INSTR_STORAGE_REG) {
-				continue;
-			}
-
-			allowed_temp_registers &= ~(1 << loc.reg);
-		}
+		allowed_temp_registers &= ~(1 << loc.reg);
 	}
 
 	arena_end_temp(temp);
@@ -1763,34 +1757,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 		assert(args.count <= array_size(CDECL_ARG_REGS));
 
 		{
-			uint16_t allowed_temp_registers = UINT16_MAX;
-			allowed_temp_registers &= ~(1 << instr_storage.reg);
-
-			for (uint16_t i = 0; i < args.count; i += 1) {
-				InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
-				InstrStorageLocation loc = gen->instr_storage[arg_instr.value];
-
-				assert(loc.kind == INSTR_STORAGE_REG);
-				allowed_temp_registers &= ~(1 << loc.reg);
-			}
-
-			for (size_t i = 0; i < gen->instr_with_storage_requirement.count; i += 1) {
-				if (gen->instr_with_storage_requirement.instr[i].value != instr_index.value) {
-					continue;
-				}
-
-				UInt16Array edges = gen->interference_graph[i];
-				for (size_t j = 0; j < edges.count; j += 1) {
-					InstrIndex interfering_instr = gen->instr_with_storage_requirement.instr[edges.values[j]];
-					InstrStorageLocation loc = gen->instr_storage[interfering_instr.value];
-
-					if (loc.kind != INSTR_STORAGE_REG) {
-						continue;
-					}
-
-					allowed_temp_registers &= ~(1 << loc.reg);
-				}
-			}
+			uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
 
 			ArenaRegion temp = arena_begin_temp(gen->allocator);
 
@@ -2035,7 +2002,6 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 			gen->temp_allocator,
 			gen->allocator);
 
-	gen->instr_with_storage_requirement = result.instr_with_storage_requirement;
 	gen->instr_storage = result.allocations;
 	gen->interference_graph = result.interference_graph;
 	gen->stack_usage = align(result.stack_usage, 16);
@@ -2070,19 +2036,16 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 		uint32_t max_register_pressure = 0;
 		uint16_t used_registers = 0;
 
-		for (size_t i = 0; i < result.instr_with_storage_requirement.count; i += 1) {
-			InstrIndex instr_index = result.instr_with_storage_requirement.instr[i];
-
-			if (result.allocations[instr_index.value].kind == INSTR_STORAGE_REG) {
-				used_registers |= result.allocations[instr_index.value].reg;
+		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
+			if (result.allocations[i].kind == INSTR_STORAGE_REG) {
+				used_registers |= result.allocations[i].reg;
 			}
 
-			UInt16Array edges = result.interference_graph[i];
+			InstrIndexArray edges = result.interference_graph[i];
 
 			uint16_t interfering_regs = 0;
 			for (size_t edge_index = 0; edge_index < edges.count; edge_index += 1) {
-				InstrIndex interfering_instr = 
-					result.instr_with_storage_requirement.instr[edges.values[edge_index]];
+				InstrIndex interfering_instr = edges.instr[edge_index];
 
 				if (result.allocations[interfering_instr.value].kind != INSTR_STORAGE_REG) {
 					continue;

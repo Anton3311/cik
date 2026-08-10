@@ -88,14 +88,11 @@ typedef struct {
 
 	CodeBuffer* per_region_code_buffer;
 
-	// Temporary structures
-	InstrIndexArray instr_with_storage_requirement;
-
 	// Produced by the register allocator.
 	//
 	// For each instruction in `instr_with_storage_requirement` stores an array instructions that
 	// interfere with it.
-	UInt16Array* interference_graph;
+	InstrIndexArray* interference_graph;
 
 	uint16_t* phi_variant_counts_per_region;
 	InstrIndexArray* phi_variants_per_region;

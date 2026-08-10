@@ -31,6 +31,8 @@ static X64Register CDECL_CALLEE_SAVED[] = {
 	X64_REG_15,
 };
 
+static X64Register CDECL_ARG_REGS[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
+
 static void _init_storage_requiremenets() {
 	if (s_instr_storage_requiremenets_initialized) {
 		return;
@@ -1758,9 +1760,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 					operand_reg(CDECL_CALLER_SAVED[i], 64));
 		}
 
-		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
-
-		assert(args.count <= array_size(cdecl_arg_regs));
+		assert(args.count <= array_size(CDECL_ARG_REGS));
 
 		{
 			uint16_t allowed_temp_registers = UINT16_MAX;
@@ -1794,7 +1794,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 			ArenaRegion temp = arena_begin_temp(gen->allocator);
 
-			InstrStorageLocation input_instr_storage[array_size(cdecl_arg_regs)];
+			InstrStorageLocation input_instr_storage[array_size(CDECL_ARG_REGS)];
 			for (uint16_t i = 0; i < args.count; i += 1) {
 				InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
 				input_instr_storage[i] = gen->instr_storage[arg_instr.value];
@@ -1802,7 +1802,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 			RegisterMoveArray parallel_moves = _parallel_move_values(
 					input_instr_storage,
-					cdecl_arg_regs,
+					CDECL_ARG_REGS,
 					args.count,
 					0,
 					gen->allocator,

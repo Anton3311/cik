@@ -1169,29 +1169,17 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 		const Function* func = callable->function_ref.func;
 
-		bool is_indirect_call = false;
+		bool is_indirect_call = func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT;
 		SymbolId func_symbol_id;
 
 		{
-			Symbol symbol;
-			memset(&symbol, 0xff, sizeof(symbol));
-
-			symbol.name = func->proto.name;
-
-			if (func->storage_specifier == STORAGE_SPEC_STATIC) {
-				symbol.linkage = SYMBOL_LINKAGE_INTERNAL;
-			} else if (func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT) {
-				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
-				is_indirect_call = true;
-			} else {
-				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_STATIC;
-			}
+			Symbol symbol = {};
+			compiler_create_function_import_symbol(func, &symbol);
 
 			func_symbol_id = symbol_map_find(compiler->symbol_map, symbol_key_from_symbol(&symbol));
-			if (func_symbol_id == SYMBOL_ID_INVALID) {
-				func_symbol_id = symbol_map_insert(compiler->symbol_map, &symbol);
-			}
 
+			// There is pass that runs before the compiler and collects all the imported symbols
+			// into the `symbol_map`
 			assert(func_symbol_id != SYMBOL_ID_INVALID);
 		}
 
@@ -2718,6 +2706,47 @@ void compiler_resolve_default_func_refs(SymbolMap* map) {
 
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("VirtualAlloc"), VirtualAlloc);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("VirtualFree"), VirtualFree);
+}
+
+void compiler_create_function_import_symbol(const Function* function, Symbol* out_symbol) {
+	out_symbol->name = function->proto.name;
+
+	if (function->storage_specifier == STORAGE_SPEC_STATIC) {
+		out_symbol->linkage = SYMBOL_LINKAGE_INTERNAL;
+	} else if (function->decl_spec && function->decl_spec->kind == DECL_SPEC_DLL_IMPORT) {
+		out_symbol->linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;
+	} else {
+		out_symbol->linkage = SYMBOL_LINKAGE_EXTERNAL_STATIC;
+	}
+}
+
+void compiler_collect_imported_symbols(const AST* ast, SymbolMap* imported_symbols) {
+	profile_scope_start(__func__);
+
+	for (const AstNode* node = ast->root_nodes.first; node != NULL; node = node->next) {
+		if (node->kind != AST_NODE_FUNCTION_DEF && node->kind != AST_NODE_FUNCTION_DECL) {
+			continue;
+		}
+
+		const Function* function = node->function_def;
+
+		Symbol symbol = {};
+		compiler_create_function_import_symbol(function, &symbol);
+
+		SymbolId id = symbol_map_find(imported_symbols, symbol_key_from_symbol(&symbol));
+
+		if (id != SYMBOL_ID_INVALID) {
+			// TODO: Verify that the existing symbol is the same as this one
+			continue;
+		}
+
+		id = symbol_map_insert(imported_symbols, &symbol);
+
+		assert_msg(id != SYMBOL_ID_INVALID,
+				"Duplicate function symbol. Did the parser miss the redefinition?");
+	}
+
+	profile_scope_end();
 }
 
 void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* allocator) {

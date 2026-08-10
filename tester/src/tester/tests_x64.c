@@ -111,6 +111,8 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	StringStorage string_storage = {};
 	string_storage.allocator = arena_allocator_new(&strings_arena);
 
+	compiler_collect_imported_symbols(&parsed_ast, &imported_symbol_map);
+
 	size_t function_index = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION_DEF) {

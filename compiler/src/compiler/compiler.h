@@ -96,6 +96,9 @@ typedef struct {
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);
 void compiler_resolve_default_func_refs(SymbolMap* map);
 
+void compiler_create_function_import_symbol(const Function* function, Symbol* out_symbol);
+void compiler_collect_imported_symbols(const AST* ast, SymbolMap* imported_symbols);
+
 // Stores precomputed layouts for all the compound types in the AST
 struct TypeContext {
 	TypeLayout pointer_type_layout;

@@ -187,7 +187,8 @@ inline void allocator_release(Allocator allocator, void* ptr) {
 	allocator.procedure(allocator.allocator_data, ptr, 0, 0, ALLOC_OP_FREE);
 }
 
-#define allocator_alloc(allocator, type) (type)allocator_alloc_bytes(allocator, sizeof(type), alignof(type));
+#define allocator_alloc(allocator, type) \
+	(type*)allocator_alloc_bytes(allocator, sizeof(type), alignof(type));
 #define allocator_alloc_array(allocator, type, count) \
 	(type*)allocator_alloc_bytes(allocator, sizeof(type) * count, alignof(type));
 

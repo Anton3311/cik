@@ -535,6 +535,20 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 
 		return (AddressExpr) { .base = stack_addr_index, .offset = 0 };
 	}
+	case EXPR_CALL: {
+		InstrIndex call_instr = _compile_expr(compiler, expr);
+
+		InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+		stack_addr->kind = INSTR_STACK_ADDR;
+		stack_addr->stack_addr.stack_alloc = call_instr;
+		
+		profile_scope_end();
+		return (AddressExpr) {
+			.base = stack_addr_index,
+			.offset = 0,
+		};
+	}
 	default: {
 		Type expr_type;
 		expr_get_type(expr, &expr_type);
@@ -1388,8 +1402,26 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		profile_scope_end();
 		return size_const;
 	}
-	case EXPR_COMPOUND_LITERAL:
-		unreachable();
+	case EXPR_COMPOUND_LITERAL: {
+		Type* literal_type = expr->compound_literal.type;
+		TypeLayout layout = _type_get_layout(compiler->type_context, literal_type);
+
+		InstrIndex stack_alloc_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* stack_alloc = instr_buffer_at(instr_buffer, stack_alloc_index);
+		stack_alloc->kind = INSTR_STACK_ALLOC;
+		stack_alloc->stack_alloc.size = (uint32_t)layout.size;
+		stack_alloc->stack_alloc.alignment = (uint32_t)layout.alignment;
+
+		InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+		stack_addr->kind = INSTR_STACK_ADDR;
+		stack_addr->stack_addr.stack_alloc = stack_alloc_index;
+
+		_compile_compound_literal_init(compiler, &expr->compound_literal, stack_addr_index);
+
+		profile_scope_end();
+		return stack_alloc_index;
+	}
 	}
 
 	unreachable();

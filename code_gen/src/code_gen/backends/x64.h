@@ -128,6 +128,8 @@ typedef struct {
 
 	// Signature of the function being lowered to machine code.
 	AbiSignature function_signature;
+
+	const AbiSignature* imported_function_signatures;
 } X64CodeGenerator;
 
 typedef struct {

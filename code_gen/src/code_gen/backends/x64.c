@@ -1126,6 +1126,13 @@ static uint16_t _collect_available_registers(X64CodeGenerator* gen, InstrIndex i
 		allowed_temp_registers &= ~(1 << loc.reg);
 	}
 
+	if (gen->function_signature.returns != NULL) {
+		AbiParam* returns = gen->function_signature.returns;
+		if (returns->kind == ABI_PARAM_STRUCT) {
+			allowed_temp_registers &= ~(1 << CDECL_ARG_REGS[0]);
+		}
+	}
+
 	InstrIndexArray edges = gen->interference_graph[instr_index.value];
 	for (size_t j = 0; j < edges.count; j += 1) {
 		InstrIndex interfering_instr = edges.instr[j];
@@ -1723,13 +1730,30 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 	case INSTR_RETURN_VALUE: {
 		assert(gen->function_signature.returns != NULL);
-		assert(gen->function_signature.returns->kind == ABI_PARAM_NORMAL);
 
 		InstrIndex return_value = instr->return_value.value;
 		const InstrStorageLocation return_value_loc = gen->instr_storage[return_value.value];
-		assert(return_value_loc.kind == INSTR_STORAGE_REG);
+		if (gen->function_signature.returns->kind == ABI_PARAM_NORMAL) {
+			assert(return_value_loc.kind == INSTR_STORAGE_REG);
 
-		_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
+			_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
+		} else if (gen->function_signature.returns->kind == ABI_PARAM_STRUCT) {
+			assert(return_value_loc.kind == INSTR_STORAGE_STACK);
+
+			Operand src_operand = operand_stack_mem((int32_t)return_value_loc.stack.offset, 64);
+			Operand dst_operand = operand_mem(CDECL_ARG_REGS[0], 64);
+
+			uint16_t temp_registers = _collect_available_registers(gen, instr_index);
+			assert(temp_registers != 0);
+
+			_emit_mem_copy_fixed(buffer,
+					src_operand,
+					dst_operand,
+					gen->function_signature.returns->struct_size,
+					temp_registers);
+		} else {
+			panic("Invalid `AbiParamKind` for the return value of the function");
+		}
 
 		_emit_callee_epilogue(gen, buffer);
 
@@ -1750,8 +1774,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 	
 	case INSTR_CALL_INDIRECT:
 	case INSTR_CALL_DIRECT: {
-		assert(instr_storage.kind == INSTR_STORAGE_REG);
-
 		const uint32_t SHADOW_SPACE_SIZE = 32;
 
 		InstrInputs args = instr->call.args;
@@ -1763,22 +1785,42 @@ static void _lower_instr(X64CodeGenerator* gen,
 					operand_reg(CDECL_CALLER_SAVED[i], 64));
 		}
 
-		assert(args.count <= array_size(CDECL_ARG_REGS));
+		InstrStorageLocation input_instr_storage[array_size(CDECL_ARG_REGS)];
+		X64Register expected_arg_locs[array_size(CDECL_ARG_REGS)];
+
+		size_t arg_reg_index = 0;
+		AbiSignature signature = gen->imported_function_signatures[instr->call.function_index];
+		
+		if (signature.returns) {
+			if (signature.returns->kind == ABI_PARAM_STRUCT) {
+				assert(instr_storage.kind == INSTR_STORAGE_STACK);
+				arg_reg_index += 1;
+			} else if (signature.returns->kind == ABI_PARAM_NORMAL) {
+				assert(instr_storage.kind == INSTR_STORAGE_REG);
+			} else {
+				unreachable();
+			}
+		}
+
+		for (uint16_t i = 0; i < args.count; i += 1) {
+			assert(arg_reg_index <= array_size(CDECL_ARG_REGS));
+			expected_arg_locs[i] = CDECL_ARG_REGS[arg_reg_index];
+			arg_reg_index += 1;
+		}
+
+		for (uint16_t i = 0; i < args.count; i += 1) {
+			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
+			input_instr_storage[i] = gen->instr_storage[arg_instr.value];
+		}
 
 		{
 			uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
 
 			ArenaRegion temp = arena_begin_temp(gen->allocator);
 
-			InstrStorageLocation input_instr_storage[array_size(CDECL_ARG_REGS)];
-			for (uint16_t i = 0; i < args.count; i += 1) {
-				InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
-				input_instr_storage[i] = gen->instr_storage[arg_instr.value];
-			}
-
 			RegisterMoveArray parallel_moves = _parallel_move_values(
 					input_instr_storage,
-					CDECL_ARG_REGS,
+					expected_arg_locs,
 					args.count,
 					0,
 					gen->allocator,
@@ -1790,6 +1832,22 @@ static void _lower_instr(X64CodeGenerator* gen,
 			}
 
 			arena_end_temp(temp);
+		}
+
+		// Load the address of the stack location that recieves the returned struct, into the first
+		// argument register.
+		if (signature.returns && signature.returns->kind == ABI_PARAM_STRUCT) {
+			// NOTE: Since we've already saved caller registers, the stack pointer has moved and
+			//       with it stack offsets of all stack allocated values.
+			uint32_t caller_saved_regs_stack_usage = array_size(CDECL_CALLER_SAVED) * 8;
+
+			size_t return_value_stack_offset =
+				instr_storage.stack.offset + caller_saved_regs_stack_usage;
+
+			encode_2(buffer,
+					MNEMONIC_LEA,
+					operand_reg(CDECL_ARG_REGS[0], 64),
+					operand_stack_mem((int32_t)return_value_stack_offset, 64));
 		}
 
 		bool is_direct = instr->kind == INSTR_CALL_DIRECT;
@@ -2002,12 +2060,21 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 	allowed_registers &= ~(1 << X64_REG_SI);
 	allowed_registers &= ~(1 << X64_REG_DI);
 
+	if (gen->function_signature.returns != NULL) {
+		AbiParam* returns = gen->function_signature.returns;
+		if (returns->kind == ABI_PARAM_STRUCT) {
+			allowed_registers &= ~(1 << CDECL_ARG_REGS[0]);
+		}
+	}
+
 	RegisterAllocationResult result;
 	result = x64_alloc_regs(&gen->instr_buffer,
 			gen->live_ranges,
 			allowed_registers,
 			// Use `temp_allocator` as a persistent one, since register allocations are only used
 			// within the backend
+			&gen->function_signature,
+			gen->imported_function_signatures,
 			gen->temp_allocator,
 			gen->allocator);
 

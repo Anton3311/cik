@@ -199,6 +199,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		gen.function_signature = function_prototype_to_abi_signature(&type_context,
 				&node->function_def->proto,
 				arena_allocator_new(context->temp_arena));
+		gen.imported_function_signatures = imported_function_signatures;
 
 		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
 

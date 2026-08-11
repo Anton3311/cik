@@ -85,6 +85,8 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		const InstrLiveRange* live_ranges,
 		const InstrIndexArray* interference_graph,
 		uint16_t allowed_registers,
+		const AbiSignature* current_function_signature,
+		const AbiSignature* function_signatures,
 		Arena* allocator,
 		Arena* temp_allocator,
 		RegisterAllocationResult* out_result) {
@@ -155,9 +157,22 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		//       Probably need to introduce a proper concept of calling
 		//       conventions on the code gen level
 		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
-		assert(instr->load_arg.index < array_size(cdecl_arg_regs));
+		size_t arg_reg_index = instr->load_arg.index;
 
-		X64Register reg = cdecl_arg_regs[instr->load_arg.index];
+		if (current_function_signature->returns) {
+			const AbiParam* returns = current_function_signature->returns;
+			if (returns->kind == ABI_PARAM_STRUCT) {
+				arg_reg_index += 1;
+			} else if (returns->kind == ABI_PARAM_NORMAL) {
+				// Nothing
+			} else {
+				unreachable();
+			}
+		}
+
+		assert(arg_reg_index < array_size(cdecl_arg_regs));
+
+		X64Register reg = cdecl_arg_regs[arg_reg_index];
 		instr_storage[i].kind = INSTR_STORAGE_REG;
 		instr_storage[i].reg = reg;
 
@@ -182,6 +197,26 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 
 		const Instr* instr = &instr_buffer->instr[i];
+
+		if (instr->kind == INSTR_CALL_DIRECT || instr->kind == INSTR_CALL_INDIRECT) {
+			const AbiSignature signature = function_signatures[instr->call.function_index];
+
+			if (signature.returns != NULL) {
+				if (signature.returns->kind == ABI_PARAM_STRUCT) {
+					stack_offset = align(stack_offset, 16); // FIXME: No hardcoded alignment
+
+					instr_storage[i].kind = INSTR_STORAGE_STACK;
+					instr_storage[i].stack.offset = stack_offset;
+					stack_offset += signature.returns->struct_size;
+					continue;
+				} else if (signature.returns->kind == ABI_PARAM_NORMAL) {
+					// Go through the usual allocator path
+				} else {
+					panic("Invalid 'AbiParam' for the functions return");
+				}
+			}
+		}
+
 		if (has_flag(INSTR_FEATURES[instr->kind], INSTR_FEATURE_STACK_STORAGE)) {
 			assert(instr->stack_alloc.alignment > 0);
 			assert(is_power_of_2(instr->stack_alloc.alignment));
@@ -224,6 +259,8 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		InstrLiveRange* live_ranges,
 		uint16_t allowed_registers,
+		const AbiSignature* current_function_signature,
+		const AbiSignature* function_signatures,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
@@ -239,6 +276,8 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			live_ranges,
 			interference_graph,
 			allowed_registers,
+			current_function_signature,
+			function_signatures,
 			allocator,
 			temp_allocator,
 			&result);

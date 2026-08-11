@@ -126,6 +126,7 @@ typedef struct {
 
 	uint32_t stack_usage;
 
+	// Signature of the function being lowered to machine code.
 	AbiSignature function_signature;
 } X64CodeGenerator;
 

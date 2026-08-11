@@ -1697,6 +1697,9 @@ static void _lower_instr(X64CodeGenerator* gen,
 	}
 
 	case INSTR_RETURN_VALUE: {
+		assert(gen->function_signature.returns != NULL);
+		assert(gen->function_signature.returns->kind == ABI_PARAM_NORMAL);
+
 		InstrIndex return_value = instr->return_value.value;
 		const InstrStorageLocation return_value_loc = gen->instr_storage[return_value.value];
 		assert(return_value_loc.kind == INSTR_STORAGE_REG);
@@ -1710,6 +1713,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 		return;
 	}
 	case INSTR_RET:
+		assert(gen->function_signature.returns == NULL);
 		_emit_callee_epilogue(gen, buffer);
 
 		// Don't need to generate a `ret` instruction, since it is done later when the control

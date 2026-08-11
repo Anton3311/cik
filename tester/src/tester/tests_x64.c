@@ -171,6 +171,9 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		gen.temp_allocator = context->temp_arena;
 		gen.string_consts = str_storage_to_array(&string_storage);
 		gen.flags = X64_PRINT_SCHEDULED_IR;
+		gen.function_signature = function_prototype_to_abi_signature(&type_context,
+				&node->function_def->proto,
+				arena_allocator_new(context->temp_arena));
 
 		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
 
@@ -990,6 +993,9 @@ void test_sub_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		gen.string_consts = str_storage_to_array(&string_storage);
 		gen.instr_storage = instr_storage;
 
+		AbiParam ret = { .kind = ABI_PARAM_NORMAL };
+		gen.function_signature = (AbiSignature) { .call_conv = CALL_CONV_CDECL, .returns = &ret };
+
 		{
 			instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;
 			instr_storage[left_operand_index.value].reg = reg_configurations[i][0];
@@ -1141,6 +1147,12 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 			gen.string_consts = str_storage_to_array(&string_storage);
 			gen.instr_storage = instr_storage;
 
+			AbiParam ret = { .kind = ABI_PARAM_NORMAL };
+			gen.function_signature = (AbiSignature) {
+				.call_conv = CALL_CONV_CDECL,
+				.returns = &ret
+			};
+
 			{
 				instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;
 				instr_storage[left_operand_index.value].reg = reg_configurations[i][0];
@@ -1289,6 +1301,12 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			gen.temp_allocator = context->temp_arena;
 			gen.string_consts = (StringArray) {};
 			gen.instr_storage = instr_storage;
+
+			AbiParam ret = { .kind = ABI_PARAM_NORMAL };
+			gen.function_signature = (AbiSignature) {
+				.call_conv = CALL_CONV_CDECL,
+					.returns = &ret
+			};
 
 			{
 				instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;
@@ -1439,6 +1457,12 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 			gen.temp_allocator = context->temp_arena;
 			gen.string_consts = (StringArray) {};
 			gen.instr_storage = instr_storage;
+
+			AbiParam ret = { .kind = ABI_PARAM_NORMAL };
+			gen.function_signature = (AbiSignature) {
+				.call_conv = CALL_CONV_CDECL,
+					.returns = &ret
+			};
 
 			{
 				instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;
@@ -1592,6 +1616,12 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 			gen.temp_allocator = context->temp_arena;
 			gen.string_consts = str_storage_to_array(&string_storage);
 			gen.instr_storage = instr_storage;
+
+			AbiParam ret = { .kind = ABI_PARAM_NORMAL };
+			gen.function_signature = (AbiSignature) {
+				.call_conv = CALL_CONV_CDECL,
+					.returns = &ret
+			};
 
 			{
 				instr_storage[left_operand_index.value].kind = INSTR_STORAGE_REG;

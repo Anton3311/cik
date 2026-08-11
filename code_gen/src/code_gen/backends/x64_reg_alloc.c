@@ -181,7 +181,13 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		const Instr* instr = &instr_buffer->instr[i];
 
 		if (instr->kind == INSTR_CALL_DIRECT || instr->kind == INSTR_CALL_INDIRECT) {
-			const AbiSignature signature = function_signatures[instr->call.function_index];
+			AbiSignature signature;
+
+			if (instr->kind == INSTR_CALL_DIRECT) {
+				signature = function_signatures[instr->call_direct.function_index];
+			} else if (instr->kind == INSTR_CALL_INDIRECT) {
+				signature = function_signatures[instr->call_indirect.function_index];
+			}
 
 			if (signature.returns != NULL) {
 				if (signature.returns->kind == ABI_PARAM_STRUCT) {

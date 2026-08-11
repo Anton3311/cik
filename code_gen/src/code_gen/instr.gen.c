@@ -290,12 +290,12 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         instr_queue_push_back(out_dependencies, instr->select.region);
         break;
     case INSTR_CALL_INDIRECT:
-        instr_push_input_dependencies(buffer, instr->call.args, out_dependencies);
-        instr_queue_push_back(out_dependencies, instr->call.io_state);
+        instr_push_input_dependencies(buffer, instr->call_indirect.args, out_dependencies);
+        instr_queue_push_back(out_dependencies, instr->call_indirect.io_state);
         break;
     case INSTR_CALL_DIRECT:
-        instr_push_input_dependencies(buffer, instr->call.args, out_dependencies);
-        instr_queue_push_back(out_dependencies, instr->call.io_state);
+        instr_push_input_dependencies(buffer, instr->call_direct.args, out_dependencies);
+        instr_queue_push_back(out_dependencies, instr->call_direct.io_state);
         break;
     case INSTR_COUNT:
         unreachable();
@@ -304,7 +304,7 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
 void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena* temp_allocator) {
     String name = instr_name(instr->kind);
 
-    size_t name_width = 17;
+    size_t name_width = 28;
 
     printf("\033[32;1m%.*s\033[0m \033[%uC", STR_FMT(name), (uint32_t)(name_width - name.length));
 
@@ -473,10 +473,10 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         printf("value: \033[33;1m%%%u\033[0m region: \033[33;1m%%%u\033[0m ", (uint32_t)instr->select.value.value, (uint32_t)instr->select.region.value);
         break;
     case INSTR_CALL_INDIRECT:
-        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call.args, temp_allocator)), (uint32_t)instr->call.io_state.value, (uint32_t)instr->call.function_index);
+        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_indirect.args, temp_allocator)), (uint32_t)instr->call_indirect.io_state.value, (uint32_t)instr->call_indirect.function_index);
         break;
     case INSTR_CALL_DIRECT:
-        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call.args, temp_allocator)), (uint32_t)instr->call.io_state.value, (uint32_t)instr->call.function_index);
+        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_direct.args, temp_allocator)), (uint32_t)instr->call_direct.io_state.value, (uint32_t)instr->call_direct.function_index);
         break;
     case INSTR_COUNT:
         unreachable();

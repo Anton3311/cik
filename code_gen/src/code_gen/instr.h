@@ -307,14 +307,16 @@ struct Instr {
 		} io_state;
 
 		struct {
-			uint8_t function_index;
-		} load_function_addr;
+			InstrInputs args;
+			InstrIndex io_state;
+			uint16_t function_index;
+		} call_direct;
 
 		struct {
 			InstrInputs args;
 			InstrIndex io_state;
 			uint16_t function_index;
-		} call;
+		} call_indirect;
 
 		struct {
 			uint16_t id;

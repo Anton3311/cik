@@ -1205,10 +1205,18 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
-		call_instr->kind = is_indirect_call ? INSTR_CALL_INDIRECT : INSTR_CALL_DIRECT;
-		call_instr->call.args = arg_inputs;
-		call_instr->call.io_state = compiler->io_state;
-		call_instr->call.function_index = func_symbol_id;
+
+		if (is_indirect_call) {
+			call_instr->kind = INSTR_CALL_INDIRECT;
+			call_instr->call_indirect.args = arg_inputs;
+			call_instr->call_indirect.io_state = compiler->io_state;
+			call_instr->call_indirect.function_index = func_symbol_id;
+		} else {
+			call_instr->kind = INSTR_CALL_DIRECT;
+			call_instr->call_direct.args = arg_inputs;
+			call_instr->call_direct.io_state = compiler->io_state;
+			call_instr->call_direct.function_index = func_symbol_id;
+		}
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
 		profile_scope_end();

@@ -2021,8 +2021,14 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 					int_type = TYPE_UNSIGNED_LONG_LONG;
 					break;
 				}
-			} else {
+			} else if (literal.value <= INT32_MAX) {
 				int_type = TYPE_INT;
+			} else if (literal.value <= UINT32_MAX) {
+				int_type = TYPE_UNSIGNED_INT;
+			} else if (literal.value <= INT64_MAX) {
+				int_type = TYPE_LONG_LONG;
+			} else {
+				int_type = TYPE_UNSIGNED_LONG_LONG;
 			}
 
 			out_expr->kind = EXPR_INTEGER_LITERAL;

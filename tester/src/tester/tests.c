@@ -222,6 +222,7 @@ static void init_preprocessor_test(TestContext* context,
 	*out_diagnostics = (Diagnostics) {
 		.allocator = context->arena,
 		.source_storage = source_storage,
+		.error_limit = 128,
 	};
 	
 	preprocessor_init(out_preprocessor,
@@ -790,6 +791,7 @@ void run_parser_test_2(TestContext* context,
 	*out_diagnostics = (Diagnostics) {
 		.allocator = context->temp_arena,
 		.source_storage = out_source_storage,
+		.error_limit = 128,
 	};
 
 	Arena generated_tokens_arena = arena_alloc_sub_arena(context->arena, 2 * 4096);
@@ -1594,6 +1596,7 @@ static void _run_anonymous_type_declaration_sub_test(TestContext* context, Strin
 
 	Diagnostics diagnostics = (Diagnostics) {
 		.allocator = context->temp_arena,
+		.error_limit = 128,
 	};
 
 	Arena generated_tokens_arena = arena_alloc_sub_arena(context->arena, 2 * 4096);
@@ -1998,7 +2001,8 @@ void test_invalid_int_literal_sufixes(TestContext* context) {
 			SourceStorage source_storage = { .files = &source_file, .count = 1 };
 			Diagnostics diagnostics = {
 				.allocator = context->temp_arena, 
-				.source_storage = &source_storage
+				.source_storage = &source_storage,
+				.error_limit = 128,
 			};
 
 			IntLiteral literal = {};
@@ -2173,7 +2177,8 @@ void test_invalid_escape_sequences(TestContext* context) {
 
 		Diagnostics diagnostics = {
 			.allocator = context->arena,
-			.source_storage = &source_storage
+			.source_storage = &source_storage,
+			.error_limit = 128,
 		};
 
 		StringBuilder builder = { .arena = context->arena };
@@ -2220,7 +2225,8 @@ void _test_escape_string_fail(Arena* allocator, String string, String expected_e
 
 	Diagnostics diagnostics = {
 		.allocator = allocator,
-		.source_storage = &source_storage
+		.source_storage = &source_storage,
+		.error_limit = 128,
 	};
 
 	StringBuilder builder = { .arena = allocator };

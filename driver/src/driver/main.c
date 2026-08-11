@@ -14,7 +14,10 @@ static bool enum_installed_win_sdks(String sdk_install_path,
 		Arena* temp_allocator,
 		StringArray* out_sdks) {
 
-	*out_sdks = fs_enumerate_entries_in_directory(sdk_install_path, FS_ENTRY_DIRECTORY, allocator, temp_allocator);
+	*out_sdks = fs_enumerate_entries_in_directory(sdk_install_path,
+			FS_ENTRY_DIRECTORY,
+			allocator,
+			temp_allocator);
 	return true;
 }
 
@@ -329,6 +332,7 @@ int main(int argc, char *argv[]) {
 			Diagnostics diagnostics = (Diagnostics) {
 				.allocator = &diagnostics_arena,
 				.source_storage = &source_storage,
+				.error_limit = 512,
 			};
 
 			CompilationUnitContext context = {};

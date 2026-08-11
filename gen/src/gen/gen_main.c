@@ -39,6 +39,7 @@ bool _parse(GenContext* context,
 
 	Diagnostics diagnostics = (Diagnostics) {
 		.allocator = context->diagnostics_allocator,
+		.error_limit = 128,
 	};
 
 	Preprocessor preprocessor = {};

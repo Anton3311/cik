@@ -34,6 +34,9 @@ typedef struct {
 
 	DiagnosticsEntry* first;
 	DiagnosticsEntry* last;
+
+	uint32_t error_count;
+	uint32_t error_limit;
 } Diagnostics;
 
 void diagnostics_print(const Diagnostics* diagnostics);

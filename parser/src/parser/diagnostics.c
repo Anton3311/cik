@@ -85,6 +85,8 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 		String message,
 		DiagnosticsEntry* parent) {
 	assert(source_range.source_file);
+	assert(diagnostics->error_limit > 0);
+
 	const LineInfo* line_info = &source_range.source_file->line_info;
 
 	DiagnosticsEntry* entry = arena_alloc(diagnostics->allocator, DiagnosticsEntry);
@@ -100,15 +102,21 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 
 	entry->message = message;
 
+	if (diagnostics->error_count >= diagnostics->error_limit) {
+		return entry;
+	}
+
 	if (parent == NULL) {
 		entry->next = NULL;
 
 		if (diagnostics->first == NULL) {
 			diagnostics->first = entry;
 			diagnostics->last = entry;
+			diagnostics->error_count = 0;
 		} else {
 			assert(diagnostics->last);
 			diagnostics->last->next = entry;
+			diagnostics->error_count += 1;
 		}
 
 		diagnostics->last = entry;
@@ -118,9 +126,11 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 		if (parent->first_child == NULL) {
 			parent->first_child = entry;
 			parent->last_child = entry;
+			diagnostics->error_count = 0;
 		} else {
 			assert(parent->last_child);
 			parent->last_child->next = entry;
+			diagnostics->error_count += 1;
 		}
 	}
 

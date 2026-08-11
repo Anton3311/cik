@@ -31,6 +31,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	Diagnostics diagnostics = (Diagnostics) {
 		.allocator = context->arena,
 		.source_storage = &source_storage,
+		.error_limit = 128,
 	};
 
 	Arena generated_tokens_arena = {};

@@ -51,6 +51,7 @@ void run_preprocessor_test(const char* file_path, Arena* arena, Arena* temp_aren
 
 	Diagnostics diagnostics = (Diagnostics) {
 		.allocator = arena,
+		.error_limit = 128,
 	};
 
 	Arena generated_tokens_arena = arena_alloc_sub_arena(arena, 2 * 4096);

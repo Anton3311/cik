@@ -1201,6 +1201,153 @@ static void _emit_mem_copy_fixed(CodeBuffer* buffer,
 	profile_scope_end();
 }
 
+static void _lower_call(X64CodeGenerator* gen,
+		InstrIndex instr_index,
+		uint16_t region_id,
+		CodeBuffer* buffer) {
+
+	profile_scope_start(__func__);
+
+	const uint32_t SHADOW_SPACE_SIZE = 32;
+
+	const InstrBuffer* instr_buffer = &gen->instr_buffer;
+	const Instr* instr = &gen->instr_buffer.instr[instr_index.value];
+	const InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
+
+	InstrInputs args = instr->call.args;
+	uint16_t function_id = instr->call.function_index;
+
+	// Push saved registers
+	for (size_t i = 0; i < array_size(CDECL_CALLER_SAVED); i += 1) {
+		encode_1(buffer,
+				MNEMONIC_PUSH,
+				operand_reg(CDECL_CALLER_SAVED[i], 64));
+	}
+
+	InstrStorageLocation input_instr_storage[array_size(CDECL_ARG_REGS)];
+	X64Register expected_arg_locs[array_size(CDECL_ARG_REGS)];
+
+	size_t arg_reg_index = 0;
+	AbiSignature callee_signature = gen->imported_function_signatures[instr->call.function_index];
+	
+	if (callee_signature.returns) {
+		if (callee_signature.returns->kind == ABI_PARAM_STRUCT) {
+			assert(instr_storage.kind == INSTR_STORAGE_STACK);
+			arg_reg_index += 1;
+		} else if (callee_signature.returns->kind == ABI_PARAM_NORMAL) {
+			assert(instr_storage.kind == INSTR_STORAGE_REG);
+		} else {
+			unreachable();
+		}
+	}
+
+	for (uint16_t i = 0; i < args.count; i += 1) {
+		assert(arg_reg_index <= array_size(CDECL_ARG_REGS));
+		expected_arg_locs[i] = CDECL_ARG_REGS[arg_reg_index];
+		arg_reg_index += 1;
+	}
+
+	for (uint16_t i = 0; i < args.count; i += 1) {
+		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
+		input_instr_storage[i] = gen->instr_storage[arg_instr.value];
+	}
+
+	// Load the argument into their corresponding registers
+	{
+		uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
+
+		ArenaRegion temp = arena_begin_temp(gen->allocator);
+
+		RegisterMoveArray parallel_moves = _parallel_move_values(
+				input_instr_storage,
+				expected_arg_locs,
+				args.count,
+				0,
+				gen->allocator,
+				gen->temp_allocator);
+
+		for (size_t i = 0; i < parallel_moves.count; i += 1) {
+			RegisterMove move = parallel_moves.moves[i];
+			_emit_mov_regs(buffer, move.src, move.dst, 64);
+		}
+
+		arena_end_temp(temp);
+	}
+
+	// Load the address of the stack location that recieves the returned struct, into the first
+	// argument register.
+	if (callee_signature.returns && callee_signature.returns->kind == ABI_PARAM_STRUCT) {
+		// NOTE: Since we've already saved caller registers, the stack pointer has moved and
+		//       with it stack offsets of all stack allocated values.
+		uint32_t caller_saved_regs_stack_usage = array_size(CDECL_CALLER_SAVED) * 8;
+
+		size_t return_value_stack_offset =
+			instr_storage.stack.offset + caller_saved_regs_stack_usage;
+
+		encode_2(buffer,
+				MNEMONIC_LEA,
+				operand_reg(CDECL_ARG_REGS[0], 64),
+				operand_stack_mem((int32_t)return_value_stack_offset, 64));
+	}
+
+	bool is_direct = instr->kind == INSTR_CALL_DIRECT;
+
+	CallAddressPlaceholder* addr_placeholder = NULL;
+
+	{
+		assert(gen->call_addr_placeholder_count < gen->call_addr_placeholder_capacity);
+		size_t index = gen->call_addr_placeholder_count;
+		gen->call_addr_placeholder_count += 1;
+
+		addr_placeholder = &gen->call_addr_placeholders[index];
+		gen->call_addr_placeholder_regions[index] = region_id;
+	}
+
+	// push shadow space
+	_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
+
+	if (is_direct) {
+		encode_1(buffer, MNEMONIC_CALL, operand_rel32(0));
+
+		addr_placeholder->instruction_end_offset = buffer->size;
+		addr_placeholder->addr_offset = buffer->size - 4;
+		addr_placeholder->function_index = instr->call.function_index;
+		addr_placeholder->kind = CALL_ADDR_RELATIVE;
+	} else {
+		encode_2(buffer, MNEMONIC_MOV, operand_reg(X64_REG_A, 64), operand_imm(0, 64));
+
+		addr_placeholder->instruction_end_offset = buffer->size;
+		addr_placeholder->addr_offset = buffer->size - 8;
+		addr_placeholder->function_index = instr->call.function_index;
+		addr_placeholder->kind = CALL_ADDR_ABSOLUTE;
+
+		encode_1(buffer, MNEMONIC_CALL, operand_reg(X64_REG_A, 64));
+	}
+
+	// pop shadow space
+	_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);
+
+	// Now move the return value into a the proper register dedicated
+	// exactly for the return value of this call instruction
+	_emit_mov_regs(buffer, X64_REG_A, instr_storage.reg, 64);
+
+	// Pop saved registers in reverse order
+	for (size_t i = array_size(CDECL_CALLER_SAVED); i > 0; i -= 1) {
+
+		X64Register reg = CDECL_CALLER_SAVED[i - 1];
+		bool should_restore = instr_storage.reg != reg;
+		if (should_restore) {
+			encode_1(buffer,
+					MNEMONIC_POP,
+					operand_reg(reg, 64));
+		} else {
+			_emit_add_rsp(buffer, 8);
+		}
+	}
+
+	profile_scope_end();
+}
+
 static void _lower_instr(X64CodeGenerator* gen,
 		InstrIndex instr_index,
 		uint16_t region_id,
@@ -1773,142 +1920,9 @@ static void _lower_instr(X64CodeGenerator* gen,
 		return;
 	
 	case INSTR_CALL_INDIRECT:
-	case INSTR_CALL_DIRECT: {
-		const uint32_t SHADOW_SPACE_SIZE = 32;
-
-		InstrInputs args = instr->call.args;
-
-		// Push saved registers
-		for (size_t i = 0; i < array_size(CDECL_CALLER_SAVED); i += 1) {
-			encode_1(buffer,
-					MNEMONIC_PUSH,
-					operand_reg(CDECL_CALLER_SAVED[i], 64));
-		}
-
-		InstrStorageLocation input_instr_storage[array_size(CDECL_ARG_REGS)];
-		X64Register expected_arg_locs[array_size(CDECL_ARG_REGS)];
-
-		size_t arg_reg_index = 0;
-		AbiSignature signature = gen->imported_function_signatures[instr->call.function_index];
-		
-		if (signature.returns) {
-			if (signature.returns->kind == ABI_PARAM_STRUCT) {
-				assert(instr_storage.kind == INSTR_STORAGE_STACK);
-				arg_reg_index += 1;
-			} else if (signature.returns->kind == ABI_PARAM_NORMAL) {
-				assert(instr_storage.kind == INSTR_STORAGE_REG);
-			} else {
-				unreachable();
-			}
-		}
-
-		for (uint16_t i = 0; i < args.count; i += 1) {
-			assert(arg_reg_index <= array_size(CDECL_ARG_REGS));
-			expected_arg_locs[i] = CDECL_ARG_REGS[arg_reg_index];
-			arg_reg_index += 1;
-		}
-
-		for (uint16_t i = 0; i < args.count; i += 1) {
-			InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
-			input_instr_storage[i] = gen->instr_storage[arg_instr.value];
-		}
-
-		{
-			uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
-
-			ArenaRegion temp = arena_begin_temp(gen->allocator);
-
-			RegisterMoveArray parallel_moves = _parallel_move_values(
-					input_instr_storage,
-					expected_arg_locs,
-					args.count,
-					0,
-					gen->allocator,
-					gen->temp_allocator);
-
-			for (size_t i = 0; i < parallel_moves.count; i += 1) {
-				RegisterMove move = parallel_moves.moves[i];
-				_emit_mov_regs(buffer, move.src, move.dst, 64);
-			}
-
-			arena_end_temp(temp);
-		}
-
-		// Load the address of the stack location that recieves the returned struct, into the first
-		// argument register.
-		if (signature.returns && signature.returns->kind == ABI_PARAM_STRUCT) {
-			// NOTE: Since we've already saved caller registers, the stack pointer has moved and
-			//       with it stack offsets of all stack allocated values.
-			uint32_t caller_saved_regs_stack_usage = array_size(CDECL_CALLER_SAVED) * 8;
-
-			size_t return_value_stack_offset =
-				instr_storage.stack.offset + caller_saved_regs_stack_usage;
-
-			encode_2(buffer,
-					MNEMONIC_LEA,
-					operand_reg(CDECL_ARG_REGS[0], 64),
-					operand_stack_mem((int32_t)return_value_stack_offset, 64));
-		}
-
-		bool is_direct = instr->kind == INSTR_CALL_DIRECT;
-
-		uint16_t function_id = instr->call.function_index;
-
-		CallAddressPlaceholder* addr_placeholder = NULL;
-
-		{
-			assert(gen->call_addr_placeholder_count < gen->call_addr_placeholder_capacity);
-			size_t index = gen->call_addr_placeholder_count;
-			gen->call_addr_placeholder_count += 1;
-
-			addr_placeholder = &gen->call_addr_placeholders[index];
-			gen->call_addr_placeholder_regions[index] = region_id;
-		}
-
-		// push shadow space
-		_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
-
-		if (is_direct) {
-			encode_1(buffer, MNEMONIC_CALL, operand_rel32(0));
-
-			addr_placeholder->instruction_end_offset = buffer->size;
-			addr_placeholder->addr_offset = buffer->size - 4;
-			addr_placeholder->function_index = instr->call.function_index;
-			addr_placeholder->kind = CALL_ADDR_RELATIVE;
-		} else {
-			encode_2(buffer, MNEMONIC_MOV, operand_reg(X64_REG_A, 64), operand_imm(0, 64));
-
-			addr_placeholder->instruction_end_offset = buffer->size;
-			addr_placeholder->addr_offset = buffer->size - 8;
-			addr_placeholder->function_index = instr->call.function_index;
-			addr_placeholder->kind = CALL_ADDR_ABSOLUTE;
-
-			encode_1(buffer, MNEMONIC_CALL, operand_reg(X64_REG_A, 64));
-		}
-
-		// pop shadow space
-		_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);
-
-		// Now move the return value into a the proper register dedicated
-		// exactly for the return value of this call instruction
-		_emit_mov_regs(buffer, X64_REG_A, instr_storage.reg, 64);
-
-		// Pop saved registers in reverse order
-		for (size_t i = array_size(CDECL_CALLER_SAVED); i > 0; i -= 1) {
-
-			X64Register reg = CDECL_CALLER_SAVED[i - 1];
-			bool should_restore = instr_storage.reg != reg;
-			if (should_restore) {
-				encode_1(buffer,
-						MNEMONIC_POP,
-						operand_reg(reg, 64));
-			} else {
-				_emit_add_rsp(buffer, 8);
-			}
-		}
-
+	case INSTR_CALL_DIRECT:
+		_lower_call(gen, instr_index, region_id, buffer);
 		return;
-	}
 
 	case INSTR_REGION:
 		panic("`INSTR_REGION` are handled outside of this functions. If this `panic` has been"

@@ -1142,6 +1142,58 @@ static uint16_t _collect_available_registers(X64CodeGenerator* gen, InstrIndex i
 	return allowed_temp_registers;
 }
 
+static void _emit_mem_copy_fixed(CodeBuffer* buffer,
+		Operand src_operand,
+		Operand dst_operand,
+		uint16_t size,
+		uint16_t temp_registers) {
+
+	profile_scope_start(__func__);
+
+	assert(temp_registers != 0);
+	assert(src_operand.kind == OP_MEM);
+	assert(dst_operand.kind == OP_MEM);
+
+	if (size == 0) {
+		profile_scope_end();
+		return;
+	}
+
+	X64Register temp_register = count_trailing_zeros(temp_registers);
+
+	uint16_t sizes[] = { 8, 4, 2, 1 };
+	uint16_t bit_counts[] = { 64, 32, 16, 8 };
+
+	size_t bytes_left = size;
+	size_t offset = 0;
+	for (uint16_t size_index = 0; size_index < array_size(sizes); size_index += 1) {
+		while (bytes_left >= sizes[size_index]) {
+			Operand sized_src = src_operand;
+			sized_src.bit_count = bit_counts[size_index]; 
+
+			Operand sized_dst = dst_operand;
+			sized_dst.bit_count = bit_counts[size_index]; 
+
+			encode_2(buffer,
+					MNEMONIC_MOV,
+					operand_reg(temp_register, bit_counts[size_index]),
+					sized_src);
+
+			encode_2(buffer,
+					MNEMONIC_MOV,
+					sized_dst,
+					operand_reg(temp_register, bit_counts[size_index]));
+
+			src_operand.mem.disp += sizes[size_index];
+			dst_operand.mem.disp += sizes[size_index];
+
+			bytes_left -= sizes[size_index];
+		}
+	}
+
+	profile_scope_end();
+}
+
 static void _lower_instr(X64CodeGenerator* gen,
 		InstrIndex instr_index,
 		uint16_t region_id,
@@ -1405,38 +1457,11 @@ static void _lower_instr(X64CodeGenerator* gen,
 			dst_operand = operand_stack_mem((int32_t)dst_loc.stack.offset, 64);
 		}
 
-		X64Register temp_register = count_trailing_zeros(temp_registers);
-
-		uint16_t sizes[] = { 8, 4, 2, 1 };
-		uint16_t bit_counts[] = { 64, 32, 16, 8 };
-
-		size_t bytes_left = instr->mem_copy_fixed.size;
-		size_t offset = 0;
-		for (uint16_t size_index = 0; size_index < array_size(sizes); size_index += 1) {
-			while (bytes_left >= sizes[size_index]) {
-				Operand sized_src = src_operand;
-				sized_src.bit_count = bit_counts[size_index]; 
-
-				Operand sized_dst = dst_operand;
-				sized_dst.bit_count = bit_counts[size_index]; 
-
-				encode_2(buffer,
-						MNEMONIC_MOV,
-						operand_reg(temp_register, bit_counts[size_index]),
-						sized_src);
-
-				encode_2(buffer,
-						MNEMONIC_MOV,
-						sized_dst,
-						operand_reg(temp_register, bit_counts[size_index]));
-
-				src_operand.mem.disp += sizes[size_index];
-				dst_operand.mem.disp += sizes[size_index];
-
-				bytes_left -= sizes[size_index];
-			}
-		}
-
+		_emit_mem_copy_fixed(buffer,
+				src_operand,
+				dst_operand,
+				instr->mem_copy_fixed.size,
+				temp_registers);
 		return;
 	}
 

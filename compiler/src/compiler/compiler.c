@@ -2939,6 +2939,7 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 		} else if (param_type.kind == TYPE_ARRAY) {
 			abi_param = (AbiParam) { .kind = ABI_PARAM_NORMAL };
 		} else if (param_type.kind == TYPE_STRUCT || param_type.kind == TYPE_UNION) {
+			panic("Non-register sized arguments should come last");
 			abi_param = (AbiParam) {
 				.kind = ABI_PARAM_STRUCT,
 				.struct_size = (uint32_t)_type_get_layout(type_context, &param_type).size,

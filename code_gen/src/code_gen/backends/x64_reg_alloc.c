@@ -128,7 +128,12 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 	}
 
-	// Assign locations to function arguments
+	InstrStorageLocation* argument_locations = x64_compute_abi_sig_argument_locations(
+			current_function_signature,
+			temp_allocator);
+
+	// Assign locations to function arguments.
+	// These locations are determined by the calling convention.
 	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
 		// Skip dead instructions
 		if (live_ranges[i].value == UINT32_MAX) {
@@ -136,10 +141,6 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 
 		InstrKind kind = instr_buffer->instr[i].kind;
-		if (!has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			continue;
-		}
-
 		if (kind != INSTR_LOAD_ARG_8
 				&& kind != INSTR_LOAD_ARG_16
 				&& kind != INSTR_LOAD_ARG_32
@@ -148,33 +149,15 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 
 		const Instr* instr = &instr_buffer->instr[i];
+		instr_storage[i] = argument_locations[instr->load_arg.index];
 
-		// NOTE: INSTR_LOAD_ARG are handled separtely here.
-		//       Since these instructions access arguments which
-		//       are stored in the `cdecl_arg_regs`
-
-		// NOTE: Well that's slowly turning into a mess, why is it here?
-		//       Probably need to introduce a proper concept of calling
-		//       conventions on the code gen level
-		X64Register cdecl_arg_regs[] = { X64_REG_C, X64_REG_D, X64_REG_8, X64_REG_9 };
-		size_t arg_reg_index = instr->load_arg.index;
-
-		if (current_function_signature->returns) {
-			const AbiParam* returns = current_function_signature->returns;
-			if (returns->kind == ABI_PARAM_STRUCT) {
-				arg_reg_index += 1;
-			} else if (returns->kind == ABI_PARAM_NORMAL) {
-				// Nothing
-			} else {
-				unreachable();
-			}
+		if (instr_storage[i].kind != INSTR_STORAGE_REG) {
+			continue;
 		}
 
-		assert(arg_reg_index < array_size(cdecl_arg_regs));
-
-		X64Register reg = cdecl_arg_regs[arg_reg_index];
-		instr_storage[i].kind = INSTR_STORAGE_REG;
-		instr_storage[i].reg = reg;
+		// If the argument is placed in the register, we need to go through the interfering
+		// instructions, and disallow the selected register for them.
+		X64Register reg = instr_storage[i].reg;
 
 		InstrIndexArray edges = interference_graph[i];
 		for (size_t j = 0; j < edges.count; j += 1) {
@@ -184,7 +167,6 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 	}
 
 	// Assign locations to the rest of the instructions
-
 	uint32_t stack_offset = 0;
 	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
 		// Skip dead instructions
@@ -264,6 +246,25 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
+
+	// Disallow any registers that are used for the return aren address
+	//
+	// For __cdecl calling convetion, in case the function wants to return a struct bigger than a
+	// register size, the first argument register is used to pass the address of the area, where the
+	// returned struct should be written to.
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+	InstrStorageLocation* all_locations = x64_compute_all_abi_sig_locations(
+			current_function_signature,
+			temp_allocator);
+
+	for (uint32_t i = 0; i < current_function_signature->param_count; i += 1) {
+		AbiParam param = current_function_signature->params[i];
+		if (param.kind == ABI_PARAM_RETURN_LOCATION && all_locations[i].kind == INSTR_STORAGE_REG) {
+			allowed_registers &= ~(1 << all_locations[i].reg);
+		}
+	}
+
+	arena_end_temp(temp);
 
 	InstrIndexArray* interference_graph = _build_interference_graph(instr_buffer,
 			live_ranges,

@@ -1208,6 +1208,8 @@ static void _lower_call(X64CodeGenerator* gen,
 
 	profile_scope_start(__func__);
 
+	ArenaRegion temp = arena_begin_temp(gen->allocator);
+
 	const uint32_t SHADOW_SPACE_SIZE = 32;
 
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;
@@ -1253,25 +1255,19 @@ static void _lower_call(X64CodeGenerator* gen,
 	}
 
 	// Load the argument into their corresponding registers
-	{
-		uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
+	uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
 
-		ArenaRegion temp = arena_begin_temp(gen->allocator);
+	RegisterMoveArray parallel_moves = _parallel_move_values(
+			input_instr_storage,
+			expected_arg_locs,
+			args.count,
+			0,
+			gen->allocator,
+			gen->temp_allocator);
 
-		RegisterMoveArray parallel_moves = _parallel_move_values(
-				input_instr_storage,
-				expected_arg_locs,
-				args.count,
-				0,
-				gen->allocator,
-				gen->temp_allocator);
-
-		for (size_t i = 0; i < parallel_moves.count; i += 1) {
-			RegisterMove move = parallel_moves.moves[i];
-			_emit_mov_regs(buffer, move.src, move.dst, 64);
-		}
-
-		arena_end_temp(temp);
+	for (size_t i = 0; i < parallel_moves.count; i += 1) {
+		RegisterMove move = parallel_moves.moves[i];
+		_emit_mov_regs(buffer, move.src, move.dst, 64);
 	}
 
 	// Load the address of the stack location that recieves the returned struct, into the first
@@ -1345,6 +1341,7 @@ static void _lower_call(X64CodeGenerator* gen,
 		}
 	}
 
+	arena_end_temp(temp);
 	profile_scope_end();
 }
 
@@ -2073,13 +2070,6 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 	//       writes by any of the two instructions will be reflected in two places.
 	allowed_registers &= ~(1 << X64_REG_SI);
 	allowed_registers &= ~(1 << X64_REG_DI);
-
-	if (gen->function_signature.returns != NULL) {
-		AbiParam* returns = gen->function_signature.returns;
-		if (returns->kind == ABI_PARAM_STRUCT) {
-			allowed_registers &= ~(1 << CDECL_ARG_REGS[0]);
-		}
-	}
 
 	RegisterAllocationResult result;
 	result = x64_alloc_regs(&gen->instr_buffer,
@@ -3132,4 +3122,79 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 	arena_end_temp(temp);
 	profile_scope_end();
 	return machine_code;
+}
+
+InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature* signature,
+		Arena* allocator) {
+	profile_scope_start(__func__);
+
+	InstrStorageLocation* locations = arena_alloc_array(allocator,
+			InstrStorageLocation,
+			0);
+
+	assert(signature->call_conv == CALL_CONV_CDECL);
+
+	size_t arg_index = 0;
+	size_t arg_reg_index = 0;
+	for (uint32_t i = 0; i < signature->param_count; i += 1) {
+		AbiParam param = signature->params[i];
+
+		switch (param.kind) {
+		case ABI_PARAM_NORMAL:
+			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
+			arena_alloc(allocator, InstrStorageLocation);
+
+			locations[arg_index].kind = INSTR_STORAGE_REG;
+			locations[arg_index].reg = CDECL_ARG_REGS[arg_reg_index];
+
+			arg_reg_index += 1;
+			arg_index += 1;
+			break;
+		case ABI_PARAM_STRUCT:
+			panic("todo");
+		case ABI_PARAM_RETURN_LOCATION:
+			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
+			arg_reg_index += 1;
+			break;
+		}
+	}
+
+	profile_scope_end();
+	return locations;
+}
+
+InstrStorageLocation* x64_compute_all_abi_sig_locations(const AbiSignature* signature,
+		Arena* allocator) {
+	profile_scope_start(__func__);
+
+	InstrStorageLocation* locations = arena_alloc_array(allocator,
+			InstrStorageLocation,
+			signature->param_count);
+
+	assert(signature->call_conv == CALL_CONV_CDECL);
+
+	size_t arg_reg_index = 0;
+	for (uint32_t i = 0; i < signature->param_count; i += 1) {
+		AbiParam param = signature->params[i];
+
+		switch (param.kind) {
+		case ABI_PARAM_NORMAL:
+			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
+			locations[i].kind = INSTR_STORAGE_REG;
+			locations[i].reg = CDECL_ARG_REGS[arg_reg_index];
+			arg_reg_index += 1;
+			break;
+		case ABI_PARAM_STRUCT:
+			panic("todo");
+		case ABI_PARAM_RETURN_LOCATION:
+			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
+			locations[i].kind = INSTR_STORAGE_REG;
+			locations[i].reg = CDECL_ARG_REGS[arg_reg_index];
+			arg_reg_index += 1;
+			break;
+		}
+	}
+
+	profile_scope_end();
+	return locations;
 }

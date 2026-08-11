@@ -20,14 +20,19 @@ It implements a preprocessor, a parser, a compiler and a x64 code generation bac
 > [!NOTE]
 > Doesn't produce an executable (yet), rather it runs the program in the same process as the compiler.
 
-Although the compiler doesn't yet support a lot of C features, it is already capable of compiling not just simple programs like `printf("hello world");`, but also some algorithms with loops, like bubble sort (an example can be found in the test suite, [here](tests/compiler/test_for_loop_bubble_sort.c))
+Although the compiler doesn't yet support a lot of C features, it is already capable of compiling not just simple programs like `printf("hello world");`, but also some more complex ones:
+
+1. bubble sort (an example can be found in the test suite, [here](tests/compiler/test_for_loop_bubble_sort.c))
+2. a dynamic `int` array [examples/int_array.c](examples/int_array.c)
+3. [arena allocator](tests/compiler/test_arena.c) which is used through out the whole codebase.
 
 Features and limitations:
 
 1. `x64` machine code generation
-2. Partially supported `cdecl` calling convention. **Only implemented for trivial register sized types like ints or pointers. Bigger types are not supported**.
-3. Works only with the `main` function. **Calling other defined functions is not supported**
+2. Partially supported `cdecl` calling convention
+3. Support for using structs as function return types.
 4. Calling of external functions. These are provided inernally as function pointers by the compiler.
+5. A custom [linker](code_gen/src/code_gen/x64_linker.c) that enables compilation of multiple functions and source files into a single program.
 5. `char`, `int`, `short`, `long`, `long long` and their signed/unsigned variats with support for all binary and unary operators.
 6. Integer and pointer arithmetics.
 7. Pointer dereferencing and assignment.
@@ -52,7 +57,7 @@ Features and limitations:
 6. `driver/src` - the entry point of the whole compiler
 7. `gen/src` - source code generators
 8. `parser/src` - parser and preprocessor
-9. `stdx/src` - some simplified versions of standard library headers, that are sometimes used to work around the limitations of the preprocessor.
+9. `stdx/src` - some simplified versions of standard library headers, that are sometimes used to work around the limitations of the parser.
 10. `tester/src` - test runner and tests
 11. `tests/src` - preprocessor and compiler tests. Here every test is defined in it's own file. This directory is scanned by the `test_runner`, and adding new tests doesn't require recompiling the whole project.
 

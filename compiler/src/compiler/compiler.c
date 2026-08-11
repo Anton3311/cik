@@ -536,6 +536,12 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		return (AddressExpr) { .base = stack_addr_index, .offset = 0 };
 	}
 	case EXPR_CALL: {
+		Type result_type;
+		expr_get_type(expr, &result_type);
+
+		size_t return_type_size = _type_get_layout(compiler->type_context, &result_type).size;
+		assert(return_type_size >= compiler->type_context->pointer_type_layout.size);
+
 		InstrIndex call_instr = _compile_expr(compiler, expr);
 
 		InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);

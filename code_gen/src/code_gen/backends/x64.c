@@ -1284,7 +1284,7 @@ static void _lower_call(X64CodeGenerator* gen,
 		expected_loc_count += 1;
 	}
 
-	// Load the argument into their corresponding registers
+	// Load the arguments into their corresponding registers
 	assert(input_storage_count == expected_loc_count);
 
 	uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
@@ -1345,21 +1345,27 @@ static void _lower_call(X64CodeGenerator* gen,
 	// pop shadow space
 	_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);
 
-	// Now move the return value into a the proper register dedicated
-	// exactly for the return value of this call instruction
-	_emit_mov_regs(buffer, X64_REG_A, instr_storage.reg, 64);
+	X64Register return_register = X64_REG_COUNT;
+	if (callee_signature.returns != NULL) {
+		return_register = instr_storage.reg;
+
+		// Now move the return value into a the proper register dedicated
+		// exactly for the return value of this call instruction
+		_emit_mov_regs(buffer, X64_REG_A, instr_storage.reg, 64);
+	}
 
 	// Pop saved registers in reverse order
 	for (size_t i = array_size(CDECL_CALLER_SAVED); i > 0; i -= 1) {
-
 		X64Register reg = CDECL_CALLER_SAVED[i - 1];
-		bool should_restore = instr_storage.reg != reg;
-		if (should_restore) {
+		
+		if (reg == return_register) {
+			// This register contains the return value, so don't restor it in order not to override
+			// the return value.
+			_emit_add_rsp(buffer, 8);
+		} else {
 			encode_1(buffer,
 					MNEMONIC_POP,
 					operand_reg(reg, 64));
-		} else {
-			_emit_add_rsp(buffer, 8);
 		}
 	}
 

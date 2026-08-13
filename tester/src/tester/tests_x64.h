@@ -54,6 +54,8 @@ void test_encode_mov_const_32_to_extended_register(TestContext* context);
 void test_encode_addressing_of_r12_r13_and_bp(TestContext* context);
 void test_encode_push_extended_register(TestContext* context);
 void test_encode_pop_extended_register(TestContext* context);
+void test_encode_movzx_16_to_32_bits(TestContext* context);
+void test_encode_movsx_16_to_32_bits(TestContext* context);
 
 // Parallel Moves
 void test_parallel_moves_produces_no_moves_if_input_locs_equal_expected_locs(TestContext* context);

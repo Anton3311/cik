@@ -1915,6 +1915,54 @@ void test_encode_pop_extended_register(TestContext* context) {
 	assert_msg(memcmp(buffer.buffer, expected, buffer.size) == 0, "pop r8");
 }
 
+void test_encode_movzx_16_to_32_bits(TestContext* context) {
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	// Here `rax` and `rcx` are caller saved.
+	// So we don't need to do any saving/restoring.
+	encode_2(&buffer, MNEMONIC_MOV, operand_reg(X64_REG_A, 64), operand_imm(UINT64_MAX, 64));
+	encode_2(&buffer, MNEMONIC_MOV, operand_reg(X64_REG_C, 16), operand_imm(0xa, 16));
+	encode_2(&buffer, MNEMONIC_MOVZX, operand_reg(X64_REG_A, 32), operand_reg(X64_REG_C, 16));
+	encode_n(&buffer, MNEMONIC_RET, NULL, 0);
+
+	void* code = allocate_executable(buffer.size);
+	memcpy(code, buffer.buffer, buffer.size);
+
+	typedef uint64_t(*Function)();
+
+	Function function = (Function)code;
+	uint64_t result = function();
+
+	free_executable(code);
+
+	assert((result & 0xffffffff) == 0xa);
+}
+
+void test_encode_movsx_16_to_32_bits(TestContext* context) {
+	CodeBuffer buffer;
+	code_buffer_init(&buffer, context->arena);
+
+	// Here `rax` and `rcx` are caller saved.
+	// So we don't need to do any saving/restoring.
+	encode_2(&buffer, MNEMONIC_MOV, operand_reg(X64_REG_A, 64), operand_imm(0, 64));
+	encode_2(&buffer, MNEMONIC_MOV, operand_reg(X64_REG_C, 16), operand_imm(0xfffa, 16));
+	encode_2(&buffer, MNEMONIC_MOVSX, operand_reg(X64_REG_A, 32), operand_reg(X64_REG_C, 16));
+	encode_n(&buffer, MNEMONIC_RET, NULL, 0);
+
+	void* code = allocate_executable(buffer.size);
+	memcpy(code, buffer.buffer, buffer.size);
+
+	typedef uint64_t(*Function)();
+
+	Function function = (Function)code;
+	uint64_t result = function();
+
+	free_executable(code);
+
+	assert((result & 0xffffffff) == 0xfffffffa);
+}
+
 
 void test_parallel_moves_produces_no_moves_if_input_locs_equal_expected_locs(TestContext* context) {
 	X64Register expected_locs[] = { X64_REG_A, X64_REG_8, X64_REG_C, X64_REG_D };

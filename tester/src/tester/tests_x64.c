@@ -1934,7 +1934,7 @@ void test_encode_movzx_16_to_32_bits(TestContext* context) {
 	Function function = (Function)code;
 	uint64_t result = function();
 
-	free_executable(code);
+	free_executable(code, buffer.size);
 
 	assert((result & 0xffffffff) == 0xa);
 }
@@ -1958,7 +1958,7 @@ void test_encode_movsx_16_to_32_bits(TestContext* context) {
 	Function function = (Function)code;
 	uint64_t result = function();
 
-	free_executable(code);
+	free_executable(code, buffer.size);
 
 	assert((result & 0xffffffff) == 0xfffffffa);
 }

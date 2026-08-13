@@ -1,8 +1,5 @@
 #include "x64_reg_alloc.h"
 
-// Defined in `x64.c`
-extern X64InstrStorageRequirement s_instr_storage_requiremenets[INSTR_COUNT];
-
 // Returned array stores an array of edges for each instruction in `instr_with_storage_requirement`
 //
 // The array must be indexed using an element index of the `instr_with_storage_requirement`
@@ -120,8 +117,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 
 		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			uint16_t instr_registers = s_instr_storage_requiremenets[kind].allowed_registers;
-			potential_instr_registers[i] = instr_registers & allowed_registers;
+			potential_instr_registers[i] = allowed_registers;
 
 			assert_msg(potential_instr_registers[i] != 0,
 					"This instruction must be spilled, but spilling is not yet implemented");

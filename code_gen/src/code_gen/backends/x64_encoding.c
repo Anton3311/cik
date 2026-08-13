@@ -252,8 +252,8 @@ void encoding_init() {
 	*(e++) = (E) { MNEMONIC_IDIV, ENC_NONE, 0xf7, 0x7, { { OP_RM, 16 | 32 | 64 } } };
 
 	// movzx
-	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } };
-	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, { { OP_RM, 16 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb6, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM, 8  } } };
+	*(e++) = (E) { MNEMONIC_MOVZX, ENC_HAS_0F_PREFIX, 0xb7, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM, 16 } } };
 
 	// cwd
 	*(e++) = (E) { MNEMONIC_CWD, ENC_MANDATORY_66, 0x99, 0x0 };
@@ -263,8 +263,8 @@ void encoding_init() {
 	*(e++) = (E) { MNEMONIC_CQO, ENC_MANDATORY_REX_64, 0x99, 0x0 };
 
 	// movsx
-	*(e++) = (E) { MNEMONIC_MOVSX, ENC_HAS_0F_PREFIX, 0xbe, 0x0, { { OP_RM, 8  }, { OP_REG, 16 | 32 | 64 } } };
-	*(e++) = (E) { MNEMONIC_MOVSX, ENC_HAS_0F_PREFIX, 0xbf, 0x0, { { OP_RM, 16 }, { OP_REG, 16 | 32 | 64 } } };
+	*(e++) = (E) { MNEMONIC_MOVSX, ENC_HAS_0F_PREFIX, 0xbe, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM, 8  } } };
+	*(e++) = (E) { MNEMONIC_MOVSX, ENC_HAS_0F_PREFIX, 0xbf, 0x0, { { OP_REG, 16 | 32 | 64 }, { OP_RM, 16 } } };
 
 	// shr
 	*(e++) = (E) { MNEMONIC_SHR, ENC_NONE, 0xc0, 0x5, { { OP_RM, 8 },            { OP_IMM, 8 } } };
@@ -533,15 +533,10 @@ void encode_n(CodeBuffer* code_buffer,
 		}
 	}
 
-	bool is_16_bit = false;
 	for (size_t i = 0; i < operand_count; i += 1) {
 		Operand op = operands[i];
 		if (op.bit_count == 64 && (op.kind == OP_REG)) {
 			rex_prefix_bits |= 0b1000;
-		}
-
-		if (op.bit_count == 16 && op.kind == OP_REG) {
-			is_16_bit = true;
 		}
 	}
 
@@ -552,6 +547,7 @@ void encode_n(CodeBuffer* code_buffer,
 	uint8_t* write_ptr = buffer;
 
 	// operand size override
+	bool is_16_bit = operand_count > 0 && operands[0].bit_count == 16;
 	if (is_16_bit || has_flag(encoding.flags, ENC_MANDATORY_66)) {
 		*write_ptr = 0x66;
 		write_ptr += 1;

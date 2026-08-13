@@ -920,7 +920,7 @@ static void _emit_div_mod(CodeBuffer* buffer,
 	if (mnemonic == MNEMONIC_IDIV) {
 		switch (bit_count) {
 		case 8:
-			encode_2(buffer, MNEMONIC_MOVSX, operand_reg(left_reg, 8), operand_reg(X64_REG_A, 16));
+			encode_2(buffer, MNEMONIC_MOVSX, operand_reg(X64_REG_A, 16), operand_reg(left_reg, 8));
 			break;
 		case 16:
 			_emit_mov_regs(buffer, left_reg, X64_REG_A, bit_count);
@@ -940,7 +940,7 @@ static void _emit_div_mod(CodeBuffer* buffer,
 	} else {
 		switch (bit_count) {
 		case 8:
-			encode_2(buffer, MNEMONIC_MOVZX, operand_reg(left_reg, 8), operand_reg(X64_REG_A, 16));
+			encode_2(buffer, MNEMONIC_MOVZX, operand_reg(X64_REG_A, 16), operand_reg(left_reg, 8));
 			break;
 		case 16:
 			_emit_load_const_16(buffer, X64_REG_D, 0);
@@ -1875,8 +1875,8 @@ static void _lower_instr(X64CodeGenerator* gen,
 		if (operand_size == 8 || operand_size == 16) {
 			encode_2(buffer,
 					MNEMONIC_MOVZX,
-					operand_reg(src_loc.reg, operand_size),
-					operand_reg(dst_loc.reg, output_size));
+					operand_reg(dst_loc.reg, output_size),
+					operand_reg(src_loc.reg, operand_size));
 		} else if (operand_size == 32) {
 			// NOTE: Moving (writing) to a 32-bit register zeros out the upper half of the
 			//       corresponding 64-bit regiters.

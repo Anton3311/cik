@@ -249,9 +249,9 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
 
-	// Disallow any registers that are used for the return aren address
+	// Disallow any registers that are used for the return area address
 	//
-	// For __cdecl calling convetion, in case the function wants to return a struct bigger than a
+	// For __cdecl calling convention, in case the function wants to return a struct bigger than a
 	// register size, the first argument register is used to pass the address of the area, where the
 	// returned struct should be written to.
 	ArenaRegion temp = arena_begin_temp(temp_allocator);

@@ -2022,8 +2022,10 @@ void test_parallel_moves_is_correct_for_input_in_shifted_locations(TestContext* 
 	X64Register expected_locs[X64_REG_COUNT];
 	InstrStorageLocation input_locs[array_size(expected_locs)];
 
+	uint16_t shift = (uint16_t)rand();
+
 	for (size_t i = 0; i < array_size(expected_locs); i += 1) {
-		expected_locs[i] = i;
+		expected_locs[i] = (i + shift) % X64_REG_COUNT;
 
 		input_locs[i].kind = INSTR_STORAGE_REG;
 		input_locs[i].reg = expected_locs[i];

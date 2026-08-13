@@ -106,6 +106,9 @@ static void _init_storage_requiremenets() {
 
 	s[INSTR_RETURN_VALUE]           = (T) { .allowed_registers = 0, .reg_size = 0 };
 
+	s[INSTR_LOAD_FUNCTION_ADDR]     = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
+	s[INSTR_LOAD_EXTERNAL_FUNCTION_ADDR] = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
+
 	s[INSTR_CALL_INDIRECT]          = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 	s[INSTR_CALL_DIRECT]            = (T) { .allowed_registers = UINT16_MAX, .reg_size = 64 };
 
@@ -1201,21 +1204,48 @@ static void _emit_mem_copy_fixed(CodeBuffer* buffer,
 	profile_scope_end();
 }
 
+typedef struct {
+	bool is_direct;
+	InstrInputs args;
+	uint16_t callee_signature_index;
+	
+	union {
+		struct {
+			uint16_t callee_index;
+		} direct;
+		struct {
+			InstrIndex address_instr;
+		} indirect;
+	};
+} CallLoweringOptions;
+
+const X64Register DEFAULT_CALLEE_ADDRESS_REGISTER = X64_REG_A;
+
 static void _lower_call(X64CodeGenerator* gen,
 		InstrIndex instr_index,
 		uint16_t region_id,
 		CodeBuffer* buffer,
-		InstrInputs args,
-		uint16_t function_id) {
-
+		CallLoweringOptions options) {
 	profile_scope_start(__func__);
 
-	ArenaRegion temp = arena_begin_temp(gen->allocator);
+	Arena* temp_allocator = gen->allocator;
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	const uint32_t SHADOW_SPACE_SIZE = 32;
 
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	const InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
+
+	AbiSignature callee_signature = gen->imported_function_signatures[options.callee_signature_index];
+	if (callee_signature.returns) {
+		if (callee_signature.returns->kind == ABI_PARAM_STRUCT) {
+			assert(instr_storage.kind == INSTR_STORAGE_STACK);
+		} else if (callee_signature.returns->kind == ABI_PARAM_NORMAL) {
+			assert(instr_storage.kind == INSTR_STORAGE_REG);
+		} else {
+			unreachable();
+		}
+	}
 
 	// Push saved registers
 	for (size_t i = 0; i < array_size(CDECL_CALLER_SAVED); i += 1) {
@@ -1224,42 +1254,62 @@ static void _lower_call(X64CodeGenerator* gen,
 				operand_reg(CDECL_CALLER_SAVED[i], 64));
 	}
 
-	InstrStorageLocation input_instr_storage[array_size(CDECL_ARG_REGS)];
-	X64Register expected_arg_locs[array_size(CDECL_ARG_REGS)];
+	// Fill the storage locations of arguments (inputs)
+	uint16_t input_storage_count = options.args.count;
+	InstrStorageLocation* input_instr_storage = arena_alloc_array(
+			temp_allocator,
+			InstrStorageLocation,
+			options.args.count);
 
-	size_t arg_reg_index = 0;
-	AbiSignature callee_signature = gen->imported_function_signatures[function_id];
-	
-	if (callee_signature.returns) {
-		if (callee_signature.returns->kind == ABI_PARAM_STRUCT) {
-			assert(instr_storage.kind == INSTR_STORAGE_STACK);
-			arg_reg_index += 1;
-		} else if (callee_signature.returns->kind == ABI_PARAM_NORMAL) {
-			assert(instr_storage.kind == INSTR_STORAGE_REG);
-		} else {
-			unreachable();
-		}
-	}
-
-	for (uint16_t i = 0; i < args.count; i += 1) {
-		assert(arg_reg_index <= array_size(CDECL_ARG_REGS));
-		expected_arg_locs[i] = CDECL_ARG_REGS[arg_reg_index];
-		arg_reg_index += 1;
-	}
-
-	for (uint16_t i = 0; i < args.count; i += 1) {
-		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[args.start + i];
+	for (uint16_t i = 0; i < options.args.count; i += 1) {
+		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
 		input_instr_storage[i] = gen->instr_storage[arg_instr.value];
 	}
 
+	// In case it is an indirect call, add the instruciton that computes the callee address as one
+	// of the inputs.
+	if (!options.is_direct) {
+		arena_alloc(temp_allocator, InstrStorageLocation);
+		InstrIndex addr_instr = options.indirect.address_instr;
+		input_instr_storage[input_storage_count] = gen->instr_storage[addr_instr.value];
+		input_storage_count += 1;
+	}
+
+	// Fill the expected loactions of the arguments
+	size_t expected_loc_count = options.args.count;
+	X64Register* expected_arg_locs = arena_alloc_array(temp_allocator,
+			X64Register,
+			options.args.count);
+
+	bool callee_returns_struct = callee_signature.returns
+		&& callee_signature.returns->kind == ABI_PARAM_STRUCT;
+
+	size_t next_arg_reg_index = callee_returns_struct ? 1 : 0;
+	for (uint16_t i = 0; i < options.args.count; i += 1) {
+		assert(next_arg_reg_index <= array_size(CDECL_ARG_REGS));
+		expected_arg_locs[i] = CDECL_ARG_REGS[next_arg_reg_index];
+		next_arg_reg_index += 1;
+	}
+
+	if (!options.is_direct) {
+		arena_alloc(temp_allocator, X64Register);
+		expected_arg_locs[expected_loc_count] = DEFAULT_CALLEE_ADDRESS_REGISTER;
+		expected_loc_count += 1;
+	}
+
 	// Load the argument into their corresponding registers
+	assert(input_storage_count == expected_loc_count);
+
 	uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
+	for (size_t i = 0; i < expected_loc_count; i += 1) {
+		allowed_temp_registers &= ~(1 << expected_arg_locs[i]);
+	}
 
 	RegisterMoveArray parallel_moves = _parallel_move_values(
 			input_instr_storage,
 			expected_arg_locs,
-			args.count,
-			0,
+			input_storage_count,
+			allowed_temp_registers,
 			gen->allocator,
 			gen->temp_allocator);
 
@@ -1284,36 +1334,25 @@ static void _lower_call(X64CodeGenerator* gen,
 				operand_stack_mem((int32_t)return_value_stack_offset, 64));
 	}
 
-	CallAddressPlaceholder* addr_placeholder = NULL;
-
-	{
-		assert(gen->call_addr_placeholder_count < gen->call_addr_placeholder_capacity);
-		size_t index = gen->call_addr_placeholder_count;
-		gen->call_addr_placeholder_count += 1;
-
-		addr_placeholder = &gen->call_addr_placeholders[index];
-		gen->call_addr_placeholder_regions[index] = region_id;
-	}
-
 	// push shadow space
 	_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
 
 	if (instr_buffer->instr[instr_index.value].kind == INSTR_CALL_DIRECT) {
 		encode_1(buffer, MNEMONIC_CALL, operand_rel32(0));
 
+		assert(gen->call_addr_placeholder_count < gen->call_addr_placeholder_capacity);
+		size_t index = gen->call_addr_placeholder_count;
+		gen->call_addr_placeholder_count += 1;
+
+		CallAddressPlaceholder* addr_placeholder = &gen->call_addr_placeholders[index];
+		gen->call_addr_placeholder_regions[index] = region_id;
+
 		addr_placeholder->instruction_end_offset = buffer->size;
 		addr_placeholder->addr_offset = buffer->size - 4;
-		addr_placeholder->function_index = function_id;
+		addr_placeholder->function_index = options.direct.callee_index;
 		addr_placeholder->kind = CALL_ADDR_RELATIVE;
 	} else {
-		encode_2(buffer, MNEMONIC_MOV, operand_reg(X64_REG_A, 64), operand_imm(0, 64));
-
-		addr_placeholder->instruction_end_offset = buffer->size;
-		addr_placeholder->addr_offset = buffer->size - 8;
-		addr_placeholder->function_index = function_id;
-		addr_placeholder->kind = CALL_ADDR_ABSOLUTE;
-
-		encode_1(buffer, MNEMONIC_CALL, operand_reg(X64_REG_A, 64));
+		encode_1(buffer, MNEMONIC_CALL, operand_reg(DEFAULT_CALLEE_ADDRESS_REGISTER, 64));
 	}
 
 	// pop shadow space
@@ -1913,11 +1952,79 @@ static void _lower_instr(X64CodeGenerator* gen,
 		return;
 	
 	case INSTR_CALL_INDIRECT:
-		_lower_call(gen, instr_index, region_id, buffer, instr->call_indirect.args, instr->call_indirect.function_index);
+		_lower_call(gen,
+				instr_index,
+				region_id,
+				buffer,
+				(CallLoweringOptions) {
+					.is_direct = false,
+					.args = instr->call_indirect.args,
+					.callee_signature_index = instr->call_indirect.signature_index,
+					.indirect = {
+						.address_instr = instr->call_indirect.function_addr,
+					}
+				});
 		return;
 	case INSTR_CALL_DIRECT:
-		_lower_call(gen, instr_index, region_id, buffer, instr->call_direct.args, instr->call_direct.function_index);
+		_lower_call(gen,
+				instr_index,
+				region_id,
+				buffer,
+				(CallLoweringOptions) {
+					.is_direct = true,
+					.args = instr->call_direct.args,
+					.callee_signature_index = instr->call_direct.function_index,
+					.direct = {
+						.callee_index = instr->call_direct.function_index,
+					}
+				});
 		return;
+	
+	case INSTR_LOAD_FUNCTION_ADDR: {
+		assert(instr_storage.kind == INSTR_STORAGE_REG);
+		CallAddressPlaceholder* addr_placeholder = NULL;
+
+		{
+			assert(gen->call_addr_placeholder_count < gen->call_addr_placeholder_capacity);
+			size_t index = gen->call_addr_placeholder_count;
+			gen->call_addr_placeholder_count += 1;
+
+			addr_placeholder = &gen->call_addr_placeholders[index];
+			gen->call_addr_placeholder_regions[index] = region_id;
+		}
+
+		encode_2(buffer,
+				MNEMONIC_LEA,
+				operand_reg(instr_storage.reg, 64),
+				operand_rip_relative(0, 64));
+
+		addr_placeholder->instruction_end_offset = buffer->size;
+		addr_placeholder->addr_offset = buffer->size - 4;
+		addr_placeholder->function_index = instr->load_function_addr.function_index;
+		addr_placeholder->kind = CALL_ADDR_RELATIVE;
+		return;
+	}
+	case INSTR_LOAD_EXTERNAL_FUNCTION_ADDR: {
+		assert(instr_storage.kind == INSTR_STORAGE_REG);
+		CallAddressPlaceholder* addr_placeholder = NULL;
+
+		{
+			assert(gen->call_addr_placeholder_count < gen->call_addr_placeholder_capacity);
+			size_t index = gen->call_addr_placeholder_count;
+			gen->call_addr_placeholder_count += 1;
+
+			addr_placeholder = &gen->call_addr_placeholders[index];
+			gen->call_addr_placeholder_regions[index] = region_id;
+		}
+
+		encode_2(buffer, MNEMONIC_MOV, operand_reg(instr_storage.reg, 64), operand_imm(0, 64));
+
+		addr_placeholder->instruction_end_offset = buffer->size;
+		addr_placeholder->addr_offset = buffer->size - 8;
+		addr_placeholder->function_index = instr->load_function_addr.function_index;
+		addr_placeholder->kind = CALL_ADDR_ABSOLUTE;
+		return;
+	}
 
 	case INSTR_REGION:
 		panic("`INSTR_REGION` are handled outside of this functions. If this `panic` has been"
@@ -2607,9 +2714,10 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		break;
 	}
 	case INSTR_CALL_INDIRECT: {
-		_try_enqueue_for_scheduling(queue, context, current_position, instr->call_direct.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->call_indirect.io_state);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->call_indirect.function_addr);
 
-		InstrInputs args = instr->call_direct.args;
+		InstrInputs args = instr->call_indirect.args;
 		for (uint16_t i = 0; i < args.count; i += 1) {
 			InstrIndex arg_instr = instr_buffer->inputs_buffer[args.start + i];
 			_try_enqueue_for_scheduling(queue, context, current_position, arg_instr);
@@ -2617,6 +2725,9 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 
 		break;
 	}
+	case INSTR_LOAD_FUNCTION_ADDR:
+	case INSTR_LOAD_EXTERNAL_FUNCTION_ADDR:
+		break;
 	case INSTR_REGION:
 		unreachable();
 	case INSTR_PHI: {
@@ -3020,7 +3131,10 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 			InstrIndex instr_index = scheduled.instr[j];
 			const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
-			if (instr->kind == INSTR_CALL_INDIRECT || instr->kind == INSTR_CALL_DIRECT) {
+			if (instr->kind == INSTR_CALL_INDIRECT
+					|| instr->kind == INSTR_CALL_DIRECT
+					|| instr->kind == INSTR_LOAD_FUNCTION_ADDR
+					|| instr->kind == INSTR_LOAD_EXTERNAL_FUNCTION_ADDR) {
 				gen->call_addr_placeholder_capacity += 1;
 			}
 		}

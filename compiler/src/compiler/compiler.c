@@ -1189,29 +1189,39 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 		const Function* func = callable->function_ref.func;
 
+		Symbol symbol = {};
+		compiler_create_function_import_symbol(func, &symbol);
+
+		SymbolId func_symbol_id = symbol_map_find(compiler->symbol_map,
+				symbol_key_from_symbol(&symbol));
+
+		// There is pass that runs before the compiler and collects all the imported symbols
+		// into the `symbol_map`
+		assert(func_symbol_id != SYMBOL_ID_INVALID);
+
 		bool is_indirect_call = func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT;
-		SymbolId func_symbol_id;
-
-		{
-			Symbol symbol = {};
-			compiler_create_function_import_symbol(func, &symbol);
-
-			func_symbol_id = symbol_map_find(compiler->symbol_map, symbol_key_from_symbol(&symbol));
-
-			// There is pass that runs before the compiler and collects all the imported symbols
-			// into the `symbol_map`
-			assert(func_symbol_id != SYMBOL_ID_INVALID);
-		}
-
-		InstrIndex call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
+		InstrIndex call_instr_index = INVALID_INSTR_INDEX;
 
 		if (is_indirect_call) {
+			InstrIndex load_func_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* load_func_addr = instr_buffer_at(instr_buffer, load_func_addr_index);
+			load_func_addr->kind = symbol.linkage == SYMBOL_LINKAGE_EXTERNAL_DYNAMIC
+				? INSTR_LOAD_EXTERNAL_FUNCTION_ADDR
+				: INSTR_LOAD_FUNCTION_ADDR;
+			load_func_addr->load_function_addr.function_index = func_symbol_id;
+
+			call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
+
 			call_instr->kind = INSTR_CALL_INDIRECT;
 			call_instr->call_indirect.args = arg_inputs;
 			call_instr->call_indirect.io_state = compiler->io_state;
-			call_instr->call_indirect.function_index = func_symbol_id;
+			call_instr->call_indirect.function_addr = load_func_addr_index;
+			call_instr->call_indirect.signature_index = func_symbol_id;
 		} else {
+			call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
+
 			call_instr->kind = INSTR_CALL_DIRECT;
 			call_instr->call_direct.args = arg_inputs;
 			call_instr->call_direct.io_state = compiler->io_state;

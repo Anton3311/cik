@@ -64,6 +64,8 @@ String instr_name(InstrKind variant) {
     case INSTR_REGION: return STR_LIT("region");
     case INSTR_PHI: return STR_LIT("phi");
     case INSTR_SELECT: return STR_LIT("select");
+    case INSTR_LOAD_FUNCTION_ADDR: return STR_LIT("load_function_addr");
+    case INSTR_LOAD_EXTERNAL_FUNCTION_ADDR: return STR_LIT("load_external_function_addr");
     case INSTR_CALL_INDIRECT: return STR_LIT("call_indirect");
     case INSTR_CALL_DIRECT: return STR_LIT("call_direct");
     case INSTR_COUNT: unreachable();
@@ -289,9 +291,14 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         instr_queue_push_back(out_dependencies, instr->select.value);
         instr_queue_push_back(out_dependencies, instr->select.region);
         break;
+    case INSTR_LOAD_FUNCTION_ADDR:
+        break;
+    case INSTR_LOAD_EXTERNAL_FUNCTION_ADDR:
+        break;
     case INSTR_CALL_INDIRECT:
         instr_push_input_dependencies(buffer, instr->call_indirect.args, out_dependencies);
         instr_queue_push_back(out_dependencies, instr->call_indirect.io_state);
+        instr_queue_push_back(out_dependencies, instr->call_indirect.function_addr);
         break;
     case INSTR_CALL_DIRECT:
         instr_push_input_dependencies(buffer, instr->call_direct.args, out_dependencies);
@@ -472,8 +479,14 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
     case INSTR_SELECT:
         printf("value: \033[33;1m%%%u\033[0m region: \033[33;1m%%%u\033[0m ", (uint32_t)instr->select.value.value, (uint32_t)instr->select.region.value);
         break;
+    case INSTR_LOAD_FUNCTION_ADDR:
+        printf("function_index: %u ", (uint32_t)instr->load_function_addr.function_index);
+        break;
+    case INSTR_LOAD_EXTERNAL_FUNCTION_ADDR:
+        printf("function_index: %u ", (uint32_t)instr->load_function_addr.function_index);
+        break;
     case INSTR_CALL_INDIRECT:
-        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_indirect.args, temp_allocator)), (uint32_t)instr->call_indirect.io_state.value, (uint32_t)instr->call_indirect.function_index);
+        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_addr: \033[33;1m%%%u\033[0m signature_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_indirect.args, temp_allocator)), (uint32_t)instr->call_indirect.io_state.value, (uint32_t)instr->call_indirect.function_addr.value, (uint32_t)instr->call_indirect.signature_index);
         break;
     case INSTR_CALL_DIRECT:
         printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_direct.args, temp_allocator)), (uint32_t)instr->call_direct.io_state.value, (uint32_t)instr->call_direct.function_index);

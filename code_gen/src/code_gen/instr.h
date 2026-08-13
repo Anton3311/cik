@@ -110,6 +110,9 @@ typedef enum {
 	INSTR_PHI,
 	INSTR_SELECT,
 
+	INSTR_LOAD_FUNCTION_ADDR,
+	INSTR_LOAD_EXTERNAL_FUNCTION_ADDR,
+
 	INSTR_CALL_INDIRECT,
 	INSTR_CALL_DIRECT,
 
@@ -315,8 +318,13 @@ struct Instr {
 		struct {
 			InstrInputs args;
 			InstrIndex io_state;
-			uint16_t function_index;
+			InstrIndex function_addr;
+			uint16_t signature_index;
 		} call_indirect;
+
+		struct {
+			uint16_t function_index;
+		} load_function_addr;
 
 		struct {
 			uint16_t id;

@@ -179,6 +179,9 @@ static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 		return STR_LIT("load_arg");
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_BITWISE_NOT_"))) {
 		return STR_LIT("bitwise_not");
+	} else if (str_equal(variant_name, STR_LIT("INSTR_LOAD_FUNCTION_ADDR"))
+			|| str_equal(variant_name, STR_LIT("INSTR_LOAD_EXTERNAL_FUNCTION_ADDR"))) {
+		return STR_LIT("load_function_addr");
 	}
 
 	return str_to_lower(

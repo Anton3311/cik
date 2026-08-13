@@ -186,7 +186,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			if (instr->kind == INSTR_CALL_DIRECT) {
 				signature = function_signatures[instr->call_direct.function_index];
 			} else if (instr->kind == INSTR_CALL_INDIRECT) {
-				signature = function_signatures[instr->call_indirect.function_index];
+				signature = function_signatures[instr->call_indirect.signature_index];
 			}
 
 			if (signature.returns != NULL) {

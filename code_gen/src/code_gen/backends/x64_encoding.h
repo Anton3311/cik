@@ -136,6 +136,12 @@ struct Operand {
 	uint8_t bit_count;
 
 	union {
+		struct {
+			bool is_rip_relative;
+		} mem;
+	} extra;
+
+	union {
 		uint8_t reg;
 		struct {
 			uint8_t base_reg;
@@ -189,6 +195,16 @@ inline Operand operand_rel32(int32_t offset) {
 	op.kind = OP_REL;
 	op.rel = offset;
 	op.bit_count = 32;
+	return op;
+}
+
+inline Operand operand_rip_relative(int32_t offset, uint8_t bit_count) {
+	Operand op = {};
+	op.kind = OP_MEM;
+	op.extra.mem.is_rip_relative = true;
+	op.mem.base_reg = 13 /* rip */;
+	op.mem.disp = offset;
+	op.bit_count = bit_count;
 	return op;
 }
 

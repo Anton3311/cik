@@ -380,7 +380,11 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 		}
 
 		Operand op = operands[i];
-		if (op.kind == OP_MEM) {
+		if (op.kind == OP_MEM && op.extra.mem.is_rip_relative) {
+			assert(op.mem.base_reg == 5 || op.mem.base_reg == 13);
+			fields.mod = MOD_RM_ADDRESS_RM_DISP_32;
+			fields.displacement = op.mem.disp;
+		} else if (op.kind == OP_MEM) {
 			// NOTE: [bp] and [r13] with MOD_RM_ADDRESS_RM are used for addressing relative to
 			//       instruction pointer. If we want to address bp/r13, we need to use a different
 			//       addressing mode (with 8-bit zero displacement).

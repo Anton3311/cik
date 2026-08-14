@@ -154,7 +154,7 @@ size_t align_to_page_size(size_t bytes);
 
 	inline uint64_t count_trailing_zeros(uint64_t a) {
 		unsigned long result;
-		return _BitScanReverse64(&result, a) ? (uint64_t)result : 64;
+		return _BitScanForward64(&result, a) ? (uint64_t)result : 64;
 	}
 #endif
 

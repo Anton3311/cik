@@ -81,6 +81,8 @@ typedef enum {
 	MNEMONIC_MOV,
 	MNEMONIC_LEA,
 
+	MNEMONIC_INT3,
+
 	// To encode mul/imul ax, al, r/m - use `encode_1` with `r/m` operand.
 	// No need to pass the first two register operands
 	MNEMONIC_MUL,

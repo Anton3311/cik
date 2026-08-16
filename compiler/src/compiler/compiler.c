@@ -482,6 +482,10 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			};
 		}
 
+		assert(var->type.kind == TYPE_STRUCT
+				|| var->type.kind == TYPE_UNION
+				|| var->type.kind == TYPE_ARRAY);
+
 		InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
 		stack_addr->kind = INSTR_STACK_ADDR;
@@ -1138,10 +1142,6 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 		Expr* operand = expr->unary.operand;
 
 		InstrIndex address_instr;
-		address_instr = _compile_address_expr(compiler, _compile_address_of(compiler, operand));
-
-		profile_scope_end();
-		return address_instr;
 
 		switch (operand->kind) {
 		case EXPR_DIRECT_FIELD_ACCESS:

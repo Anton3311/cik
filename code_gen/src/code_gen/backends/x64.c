@@ -3066,6 +3066,7 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 	if (has_flag(gen->flags, X64_PRINT_SCHEDULED_IR)) {
 		const InstrBuffer* instr_buffer = &gen->instr_buffer;
 
+		size_t instr_offset = 0;
 		for (size_t i = 0; i < scheduled_regions.count; i += 1) {
 			InstrIndex region_instr = scheduled_regions.instr[i];
 			const Instr* instr = instr_buffer_at(instr_buffer, region_instr);
@@ -3077,13 +3078,21 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 				ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
 				InstrIndex instr_index = scheduled.instr[j];
 
-				printf("%zu\t%%%u:", j, (uint32_t)instr_index.value);
-				printf("\033[20G");
+				InstrLiveRange live_range = gen->live_ranges[instr_index.value];
+
+				printf("%zu\033[12G[%u; %u]\033[24G%%%u:\033[30G",
+						instr_offset,
+						live_range.start,
+						live_range.end,
+						(uint32_t)instr_index.value);
+
 				instr_print(&gen->instr_buffer.instr[instr_index.value],
 						gen->instr_buffer.inputs_buffer,
 						gen->temp_allocator);
 
 				arena_end_temp(temp);
+
+				instr_offset += 1;
 			}
 			printf("\n");
 		}

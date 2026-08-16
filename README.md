@@ -24,7 +24,8 @@ Although the compiler doesn't yet support a lot of C features, it is already cap
 
 1. bubble sort (an example can be found in the test suite, [here](tests/compiler/test_for_loop_bubble_sort.c))
 2. a dynamic `int` array [examples/int_array.c](examples/int_array.c)
-3. [arena allocator](tests/compiler/test_arena.c) which is used through out the whole codebase.
+3. quick sort [examples/quick_sort.c](examples/quick_sort.c)
+4. [arena allocator](tests/compiler/test_arena.c) which is used through out the whole codebase.
 
 Features and limitations:
 

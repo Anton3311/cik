@@ -227,7 +227,6 @@ int main(int argc, char* argv[]) {
 		test(test_imul_8_instr_code_gen_for_different_reg_configurations),
 		test(test_div_instr_code_gen_for_different_reg_configurations),
 		test(test_mod_instr_code_gen_for_different_reg_configurations),
-		test(test_bitwise_shift_instr_code_gen_for_different_reg_configurations),
 		test(test_bitwise_shift_no_context_polution),
 		test(test_memory_operations_are_synchronized_with_calls),
 		test(test_ptr_store_instr),

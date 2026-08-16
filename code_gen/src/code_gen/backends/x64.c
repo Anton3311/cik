@@ -1069,6 +1069,94 @@ void _emit_bitwise_shift(CodeBuffer* buffer,
 	}
 }
 
+void _emit_bitwise_shift_2(CodeBuffer* buffer,
+		MnemonicKind mnemonic,
+		X64Register value_reg,
+		X64Register count_reg,
+		X64Register dst_reg,
+		uint8_t bit_count,
+		uint16_t allowed_temp_registers,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	profile_scope_start(__func__);
+
+	assert_msg(allowed_temp_registers != 0, "todo: Find a victim and spill");
+	assert_msg(!has_flag(allowed_temp_registers, 1 << X64_REG_C),
+				"`rcx` is a fixed of the shift instruction, thus can be used a temp register");
+
+	if (dst_reg == X64_REG_C) {
+		X64Register temp_dst = count_trailing_zeros(allowed_temp_registers);
+
+		X64Register expected_locs[] = { temp_dst, X64_REG_C };
+		InstrStorageLocation input_locs[2] = {
+			(InstrStorageLocation) {
+				.kind = INSTR_STORAGE_REG,
+				.reg = value_reg,
+			},
+			(InstrStorageLocation) {
+				.kind = INSTR_STORAGE_REG,
+				.reg = count_reg,
+			},
+		};
+
+		RegisterMoveArray moves = _parallel_move_values(input_locs,
+				expected_locs,
+				2, 0,
+				allocator,
+				temp_allocator);
+
+		for (size_t i = 0; i < moves.count; i += 1) {
+			RegisterMove move = moves.moves[i];
+			_emit_mov_regs(buffer, move.src, move.dst, 64);
+		}
+
+		encode_1(buffer, mnemonic, operand_reg(temp_dst, bit_count));
+
+		encode_2(buffer,
+				MNEMONIC_MOV,
+				operand_reg(dst_reg, bit_count),
+				operand_reg(temp_dst, bit_count));
+	} else {
+		X64Register expected_locs[] = { dst_reg, X64_REG_C };
+		InstrStorageLocation input_locs[2] = {
+			(InstrStorageLocation) {
+				.kind = INSTR_STORAGE_REG,
+				.reg = value_reg,
+			},
+			(InstrStorageLocation) {
+				.kind = INSTR_STORAGE_REG,
+				.reg = count_reg,
+			},
+		};
+
+		bool should_save_rcx = count_reg != X64_REG_C && dst_reg != X64_REG_C;
+
+		if (should_save_rcx) {
+			encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_C, 64));
+		}
+
+		RegisterMoveArray moves = _parallel_move_values(input_locs,
+				expected_locs,
+				2, allowed_temp_registers,
+				allocator,
+				temp_allocator);
+
+		for (size_t i = 0; i < moves.count; i += 1) {
+			RegisterMove move = moves.moves[i];
+			_emit_mov_regs(buffer, move.src, move.dst, 64);
+		}
+
+		encode_1(buffer, mnemonic, operand_reg(dst_reg, bit_count));
+
+		if (should_save_rcx) {
+			encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_C, 64));
+		}
+	}
+
+	profile_scope_end();
+}
+
 static void _emit_callee_prologue(X64CodeGenerator* gen, CodeBuffer* buffer) {
 	for (size_t i = 0; i < array_size(CDECL_CALLEE_SAVED); i += 1) {
 		encode_1(buffer, MNEMONIC_PUSH, operand_reg(CDECL_CALLEE_SAVED[i], 64));
@@ -1572,22 +1660,28 @@ static void _lower_instr(X64CodeGenerator* gen,
 					operand_reg(right_reg, bit_count));
 			return;
 		case INSTR_BIN_SHIFT_LEFT:
-			_emit_bitwise_shift(buffer,
+			_emit_bitwise_shift_2(buffer,
 					MNEMONIC_SHL,
 					left_reg,
 					right_reg,
 					dst_loc.reg,
 					bit_count,
+					// Remove `rcx` from temp registers, since it is a fixed input to the shift
+					// instruction.
+					_collect_available_registers(gen, instr_index) & (~(1 << X64_REG_C)),
 					gen->allocator,
 					gen->temp_allocator);
 			return;
 		case INSTR_BIN_SHIFT_RIGHT:
-			_emit_bitwise_shift(buffer,
+			_emit_bitwise_shift_2(buffer,
 					MNEMONIC_SHR,
 					left_reg,
 					right_reg,
 					dst_loc.reg,
 					bit_count,
+					// Remove `rcx` from temp registers, since it is a fixed input to the shift
+					// instruction.
+					_collect_available_registers(gen, instr_index) & (~(1 << X64_REG_C)),
 					gen->allocator,
 					gen->temp_allocator);
 			return;

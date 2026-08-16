@@ -1656,6 +1656,234 @@ void test_bitwise_shift_instr_code_gen_for_different_reg_configurations(TestCont
 	instr_buffer_release(instr_buffer);
 }
 
+// From x64 backend
+extern void _emit_bitwise_shift(CodeBuffer* buffer,
+		MnemonicKind mnemonic,
+		X64Register value_reg,
+		X64Register count_reg,
+		X64Register dst_reg,
+		uint8_t bit_count,
+		Arena* allocator,
+		Arena* temp_allocator);
+
+void _emit_bitwise_shift_2(CodeBuffer* buffer,
+		MnemonicKind mnemonic,
+		X64Register value_reg,
+		X64Register count_reg,
+		X64Register dst_reg,
+		uint8_t bit_count,
+		uint16_t allowed_temp_registers,
+		Arena* allocator,
+		Arena* temp_allocator);
+
+static X64Register CDECL_CALLEE_SAVED[] = {
+	X64_REG_B,
+	X64_REG_BP,
+	X64_REG_DI,
+	X64_REG_SI,
+	X64_REG_SP,
+	X64_REG_12,
+	X64_REG_13,
+	X64_REG_14,
+	X64_REG_15,
+};
+
+static const char* X64_REG_BASE_NAMES[] = {
+	"RAX",
+	"RCX",
+	"RDX",
+	"RBX",
+	"RSP",
+	"RBP",
+	"RSI",
+	"RDI",
+	"R8",
+	"R9",
+	"R10",
+	"R11",
+	"R12",
+	"R13",
+	"R14",
+	"R15",
+};
+
+void test_bitwise_shift_no_context_polution(TestContext* context) {
+	// Compute live ranges
+	X64Register registers[] = { X64_REG_A, X64_REG_D, X64_REG_C, X64_REG_12 };
+	X64Register reg_configurations[4 * 4 * 4][4];
+
+	// Generate all the permutations for the first 3 register locations.
+	// The 4 one is always `X64_REG_B`
+	uint32_t indices[3] = { 0, 0, 0 };
+	for (size_t i = 0; i < 4 * 4 * 4; i += 1) {
+		reg_configurations[i][0] = registers[indices[0]];
+		reg_configurations[i][1] = registers[indices[1]];
+		reg_configurations[i][2] = registers[indices[2]];
+		reg_configurations[i][3] = X64_REG_B;
+
+		uint32_t carry = 1;
+		carry = (indices[2] += carry) / 4;
+		carry = (indices[1] += carry) / 4;
+		carry = (indices[0] += carry) / 4;
+
+		indices[0] %= 4;
+		indices[1] %= 4;
+		indices[2] %= 4;
+	}
+
+	uint16_t disallowed_regs = (1 << X64_REG_SP) | (1 << X64_REG_BP) | (1 << X64_REG_SI) | (1 << X64_REG_DI);
+	uint16_t temp_registers  = (1 << X64_REG_15);
+
+	for (size_t bit_count_index = 0; bit_count_index < 4; bit_count_index += 1) {
+		for (size_t i = 0; i < array_size(reg_configurations); i += 1) {
+			X64Register value_reg = reg_configurations[i][0];
+			X64Register count_reg = reg_configurations[i][1];
+			X64Register dst_reg   = reg_configurations[i][2];
+
+			if (value_reg == count_reg) {
+				continue;
+			}
+
+			uint8_t bit_count = 1 << (bit_count_index + 3);
+			uint8_t reg_size  = 1 << bit_count_index;
+
+			printf("permutation: %zu value: %s count: %s dst: %s bit_count: %u\n",
+					i,
+					X64_REG_BASE_NAMES[value_reg],
+					X64_REG_BASE_NAMES[count_reg],
+					X64_REG_BASE_NAMES[dst_reg],
+					(uint32_t)bit_count);
+			fflush(stdout);
+
+			CodeBuffer buffer;
+			code_buffer_init(&buffer, context->temp_arena);
+
+			for (size_t i = 0; i < array_size(CDECL_CALLEE_SAVED); i += 1) {
+				encode_1(&buffer, MNEMONIC_PUSH, operand_reg(CDECL_CALLEE_SAVED[i], 64));
+			}
+
+			for (X64Register r = 0; r < X64_REG_COUNT; r += 1) {
+				if (r == X64_REG_SP || r == X64_REG_BP || r == X64_REG_SI || r == X64_REG_DI) {
+					continue;
+				}
+
+				if (has_flag(temp_registers, 1 << r)) {
+					continue;
+				}
+
+				if (r == value_reg) {
+					encode_2(&buffer,
+							MNEMONIC_MOV,
+							operand_reg(r, bit_count),
+							operand_imm(0xa, bit_count));
+				} else if (r == count_reg) {
+					encode_2(&buffer,
+							MNEMONIC_MOV,
+							operand_reg(r, bit_count),
+							operand_imm(0x2, bit_count));
+				} else if (r == dst_reg) {
+					continue;
+				} else {
+					encode_2(&buffer,
+							MNEMONIC_MOV,
+							operand_reg(r, bit_count),
+							operand_imm(0xdeadbeefdeadbeef, bit_count));
+				}
+			}
+
+			_emit_bitwise_shift_2(&buffer,
+					MNEMONIC_SHL,
+					value_reg,
+					count_reg,
+					dst_reg,
+					bit_count,
+					temp_registers,
+					// ~(disallowed_regs | (1 << value_reg) | (1 << count_reg) | (1 << dst_reg)),
+					context->arena,
+					context->temp_arena);
+
+			uint32_t stack_usage = 0;
+			for (X64Register r = 0; r < X64_REG_COUNT; r += 1) {
+				if (r == X64_REG_SP || r == X64_REG_BP || r == X64_REG_SI || r == X64_REG_DI) {
+					continue;
+				}
+
+				if (has_flag(temp_registers, 1 << r)) {
+					continue;
+				}
+
+				encode_1(&buffer, MNEMONIC_PUSH, operand_reg(r, 64));
+				stack_usage += 8;
+			}
+
+			uint32_t stack_offset = 0;
+			for (X64Register r = 0; r < X64_REG_COUNT; r += 1) {
+				if (r == X64_REG_SP || r == X64_REG_BP || r == X64_REG_SI || r == X64_REG_DI) {
+					continue;
+				}
+
+				if (has_flag(temp_registers, 1 << r)) {
+					continue;
+				}
+
+				uint64_t expected_imm = 0xdeadbeefdeadbeef;
+
+				if (r == value_reg) {
+					expected_imm = 0xa;
+				} else if (r == count_reg) {
+					expected_imm = 0x2;
+				}
+
+				if (r == dst_reg) {
+					expected_imm = 0xa << 0x2;
+				}
+
+				encode_2(&buffer,
+						MNEMONIC_MOV,
+						operand_reg(X64_REG_A, bit_count),
+						operand_imm(expected_imm, bit_count));
+
+				encode_2(&buffer,
+						MNEMONIC_MOV,
+						operand_reg(X64_REG_C, bit_count),
+						operand_stack_mem(stack_usage - stack_offset - 8, bit_count));
+
+				encode_2(&buffer,
+						MNEMONIC_CMP,
+						operand_reg(X64_REG_C, bit_count),
+						operand_reg(X64_REG_A, bit_count));
+
+				encode_1(&buffer, MNEMONIC_JZ, operand_rel32(1));
+
+				encode_n(&buffer, MNEMONIC_INT3, NULL, 0);
+
+				stack_offset += 8;
+			}
+
+			encode_2(&buffer,
+					MNEMONIC_ADD,
+					operand_reg(X64_REG_SP, 64),
+					operand_imm(stack_usage, 32));
+
+			for (size_t i = array_size(CDECL_CALLEE_SAVED); i > 0; i -= 1) {
+				encode_1(&buffer, MNEMONIC_POP, operand_reg(CDECL_CALLEE_SAVED[i - 1], 64));
+			}
+
+			encode_n(&buffer, MNEMONIC_RET, NULL, 0);
+
+			typedef void(*Function)();
+
+			void* code = allocate_executable(buffer.size);
+			memcpy(code, buffer.buffer, buffer.size);
+			Function function = (Function)code;
+
+			function();
+
+			free_executable(code, buffer.size);
+		}
+	}
+}
+
 static uint64_t _internal_store(uint64_t* out) {
 	*out = 10;
 	return 0;

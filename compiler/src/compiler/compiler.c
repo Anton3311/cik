@@ -2812,8 +2812,6 @@ void compiler_collect_function_abi_signatures(const AST* ast,
 		Arena* allocator) {
 	profile_scope_start(__func__);
 
-	profile_scope_start(__func__);
-
 	for (const AstNode* node = ast->root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION_DEF && node->kind != AST_NODE_FUNCTION_DECL) {
 			continue;

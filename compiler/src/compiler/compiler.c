@@ -509,6 +509,19 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 			};
 		}
 
+		if (type.kind == TYPE_STRUCT || type.kind == TYPE_UNION) {
+			InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+			stack_addr->kind = INSTR_STACK_ADDR;
+			stack_addr->stack_addr.stack_alloc = compiler->arg_states[arg_index];
+			
+			profile_scope_end();
+			return (AddressExpr) {
+				.base = stack_addr_index,
+				.offset = 0,
+			};
+		}
+
 		unreachable();
 	}
 	case EXPR_ARRAY_INDEX: {
@@ -2723,6 +2736,11 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			instr->kind = INSTR_LOAD_ARG_64;
 			break;
 		default:
+			if (param_type_size > 8) {
+				instr->kind = INSTR_LOAD_ARG_STACK;
+				break;
+			}
+
 			unreachable();
 		}
 
@@ -3023,7 +3041,6 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 		} else if (param_type.kind == TYPE_ARRAY) {
 			abi_param = (AbiParam) { .kind = ABI_PARAM_NORMAL };
 		} else if (param_type.kind == TYPE_STRUCT || param_type.kind == TYPE_UNION) {
-			panic("Non-register sized arguments should come last");
 			abi_param = (AbiParam) {
 				.kind = ABI_PARAM_STRUCT,
 				.struct_size = (uint32_t)_type_get_layout(type_context, &param_type).size,

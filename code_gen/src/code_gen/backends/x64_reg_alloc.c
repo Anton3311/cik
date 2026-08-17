@@ -111,7 +111,8 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		if (kind == INSTR_LOAD_ARG_8
 				|| kind == INSTR_LOAD_ARG_16
 				|| kind == INSTR_LOAD_ARG_32
-				|| kind == INSTR_LOAD_ARG_64) {
+				|| kind == INSTR_LOAD_ARG_64
+				|| kind == INSTR_LOAD_ARG_STACK) {
 			continue;
 		}
 
@@ -137,7 +138,8 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		if (kind != INSTR_LOAD_ARG_8
 				&& kind != INSTR_LOAD_ARG_16
 				&& kind != INSTR_LOAD_ARG_32
-				&& kind != INSTR_LOAD_ARG_64) {
+				&& kind != INSTR_LOAD_ARG_64
+				&& kind != INSTR_LOAD_ARG_STACK) {
 			continue;
 		}
 

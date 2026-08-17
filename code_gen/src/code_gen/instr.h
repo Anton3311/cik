@@ -91,6 +91,7 @@ typedef enum {
 	INSTR_LOAD_ARG_16,
 	INSTR_LOAD_ARG_32,
 	INSTR_LOAD_ARG_64,
+	INSTR_LOAD_ARG_STACK,
 
 	// Stack operations
 	INSTR_STACK_ALLOC,

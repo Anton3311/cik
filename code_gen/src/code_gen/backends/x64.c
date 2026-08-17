@@ -62,6 +62,7 @@ static uint8_t s_instr_value_bit_count[INSTR_COUNT] = {
 	[INSTR_LOAD_ARG_16]            = 16,
 	[INSTR_LOAD_ARG_32]            = 32,
 	[INSTR_LOAD_ARG_64]            = 64,
+	[INSTR_LOAD_ARG_STACK]         = 0,
 
 	[INSTR_STACK_ALLOC]            = 0,
 	[INSTR_STACK_ADDR]             = 64,
@@ -1279,16 +1280,26 @@ static void _lower_call(X64CodeGenerator* gen,
 				operand_reg(CDECL_CALLER_SAVED[i], 64));
 	}
 
+	const InstrStorageLocation* arg_target_locations = x64_compute_abi_sig_argument_locations(
+			&callee_signature,
+			options.args.count,
+			temp_allocator);
+
 	// Fill the storage locations of arguments (inputs)
-	uint16_t input_storage_count = options.args.count;
+	uint16_t input_storage_count = 0;
 	InstrStorageLocation* input_instr_storage = arena_alloc_array(
 			temp_allocator,
 			InstrStorageLocation,
 			options.args.count);
 
 	for (uint16_t i = 0; i < options.args.count; i += 1) {
+		if (arg_target_locations[i].kind != INSTR_STORAGE_REG) {
+			continue;
+		}
+
 		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
-		input_instr_storage[i] = gen->instr_storage[arg_instr.value];
+		input_instr_storage[input_storage_count] = gen->instr_storage[arg_instr.value];
+		input_storage_count += 1;
 	}
 
 	// In case it is an indirect call, add the instruciton that computes the callee address as one
@@ -1301,19 +1312,18 @@ static void _lower_call(X64CodeGenerator* gen,
 	}
 
 	// Fill the expected loactions of the arguments
-	size_t expected_loc_count = options.args.count;
+	size_t expected_loc_count = 0;
 	X64Register* expected_arg_locs = arena_alloc_array(temp_allocator,
 			X64Register,
 			options.args.count);
 
-	bool callee_returns_struct = callee_signature.returns
-		&& callee_signature.returns->kind == ABI_PARAM_STRUCT;
-
-	size_t next_arg_reg_index = callee_returns_struct ? 1 : 0;
 	for (uint16_t i = 0; i < options.args.count; i += 1) {
-		assert(next_arg_reg_index <= array_size(CDECL_ARG_REGS));
-		expected_arg_locs[i] = CDECL_ARG_REGS[next_arg_reg_index];
-		next_arg_reg_index += 1;
+		if (arg_target_locations[i].kind != INSTR_STORAGE_REG) {
+			continue;
+		}
+
+		expected_arg_locs[expected_loc_count] = arg_target_locations[i].reg;
+		expected_loc_count += 1;
 	}
 
 	if (!options.is_direct) {
@@ -1728,6 +1738,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 	case INSTR_LOAD_ARG_16:
 	case INSTR_LOAD_ARG_32:
 	case INSTR_LOAD_ARG_64:
+	case INSTR_LOAD_ARG_STACK:
 		// There is nothing to do. These instruction type is more of a hint
 		// to where to look for the value, it doesn't get turned into any machine code.
 		//
@@ -1744,12 +1755,22 @@ static void _lower_instr(X64CodeGenerator* gen,
 		const InstrStorageLocation alloc_loc = gen->instr_storage[instr->stack_addr.stack_alloc.value];
 
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
-		assert(alloc_loc.kind == INSTR_STORAGE_STACK);
+		assert(alloc_loc.kind == INSTR_STORAGE_STACK || alloc_loc.kind == INSTR_STORAGE_CALL_FRAME);
 
-		encode_2(buffer,
-				MNEMONIC_LEA,
-				operand_reg(dst_loc.reg, 64),
-				operand_stack_mem((int32_t)alloc_loc.stack.offset, 64));
+		if (alloc_loc.kind == INSTR_STORAGE_STACK) {
+			encode_2(buffer,
+					MNEMONIC_LEA,
+					operand_reg(dst_loc.reg, 64),
+					operand_stack_mem((int32_t)alloc_loc.stack.offset, 64));
+		} else if (alloc_loc.kind == INSTR_STORAGE_CALL_FRAME) {
+			encode_2(buffer,
+					MNEMONIC_LEA,
+					operand_reg(dst_loc.reg, 64),
+					operand_stack_mem((int32_t)alloc_loc.call_frame.offset + gen->stack_usage, 64));
+		} else {
+			unreachable();
+		}
+
 		return;
 	}
 
@@ -2659,6 +2680,7 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_LOAD_ARG_16:
 	case INSTR_LOAD_ARG_32:
 	case INSTR_LOAD_ARG_64:
+	case INSTR_LOAD_ARG_STACK:
 		break;
 	case INSTR_STACK_ALLOC:
 		break;

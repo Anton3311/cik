@@ -54,6 +54,7 @@ String instr_name(InstrKind variant) {
     case INSTR_LOAD_ARG_16: return STR_LIT("load_arg_16");
     case INSTR_LOAD_ARG_32: return STR_LIT("load_arg_32");
     case INSTR_LOAD_ARG_64: return STR_LIT("load_arg_64");
+    case INSTR_LOAD_ARG_STACK: return STR_LIT("load_arg_stack");
     case INSTR_STACK_ALLOC: return STR_LIT("stack_alloc");
     case INSTR_STACK_ADDR: return STR_LIT("stack_addr");
     case INSTR_BRANCH: return STR_LIT("branch");
@@ -256,6 +257,8 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         break;
     case INSTR_LOAD_ARG_64:
         break;
+    case INSTR_LOAD_ARG_STACK:
+        break;
     case INSTR_STACK_ALLOC:
         break;
     case INSTR_STACK_ADDR:
@@ -447,6 +450,9 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         printf("index: %u ", (uint32_t)instr->load_arg.index);
         break;
     case INSTR_LOAD_ARG_64:
+        printf("index: %u ", (uint32_t)instr->load_arg.index);
+        break;
+    case INSTR_LOAD_ARG_STACK:
         printf("index: %u ", (uint32_t)instr->load_arg.index);
         break;
     case INSTR_STACK_ALLOC:

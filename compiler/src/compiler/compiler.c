@@ -543,21 +543,56 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		Type result_type;
 		expr_get_type(expr, &result_type);
 
-		size_t return_type_size = _type_get_layout(compiler->type_context, &result_type).size;
-		assert(return_type_size >= compiler->type_context->pointer_type_layout.size);
-
 		InstrIndex call_instr = _compile_expr(compiler, expr);
 
-		InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
-		stack_addr->kind = INSTR_STACK_ADDR;
-		stack_addr->stack_addr.stack_alloc = call_instr;
+		AddressExpr address_expr = {};
+
+		size_t return_type_size = _type_get_layout(compiler->type_context, &result_type).size;
+
+		TypeLayout pointer_type_layout = compiler->type_context->pointer_type_layout;
+		if (return_type_size <= pointer_type_layout.size) {
+			// We have a struct value that can fit in a register, thus it won't be return through
+			// the stack.
+			//
+			// To keep things simple, immediately drop the returned value onto the stack.
+			InstrIndex stack_alloc_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* stack_alloc = instr_buffer_at(instr_buffer, stack_alloc_index);
+			stack_alloc->kind = INSTR_STACK_ALLOC;
+			stack_alloc->stack_alloc.size = pointer_type_layout.size;
+			stack_alloc->stack_alloc.alignment = pointer_type_layout.alignment;
+
+			InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+			stack_addr->kind = INSTR_STACK_ADDR;
+			stack_addr->stack_addr.stack_alloc = stack_alloc_index;
+
+			InstrIndex store_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* store = instr_buffer_at(instr_buffer, store_index);
+			store->kind = INSTR_PTR_STORE_64;
+			store->ptr_store.ptr = stack_addr_index;
+			store->ptr_store.value = call_instr;
+			store->ptr_store.io_state = compiler->io_state;
+
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, store_index);
+
+			address_expr = (AddressExpr) {
+				.base = stack_addr_index,
+				.offset = 0,
+			};
+		} else {
+			InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+			stack_addr->kind = INSTR_STACK_ADDR;
+			stack_addr->stack_addr.stack_alloc = call_instr;
+
+			address_expr = (AddressExpr) {
+				.base = stack_addr_index,
+				.offset = 0,
+			};
+		}
 		
 		profile_scope_end();
-		return (AddressExpr) {
-			.base = stack_addr_index,
-			.offset = 0,
-		};
+		return address_expr;
 	}
 	default: {
 		Type expr_type;
@@ -2510,6 +2545,32 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 				assert(node->return_stmt.value != NULL);
 
 				InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
+
+				Type return_type = compiler->function->proto.return_type;
+				TypeLayout return_type_layout = _type_get_layout(compiler->type_context,
+						&return_type);
+
+				if (return_type.kind == TYPE_STRUCT || return_type.kind == TYPE_UNION) {
+					if (return_type_layout.size <= 8) {
+						InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+						Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+						stack_addr->kind = INSTR_STACK_ADDR;
+						stack_addr->stack_addr.stack_alloc = value;
+
+						InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
+						Instr* load = instr_buffer_at(instr_buffer, load_index);
+						load->kind = INSTR_PTR_LOAD_64;
+						load->ptr_load.ptr = stack_addr_index;
+						load->ptr_load.io_state = compiler->io_state;
+
+						compiler->io_state = instr_new_io_state(instr_buffer,
+								instr_allocator,
+								load_index);
+
+						value = load_index;
+					}
+				}
+
 				region_instr->region.last_instr = instr_new_return_value(instr_buffer,
 						instr_allocator,
 						value,

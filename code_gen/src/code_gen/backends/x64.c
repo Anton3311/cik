@@ -1258,8 +1258,13 @@ static void _lower_call(X64CodeGenerator* gen,
 
 	AbiSignature callee_signature = gen->imported_function_signatures[options.callee_signature_index];
 	if (callee_signature.returns) {
-		if (callee_signature.returns->kind == ABI_PARAM_STRUCT) {
+		if (callee_signature.returns->kind == ABI_PARAM_STRUCT
+				&& callee_signature.returns->struct_size <= 8) {
+			// Small that fit into a register, get returned through a register
+			assert(instr_storage.kind == INSTR_STORAGE_REG);
+		} else if (callee_signature.returns->kind == ABI_PARAM_STRUCT) {
 			assert(instr_storage.kind == INSTR_STORAGE_STACK);
+			assert(callee_signature.returns->struct_size > 8);
 		} else if (callee_signature.returns->kind == ABI_PARAM_NORMAL) {
 			assert(instr_storage.kind == INSTR_STORAGE_REG);
 		} else {
@@ -1920,11 +1925,13 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 		InstrIndex return_value = instr->return_value.value;
 		const InstrStorageLocation return_value_loc = gen->instr_storage[return_value.value];
-		if (gen->function_signature.returns->kind == ABI_PARAM_NORMAL) {
+		const AbiParam* returns = gen->function_signature.returns;
+		if (returns->kind == ABI_PARAM_NORMAL
+				|| (returns->kind == ABI_PARAM_STRUCT && returns->struct_size <= 8)) {
 			assert(return_value_loc.kind == INSTR_STORAGE_REG);
 
 			_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
-		} else if (gen->function_signature.returns->kind == ABI_PARAM_STRUCT) {
+		} else if (returns->kind == ABI_PARAM_STRUCT && returns->struct_size > 8) {
 			assert(return_value_loc.kind == INSTR_STORAGE_STACK);
 
 			Operand src_operand = operand_stack_mem((int32_t)return_value_loc.stack.offset, 64);

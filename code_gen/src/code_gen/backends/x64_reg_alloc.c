@@ -179,7 +179,11 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			}
 
 			if (signature.returns != NULL) {
-				if (signature.returns->kind == ABI_PARAM_STRUCT) {
+				if (signature.returns->kind == ABI_PARAM_STRUCT
+						&& signature.returns->struct_size <= 8) {
+					// Go through the usual allocator path
+				} else if (signature.returns->kind == ABI_PARAM_STRUCT) {
+					assert(signature.returns->struct_size > 8);
 					stack_offset = align(stack_offset, 16); // FIXME: No hardcoded alignment
 
 					instr_storage[instr_index.value].kind = INSTR_STORAGE_STACK;

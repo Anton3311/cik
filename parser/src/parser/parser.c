@@ -3472,6 +3472,10 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 			return NULL;
 		}
 
+		Type value_type;
+		expr_get_type(value, &value_type);
+		_check_is_convertable(parser, &value_type, type, expr_get_source_range(value));
+
 		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_VARIABLE;
 		node->variable.name = name_token.string;

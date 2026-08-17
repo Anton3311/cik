@@ -33,6 +33,7 @@ typedef enum {
 	INSTR_STORAGE_NONE,
 	INSTR_STORAGE_REG,
 	INSTR_STORAGE_STACK,
+	INSTR_STORAGE_CALL_FRAME,
 } InstrStorageKind;
 
 typedef enum {
@@ -50,6 +51,10 @@ typedef struct {
 		struct {
 			uint32_t offset;
 		} stack;
+
+		struct {
+			uint32_t offset;
+		} call_frame;
 	};
 } InstrStorageLocation;
 
@@ -148,6 +153,7 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 // 
 // The returned array has the size `signature->param_count - <number of ABI_RETURN_LOCATION>`
 InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature* signature,
+		uint32_t prefered_arg_count,
 		Arena* allocator);
 
 // Computes locations for all parameters in the signature.

@@ -125,6 +125,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 
 	InstrStorageLocation* argument_locations = x64_compute_abi_sig_argument_locations(
 			current_function_signature,
+			current_function_signature->param_count,
 			temp_allocator);
 
 	// Assign locations to function arguments.

@@ -3279,6 +3279,7 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 }
 
 InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature* signature,
+		uint32_t prefered_arg_count,
 		Arena* allocator) {
 	profile_scope_start(__func__);
 
@@ -3288,10 +3289,14 @@ InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature*
 
 	assert(signature->call_conv == CALL_CONV_CDECL);
 
+	uint32_t stack_usage = 0;
+
 	size_t arg_index = 0;
 	size_t arg_reg_index = 0;
-	for (uint32_t i = 0; i < signature->param_count; i += 1) {
-		AbiParam param = signature->params[i];
+	for (uint32_t i = 0; i < (signature->has_va_args ? prefered_arg_count : signature->param_count); i += 1) {
+		AbiParam param = i >= signature->param_count
+			? (AbiParam) { .kind = ABI_PARAM_NORMAL }
+			: signature->params[i];
 
 		switch (param.kind) {
 		case ABI_PARAM_NORMAL:
@@ -3305,11 +3310,26 @@ InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature*
 			arg_index += 1;
 			break;
 		case ABI_PARAM_STRUCT:
-			panic("todo");
+			stack_usage = align(stack_usage, 8); // FIXME: No hardcoded alignment
+
+			arena_alloc(allocator, InstrStorageLocation);
+			locations[arg_index].kind = INSTR_STORAGE_CALL_FRAME;
+			locations[arg_index].call_frame.offset = stack_usage;
+
+			stack_usage += param.struct_size;
+
+			arg_index += 1;
+			break;
 		case ABI_PARAM_RETURN_LOCATION:
 			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
 			arg_reg_index += 1;
 			break;
+		}
+	}
+
+	for (size_t i = 0; i < arg_index; i += 1) {
+		if (locations[i].kind == INSTR_STORAGE_CALL_FRAME) {
+			locations[i].call_frame.offset = stack_usage - locations[i].call_frame.offset;
 		}
 	}
 
@@ -3327,6 +3347,7 @@ InstrStorageLocation* x64_compute_all_abi_sig_locations(const AbiSignature* sign
 
 	assert(signature->call_conv == CALL_CONV_CDECL);
 
+	uint32_t stack_usage = 0;
 	size_t arg_reg_index = 0;
 	for (uint32_t i = 0; i < signature->param_count; i += 1) {
 		AbiParam param = signature->params[i];
@@ -3339,13 +3360,26 @@ InstrStorageLocation* x64_compute_all_abi_sig_locations(const AbiSignature* sign
 			arg_reg_index += 1;
 			break;
 		case ABI_PARAM_STRUCT:
-			panic("todo");
+			stack_usage = align(stack_usage, 8); // FIXME: No hardcoded alignment
+
+			arena_alloc(allocator, InstrStorageLocation);
+			locations[i].kind = INSTR_STORAGE_CALL_FRAME;
+			locations[i].call_frame.offset = stack_usage;
+
+			stack_usage += param.struct_size;
+			break;
 		case ABI_PARAM_RETURN_LOCATION:
 			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
 			locations[i].kind = INSTR_STORAGE_REG;
 			locations[i].reg = CDECL_ARG_REGS[arg_reg_index];
 			arg_reg_index += 1;
 			break;
+		}
+	}
+
+	for (uint32_t i = 0; i < signature->param_count; i += 1) {
+		if (locations[i].kind == INSTR_STORAGE_CALL_FRAME) {
+			locations[i].call_frame.offset = stack_usage - locations[i].call_frame.offset;
 		}
 	}
 

@@ -3001,6 +3001,7 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 	}
 
 	sig.params = allocator_alloc_array(allocator, AbiParam, sig.param_count);
+	sig.has_va_args = proto->has_va_args;
 
 	size_t param_index = 0;
 	if (has_return_loc) {

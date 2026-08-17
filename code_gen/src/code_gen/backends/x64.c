@@ -2164,7 +2164,7 @@ static void _encode_control_instr(const Instr* instr,
 // Code Generation Stages
 //
 
-static void _run_reg_allocator(X64CodeGenerator* gen) {
+static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_instr) {
 	uint16_t allowed_registers = UINT16_MAX;
 	allowed_registers &= ~(1 << X64_REG_SP);
 	allowed_registers &= ~(1 << X64_REG_BP);
@@ -2177,6 +2177,7 @@ static void _run_reg_allocator(X64CodeGenerator* gen) {
 
 	RegisterAllocationResult result;
 	result = x64_alloc_regs(&gen->instr_buffer,
+			scheduled_instr,
 			gen->live_ranges,
 			allowed_registers,
 			// Use `temp_allocator` as a persistent one, since register allocations are only used
@@ -2789,7 +2790,12 @@ typedef struct {
 	// Accompanies the above array providing the index of that instruction in the scheduled region.
 	uint16_t* instr_position_in_region;
 
-	// An array that for each region stores an array of instructions that belong to it.
+	// All scheduled instructions for all regions, layed out as a liniar array.
+	InstrIndexArray all_instr;
+
+	// Per region array of instructions.
+	//
+	// Each per region array is a view into `all_instr`
 	InstrIndexArray* scheduled_instr;
 } SchedulingResult;
 
@@ -2872,11 +2878,16 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 			InstrIndexArray,
 			instr_buffer->region_count);
 
+	InstrIndexArray all_instr = {};
+	all_instr.instr = arena_alloc_array(allocator, InstrIndex, 0);
+
 	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
 		scheduled_instr_per_region[i].instr = arena_alloc_array(allocator,
 				InstrIndex,
 				instr_count_per_region[i]);
 		scheduled_instr_per_region[i].count = 0;
+
+		all_instr.count += instr_count_per_region[i];
 	}
 
 	uint16_t* instr_scheduled_region = arena_alloc_array(allocator,
@@ -2933,6 +2944,7 @@ static void _schedule_instr(const InstrBuffer* instr_buffer,
 	arena_end_temp(temp);
 
 	out_result->instr_scheduled_region = instr_scheduled_region;
+	out_result->all_instr = all_instr;
 	out_result->scheduled_instr = scheduled_instr_per_region;
 	out_result->instr_position_in_region = instr_position_in_region;
 
@@ -3117,7 +3129,7 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 	assert_msg(scheduling_is_valid, "Instruction scheduler failed to produce a valid result");
 
 	if (!has_flag(gen->flags, X64_SKIP_REG_ALLOC)) {
-		_run_reg_allocator(gen);
+		_run_reg_allocator(gen, scheduling_result.all_instr);
 	}
 
 	gen->call_addr_placeholders = NULL;

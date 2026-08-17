@@ -79,6 +79,7 @@ inline bool _instr_allowed_to_share_a_register(InstrLiveRange live_range_a,
 //
 // This array is expected to be of size `instr_buffer.count`
 static void _run_graph_coloring(const InstrBuffer* instr_buffer,
+		const InstrIndexArray scheduled_instr,
 		const InstrLiveRange* live_ranges,
 		const InstrIndexArray* interference_graph,
 		uint16_t allowed_registers,
@@ -98,13 +99,11 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			uint16_t,
 			instr_buffer->count);
 
-	for (size_t i = 0; i < instr_buffer->count; i += 1) {
-		// Skip dead instructions
-		if (live_ranges[i].value == UINT32_MAX) {
-			continue;
-		}
+	for (size_t i = 0; i < scheduled_instr.count; i += 1) {
+		InstrIndex instr_index = scheduled_instr.instr[i];
 
-		InstrKind kind = instr_buffer->instr[i].kind;
+		// Skip dead instructions
+		InstrKind kind = instr_buffer->instr[instr_index.value].kind;
 		if (!has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
 			continue;
 		}
@@ -117,9 +116,9 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 
 		if (has_flag(INSTR_FEATURES[kind], INSTR_FEATURE_REG_STORAGE)) {
-			potential_instr_registers[i] = allowed_registers;
+			potential_instr_registers[instr_index.value] = allowed_registers;
 
-			assert_msg(potential_instr_registers[i] != 0,
+			assert_msg(potential_instr_registers[instr_index.value] != 0,
 					"This instruction must be spilled, but spilling is not yet implemented");
 		}
 	}
@@ -130,13 +129,10 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 
 	// Assign locations to function arguments.
 	// These locations are determined by the calling convention.
-	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
-		// Skip dead instructions
-		if (live_ranges[i].value == UINT32_MAX) {
-			continue;
-		}
+	for (size_t i = 0; i < scheduled_instr.count; i += 1) {
+		InstrIndex instr_index = scheduled_instr.instr[i];
 
-		InstrKind kind = instr_buffer->instr[i].kind;
+		InstrKind kind = instr_buffer->instr[instr_index.value].kind;
 		if (kind != INSTR_LOAD_ARG_8
 				&& kind != INSTR_LOAD_ARG_16
 				&& kind != INSTR_LOAD_ARG_32
@@ -144,18 +140,18 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			continue;
 		}
 
-		const Instr* instr = &instr_buffer->instr[i];
-		instr_storage[i] = argument_locations[instr->load_arg.index];
+		const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+		instr_storage[instr_index.value] = argument_locations[instr->load_arg.index];
 
-		if (instr_storage[i].kind != INSTR_STORAGE_REG) {
+		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_REG) {
 			continue;
 		}
 
 		// If the argument is placed in the register, we need to go through the interfering
 		// instructions, and disallow the selected register for them.
-		X64Register reg = instr_storage[i].reg;
+		X64Register reg = instr_storage[instr_index.value].reg;
 
-		InstrIndexArray edges = interference_graph[i];
+		InstrIndexArray edges = interference_graph[instr_index.value];
 		for (size_t j = 0; j < edges.count; j += 1) {
 			InstrIndex interfering_instr = edges.instr[j];
 			potential_instr_registers[interfering_instr.value] &= ~(1 << reg);
@@ -164,17 +160,14 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 
 	// Assign locations to the rest of the instructions
 	uint32_t stack_offset = 0;
-	for (uint16_t i = 0; i < instr_buffer->count; i += 1) {
-		// Skip dead instructions
-		if (live_ranges[i].value == UINT32_MAX) {
+	for (size_t i = 0; i < scheduled_instr.count; i += 1) {
+		InstrIndex instr_index = scheduled_instr.instr[i];
+
+		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_NONE) {
 			continue;
 		}
 
-		if (instr_storage[i].kind != INSTR_STORAGE_NONE) {
-			continue;
-		}
-
-		const Instr* instr = &instr_buffer->instr[i];
+		const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
 
 		if (instr->kind == INSTR_CALL_DIRECT || instr->kind == INSTR_CALL_INDIRECT) {
 			AbiSignature signature;
@@ -189,8 +182,8 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 				if (signature.returns->kind == ABI_PARAM_STRUCT) {
 					stack_offset = align(stack_offset, 16); // FIXME: No hardcoded alignment
 
-					instr_storage[i].kind = INSTR_STORAGE_STACK;
-					instr_storage[i].stack.offset = stack_offset;
+					instr_storage[instr_index.value].kind = INSTR_STORAGE_STACK;
+					instr_storage[instr_index.value].stack.offset = stack_offset;
 					stack_offset += signature.returns->struct_size;
 					continue;
 				} else if (signature.returns->kind == ABI_PARAM_NORMAL) {
@@ -207,21 +200,21 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 
 			stack_offset = align(stack_offset, instr->stack_alloc.alignment);
 
-			instr_storage[i].kind = INSTR_STORAGE_STACK;
-			instr_storage[i].stack.offset = stack_offset;
+			instr_storage[instr_index.value].kind = INSTR_STORAGE_STACK;
+			instr_storage[instr_index.value].stack.offset = stack_offset;
 			stack_offset += instr->stack_alloc.size;
 		} else if (has_flag(INSTR_FEATURES[instr->kind], INSTR_FEATURE_REG_STORAGE)) {
-			uint16_t potential_registers = potential_instr_registers[i];
+			uint16_t potential_registers = potential_instr_registers[instr_index.value];
 			assert_msg(potential_registers != 0,
 					"This instruction must be spilled, but spilling is not yet implemented");
 
 			uint16_t first_potential_register = count_trailing_zeros(potential_registers);
 			assert(first_potential_register < 16);
 
-			instr_storage[i].kind = INSTR_STORAGE_REG;
-			instr_storage[i].reg = first_potential_register;
+			instr_storage[instr_index.value].kind = INSTR_STORAGE_REG;
+			instr_storage[instr_index.value].reg = first_potential_register;
 
-			InstrIndexArray edges = interference_graph[i];
+			InstrIndexArray edges = interference_graph[instr_index.value];
 			for (size_t j = 0; j < edges.count; j += 1) {
 				// TODO: Maybe skip modifing `potential_instr_registers` for instructions that don't
 				//       have storage?
@@ -241,6 +234,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 }
 
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
+		const InstrIndexArray scheduled_instr,
 		InstrLiveRange* live_ranges,
 		uint16_t allowed_registers,
 		const AbiSignature* current_function_signature,
@@ -276,6 +270,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 	result.interference_graph = interference_graph;
 
 	_run_graph_coloring(instr_buffer,
+			scheduled_instr,
 			live_ranges,
 			interference_graph,
 			allowed_registers,

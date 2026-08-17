@@ -12,6 +12,7 @@ typedef struct {
 } RegisterAllocationResult;
 
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
+		const InstrIndexArray scheduled_instr,
 		InstrLiveRange* live_ranges,
 		uint16_t allowed_registers,
 		const AbiSignature* current_function_signature,

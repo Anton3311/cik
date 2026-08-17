@@ -1191,6 +1191,39 @@ static void _emit_mem_copy_fixed(CodeBuffer* buffer,
 	profile_scope_end();
 }
 
+static void _emit_mem_zero_fixed(CodeBuffer* buffer,
+		Operand dst_operand,
+		uint16_t size,
+		uint16_t temp_registers) {
+	profile_scope_start(__func__);
+
+	X64Register temp_register = count_trailing_zeros(temp_registers);
+	_emit_load_const_64(buffer, temp_register, 0);
+
+	uint16_t sizes[] = { 8, 4, 2, 1 };
+	uint16_t bit_counts[] = { 64, 32, 16, 8 };
+
+	size_t bytes_left = size;
+	size_t offset = 0;
+	for (uint16_t size_index = 0; size_index < array_size(sizes); size_index += 1) {
+		while (bytes_left >= sizes[size_index]) {
+			Operand sized_dst = dst_operand;
+			sized_dst.bit_count = bit_counts[size_index]; 
+
+			encode_2(buffer,
+					MNEMONIC_MOV,
+					sized_dst,
+					operand_reg(temp_register, bit_counts[size_index]));
+
+			dst_operand.mem.disp += sizes[size_index];
+
+			bytes_left -= sizes[size_index];
+		}
+	}
+
+	profile_scope_end();
+}
+
 typedef struct {
 	bool is_direct;
 	InstrInputs args;
@@ -1663,31 +1696,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 			dst_operand = operand_stack_mem((int32_t)dst_loc.stack.offset, 64);
 		}
 
-		X64Register temp_register = count_trailing_zeros(temp_registers);
-
-		_emit_load_const_64(buffer, temp_register, 0);
-
-		uint16_t sizes[] = { 8, 4, 2, 1 };
-		uint16_t bit_counts[] = { 64, 32, 16, 8 };
-
-		size_t bytes_left = instr->mem_zero_fixed.size;
-		size_t offset = 0;
-		for (uint16_t size_index = 0; size_index < array_size(sizes); size_index += 1) {
-			while (bytes_left >= sizes[size_index]) {
-				Operand sized_dst = dst_operand;
-				sized_dst.bit_count = bit_counts[size_index]; 
-
-				encode_2(buffer,
-						MNEMONIC_MOV,
-						sized_dst,
-						operand_reg(temp_register, bit_counts[size_index]));
-
-				dst_operand.mem.disp += sizes[size_index];
-
-				bytes_left -= sizes[size_index];
-			}
-		}
-
+		_emit_mem_zero_fixed(buffer, dst_operand, instr->mem_zero_fixed.size, temp_registers);
 		return;
 	}
 

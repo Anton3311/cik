@@ -1281,6 +1281,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 			call_instr->call_direct.args = arg_inputs;
 			call_instr->call_direct.io_state = compiler->io_state;
 			call_instr->call_direct.function_index = func_symbol_id;
+			call_instr->call_direct.signature_index = callee_signature_index;
 		}
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, call_instr_index);
@@ -2684,8 +2685,8 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 static void _fill_function_call_signatures(FunctionCompiler* compiler) {
 	profile_scope_start(__func__);
 
-	for (size_t i = 0; i < compiler->function_call_count; i += 1) {
-		Call* call = compiler->function_calls[i];
+	for (size_t call_index = 0; call_index < compiler->function_call_count; call_index += 1) {
+		Call* call = compiler->function_calls[call_index];
 
 		Type callable_type;
 		expr_get_type(call->callable, &callable_type);
@@ -2693,10 +2694,41 @@ static void _fill_function_call_signatures(FunctionCompiler* compiler) {
 		assert(callable_type.kind == TYPE_FUNCTION);
 
 		const FunctionPrototype* prototype = callable_type.function;
-		compiler->function_call_signatures[i] = function_prototype_to_abi_signature(
-				compiler->type_context,
-				prototype,
-				arena_allocator_new(compiler->allocator));
+
+		if (!prototype->has_va_args) {
+			compiler->function_call_signatures[call_index] = function_prototype_to_abi_signature(
+					compiler->type_context,
+					prototype,
+					arena_allocator_new(compiler->allocator));
+		} else {
+			ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
+
+			FunctionPrototype extended_prototype = *prototype;
+
+			FunctionParam* parameters = arena_alloc_array(compiler->temp_allocator,
+					FunctionParam,
+					call->args.count);
+
+			size_t i = 0;
+			for (; i < prototype->parameter_count; i += 1) {
+				parameters[i] = prototype->parameters[i];
+			}
+
+			for (; i < call->args.count; i += 1) {
+				parameters[i] = (FunctionParam) {};
+				expr_get_type(call->args.exprs[i], &parameters[i].type);
+			}
+
+			extended_prototype.parameters = parameters;
+			extended_prototype.parameter_count = call->args.count;
+
+			compiler->function_call_signatures[call_index] = function_prototype_to_abi_signature(
+					compiler->type_context,
+					&extended_prototype,
+					arena_allocator_new(compiler->allocator));
+
+			arena_end_temp(temp);
+		}
 	}
 
 	profile_scope_end();
@@ -3060,7 +3092,6 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 	}
 
 	sig.params = allocator_alloc_array(allocator, AbiParam, sig.param_count);
-	sig.has_va_args = proto->has_va_args;
 
 	size_t param_index = 0;
 	if (has_return_loc) {

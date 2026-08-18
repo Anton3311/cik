@@ -495,7 +495,7 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_addr: \033[33;1m%%%u\033[0m signature_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_indirect.args, temp_allocator)), (uint32_t)instr->call_indirect.io_state.value, (uint32_t)instr->call_indirect.function_addr.value, (uint32_t)instr->call_indirect.signature_index);
         break;
     case INSTR_CALL_DIRECT:
-        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_direct.args, temp_allocator)), (uint32_t)instr->call_direct.io_state.value, (uint32_t)instr->call_direct.function_index);
+        printf("args: %.*s io_state: \033[33;1m%%%u\033[0m function_index: %u signature_index: %u ", STR_FMT(instr_format_input_instrs(input_instr_buffer, instr->call_direct.args, temp_allocator)), (uint32_t)instr->call_direct.io_state.value, (uint32_t)instr->call_direct.function_index, (uint32_t)instr->call_direct.signature_index);
         break;
     case INSTR_COUNT:
         unreachable();

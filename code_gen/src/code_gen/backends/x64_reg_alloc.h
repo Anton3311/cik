@@ -17,7 +17,6 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		uint16_t allowed_registers,
 		const AbiSignature* current_function_signature,
 		const AbiSignature* function_signatures,
-		const AbiSignature* function_signatures_2,
 		Arena* allocator,
 		Arena* temp_allocator);
 

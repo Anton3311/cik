@@ -314,12 +314,17 @@ struct Instr {
 			InstrInputs args;
 			InstrIndex io_state;
 			uint16_t function_index;
+
+			// Index of the callee signature
+			uint16_t signature_index;
 		} call_direct;
 
 		struct {
 			InstrInputs args;
 			InstrIndex io_state;
 			InstrIndex function_addr;
+
+			// Index of the callee signature
 			uint16_t signature_index;
 		} call_indirect;
 

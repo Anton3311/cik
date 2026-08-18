@@ -1257,9 +1257,7 @@ static void _lower_call(X64CodeGenerator* gen,
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	const InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
 
-	AbiSignature callee_signature = options.is_direct
-		? gen->imported_function_signatures[options.callee_signature_index]
-		: gen->function_call_signatures[options.callee_signature_index];
+	AbiSignature callee_signature = gen->function_call_signatures[options.callee_signature_index];
 
 	if (callee_signature.returns) {
 		if (callee_signature.returns->kind == ABI_PARAM_STRUCT
@@ -2024,7 +2022,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 				(CallLoweringOptions) {
 					.is_direct = true,
 					.args = instr->call_direct.args,
-					.callee_signature_index = instr->call_direct.function_index,
+					.callee_signature_index = instr->call_direct.signature_index,
 					.direct = {
 						.callee_index = instr->call_direct.function_index,
 					}
@@ -2235,7 +2233,6 @@ static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_
 			// Use `temp_allocator` as a persistent one, since register allocations are only used
 			// within the backend
 			&gen->function_signature,
-			gen->imported_function_signatures,
 			gen->function_call_signatures,
 			gen->temp_allocator,
 			gen->allocator);
@@ -3318,8 +3315,6 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 
 CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* allocator) {
 	profile_scope_start(__func__);
-
-	assert(!signature->has_va_args);
 
 	InstrStorageLocation* locations = arena_alloc_array(allocator,
 			InstrStorageLocation,

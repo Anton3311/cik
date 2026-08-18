@@ -21,7 +21,6 @@ typedef struct {
 typedef struct {
 	CallingConvention call_conv;
 	uint32_t param_count;
-	bool has_va_args;
 
 	AbiParam* params;
 

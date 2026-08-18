@@ -659,6 +659,9 @@ struct Function {
 	DeclSpec* decl_spec;
 	StorageSpecifier storage_specifier;
 	uint32_t var_count;
+
+	// Number of `EXPR_CALL` in the body of this function.
+	uint32_t function_call_count;
 };
 
 //

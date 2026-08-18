@@ -2583,6 +2583,8 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			out_expr->call.args = args;
 			out_expr->call.right_paren_source_range = source_range_pack(right_paren.source_range);
 
+			parser->current_function->function_call_count += 1;
+
 			_type_check_call(parser, out_expr);
 		} else if (operator_token.kind == TOKEN_LEFT_BRACKET) {
 			preprocessor_next_token(parser->preprocessor);
@@ -3338,7 +3340,12 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 
 		uint32_t last_var_id_state = parser->next_var_id;
 
+		assert(parser->current_function == NULL);
+		parser->current_function = function_def;
+
 		bool result = _parser_parse_scope(parser, body);
+
+		parser->current_function = NULL;
 
 		uint32_t var_count = parser->next_var_id - last_var_id_state;
 		parser->next_var_id = last_var_id_state;

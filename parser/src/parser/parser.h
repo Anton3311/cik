@@ -170,6 +170,7 @@ typedef struct {
 	uint32_t next_var_id;
 
 	AST* ast;
+	Function* current_function;
 
 	AstNode* dummy_node;
 } Parser;

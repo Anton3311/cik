@@ -2957,41 +2957,6 @@ void compiler_collect_imported_symbols(const AST* ast, SymbolMap* imported_symbo
 	profile_scope_end();
 }
 
-void compiler_collect_function_abi_signatures(const AST* ast,
-		const TypeContext* type_context,
-		const SymbolMap* imported_symbols,
-		AbiSignature* out_signatures,
-		Arena* allocator) {
-	profile_scope_start(__func__);
-
-	for (const AstNode* node = ast->root_nodes.first; node != NULL; node = node->next) {
-		if (node->kind != AST_NODE_FUNCTION_DEF && node->kind != AST_NODE_FUNCTION_DECL) {
-			continue;
-		}
-
-		const Function* function = node->function_def;
-		SymbolId id;
-
-		{
-			Symbol symbol = {};
-			compiler_create_function_import_symbol(function, &symbol);
-
-			id = symbol_map_find(imported_symbols, symbol_key_from_symbol(&symbol));
-
-			// TODO: Verify that the existing symbol is the actually a function symbol.
-			assert(id != SYMBOL_ID_INVALID);
-		}
-
-		assert(id < imported_symbols->count);
-
-		out_signatures[id] = function_prototype_to_abi_signature(type_context,
-				&function->proto,
-				arena_allocator_new(allocator));
-	}
-
-	profile_scope_end();
-}
-
 void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* allocator) {
 	profile_scope_start(__func__);
 

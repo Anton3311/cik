@@ -3355,8 +3355,47 @@ InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature*
 		}
 	}
 
+CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* allocator) {
+	profile_scope_start(__func__);
+
+	InstrStorageLocation* locations = arena_alloc_array(allocator,
+			InstrStorageLocation,
+			signature->param_count);
+
+	uint32_t stack_usage = 0;
+
+	size_t arg_reg_index = 0;
+	for (uint32_t i = 0; i < signature->param_count; i += 1) {
+		AbiParam param = signature->params[i];
+
+		switch (param.kind) {
+		case ABI_PARAM_NORMAL:
+		case ABI_PARAM_STRUCT:
+			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
+			arena_alloc(allocator, InstrStorageLocation);
+
+			locations[i].kind = INSTR_STORAGE_REG;
+			locations[i].reg = CDECL_ARG_REGS[arg_reg_index];
+
+			arg_reg_index += 1;
+			break;
+		case ABI_PARAM_RETURN_LOCATION:
+			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
+
+			locations[i].kind = INSTR_STORAGE_REG;
+			locations[i].reg = CDECL_ARG_REGS[arg_reg_index];
+
+			arg_reg_index += 1;
+			break;
+		}
+	}
+
 	profile_scope_end();
-	return locations;
+	return (CallFrameLayout) {
+		.locations = locations,
+		.location_count = signature->param_count,
+		.stack_usage = stack_usage,
+	};
 }
 
 InstrStorageLocation* x64_compute_all_abi_sig_locations(const AbiSignature* signature,

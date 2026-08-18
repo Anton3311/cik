@@ -147,6 +147,11 @@ typedef struct {
 
 LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region);
 
+typedef struct {
+	InstrStorageLocation* locations;
+	size_t location_count;
+} CallFrameLayout;
+
 // Computes locations for arguments. These are either `ABI_PARAM_NORMAL` or `ABI_PARAM_STRUCt`.
 // 
 // `ABI_RETURN_LOCATION` are not consdered here.
@@ -155,6 +160,8 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature* signature,
 		uint32_t prefered_arg_count,
 		Arena* allocator);
+
+CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* allocator);
 
 // Computes locations for all parameters in the signature.
 // 

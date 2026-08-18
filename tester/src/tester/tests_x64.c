@@ -2167,3 +2167,165 @@ void test_parallel_moves_multiple_cycles(TestContext* context) {
 			moves,
 			context->temp_arena);
 }
+
+void test_x64_compute_frame_layout_4_normal_args_no_return(TestContext* context) {
+	AbiParam params[] = { 
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+	};
+
+	AbiSignature signature = {
+		.call_conv = CALL_CONV_CDECL,
+		.param_count = array_size(params),
+		.has_va_args = false,
+		.params = params,
+		.returns = NULL
+	};
+
+	CallFrameLayout layout = compute_call_frame_layout(&signature, context->arena);
+	assert(layout.location_count == 4);
+
+	assert(layout.locations[0].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[0].reg  == X64_REG_C);
+
+	assert(layout.locations[1].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[1].reg  == X64_REG_D);
+
+	assert(layout.locations[2].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[2].reg  == X64_REG_8);
+
+	assert(layout.locations[3].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[3].reg  == X64_REG_9);
+}
+
+void test_x64_compute_frame_layout_4_normal_args_return_normal(TestContext* context) {
+	AbiParam params[] = { 
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+	};
+
+	AbiParam returns = { .kind = ABI_PARAM_NORMAL };
+
+	AbiSignature signature = {
+		.call_conv = CALL_CONV_CDECL,
+		.param_count = array_size(params),
+		.has_va_args = false,
+		.params = params,
+		.returns = &returns, 
+	};
+
+	CallFrameLayout layout = compute_call_frame_layout(&signature, context->arena);
+	assert(layout.location_count == 4);
+
+	assert(layout.locations[0].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[0].reg  == X64_REG_C);
+
+	assert(layout.locations[1].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[1].reg  == X64_REG_D);
+
+	assert(layout.locations[2].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[2].reg  == X64_REG_8);
+
+	assert(layout.locations[3].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[3].reg  == X64_REG_9);
+}
+
+void test_x64_compute_frame_layout_4_normal_args_return_small_struct(TestContext* context) {
+	AbiParam params[] = { 
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+	};
+
+	AbiParam returns = { .kind = ABI_PARAM_STRUCT, .struct_size = 8 };
+
+	AbiSignature signature = {
+		.call_conv = CALL_CONV_CDECL,
+		.param_count = array_size(params),
+		.has_va_args = false,
+		.params = params,
+		.returns = &returns, 
+	};
+
+	CallFrameLayout layout = compute_call_frame_layout(&signature, context->arena);
+	assert(layout.location_count == 3);
+
+	assert(layout.locations[0].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[0].reg  == X64_REG_C);
+
+	assert(layout.locations[1].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[1].reg  == X64_REG_D);
+
+	assert(layout.locations[2].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[2].reg  == X64_REG_8);
+}
+
+void test_x64_compute_frame_layout_4_normal_args_return_large_struct(TestContext* context) {
+	AbiParam params[] = { 
+		(AbiParam) { .kind = ABI_PARAM_RETURN_LOCATION },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+	};
+
+	AbiParam returns = { .kind = ABI_PARAM_STRUCT, .struct_size = 32 };
+
+	AbiSignature signature = {
+		.call_conv = CALL_CONV_CDECL,
+		.param_count = array_size(params),
+		.has_va_args = false,
+		.params = params,
+		.returns = &returns, 
+	};
+
+	CallFrameLayout layout = compute_call_frame_layout(&signature, context->arena);
+	assert(layout.location_count == 4);
+
+	assert(layout.locations[0].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[0].reg  == X64_REG_C);
+
+	assert(layout.locations[1].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[1].reg  == X64_REG_D);
+
+	assert(layout.locations[2].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[2].reg  == X64_REG_8);
+
+	assert(layout.locations[3].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[3].reg  == X64_REG_9);
+}
+
+void test_x64_compute_frame_layout_2_normal_2_struct_args_no_return(TestContext* context) {
+	AbiParam params[] = { 
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_NORMAL },
+		(AbiParam) { .kind = ABI_PARAM_STRUCT, .struct_size = 96 },
+		(AbiParam) { .kind = ABI_PARAM_STRUCT, .struct_size = 32 },
+	};
+
+	AbiSignature signature = {
+		.call_conv = CALL_CONV_CDECL,
+		.param_count = array_size(params),
+		.has_va_args = false,
+		.params = params,
+		.returns = NULL
+	};
+
+	CallFrameLayout layout = compute_call_frame_layout(&signature, context->arena);
+	assert(layout.location_count == 4);
+
+	assert(layout.locations[0].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[0].reg  == X64_REG_C);
+
+	assert(layout.locations[1].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[1].reg  == X64_REG_D);
+
+	assert(layout.locations[2].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[2].reg  == X64_REG_8);
+
+	assert(layout.locations[3].kind == INSTR_STORAGE_REG);
+	assert(layout.locations[3].reg  == X64_REG_9);
+}

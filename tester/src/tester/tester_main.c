@@ -244,6 +244,12 @@ int main(int argc, char* argv[]) {
 		test(test_parallel_moves_is_correct_for_input_in_shifted_locations),
 		test(test_parallel_moves_cycle),
 		test(test_parallel_moves_multiple_cycles),
+		// Call Frame Layout
+		test(test_x64_compute_frame_layout_4_normal_args_no_return),
+		test(test_x64_compute_frame_layout_4_normal_args_return_normal),
+		test(test_x64_compute_frame_layout_4_normal_args_return_small_struct),
+		test(test_x64_compute_frame_layout_4_normal_args_return_large_struct),
+		test(test_x64_compute_frame_layout_2_normal_2_struct_args_no_return),
 	};
 
 	TestSuite s_test_suites[] = {

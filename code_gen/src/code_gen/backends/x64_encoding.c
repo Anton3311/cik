@@ -400,7 +400,7 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 
 			if (op.mem.disp == 0) {
 				// No displacement
-			} else if (op.mem.disp <= 255) {
+			} else if (op.mem.disp <= INT8_MAX) {
 				fields.mod = MOD_RM_ADDRESS_RM_DISP_8;
 				fields.displacement = op.mem.disp;
 			} else {

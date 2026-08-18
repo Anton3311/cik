@@ -1257,11 +1257,14 @@ static void _lower_call(X64CodeGenerator* gen,
 	const InstrBuffer* instr_buffer = &gen->instr_buffer;
 	const InstrStorageLocation instr_storage = gen->instr_storage[instr_index.value];
 
-	AbiSignature callee_signature = gen->imported_function_signatures[options.callee_signature_index];
+	AbiSignature callee_signature = options.is_direct
+		? gen->imported_function_signatures[options.callee_signature_index]
+		: gen->function_call_signatures[options.callee_signature_index];
+
 	if (callee_signature.returns) {
 		if (callee_signature.returns->kind == ABI_PARAM_STRUCT
 				&& callee_signature.returns->struct_size <= 8) {
-			// Small that fit into a register, get returned through a register
+			// Small structs that fit into a register, get returned through a register
 			assert(instr_storage.kind == INSTR_STORAGE_REG);
 		} else if (callee_signature.returns->kind == ABI_PARAM_STRUCT) {
 			assert(instr_storage.kind == INSTR_STORAGE_STACK);
@@ -1321,7 +1324,7 @@ static void _lower_call(X64CodeGenerator* gen,
 		input_storage_count += 1;
 	}
 
-	// Fill the expected loactions of the arguments
+	// Fill the expected locations of the arguments
 	size_t expected_loc_count = 0;
 	X64Register* expected_arg_locs = arena_alloc_array(temp_allocator,
 			X64Register,
@@ -2233,6 +2236,7 @@ static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_
 			// within the backend
 			&gen->function_signature,
 			gen->imported_function_signatures,
+			gen->function_call_signatures,
 			gen->temp_allocator,
 			gen->allocator);
 
@@ -3315,6 +3319,8 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* allocator) {
 	profile_scope_start(__func__);
 
+	assert(!signature->has_va_args);
+
 	InstrStorageLocation* locations = arena_alloc_array(allocator,
 			InstrStorageLocation,
 			signature->param_count);
@@ -3327,7 +3333,6 @@ CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* 
 		case ABI_PARAM_NORMAL:
 		case ABI_PARAM_STRUCT:
 			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
-			arena_alloc(allocator, InstrStorageLocation);
 
 			locations[i].kind = INSTR_STORAGE_REG;
 			locations[i].reg = CDECL_ARG_REGS[arg_reg_index];

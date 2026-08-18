@@ -85,6 +85,20 @@ typedef struct {
 	AstNode* current_loop;
 	LoopControlStmt* current_loop_control_stmts;
 	LoopControlStmt* free_loop_control_stmt;
+
+	// An array internal to the compiler, which is used to defer filling of the
+	// `function_call_signatures`. The array is allocated using the `temp_allocator`.
+	//
+	// Capacity is `function_call_count`
+	Call** function_calls;
+
+	// Number of calls currently stored in `function_calls`.
+	size_t function_call_count;
+
+	// Signature used to tell the backend how to call a function
+	//
+	// Size is `function->function_call_count`
+	AbiSignature* function_call_signatures;
 } FunctionCompiler;
 
 typedef struct {
@@ -92,6 +106,8 @@ typedef struct {
 	InstrIndex start_region;
 
 	StringArray string_consts;
+	AbiSignature* function_call_signatures;
+	size_t function_call_signature_count;
 } CompiledFunction;
 
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler);

@@ -1247,6 +1247,13 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		// into the `symbol_map`
 		assert(func_symbol_id != SYMBOL_ID_INVALID);
 
+		// Save the call, to later create the corresponding `AbiSignature`
+		assert(compiler->function_call_count <= UINT16_MAX);
+		assert(compiler->function_call_count < compiler->function->function_call_count);
+		uint16_t callee_signature_index = (uint16_t)compiler->function_call_count;
+		compiler->function_calls[compiler->function_call_count] = &expr->call;
+		compiler->function_call_count += 1;
+
 		bool is_indirect_call = func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT;
 		InstrIndex call_instr_index = INVALID_INSTR_INDEX;
 
@@ -1265,7 +1272,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 			call_instr->call_indirect.args = arg_inputs;
 			call_instr->call_indirect.io_state = compiler->io_state;
 			call_instr->call_indirect.function_addr = load_func_addr_index;
-			call_instr->call_indirect.signature_index = func_symbol_id;
+			call_instr->call_indirect.signature_index = callee_signature_index;
 		} else {
 			call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
@@ -2674,6 +2681,27 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 	return regions;
 }
 
+static void _fill_function_call_signatures(FunctionCompiler* compiler) {
+	profile_scope_start(__func__);
+
+	for (size_t i = 0; i < compiler->function_call_count; i += 1) {
+		Call* call = compiler->function_calls[i];
+
+		Type callable_type;
+		expr_get_type(call->callable, &callable_type);
+
+		assert(callable_type.kind == TYPE_FUNCTION);
+
+		const FunctionPrototype* prototype = callable_type.function;
+		compiler->function_call_signatures[i] = function_prototype_to_abi_signature(
+				compiler->type_context,
+				prototype,
+				arena_allocator_new(compiler->allocator));
+	}
+
+	profile_scope_end();
+}
+
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	profile_scope_start(__func__);
 
@@ -2689,6 +2717,15 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	compiler->vars = arena_alloc_array_zeroed(compiler->allocator, const Variable*, compiler->var_count);
 	compiler->var_values = arena_alloc_array(compiler->allocator, InstrIndex, compiler->var_count);
 	compiler->var_parent_scopes = arena_alloc_array_zeroed(compiler->allocator, const Scope*, compiler->var_count);
+
+	compiler->function_call_count = 0;
+	compiler->function_call_signatures = arena_alloc_array(compiler->allocator,
+			AbiSignature,
+			compiler->function->function_call_count);
+
+	compiler->function_calls = arena_alloc_array(compiler->temp_allocator,
+			Call*,
+			compiler->function->function_call_count);
 
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		compiler->var_values[i] = INVALID_INSTR_INDEX;
@@ -2781,9 +2818,13 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			"`compiler->io_state` should have been consumed during the compilation "
 			"of the final region in the function body");
 
+	_fill_function_call_signatures(compiler);
+
 	CompiledFunction compiled_function;
 	compiled_function.instr_buffer = compiler->instr_buffer;
 	compiled_function.start_region = body_block.initial_region;
+	compiled_function.function_call_signatures = compiler->function_call_signatures;
+	compiled_function.function_call_signature_count = compiler->function_call_count;
 
 	profile_scope_end();
 	return compiled_function;

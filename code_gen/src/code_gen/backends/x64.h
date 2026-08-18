@@ -130,6 +130,7 @@ typedef struct {
 	AbiSignature function_signature;
 
 	const AbiSignature* imported_function_signatures;
+	const AbiSignature* function_call_signatures;
 } X64CodeGenerator;
 
 typedef struct {

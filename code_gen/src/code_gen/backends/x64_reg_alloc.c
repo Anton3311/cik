@@ -85,6 +85,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		uint16_t allowed_registers,
 		const AbiSignature* current_function_signature,
 		const AbiSignature* function_signatures,
+		const AbiSignature* function_signatures_2,
 		Arena* allocator,
 		Arena* temp_allocator,
 		RegisterAllocationResult* out_result) {
@@ -193,7 +194,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			if (instr->kind == INSTR_CALL_DIRECT) {
 				signature = function_signatures[instr->call_direct.function_index];
 			} else if (instr->kind == INSTR_CALL_INDIRECT) {
-				signature = function_signatures[instr->call_indirect.signature_index];
+				signature = function_signatures_2[instr->call_indirect.signature_index];
 			}
 
 			if (signature.returns != NULL) {
@@ -261,6 +262,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		uint16_t allowed_registers,
 		const AbiSignature* current_function_signature,
 		const AbiSignature* function_signatures,
+		const AbiSignature* function_signatures_2,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
@@ -301,6 +303,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			allowed_registers,
 			current_function_signature,
 			function_signatures,
+			function_signatures_2,
 			allocator,
 			temp_allocator,
 			&result);

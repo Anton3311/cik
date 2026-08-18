@@ -176,6 +176,7 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 				&node->function_def->proto,
 				arena_allocator_new(context->temp_arena));
 		gen.imported_function_signatures = imported_function_signatures;
+		gen.function_call_signatures = compiled_function.function_call_signatures;
 
 		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
 

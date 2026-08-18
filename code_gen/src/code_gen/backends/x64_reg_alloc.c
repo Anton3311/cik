@@ -124,10 +124,23 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 	}
 
-	InstrStorageLocation* argument_locations = x64_compute_abi_sig_argument_locations(
+	CallFrameLayout frame_layout = compute_call_frame_layout(
 			current_function_signature,
-			current_function_signature->param_count,
 			temp_allocator);
+
+	size_t argument_location_count = 0;
+	InstrStorageLocation* argument_locations = arena_alloc_array(temp_allocator,
+			InstrStorageLocation, 0);
+
+	for (uint32_t i = 0; i < current_function_signature->param_count; i += 1) {
+		if (current_function_signature->params[i].kind == ABI_PARAM_RETURN_LOCATION) {
+			continue;
+		}
+
+		arena_alloc(temp_allocator, InstrStorageLocation);
+		argument_locations[argument_location_count] = frame_layout.locations[i];
+		argument_location_count += 1;
+	}
 
 	// Assign locations to function arguments.
 	// These locations are determined by the calling convention.
@@ -144,6 +157,8 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 		}
 
 		const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+		assert(instr->load_arg.index < argument_location_count);
 		instr_storage[instr_index.value] = argument_locations[instr->load_arg.index];
 
 		if (instr_storage[instr_index.value].kind != INSTR_STORAGE_REG) {
@@ -256,14 +271,17 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 	// register size, the first argument register is used to pass the address of the area, where the
 	// returned struct should be written to.
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
-	InstrStorageLocation* all_locations = x64_compute_all_abi_sig_locations(
+	CallFrameLayout frame_layout = compute_call_frame_layout(
 			current_function_signature,
 			temp_allocator);
 
 	for (uint32_t i = 0; i < current_function_signature->param_count; i += 1) {
 		AbiParam param = current_function_signature->params[i];
-		if (param.kind == ABI_PARAM_RETURN_LOCATION && all_locations[i].kind == INSTR_STORAGE_REG) {
-			allowed_registers &= ~(1 << all_locations[i].reg);
+		InstrStorageLocation location = frame_layout.locations[i];
+		assert(location.kind == INSTR_STORAGE_REG);
+
+		if (param.kind == ABI_PARAM_RETURN_LOCATION) {
+			allowed_registers &= ~(1 << location.reg);
 		}
 	}
 

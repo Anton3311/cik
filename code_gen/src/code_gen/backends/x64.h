@@ -152,22 +152,7 @@ typedef struct {
 	size_t location_count;
 } CallFrameLayout;
 
-// Computes locations for arguments. These are either `ABI_PARAM_NORMAL` or `ABI_PARAM_STRUCt`.
-// 
-// `ABI_RETURN_LOCATION` are not consdered here.
-// 
-// The returned array has the size `signature->param_count - <number of ABI_RETURN_LOCATION>`
-InstrStorageLocation* x64_compute_abi_sig_argument_locations(const AbiSignature* signature,
-		uint32_t prefered_arg_count,
-		Arena* allocator);
-
 CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* allocator);
-
-// Computes locations for all parameters in the signature.
-// 
-// The returned array has the exact size of `signature->param_count`
-InstrStorageLocation* x64_compute_all_abi_sig_locations(const AbiSignature* signature,
-		Arena* allocator);
 
 //
 // Internal

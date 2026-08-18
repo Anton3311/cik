@@ -1304,12 +1304,13 @@ static void _lower_call(X64CodeGenerator* gen,
 			options.args.count);
 
 	for (uint16_t i = 0; i < options.args.count; i += 1) {
-		if (arg_target_locations[i].kind != INSTR_STORAGE_REG) {
+		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
+		InstrStorageLocation arg_location = gen->instr_storage[arg_instr.value];
+		if (arg_location.kind != INSTR_STORAGE_REG) {
 			continue;
 		}
 
-		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
-		input_instr_storage[input_storage_count] = gen->instr_storage[arg_instr.value];
+		input_instr_storage[input_storage_count] = arg_location;
 		input_storage_count += 1;
 	}
 
@@ -1329,7 +1330,9 @@ static void _lower_call(X64CodeGenerator* gen,
 			options.args.count);
 
 	for (uint16_t i = 0; i < options.args.count; i += 1) {
-		if (arg_target_locations[i].kind != INSTR_STORAGE_REG) {
+		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
+		InstrStorageLocation arg_location = gen->instr_storage[arg_instr.value];
+		if (arg_location.kind != INSTR_STORAGE_REG) {
 			continue;
 		}
 
@@ -1366,13 +1369,33 @@ static void _lower_call(X64CodeGenerator* gen,
 		_emit_mov_regs(buffer, move.src, move.dst, 64);
 	}
 
+	uint32_t caller_saved_regs_stack_usage = array_size(CDECL_CALLER_SAVED) * 8;
+
+	// Now move the struct argument addreses into their corresponding registers
+	for (uint16_t i = 0; i < options.args.count; i += 1) {
+		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
+		InstrStorageLocation arg_location = gen->instr_storage[arg_instr.value];
+
+		if (arg_location.kind != INSTR_STORAGE_STACK) {
+			continue;
+		}
+
+		InstrStorageLocation target_location = arg_target_locations[i];
+		assert(target_location.kind == INSTR_STORAGE_REG);
+
+		int32_t arg_offset = (int32_t)(arg_location.stack.offset + caller_saved_regs_stack_usage);
+
+		encode_2(buffer,
+				MNEMONIC_LEA,
+				operand_reg(target_location.reg, 64),
+				operand_stack_mem(arg_offset, 64));
+	}
+
 	// Load the address of the stack location that recieves the returned struct, into the first
 	// argument register.
 	if (callee_signature.returns && callee_signature.returns->kind == ABI_PARAM_STRUCT) {
 		// NOTE: Since we've already saved caller registers, the stack pointer has moved and
 		//       with it stack offsets of all stack allocated values.
-		uint32_t caller_saved_regs_stack_usage = array_size(CDECL_CALLER_SAVED) * 8;
-
 		size_t return_value_stack_offset =
 			instr_storage.stack.offset + caller_saved_regs_stack_usage;
 

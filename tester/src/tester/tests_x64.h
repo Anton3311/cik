@@ -70,4 +70,6 @@ void test_x64_compute_frame_layout_4_normal_args_return_small_struct(TestContext
 void test_x64_compute_frame_layout_4_normal_args_return_large_struct(TestContext* context);
 void test_x64_compute_frame_layout_2_normal_2_struct_args_no_return(TestContext* context);
 
+void test_call_function_with_struct_argument(TestContext* context);
+
 #endif

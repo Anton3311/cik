@@ -510,14 +510,11 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		}
 
 		if (type.kind == TYPE_STRUCT || type.kind == TYPE_UNION) {
-			InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
-			stack_addr->kind = INSTR_STACK_ADDR;
-			stack_addr->stack_addr.stack_alloc = compiler->arg_states[arg_index];
+			assert(_type_get_layout(compiler->type_context, &type).size > 8);
 			
 			profile_scope_end();
 			return (AddressExpr) {
-				.base = stack_addr_index,
+				.base = compiler->arg_states[arg_index],
 				.offset = 0,
 			};
 		}
@@ -2806,7 +2803,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			break;
 		default:
 			if (param_type_size > 8) {
-				instr->kind = INSTR_LOAD_ARG_STACK;
+				instr->kind = INSTR_LOAD_ARG_64;
 				break;
 			}
 

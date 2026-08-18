@@ -2314,3 +2314,45 @@ void test_x64_compute_frame_layout_2_normal_2_struct_args_no_return(TestContext*
 	assert(layout.locations[3].kind == INSTR_STORAGE_REG);
 	assert(layout.locations[3].reg  == X64_REG_9);
 }
+
+typedef struct {
+	size_t a;
+	int b;
+	int c;
+} StructArgument;
+
+static void _verify_struct_argument(StructArgument s) {
+	assert(s.a == 0xdeadbeefdeadbeef);
+	assert(s.b == 0xffaaccdd);
+	assert(s.c == 0xddeeffaa);
+}
+
+static void _resolve_verify_struct_argument(SymbolMap* map, void* data) {
+	symbol_map_insert_dynamically_linked_impl(map,
+			STR_LIT("_verify_struct_argument"),
+			_verify_struct_argument);
+}
+
+void test_call_function_with_struct_argument(TestContext* context) {
+	String source_code = STR_LIT(
+			"typedef struct { size_t a; int b; int c; } StructArgument;\n"
+			"__declspec(dllimport) void _verify_struct_argument(StructArgument);\n"
+			"void main() {\n"
+			"    _verify_struct_argument((StructArgument) {\n"
+			"        0xdeadbeefdeadbeef,"
+			"        0xffaaccdd,"
+			"        0xddeeffaa"
+			"    });\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
+			source_code,
+			_resolve_verify_struct_argument,
+			NULL);
+
+	typedef void(*Function)();
+
+	Function executable_function = (Function)machine_code.code;
+	executable_function();
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}

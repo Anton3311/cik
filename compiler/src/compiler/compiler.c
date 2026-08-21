@@ -510,13 +510,26 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		}
 
 		if (type.kind == TYPE_STRUCT || type.kind == TYPE_UNION) {
-			assert(_type_get_layout(compiler->type_context, &type).size > 8);
+			AddressExpr address_expr;
+			if (_type_get_layout(compiler->type_context, &type).size > 8) {
+				address_expr = (AddressExpr) {
+					.base = compiler->arg_states[arg_index],
+					.offset = 0,
+				};
+			} else {
+				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+				stack_addr->kind = INSTR_STACK_ADDR;
+				stack_addr->stack_addr.stack_alloc = compiler->arg_states[arg_index];
+
+				address_expr = (AddressExpr) {
+					.base = stack_addr_index,
+					.offset = 0,
+				};
+			}
 			
 			profile_scope_end();
-			return (AddressExpr) {
-				.base = compiler->arg_states[arg_index],
-				.offset = 0,
-			};
+			return address_expr;
 		}
 
 		unreachable();
@@ -1228,7 +1241,32 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		for (uint16_t i = 0; i < arg_inputs.count; i += 1) {
 			Expr* arg = expr->call.args.exprs[i];
 
+			Type arg_type;
+			expr_get_type(arg, &arg_type);
+
 			InstrIndex arg_instr = _compile_expr(compiler, arg);
+
+			TypeLayout arg_type_layout = _type_get_layout(compiler->type_context, &arg_type);
+			bool is_compound_type = arg_type.kind == TYPE_STRUCT || arg_type.kind == TYPE_UNION;
+			if (is_compound_type && arg_type_layout.size <= 8) {
+				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+				stack_addr->kind = INSTR_STACK_ADDR;
+				stack_addr->stack_addr.stack_alloc = arg_instr;
+
+				InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* load = instr_buffer_at(instr_buffer, load_index);
+				load->kind = INSTR_PTR_LOAD_64;
+				load->ptr_load.ptr = stack_addr_index;
+				load->ptr_load.io_state = compiler->io_state;
+
+				compiler->io_state = instr_new_io_state(instr_buffer,
+						instr_allocator,
+						load_index);
+
+				arg_instr = load_index;
+			}
+
 			instr_buffer->inputs_buffer[arg_inputs.start + i] = arg_instr;
 		}
 
@@ -1240,7 +1278,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		SymbolId func_symbol_id = symbol_map_find(compiler->symbol_map,
 				symbol_key_from_symbol(&symbol));
 
-		// There is pass that runs before the compiler and collects all the imported symbols
+		// There is a pass that runs before the compiler and collects all the imported symbols
 		// into the `symbol_map`
 		assert(func_symbol_id != SYMBOL_ID_INVALID);
 
@@ -2774,48 +2812,94 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 
 	instr_buffer_init(instr_buffer, instr_allocator);
 
+	// Create the initial `io_state`
+	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
+
 	// Setup initial `INSTR_LOAD_ARG`
 	for (size_t i = 0; i < compiler->function->proto.parameter_count; i += 1) {
+		const TypeContext* type_context = compiler->type_context;
+		const FunctionParam* param = &compiler->function->proto.parameters[i];
+
+		TypeLayout param_type_layout;
+		if (param->type.kind == TYPE_ARRAY) {
+			param_type_layout = type_context->pointer_type_layout;
+		} else {
+			param_type_layout = _type_get_layout(type_context, &param->type);
+		}
+
+		if (param->type.kind == TYPE_STRUCT || param->type.kind == TYPE_UNION) {
+			if (param_type_layout.size > 8) {
+				InstrIndex load_arg_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* load_arg = instr_buffer_at(instr_buffer, load_arg_index);
+				load_arg->kind = INSTR_LOAD_ARG_64;
+				load_arg->load_arg.index = (uint8_t)i;
+
+				compiler->arg_states[i] = load_arg_index;
+			} else {
+				InstrIndex load_arg_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* load_arg = instr_buffer_at(instr_buffer, load_arg_index);
+				load_arg->kind = INSTR_LOAD_ARG_64;
+				load_arg->load_arg.index = (uint8_t)i;
+
+				InstrIndex stack_alloc_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_alloc = instr_buffer_at(instr_buffer, stack_alloc_index);
+				stack_alloc->kind = INSTR_STACK_ALLOC;
+				stack_alloc->stack_alloc.size = (uint16_t)max(
+						param_type_layout.size,
+						type_context->pointer_type_layout.size);
+
+				stack_alloc->stack_alloc.alignment = (uint16_t)max(
+						param_type_layout.alignment,
+						type_context->pointer_type_layout.alignment);
+
+				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+				stack_addr->kind = INSTR_STACK_ADDR;
+				stack_addr->stack_addr.stack_alloc = stack_alloc_index;
+
+				InstrIndex ptr_store_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* ptr_store = instr_buffer_at(instr_buffer, ptr_store_index);
+				ptr_store->kind = INSTR_PTR_STORE_64;
+				ptr_store->ptr_store.ptr = stack_addr_index;
+				ptr_store->ptr_store.value = load_arg_index;
+				ptr_store->ptr_store.io_state = compiler->io_state;
+
+				compiler->io_state = instr_new_io_state(instr_buffer,
+						instr_allocator,
+						ptr_store_index);
+
+				compiler->arg_states[i] = stack_alloc_index;
+			}
+
+			continue;
+		}
+
 		InstrIndex index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* instr = instr_buffer_at(instr_buffer, index);
 
-		const FunctionParam* param = &compiler->function->proto.parameters[i];
-		size_t param_type_size = 0;
-
-		if (param->type.kind == TYPE_ARRAY) {
-			param_type_size = compiler->type_context->pointer_type_layout.size;
-		} else {
-			param_type_size = _type_get_layout(compiler->type_context, &param->type).size;
-		}
-
-		switch (param_type_size) {
+		switch (param_type_layout.size) {
 		case 1:
 			instr->kind = INSTR_LOAD_ARG_8;
+			instr->load_arg.index = (uint8_t)i;
 			break;
 		case 2:
 			instr->kind = INSTR_LOAD_ARG_16;
+			instr->load_arg.index = (uint8_t)i;
 			break;
 		case 4:
 			instr->kind = INSTR_LOAD_ARG_32;
+			instr->load_arg.index = (uint8_t)i;
 			break;
 		case 8:
 			instr->kind = INSTR_LOAD_ARG_64;
+			instr->load_arg.index = (uint8_t)i;
 			break;
 		default:
-			if (param_type_size > 8) {
-				instr->kind = INSTR_LOAD_ARG_64;
-				break;
-			}
-
 			unreachable();
 		}
 
-		instr->load_arg.index = (uint8_t)i;
-
 		compiler->arg_states[i] = index;
 	}
-
-	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
 
@@ -3029,11 +3113,16 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 	}
 
 	bool has_return_loc = false;
+
+	size_t return_type_size = _type_get_layout(type_context, &proto->return_type).size;
+	bool returns_compound = proto->return_type.kind == TYPE_STRUCT
+		|| proto->return_type.kind == TYPE_UNION;
+
 	if (proto->return_type.kind == TYPE_VOID) {
 		sig.returns = NULL;
 	} else if (proto->return_type.kind == TYPE_ARRAY) {
 		panic("Arrays are not allowed as return types");
-	} else if (proto->return_type.kind == TYPE_STRUCT || proto->return_type.kind == TYPE_UNION) {
+	} else if (returns_compound && return_type_size > 8) {
 		sig.returns = allocator_alloc(allocator, AbiParam);
 		*sig.returns = (AbiParam) {
 			.kind = ABI_PARAM_STRUCT,
@@ -3042,7 +3131,7 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 
 		has_return_loc = true;
 	} else {
-		assert(_type_get_layout(type_context, &proto->return_type).size <= 8);
+		assert(return_type_size <= 8);
 
 		sig.returns = allocator_alloc(allocator, AbiParam);
 		*sig.returns = (AbiParam) { .kind = ABI_PARAM_NORMAL };

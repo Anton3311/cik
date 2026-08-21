@@ -2321,33 +2321,97 @@ typedef struct {
 	int c;
 } StructArgument;
 
+typedef struct {
+	int a;
+} SmallStructArgument;
+
 static void _verify_struct_argument(StructArgument s) {
 	assert(s.a == 0xdeadbeefdeadbeef);
 	assert(s.b == 0xffaaccdd);
 	assert(s.c == 0xddeeffaa);
 }
 
-static void _resolve_verify_struct_argument(SymbolMap* map, void* data) {
+static void _verify_small_struct_argument(SmallStructArgument s) {
+	assert(s.a == 0xbeefbeef);
+}
+
+static StructArgument _return_struct() {
+	return (StructArgument) { 0xbeefbeefaaddeecc, 0xaaeeffee, 0xaa0044dd };
+}
+
+static SmallStructArgument _return_small_struct() {
+	return (SmallStructArgument) { 0xaaddeecc };
+}
+
+static void _resolve_struct_argument_helpers(SymbolMap* map, void* data) {
 	symbol_map_insert_dynamically_linked_impl(map,
 			STR_LIT("_verify_struct_argument"),
 			_verify_struct_argument);
+	symbol_map_insert_dynamically_linked_impl(map,
+			STR_LIT("_verify_small_struct_argument"),
+			_verify_small_struct_argument);
+	symbol_map_insert_dynamically_linked_impl(map,
+			STR_LIT("_return_struct"),
+			_return_struct);
+	symbol_map_insert_dynamically_linked_impl(map,
+			STR_LIT("_return_small_struct"),
+			_return_small_struct);
 }
 
 void test_call_function_with_struct_argument(TestContext* context) {
 	String source_code = STR_LIT(
 			"typedef struct { size_t a; int b; int c; } StructArgument;\n"
+			"typedef struct { int a; } SmallStructArgument;\n"
+			"\n"
 			"__declspec(dllimport) void _verify_struct_argument(StructArgument);\n"
+			"__declspec(dllimport) void _verify_small_struct_argument(SmallStructArgument);\n"
 			"void main() {\n"
 			"    _verify_struct_argument((StructArgument) {\n"
 			"        0xdeadbeefdeadbeef,"
 			"        0xffaaccdd,"
 			"        0xddeeffaa"
 			"    });\n"
+			"\n"
+			"    _verify_small_struct_argument((SmallStructArgument) {\n"
+			"        0xbeefbeef,"
+			"    });\n"
 			"}\n");
 
 	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
 			source_code,
-			_resolve_verify_struct_argument,
+			_resolve_struct_argument_helpers,
+			NULL);
+
+	typedef void(*Function)();
+
+	Function executable_function = (Function)machine_code.code;
+	executable_function();
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_consume_struct_returned_from_call(TestContext* context) {
+	String source_code = STR_LIT(
+			"__declspec(dllimport) void assert(unsigned long long);\n"
+			"\n"
+			"typedef struct { size_t a; int b; int c; } Struct;\n"
+			"typedef struct { int a; } SmallStruct;\n"
+			"\n"
+			"__declspec(dllimport) Struct _return_struct();\n"
+			"__declspec(dllimport) SmallStruct _return_small_struct();\n"
+			"\n"
+			"void main() {\n"
+			"    Struct s0 = _return_struct();\n"
+			"    assert(s0.a == 0xbeefbeefaaddeecc);\n"
+			"    assert(s0.b == 0xaaeeffee);\n"
+			"    assert(s0.c == 0xaa0044dd);\n"
+			"\n"
+			"    SmallStruct s1 = _return_small_struct();\n"
+			"    assert(s1.a == 0xaaddeecc);\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
+			source_code,
+			_resolve_struct_argument_helpers,
 			NULL);
 
 	typedef void(*Function)();

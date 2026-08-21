@@ -252,6 +252,7 @@ int main(int argc, char* argv[]) {
 		test(test_x64_compute_frame_layout_2_normal_2_struct_args_no_return),
 
 		test(test_call_function_with_struct_argument),
+		test(test_consume_struct_returned_from_call),
 	};
 
 	TestSuite s_test_suites[] = {

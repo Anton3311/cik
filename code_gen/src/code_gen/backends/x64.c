@@ -1296,38 +1296,43 @@ static void _lower_call(X64CodeGenerator* gen,
 		frame_layout.location_count -= 1;
 	}
 
-	// Fill the storage locations of arguments (inputs)
-	uint16_t input_storage_count = 0;
-	InstrStorageLocation* input_instr_storage = arena_alloc_array(
-			temp_allocator,
-			InstrStorageLocation,
-			options.args.count);
+	// The first major step here is to prepare the arguments.
+	//
+	// Arguments could be stored in different ways:
+	// * directly in the register
+	// * on the stack
+	//
+	// Thus the preparation has to be approached differently, based on how the argument value is
+	// stored, while also taking into that the function might return an overrized struct, in that
+	// case we also need to push the address of the return area, as the first argument.
+	//
+	// The approaches are defined as follows:
+	// 1. Arguments stored directly in register, come first. They get moved into their corresponding
+	//    locations (defined by the ABI) using parallel moves (see `_parallel_move_values`).
+	//
+	//    It is important to resolve this first, because further preparation steps will override
+	//    some of the registers, potentially discarding the value of an argument.
+	//
+	// 2. Load the addresses of struct arguments (those that don't fit into a single register).
+	//    This step is straightforward, it is a single `lea` instruction per argument.
+	//
+	// 3. Finally load the return area address, using the same `lea` instruction.
 
-	for (uint16_t i = 0; i < options.args.count; i += 1) {
-		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
-		InstrStorageLocation arg_location = gen->instr_storage[arg_instr.value];
-		if (arg_location.kind != INSTR_STORAGE_REG) {
-			continue;
-		}
+	uint16_t input_location_count = 0;
+	uint16_t target_location_count = 0;
 
-		input_instr_storage[input_storage_count] = arg_location;
-		input_storage_count += 1;
-	}
-
-	// In case it is an indirect call, add the instruciton that computes the callee address as one
-	// of the inputs.
+	uint16_t max_location_count = options.args.count;
 	if (!options.is_direct) {
-		arena_alloc(temp_allocator, InstrStorageLocation);
-		InstrIndex addr_instr = options.indirect.address_instr;
-		input_instr_storage[input_storage_count] = gen->instr_storage[addr_instr.value];
-		input_storage_count += 1;
+		// We also push the function address as one of the inputs.
+		max_location_count += 1;
 	}
 
-	// Fill the expected locations of the arguments
-	size_t expected_loc_count = 0;
-	X64Register* expected_arg_locs = arena_alloc_array(temp_allocator,
+	InstrStorageLocation* input_locations = arena_alloc_array(temp_allocator,
+			InstrStorageLocation,
+			max_location_count);
+	X64Register* target_locations = arena_alloc_array(temp_allocator,
 			X64Register,
-			options.args.count);
+			max_location_count);
 
 	for (uint16_t i = 0; i < options.args.count; i += 1) {
 		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
@@ -1338,28 +1343,39 @@ static void _lower_call(X64CodeGenerator* gen,
 
 		assert(i < frame_layout.location_count);
 
-		expected_arg_locs[expected_loc_count] = arg_target_locations[i].reg;
-		expected_loc_count += 1;
+		assert(input_location_count < max_location_count);
+		input_locations[input_location_count] = arg_location;
+		input_location_count += 1;
+
+		assert(target_location_count < max_location_count);
+		target_locations[target_location_count] = arg_target_locations[i].reg;
+		target_location_count += 1;
 	}
 
+	// In case it is an indirect call, add the instruciton that computes the callee address as one
+	// of the inputs.
 	if (!options.is_direct) {
-		arena_alloc(temp_allocator, X64Register);
-		expected_arg_locs[expected_loc_count] = DEFAULT_CALLEE_ADDRESS_REGISTER;
-		expected_loc_count += 1;
+		assert(input_location_count < max_location_count);
+		InstrIndex addr_instr = options.indirect.address_instr;
+		input_locations[input_location_count] = gen->instr_storage[addr_instr.value];
+		input_location_count += 1;
+
+		assert(target_location_count < max_location_count);
+		target_locations[target_location_count] = DEFAULT_CALLEE_ADDRESS_REGISTER;
+		target_location_count += 1;
 	}
 
-	// Load the arguments into their corresponding registers
-	assert(input_storage_count == expected_loc_count);
+	assert(input_location_count == target_location_count);
 
 	uint16_t allowed_temp_registers = _collect_available_registers(gen, instr_index);
-	for (size_t i = 0; i < expected_loc_count; i += 1) {
-		allowed_temp_registers &= ~(1 << expected_arg_locs[i]);
+	for (size_t i = 0; i < target_location_count; i += 1) {
+		allowed_temp_registers &= ~(1 << target_locations[i]);
 	}
 
 	RegisterMoveArray parallel_moves = _parallel_move_values(
-			input_instr_storage,
-			expected_arg_locs,
-			input_storage_count,
+			input_locations,
+			target_locations,
+			input_location_count,
 			allowed_temp_registers,
 			gen->allocator,
 			gen->temp_allocator);
@@ -1369,9 +1385,12 @@ static void _lower_call(X64CodeGenerator* gen,
 		_emit_mov_regs(buffer, move.src, move.dst, 64);
 	}
 
-	uint32_t caller_saved_regs_stack_usage = array_size(CDECL_CALLER_SAVED) * 8;
-
 	// Now move the struct argument addreses into their corresponding registers
+
+	// NOTE: Since we've already pushed `CDECL_CALLEE_SAVED` registers, the stack pointer has moved,
+	//       and we need to account for that.
+
+	uint32_t caller_saved_regs_stack_usage = array_size(CDECL_CALLER_SAVED) * 8;
 	for (uint16_t i = 0; i < options.args.count; i += 1) {
 		InstrIndex arg_instr = gen->instr_buffer.inputs_buffer[options.args.start + i];
 		InstrStorageLocation arg_location = gen->instr_storage[arg_instr.value];
@@ -1408,6 +1427,7 @@ static void _lower_call(X64CodeGenerator* gen,
 	// push shadow space
 	_emit_sub_rsp(buffer, SHADOW_SPACE_SIZE);
 
+	// Do the call
 	if (instr_buffer->instr[instr_index.value].kind == INSTR_CALL_DIRECT) {
 		encode_1(buffer, MNEMONIC_CALL, operand_rel32(0));
 
@@ -1433,8 +1453,8 @@ static void _lower_call(X64CodeGenerator* gen,
 	if (callee_signature.returns != NULL && instr_storage.kind == INSTR_STORAGE_REG) {
 		return_register = instr_storage.reg;
 
-		// Now move the return value into a the proper register dedicated
-		// exactly for the return value of this call instruction
+		// Now move the return value into a the proper register dedicated exactly for the return
+		// value of this call instruction
 		_emit_mov_regs(buffer, X64_REG_A, instr_storage.reg, 64);
 	}
 
@@ -1443,7 +1463,7 @@ static void _lower_call(X64CodeGenerator* gen,
 		X64Register reg = CDECL_CALLER_SAVED[i - 1];
 		
 		if (reg == return_register) {
-			// This register contains the return value, so don't restor it in order not to override
+			// This register contains the return value, so don't restore it in order not to override
 			// the return value.
 			_emit_add_rsp(buffer, 8);
 		} else {

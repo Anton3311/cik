@@ -2865,7 +2865,7 @@ static void _bin_expr_select_common_type(const Type* left_type,
 		return;
 	}
 
-	if (!type_kind_is_int(left_type->kind) && !type_kind_is_int(right_type->kind)) {
+	if (!type_kind_is_int(left_type->kind) || !type_kind_is_int(right_type->kind)) {
 		StringBuilder builder = { .arena = diagnostics->allocator };
 		str_builder_format(&builder,
 				"Binary operator '%.*s' is not support between types '",

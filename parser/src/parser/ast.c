@@ -511,7 +511,6 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		switch (expr->unary.op) {
 		case UNARY_OP_NEGATE:
 		case UNARY_OP_PLUS:
-		case UNARY_OP_LOGICAL_NOT:
 
 		case UNARY_OP_BITWISE_NOT:
 
@@ -521,6 +520,9 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		case UNARY_OP_PRE_DECREMENT:
 		case UNARY_OP_POST_DECREMENT:
 			expr_get_type(expr->unary.operand, out_type);
+			return;
+		case UNARY_OP_LOGICAL_NOT:
+			out_type->kind = TYPE_INT;
 			return;
 		case UNARY_OP_DEREFERENCE: {
 			Type operand_type;

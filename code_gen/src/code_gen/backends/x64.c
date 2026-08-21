@@ -1415,22 +1415,20 @@ static void _lower_call(X64CodeGenerator* gen,
 				}
 
 				arg_index += 1;
+			} else if (param.kind == ABI_PARAM_RETURN_LOCATION) {
+				// Load the address of the stack location that recieves the returned struct
+				size_t return_value_stack_offset =
+					instr_storage.stack.offset + stack_adjustment;
+
+				InstrStorageLocation target_location = frame_layout.locations[i];
+				assert(target_location.kind == INSTR_STORAGE_REG);
+
+				encode_2(buffer,
+						MNEMONIC_LEA,
+						operand_reg(target_location.reg, 64),
+						operand_stack_mem((int32_t)return_value_stack_offset, 64));
 			}
 		}
-	}
-
-	// Load the address of the stack location that recieves the returned struct, into the first
-	// argument register.
-	if (callee_signature.returns && callee_signature.returns->kind == ABI_PARAM_STRUCT) {
-		// NOTE: Since we've already saved caller registers, the stack pointer has moved and
-		//       with it stack offsets of all stack allocated values.
-		size_t return_value_stack_offset =
-			instr_storage.stack.offset + stack_adjustment;
-
-		encode_2(buffer,
-				MNEMONIC_LEA,
-				operand_reg(CDECL_ARG_REGS[0], 64),
-				operand_stack_mem((int32_t)return_value_stack_offset, 64));
 	}
 
 	// push shadow space

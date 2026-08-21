@@ -190,7 +190,7 @@ inline void allocator_release(Allocator allocator, void* ptr) {
 #define allocator_alloc(allocator, type) \
 	(type*)allocator_alloc_bytes(allocator, sizeof(type), alignof(type));
 #define allocator_alloc_array(allocator, type, count) \
-	(type*)allocator_alloc_bytes(allocator, sizeof(type) * count, alignof(type));
+	(type*)allocator_alloc_bytes(allocator, sizeof(type) * (count), alignof(type));
 
 //
 // Heap Allocator
@@ -203,7 +203,7 @@ inline void* heap_alloc_bytes(size_t count) {
 }
 
 #define heap_alloc(type) (type*)heap_alloc_bytes(sizeof(type))
-#define heap_alloc_array(type, count) (type*)heap_alloc_bytes(sizeof(type) * count)
+#define heap_alloc_array(type, count) (type*)heap_alloc_bytes(sizeof(type) * (count))
 
 inline void heap_release(void* ptr) {
 	assert(ptr);
@@ -303,9 +303,9 @@ void arena_release(Arena* arena);
 
 #define arena_alloc(arena, type) (type*)arena_alloc_aligned(arena, sizeof(type), alignof(type))
 #define arena_alloc_zeroed(arena, type) (type*)arena_alloc_zeroed_aligned(arena, sizeof(type), alignof(type))
-#define arena_alloc_array(arena, type, count) (type*)arena_alloc_aligned(arena, sizeof(type) * count, alignof(type))
+#define arena_alloc_array(arena, type, count) (type*)arena_alloc_aligned(arena, sizeof(type) * (count), alignof(type))
 #define arena_alloc_array_zeroed(arena, type, count) \
-	(type*)arena_alloc_zeroed_aligned(arena, sizeof(type) * count, alignof(type))
+	(type*)arena_alloc_zeroed_aligned(arena, sizeof(type) * (count), alignof(type))
 
 //
 // Temporary Arena allocations

@@ -2308,6 +2308,13 @@ static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_
 						s_instr_value_bit_count[instr_kind]);
 
 				storage_string = builder.string;
+			} else if (gen->instr_storage[i].kind == INSTR_STORAGE_STACK) {
+				StringBuilder builder = { .arena = gen->temp_allocator };
+
+				str_builder_append(&builder, STR_LIT("stack + "));
+				str_builder_append_int(&builder, gen->instr_storage[i].stack.offset);
+
+				storage_string = builder.string;
 			}
 
 			printf("%zu: %.*s\n", i, STR_FMT(storage_string));

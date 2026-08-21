@@ -1430,7 +1430,7 @@ static void _lower_call(X64CodeGenerator* gen,
 	_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);
 
 	X64Register return_register = X64_REG_COUNT;
-	if (callee_signature.returns != NULL) {
+	if (callee_signature.returns != NULL && instr_storage.kind == INSTR_STORAGE_REG) {
 		return_register = instr_storage.reg;
 
 		// Now move the return value into a the proper register dedicated

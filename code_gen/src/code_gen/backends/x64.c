@@ -2368,6 +2368,7 @@ static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_
 		printf("\nRegister allocation stats:\n");
 		printf("max register pressure: %u\n", max_register_pressure);
 		printf("       used registers: %.*s\n", STR_FMT(builder.string));
+		printf("          stack usage: %u\n", result.stack_usage);
 
 		arena_end_temp(temp);
 	}

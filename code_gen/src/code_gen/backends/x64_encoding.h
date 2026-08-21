@@ -3,6 +3,8 @@
 
 #include "core/core.h"
 
+#define X64_GPR_COUNT 16
+
 //
 // CodeBuffer
 //

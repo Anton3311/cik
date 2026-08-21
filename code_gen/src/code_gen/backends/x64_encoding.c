@@ -412,9 +412,11 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 		uint8_t reg = 0;
 		switch (op.kind) {
 		case OP_REG:
+			assert(op.reg < X64_GPR_COUNT);
 			reg = op.reg;
 			break;
 		case OP_MEM:
+			assert(op.mem.base_reg < X64_GPR_COUNT);
 			reg = op.mem.base_reg;
 			break;
 		case OP_IMM:

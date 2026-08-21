@@ -745,6 +745,10 @@ PackedSourceRange expr_get_source_range(const Expr* expr) {
 }
 
 size_t struct_field_namespace_index_of(const StructFieldNamespace* struct_namespace, String name) {
+	if (struct_namespace->capacity == 0) {
+		return SIZE_MAX;
+	}
+
 	size_t index = hash_string(name) % struct_namespace->capacity;
 	
 	while (true) {

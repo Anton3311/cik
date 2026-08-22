@@ -419,6 +419,16 @@ static ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr);
 static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* out_expr);
 
 //
+// Declarator
+//
+
+typedef struct {
+	String name;
+	PackedSourceRange name_source_range;
+	Type type;
+} Declarator;
+
+//
 // Parser Implementation
 //
 
@@ -3557,6 +3567,118 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 	unreachable();
 	profile_scope_end();
 	return NULL;
+}
+
+//
+// Declarator parsing
+// 
+
+static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out_declarator);
+
+static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_declarator) {
+	bool result = true;
+	Token token = preprocessor_view_next(parser->preprocessor);
+
+	FunctionCallingConvention call_conv = FUNC_CALL_CONV_CDECL;
+	bool has_call_conv = false;
+
+	if (str_equal(token.string, STR_LIT("__cdecl"))) {
+		preprocessor_next_token(parser->preprocessor);
+		call_conv = FUNC_CALL_CONV_CDECL;
+		has_call_conv = true;
+
+		token = preprocessor_view_next(parser->preprocessor);
+	}
+
+	// TODO: if (has_call_conv) make sure the next declarator is a function
+
+	if (token.kind == TOKEN_IDENT) {
+		preprocessor_next_token(parser->preprocessor);
+
+		out_declarator->name = token.string;
+		out_declarator->name_source_range = source_range_pack(token.source_range);
+	} else if (token.kind == TOKEN_LEFT_PAREN) {
+		preprocessor_next_token(parser->preprocessor);
+
+		result = _parser_parse_direct_declarator(parser, out_declarator);
+		if (!result) {
+			_parser_skip_until(parser, TOKEN_RIGHT_PAREN, TOKEN_SEMICOLON);
+		}
+	}
+
+	token = preprocessor_view_next(parser->preprocessor);
+	if (token.kind == TOKEN_LEFT_PAREN) {
+		FunctionParam* params = NULL;
+		size_t param_count = 0;
+		bool has_va_args = false;
+
+		if (!_parser_parse_function_params(parser, &params, &param_count, &has_va_args)) {
+			_parser_skip_until(parser, TOKEN_RIGHT_PAREN, TOKEN_EOF);
+			result = false;
+		}
+
+		// FIXME: `_parser_parse_function_params` already consumes `TOKEN_RIGHT_PAREN`
+#if 0
+		Token right_paren = preprocessor_next_token(parser->preprocessor);
+		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			result = false;
+		}
+#endif
+
+		FunctionPrototype* prototype = arena_alloc_zeroed(parser->ast_allocator, FunctionPrototype);
+		prototype->return_type = out_declarator->type;
+		if (has_call_conv) {
+			prototype->calling_convention = call_conv;
+		}
+		prototype->name = out_declarator->name;
+		prototype->has_va_args = has_va_args;
+		prototype->parameter_count = param_count;
+		prototype->parameters = params;
+
+		out_declarator->type = (Type) {
+			.kind = TYPE_FUNCTION,
+			.function = prototype,
+		};
+	}
+
+	return result;
+}
+
+static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out_declarator) {
+	profile_func_colored(PROFILE_COLOR);
+
+	out_declarator->name = (String) {};
+	out_declarator->type = *type;
+
+	while (true) {
+		Token token = preprocessor_view_next(parser->preprocessor);
+		if (token.kind == TOKEN_ASTERISK) {
+			preprocessor_next_token(parser->preprocessor);
+
+			TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
+
+			Type* pointer_base_type = arena_alloc_zeroed(parser->ast_allocator, Type);
+			*pointer_base_type = out_declarator->type;
+
+			out_declarator->type = (Type) {
+				.kind = TYPE_POINTER,
+				.qualifiers = qualifiers,
+				.pointer_base_type = pointer_base_type,
+			};
+		} else {
+			break;
+		}
+	}
+	
+	bool result = _parser_parse_direct_declarator(parser, out_declarator);
+
+	profile_scope_end();
+	return result;
 }
 
 AstNode* _parser_parse_variable_or_function_def(Parser* parser,

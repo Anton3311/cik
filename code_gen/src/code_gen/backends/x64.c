@@ -1281,9 +1281,19 @@ static void _lower_call(X64CodeGenerator* gen,
 				operand_reg(CDECL_CALLER_SAVED[i], 64));
 	}
 
+	// NOTE: Since we've already pushed `CDECL_CALLEE_SAVED` registers, the stack pointer has moved,
+	//       and we need to account for that.
+
+	uint32_t stack_adjustment = array_size(CDECL_CALLER_SAVED) * 8;
+
 	CallFrameLayout frame_layout = compute_call_frame_layout(
 			&callee_signature,
 			temp_allocator);
+
+	_emit_sub_rsp(buffer, align(frame_layout.stack_slot_count * 8, 16));
+	stack_adjustment += align(frame_layout.stack_slot_count * 8, 16);
+
+	uint32_t call_frame_offset = align(frame_layout.stack_slot_count * 8, 16);
 
 	// The first major step here is to prepare the arguments.
 	//
@@ -1331,16 +1341,26 @@ static void _lower_call(X64CodeGenerator* gen,
 			if (param.kind == ABI_PARAM_NORMAL || param.kind == ABI_PARAM_STRUCT) {
 				InstrIndex arg_instr = instr_buffer->inputs_buffer[options.args.start + arg_index];
 				InstrStorageLocation arg_location = gen->instr_storage[arg_instr.value];
+				InstrStorageLocation target_location = frame_layout.locations[i];
 
-				if (arg_location.kind == INSTR_STORAGE_REG) {
+				if (arg_location.kind == INSTR_STORAGE_REG
+						&& target_location.kind == INSTR_STORAGE_REG) {
+
 					assert(input_location_count < max_location_count);
 					input_locations[input_location_count] = arg_location;
 					input_location_count += 1;
 
 					assert(target_location_count < max_location_count);
-					assert(frame_layout.locations[i].kind == INSTR_STORAGE_REG);
 					target_locations[target_location_count] = frame_layout.locations[i].reg;
 					target_location_count += 1;
+				} else if (arg_location.kind == INSTR_STORAGE_REG
+						&& target_location.kind == INSTR_STORAGE_CALL_FRAME) {
+
+					uint32_t slot_offset = target_location.call_frame.slot * 8;
+					encode_2(buffer,
+							MNEMONIC_MOV,
+							operand_stack_mem((int32_t)(call_frame_offset - slot_offset), 64),
+							operand_reg(arg_location.reg, 64));
 				}
 
 				arg_index += 1;
@@ -1385,11 +1405,6 @@ static void _lower_call(X64CodeGenerator* gen,
 	}
 
 	// Now move the struct argument addreses into their corresponding registers
-
-	// NOTE: Since we've already pushed `CDECL_CALLEE_SAVED` registers, the stack pointer has moved,
-	//       and we need to account for that.
-
-	uint32_t stack_adjustment = array_size(CDECL_CALLER_SAVED) * 8;
 
 	{
 		uint16_t arg_index = 0;
@@ -1455,6 +1470,9 @@ static void _lower_call(X64CodeGenerator* gen,
 
 	// pop shadow space
 	_emit_add_rsp(buffer, SHADOW_SPACE_SIZE);
+
+	// pop arguments passed through the stack
+	_emit_add_rsp(buffer, align(frame_layout.stack_slot_count * 8, 16));
 
 	X64Register return_register = X64_REG_COUNT;
 	if (callee_signature.returns != NULL && instr_storage.kind == INSTR_STORAGE_REG) {
@@ -1826,10 +1844,26 @@ static void _lower_instr(X64CodeGenerator* gen,
 					operand_reg(dst_loc.reg, 64),
 					operand_stack_mem((int32_t)alloc_loc.stack.offset, 64));
 		} else if (alloc_loc.kind == INSTR_STORAGE_CALL_FRAME) {
+
+			ArenaRegion temp = arena_begin_temp(gen->temp_allocator);
+			CallFrameLayout frame_layout = compute_call_frame_layout(
+					&gen->function_signature,
+					gen->temp_allocator);
+			arena_end_temp(temp);
+
+			uint32_t call_frame_offset = align(frame_layout.stack_slot_count * 8, 16);
+
+			uint32_t offset = 32 // shadow space
+				+ (array_size(CDECL_CALLEE_SAVED) * 8) + 8 // call prologue + 8 bytes to align back
+				                                           // to 16 bytes
+				+ gen->stack_usage
+				+ 8 // return address pushed by the `call` instruction
+				+ call_frame_offset - alloc_loc.call_frame.slot * 8; // offset of the slot
+
 			encode_2(buffer,
 					MNEMONIC_LEA,
 					operand_reg(dst_loc.reg, 64),
-					operand_stack_mem((int32_t)alloc_loc.call_frame.slot * 8 + gen->stack_usage, 64));
+					operand_stack_mem((int32_t)offset, 64));
 		} else {
 			unreachable();
 		}

@@ -3523,6 +3523,7 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 	Token token = preprocessor_view_next(parser->preprocessor);
 
 	bool has_inner_declarator = false;
+	Type inner_declarator_type;
 
 	FunctionCallingConvention call_conv = FUNC_CALL_CONV_CDECL;
 	bool has_call_conv = false;
@@ -3545,6 +3546,9 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
 
+		has_inner_declarator = result;
+		inner_declarator_type = out_declarator->type;
+
 		result = _parser_parse_declarator(parser, &out_declarator->type, out_declarator);
 		if (!result) {
 			_parser_skip_until(parser, TOKEN_RIGHT_PAREN, TOKEN_SEMICOLON);
@@ -3559,8 +3563,6 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 					array_size(expected_tokens));
 			result = false;
 		}
-
-		has_inner_declarator = result;
 	}
 
 	token = preprocessor_view_next(parser->preprocessor);
@@ -3588,7 +3590,10 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 #endif
 
 		FunctionPrototype* prototype = arena_alloc_zeroed(parser->ast_allocator, FunctionPrototype);
-		prototype->return_type = out_declarator->type;
+		prototype->return_type = has_inner_declarator
+			? inner_declarator_type
+			: out_declarator->type;
+
 		if (has_call_conv) {
 			prototype->calling_convention = call_conv;
 		}

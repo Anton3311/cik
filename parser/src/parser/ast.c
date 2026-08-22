@@ -87,6 +87,37 @@ bool type_equal(const Type* a, const Type* b) {
 		assert(a->array.size == NULL);
 		assert(b->array.size == NULL);
 		return type_equal(a->array.element_type, a->array.element_type);
+	case TYPE_FUNCTION: {
+		const FunctionPrototype* a_proto = a->function;
+		const FunctionPrototype* b_proto = b->function;
+
+		if (type_equal(&a_proto->return_type, &b_proto->return_type)) {
+			return false;
+		}
+
+		if (a_proto->calling_convention != b_proto->calling_convention) {
+			return false;
+		}
+
+		if (a_proto->has_va_args != b_proto->has_va_args) {
+			return false;
+		}
+
+		if (a_proto->parameter_count != b_proto->parameter_count) {
+			return false;
+		}
+
+		for (size_t i = 0; i < a_proto->parameter_count; i += 1) {
+			const Type* a_param_type = &a_proto->parameters[i].type;
+			const Type* b_param_type = &b_proto->parameters[i].type;
+
+			if (!type_equal(a_param_type, b_param_type)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
 	}
 
 	unreachable();

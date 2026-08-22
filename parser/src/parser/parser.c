@@ -428,6 +428,8 @@ typedef struct {
 	Type type;
 } Declarator;
 
+static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out_declarator);
+
 //
 // Parser Implementation
 //
@@ -1540,11 +1542,13 @@ static bool _parser_parse_function_params(Parser* parser,
 		}
 
 		Type param_type = {};
+		Declarator param_declarator = {};
 		if (!_parser_parse_type(parser, &param_type, true)) {
 			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
-		} else if (!_parser_parse_pre_declaration_modifiers(parser, &param_type, &param_type, true)) {
+		} else if (!_parser_parse_declarator(parser, &param_type, &param_declarator)) {
 			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
-		} else if (param_type.kind == TYPE_VOID && param_type.qualifiers == TYPE_QUALIFIER_NONE) {
+		} else if (param_declarator.type.kind == TYPE_VOID
+				&& param_declarator.type.qualifiers == TYPE_QUALIFIER_NONE) {
 			assert(param_count == 0);
 
 			Token token = preprocessor_view_next(parser->preprocessor);
@@ -1562,23 +1566,13 @@ static bool _parser_parse_function_params(Parser* parser,
 		}
 
 		FunctionParam* param = arena_alloc_zeroed(parser->temp_allocator, FunctionParam);
-		param->type = param_type;
+		param->type = param_declarator.type;
+		param->name = param_declarator.name;
+		param->name_source_range = param_declarator.name_source_range;
 
 		param_count += 1;
 
 		Token token = preprocessor_view_next(parser->preprocessor);
-		if (token.kind == TOKEN_IDENT) {
-			preprocessor_next_token(parser->preprocessor); // consume param name
-
-			param->name = token.string;
-			param->name_source_range = source_range_pack(token.source_range);
-			token = preprocessor_view_next(parser->preprocessor);
-		}
-
-		if (!_parser_parse_post_declaration_modifiers(parser, &param->type, &param->type, true)) {
-			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
-		}
-
 		if (token.kind == TOKEN_COMMA) {
 			preprocessor_next_token(parser->preprocessor);
 			continue; // we most likely have more parameters
@@ -3542,8 +3536,6 @@ static Type* _find_declarator_inner_type(Type* type) {
 
 	return type;
 }
-
-static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out_declarator);
 
 static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_declarator) {
 	bool result = true;

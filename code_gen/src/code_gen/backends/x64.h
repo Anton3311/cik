@@ -53,7 +53,7 @@ typedef struct {
 		} stack;
 
 		struct {
-			uint32_t offset;
+			uint32_t slot;
 		} call_frame;
 	};
 } InstrStorageLocation;
@@ -150,6 +150,9 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 typedef struct {
 	InstrStorageLocation* locations;
 	size_t location_count;
+
+	// Number of register sized stack slots to pass arguments through the stack
+	uint32_t stack_slot_count;
 } CallFrameLayout;
 
 CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* allocator);

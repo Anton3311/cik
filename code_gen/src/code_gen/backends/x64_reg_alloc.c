@@ -278,9 +278,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 	for (uint32_t i = 0; i < current_function_signature->param_count; i += 1) {
 		AbiParam param = current_function_signature->params[i];
 		InstrStorageLocation location = frame_layout.locations[i];
-		assert(location.kind == INSTR_STORAGE_REG);
-
-		if (param.kind == ABI_PARAM_RETURN_LOCATION) {
+		if (location.kind == INSTR_STORAGE_REG && param.kind == ABI_PARAM_RETURN_LOCATION) {
 			allowed_registers &= ~(1 << location.reg);
 		}
 	}

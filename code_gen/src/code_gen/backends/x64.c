@@ -1829,7 +1829,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 			encode_2(buffer,
 					MNEMONIC_LEA,
 					operand_reg(dst_loc.reg, 64),
-					operand_stack_mem((int32_t)alloc_loc.call_frame.offset + gen->stack_usage, 64));
+					operand_stack_mem((int32_t)alloc_loc.call_frame.slot * 8 + gen->stack_usage, 64));
 		} else {
 			unreachable();
 		}
@@ -3385,19 +3385,27 @@ CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* 
 			InstrStorageLocation,
 			signature->param_count);
 
+	uint32_t stack_slot = 0;
 	size_t arg_reg_index = 0;
+
 	for (uint32_t i = 0; i < signature->param_count; i += 1) {
 		AbiParam param = signature->params[i];
 
 		switch (param.kind) {
 		case ABI_PARAM_NORMAL:
 		case ABI_PARAM_STRUCT:
-			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
+			if (arg_reg_index < array_size(CDECL_ARG_REGS)) {
+				locations[i].kind = INSTR_STORAGE_REG;
+				locations[i].reg = CDECL_ARG_REGS[arg_reg_index];
 
-			locations[i].kind = INSTR_STORAGE_REG;
-			locations[i].reg = CDECL_ARG_REGS[arg_reg_index];
+				arg_reg_index += 1;
+			} else {
+				locations[i].kind = INSTR_STORAGE_CALL_FRAME;
+				locations[i].call_frame.slot = stack_slot;
 
-			arg_reg_index += 1;
+				stack_slot += 1;
+			}
+
 			break;
 		case ABI_PARAM_RETURN_LOCATION:
 			assert(arg_reg_index < array_size(CDECL_ARG_REGS));
@@ -3414,5 +3422,6 @@ CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* 
 	return (CallFrameLayout) {
 		.locations = locations,
 		.location_count = signature->param_count,
+		.stack_slot_count = stack_slot,
 	};
 }

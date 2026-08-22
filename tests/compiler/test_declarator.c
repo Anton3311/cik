@@ -31,6 +31,7 @@ typedef const int* const      (Type5[4]);
 typedef const int* const      (Type6)[4];
 
 typedef int (*Type7)(void*, int);
+typedef int (__cdecl *Type7)(void*, int);
 
 int main(int argc, char *argv[]) {
 	int                    a0;

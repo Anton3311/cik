@@ -3504,6 +3504,19 @@ static AstNode* _parser_parse_type_declaration(Parser* parser,
 // Declarator parsing
 // 
 
+static bool _parser_try_parse_calling_convention(Parser* parser, FunctionCallingConvention* out) {
+	Token token = preprocessor_view_next(parser->preprocessor);
+
+	FunctionCallingConvention call_conv = FUNC_CALL_CONV_CDECL;
+	if (str_equal(token.string, STR_LIT("__cdecl"))) {
+		preprocessor_next_token(parser->preprocessor);
+		call_conv = FUNC_CALL_CONV_CDECL;
+		return true;
+	}
+
+	return false;
+}
+
 static Type* _find_declarator_inner_type(Type* type) {
 	while (true) {
 		if (type->kind == TYPE_POINTER) {
@@ -3528,11 +3541,8 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 	FunctionCallingConvention call_conv = FUNC_CALL_CONV_CDECL;
 	bool has_call_conv = false;
 
-	if (str_equal(token.string, STR_LIT("__cdecl"))) {
-		preprocessor_next_token(parser->preprocessor);
-		call_conv = FUNC_CALL_CONV_CDECL;
+	if (_parser_try_parse_calling_convention(parser, &call_conv)) {
 		has_call_conv = true;
-
 		token = preprocessor_view_next(parser->preprocessor);
 	}
 
@@ -3545,6 +3555,10 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 		out_declarator->name_source_range = source_range_pack(token.source_range);
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
+
+		if (_parser_try_parse_calling_convention(parser, &call_conv)) {
+			has_call_conv = true;
+		}
 
 		has_inner_declarator = result;
 		inner_declarator_type = out_declarator->type;

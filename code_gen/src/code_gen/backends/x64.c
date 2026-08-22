@@ -2315,6 +2315,13 @@ static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_
 				str_builder_append_int(&builder, gen->instr_storage[i].stack.offset);
 
 				storage_string = builder.string;
+			} else if (gen->instr_storage[i].kind == INSTR_STORAGE_CALL_FRAME) {
+				StringBuilder builder = { .arena = gen->temp_allocator };
+
+				str_builder_append(&builder, STR_LIT("call_frame + "));
+				str_builder_append_int(&builder, gen->instr_storage[i].call_frame.slot * 8);
+
+				storage_string = builder.string;
 			}
 
 			printf("%zu: %.*s\n", i, STR_FMT(storage_string));

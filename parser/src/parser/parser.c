@@ -3189,30 +3189,25 @@ static void _parser_register_function_param_identifiers(Parser* parser, Function
 }
 
 static AstNode* _parser_parse_function_declaration(Parser* parser,
-		String name,
-		PackedSourceRange name_source_range,
-		Type* return_type,
 		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier,
-		FunctionCallingConvention call_conv) {
+		Declarator* declarator) {
 	profile_func_colored(PROFILE_COLOR);
-	Token token = preprocessor_view_next(parser->preprocessor);
-	assert(token.kind == TOKEN_LEFT_PAREN);
 
-	FunctionParam* params = NULL;
-	size_t param_count = 0;
-	bool has_va_args = false;
-	if (!_parser_parse_function_params(parser, &params, &param_count, &has_va_args)) {
-		profile_scope_end();
-		return NULL;
-	}
+	assert(declarator->type.kind == TYPE_FUNCTION);
+
+	const FunctionPrototype* prototype = declarator->type.function;
+
+	FunctionParam* params = prototype->parameters;
+	size_t param_count = prototype->parameter_count;
+	bool has_va_args = prototype->has_va_args;
 
 	// Register the declaration
 	Function* function_def = NULL;
 	IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 			IDENT_NAMESPACE_DEFAULT,
 			IDENT_FIND_DEFAULT,
-			name);
+			declarator->name);
 
 	if (entry) {
 		if (!has_flag(entry->kind, IDENT_FUNCTION)) {
@@ -3222,7 +3217,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 			str_builder_append(&builder, STR_LIT("' is previously defined with a different tag type"));
 
 			DiagnosticsEntry* error = report_error(parser->diagnostics,
-					name_source_range,
+					declarator->name_source_range,
 					builder.string,
 					NULL);
 
@@ -3240,7 +3235,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 		// TODO: Verify that return types also match
 		if (function_def->proto.parameter_count != param_count || function_def->proto.has_va_args != has_va_args) {
 			DiagnosticsEntry* error = report_error(parser->diagnostics,
-					name_source_range,
+					declarator->name_source_range,
 					STR_LIT("Function was previously defined with a different parameter count"),
 					NULL);
 
@@ -3279,13 +3274,13 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 		entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				IDENT_FUNCTION,
-				name,
-				name_source_range);
+				declarator->name,
+				declarator->name_source_range);
 
 		function_def = arena_alloc_zeroed(parser->ast_allocator, Function); 
 		
-		function_def->proto.name = name;
-		function_def->proto.return_type = *return_type;
+		function_def->proto.name = declarator->name;
+		function_def->proto.return_type = prototype->return_type;
 		function_def->proto.parameters = params;
 		function_def->proto.parameter_count = param_count;
 		function_def->is_forward_declared = true;
@@ -3327,7 +3322,7 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 		str_builder_append_char(&builder, '\'');
 
 		DiagnosticsEntry* error = report_error(parser->diagnostics,
-				name_source_range,
+				declarator->name_source_range,
 				builder.string,
 				NULL);
 
@@ -3380,62 +3375,23 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 	return node;
 }
 
-AstNode* _parser_parse_type_declaration(Parser* parser,
-		Type* type,
+static AstNode* _parser_parse_type_declaration(Parser* parser,
+		Declarator* declarator,
 		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier) {
 	profile_func_colored(PROFILE_COLOR);
 
-	assert(type != NULL);
-
-	if (!_parser_parse_pre_declaration_modifiers(parser, type, type, true)) {
-		profile_scope_end();
-		return NULL;
-	}
-
-	FunctionCallingConvention call_conv = FUNC_CALL_CONV_CDECL;
-
-	Token name_token = preprocessor_next_token(parser->preprocessor);
-	if (name_token.kind != TOKEN_IDENT) {
-		TokenKind expected_tokens[] = { TOKEN_IDENT };
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				name_token,
-				expected_tokens,
-				array_size(expected_tokens));
-		
-		profile_scope_end();
-		return NULL;
-	}
-
-	if (str_equal(name_token.string, STR_LIT("__cdecl"))) {
-		call_conv = FUNC_CALL_CONV_CDECL;
-
-		// TODO: Clean this up a bit
-		name_token = preprocessor_next_token(parser->preprocessor);
-		if (name_token.kind != TOKEN_IDENT) {
-			TokenKind expected_tokens[] = { TOKEN_IDENT };
-			diagnostics_report_unexpected_token(parser->diagnostics,
-					name_token,
-					expected_tokens,
-					array_size(expected_tokens));
-			
-			profile_scope_end();
-			return NULL;
-		}
-	}
-
-	Token token = preprocessor_view_next(parser->preprocessor);
-	if (token.kind == TOKEN_LEFT_PAREN) {
-		profile_scope_end();
-		return _parser_parse_function_declaration(parser,
-				name_token.string,
-				source_range_pack(name_token.source_range),
-				type,
+	if (declarator->type.kind == TYPE_FUNCTION) {
+		AstNode* node = _parser_parse_function_declaration(parser,
 				decl_spec,
 				storage_specifier,
-				call_conv);
+				declarator);
+
+		profile_scope_end();
+		return node;
 	}
 
+#if 0
 	if (token.kind == TOKEN_LEFT_BRACKET) {
 		// NOTE: This is a bit overcomplicated.
 		//       Just extract function handling into a separate function,
@@ -3447,7 +3403,9 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 
 		token = preprocessor_view_next(parser->preprocessor);
 	}
+#endif
 
+	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_EQUAL) {
 		preprocessor_next_token(parser->preprocessor);
 
@@ -3457,7 +3415,7 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		ExprParseResult expr_result;
 		if (preprocessor_view_next(parser->preprocessor).kind == TOKEN_LEFT_BRACE) {
 			Type* prefered_type = arena_alloc(parser->ast_allocator, Type);
-			*prefered_type = *type;
+			*prefered_type = declarator->type;
 
 			expr_result = _parser_try_parse_compound_literal(parser, prefered_type, value);
 		} else {
@@ -3484,21 +3442,19 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 			return NULL;
 		}
 
-		if (!_check_for_var_redefinition(parser,
-					name_token.string,
-					source_range_pack(name_token.source_range))) {
+		if (!_check_for_var_redefinition(parser, declarator->name, declarator->name_source_range)) {
 			profile_scope_end();
 			return NULL;
 		}
 
 		Type value_type;
 		expr_get_type(value, &value_type);
-		_check_is_convertable(parser, &value_type, type, expr_get_source_range(value));
+		_check_is_convertable(parser, &value_type, &declarator->type, expr_get_source_range(value));
 
 		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_VARIABLE;
-		node->variable.name = name_token.string;
-		node->variable.type = *type;
+		node->variable.name = declarator->name;
+		node->variable.type = declarator->type;
 		node->variable.value = value;
 		node->variable.storage_specifier = storage_specifier;
 		node->variable.id = parser->next_var_id;
@@ -3508,8 +3464,8 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				IDENT_VARIABLE,
-				node->variable.name,
-				source_range_pack(name_token.source_range));
+				declarator->name,
+				declarator->name_source_range);
 
 		entry->variable = &node->variable;
 		profile_scope_end();
@@ -3520,8 +3476,8 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		assert(decl_spec == NULL);
 
 		if (!_check_for_var_redefinition(parser,
-					name_token.string,
-					source_range_pack(name_token.source_range))) {
+					declarator->name,
+					declarator->name_source_range)) {
 			profile_scope_end();
 			return NULL;
 		}
@@ -3530,8 +3486,8 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 		node->kind = AST_NODE_VARIABLE;
 		node->variable = (Variable) {
-			.name = name_token.string,
-			.type = *type,
+			.name = declarator->name,
+			.type = declarator->type,
 			.value = NULL,
 			.storage_specifier = storage_specifier,
 			.id = parser->next_var_id,
@@ -3542,8 +3498,8 @@ AstNode* _parser_parse_type_declaration(Parser* parser,
 		IdentifierEntry* entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_DEFAULT,
 				IDENT_VARIABLE,
-				name_token.string,
-				source_range_pack(name_token.source_range));
+				declarator->name,
+				declarator->name_source_range);
 
 		entry->variable = &node->variable;
 		profile_scope_end();
@@ -3714,7 +3670,12 @@ AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 	type.qualifiers |= _parser_parse_type_qualifiers(parser);
 
 	if (has_type) {
-		return _parser_parse_type_declaration(parser, &type, decl_spec, storage_specifier);
+		Declarator declarator = {};
+		if (!_parser_parse_declarator(parser, &type, &declarator)) {
+			return NULL;
+		}
+
+		return _parser_parse_type_declaration(parser, &declarator, decl_spec, storage_specifier);
 	} else {
 		if (decl_spec) {
 			debug_log_info("__declspec ignore before expression");

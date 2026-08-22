@@ -3600,6 +3600,45 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 			.kind = TYPE_FUNCTION,
 			.function = prototype,
 		};
+	} else if (token.kind == TOKEN_LEFT_BRACKET) {
+		preprocessor_next_token(parser->preprocessor);
+
+		Token next_token = preprocessor_view_next(parser->preprocessor);
+		bool has_size_expr = next_token.kind != TOKEN_RIGHT_BRACKET;
+
+		Expr* size_expr = NULL;
+		if (has_size_expr) {
+			size_expr = arena_alloc(parser->ast_allocator, Expr);
+
+			if (_parser_try_parse_expr(parser, size_expr) != EXPR_PARSE_OK) {
+				diagnostics_report_error(parser->diagnostics,
+						next_token.source_range,
+						STR_LIT("Expected array size experession"),
+						NULL);
+				return false;
+			}
+		}
+
+		Token closing_bracket = preprocessor_next_token(parser->preprocessor);
+		if (closing_bracket.kind != TOKEN_RIGHT_BRACKET) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_BRACKET };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					closing_bracket,
+					expected_tokens,
+					array_size(expected_tokens));
+			return false;
+		}
+
+		Type* element_type = arena_alloc(parser->ast_allocator, Type);
+		*element_type = out_declarator->type;
+
+		out_declarator->type = (Type) {
+			.kind = TYPE_ARRAY,
+			.array = {
+				.element_type = element_type,
+				.size = size_expr,
+			}
+		};
 	}
 
 	return result;

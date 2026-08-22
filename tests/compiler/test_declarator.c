@@ -10,5 +10,7 @@ int main(int argc, char *argv[]) {
 	const int* const      (a4);
 	const int* const      (a5[4]);
 	const int* const      (a6)[4];
+
+	int (*a7)(void*, int);
 	return 0;
 }

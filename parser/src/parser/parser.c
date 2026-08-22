@@ -3529,11 +3529,27 @@ static AstNode* _parser_parse_type_declaration(Parser* parser,
 // Declarator parsing
 // 
 
+static Type* _find_declarator_inner_type(Type* type) {
+	while (true) {
+		if (type->kind == TYPE_POINTER) {
+			type = type->pointer_base_type;
+		} else if (type->kind == TYPE_ARRAY) {
+			type = type->array.element_type;
+		} else {
+			break;
+		}
+	}
+
+	return type;
+}
+
 static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out_declarator);
 
 static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_declarator) {
 	bool result = true;
 	Token token = preprocessor_view_next(parser->preprocessor);
+
+	bool has_inner_declarator = false;
 
 	FunctionCallingConvention call_conv = FUNC_CALL_CONV_CDECL;
 	bool has_call_conv = false;
@@ -3570,6 +3586,8 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 					array_size(expected_tokens));
 			result = false;
 		}
+
+		has_inner_declarator = result;
 	}
 
 	token = preprocessor_view_next(parser->preprocessor);
@@ -3606,7 +3624,10 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 		prototype->parameter_count = param_count;
 		prototype->parameters = params;
 
-		out_declarator->type = (Type) {
+		Type* inner_type = has_inner_declarator
+			? _find_declarator_inner_type(&out_declarator->type)
+			: &out_declarator->type;
+		*inner_type = (Type) {
 			.kind = TYPE_FUNCTION,
 			.function = prototype,
 		};

@@ -535,25 +535,21 @@ static bool _parser_parse_struct_fields(Parser* parser,
 			}
 		}
 
+		Type field_type = {};
+		Declarator field_declarator = {};
+
+		if (!_parser_parse_type(parser, &field_type, true)) {
+			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
+		} else if (!_parser_parse_declarator(parser, &field_type, &field_declarator)) {
+			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
+		}
+
 		StructField* field = arena_alloc_zeroed(parser->temp_allocator, StructField);
 		field_count += 1;
 
-		if (!_parser_parse_type(parser, &field->type, true)) {
-			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
-		} else if (!_parser_parse_pre_declaration_modifiers(parser, &field->type, &field->type, true)) {
-			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
-		}
-
-		Token name_token = preprocessor_view_next(parser->preprocessor);
-		if (name_token.kind == TOKEN_IDENT) {
-			field->name = name_token.string;
-			field->name_source_range = source_range_pack(name_token.source_range);
-			preprocessor_next_token(parser->preprocessor); // consume name
-		}
-
-		if (!_parser_parse_post_declaration_modifiers(parser, &field->type, &field->type, true)) {
-			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
-		}
+		field->type = field_declarator.type;
+		field->name = field_declarator.name;
+		field->name_source_range = field_declarator.name_source_range;
 
 		Token end_token = preprocessor_view_next(parser->preprocessor);
 		if (end_token.kind == TOKEN_SEMICOLON) {

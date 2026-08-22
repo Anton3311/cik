@@ -607,8 +607,6 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		StructFieldNamespaceEntry entry =
 			compound_type->field_namespace->entries[expr->field_access.field_index];
 
-		assert(entry.struct_def == compound_type);
-
 		StructField field = entry.struct_def->fields[entry.field_index];
 		*out_type = field.type;
 		return;
@@ -628,8 +626,6 @@ void expr_get_type(Expr* expr, Type* out_type) {
 
 		StructFieldNamespaceEntry entry =
 			compound_type->field_namespace->entries[expr->field_access.field_index];
-
-		assert(entry.struct_def == compound_type);
 
 		StructField field = entry.struct_def->fields[entry.field_index];
 		*out_type = field.type;

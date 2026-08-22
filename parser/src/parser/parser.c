@@ -3556,9 +3556,19 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
 
-		result = _parser_parse_direct_declarator(parser, out_declarator);
+		result = _parser_parse_declarator(parser, &out_declarator->type, out_declarator);
 		if (!result) {
 			_parser_skip_until(parser, TOKEN_RIGHT_PAREN, TOKEN_SEMICOLON);
+		}
+
+		Token right_paren = preprocessor_next_token(parser->preprocessor);
+		if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+			TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+			diagnostics_report_unexpected_token(parser->diagnostics,
+					right_paren,
+					expected_tokens,
+					array_size(expected_tokens));
+			result = false;
 		}
 	}
 

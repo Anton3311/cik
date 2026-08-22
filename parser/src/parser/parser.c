@@ -3723,6 +3723,10 @@ AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 			return NULL;
 		}
 
+		if (declarator.name.length == 0) {
+			return NULL;
+		}
+
 		return _parser_parse_type_declaration(parser, &declarator, decl_spec, storage_specifier);
 	} else {
 		if (decl_spec) {

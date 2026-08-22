@@ -830,9 +830,9 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 		struct_def->fields = fields;
 		struct_def->is_forward_declared = false;
 
-		if (!is_anonymous) {
-			_parser_initialize_struct_fields_namespace(struct_def, parser->ast_allocator, parser->temp_allocator);
-		}
+		_parser_initialize_struct_fields_namespace(struct_def,
+				parser->ast_allocator,
+				parser->temp_allocator);
 	}
 
 	*out_struct_def = struct_def;

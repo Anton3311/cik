@@ -2769,6 +2769,159 @@ static void _fill_function_call_signatures(FunctionCompiler* compiler) {
 	profile_scope_end();
 }
 
+static InstrIndex _create_arg_load_instr(FunctionCompiler* compiler,
+		size_t arg_index,
+		size_t size,
+		bool is_in_register) {
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	InstrIndex load_arg_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* load_arg = instr_buffer_at(instr_buffer, load_arg_index);
+	load_arg->load_arg.index = (uint8_t)arg_index;
+
+	if (is_in_register) {
+		switch (size) {
+		case 1:
+			load_arg->kind = INSTR_LOAD_ARG_8;
+			break;
+		case 2:
+			load_arg->kind = INSTR_LOAD_ARG_16;
+			break;
+		case 4:
+			load_arg->kind = INSTR_LOAD_ARG_32;
+			break;
+		case 8:
+			load_arg->kind = INSTR_LOAD_ARG_64;
+			break;
+		default:
+			unreachable();
+		}
+
+		return load_arg_index;
+	}
+
+	load_arg->kind = INSTR_LOAD_ARG_64;
+
+	InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+	stack_addr->kind = INSTR_STACK_ADDR;
+	stack_addr->stack_addr.stack_alloc = load_arg_index;
+
+	InstrIndex ptr_load_index = instr_buffer_append(instr_buffer, instr_allocator);
+	Instr* ptr_load = instr_buffer_at(instr_buffer, ptr_load_index);
+	ptr_load->ptr_load.ptr = stack_addr_index;
+	ptr_load->ptr_load.io_state = compiler->io_state;
+
+	switch (size) {
+	case 1:
+		ptr_load->kind = INSTR_PTR_LOAD_8;
+		break;
+	case 2:
+		ptr_load->kind = INSTR_PTR_LOAD_16;
+		break;
+	case 4:
+		ptr_load->kind = INSTR_PTR_LOAD_32;
+		break;
+	case 8:
+		ptr_load->kind = INSTR_PTR_LOAD_64;
+		break;
+	default:
+		unreachable();
+	}
+
+	compiler->io_state = instr_new_io_state(instr_buffer,
+			instr_allocator,
+			ptr_load_index);
+
+	return ptr_load_index;
+}
+
+static void _compile_argument_loads(FunctionCompiler* compiler) {
+	profile_scope_start(__func__);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	AbiSignature signature = function_prototype_to_abi_signature(compiler->type_context,
+			&compiler->function->proto,
+			arena_allocator_new(compiler->temp_allocator));
+	
+	size_t arg_index = 0;
+	for (uint32_t param_index = 0; param_index < signature.param_count; param_index += 1) {
+		AbiParam abi_param = signature.params[param_index];
+
+		if (abi_param.kind == ABI_PARAM_RETURN_LOCATION) {
+			continue;
+		}
+
+		assert(abi_param.kind == ABI_PARAM_NORMAL || abi_param.kind == ABI_PARAM_STRUCT);
+
+		const TypeContext* type_context = compiler->type_context;
+		const FunctionParam* param = &compiler->function->proto.parameters[arg_index];
+
+		TypeLayout param_type_layout;
+		if (param->type.kind == TYPE_ARRAY) {
+			param_type_layout = type_context->pointer_type_layout;
+		} else {
+			param_type_layout = _type_get_layout(type_context, &param->type);
+		}
+
+		if (param->type.kind == TYPE_STRUCT || param->type.kind == TYPE_UNION) {
+			if (param_type_layout.size > 8) {
+				InstrIndex load_arg_index = _create_arg_load_instr(compiler,
+						arg_index, 8, param_index < 4);
+
+				compiler->arg_states[arg_index] = load_arg_index;
+			} else {
+				InstrIndex load_arg_index = _create_arg_load_instr(compiler,
+						arg_index, 8, param_index < 4);
+
+				InstrIndex stack_alloc_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_alloc = instr_buffer_at(instr_buffer, stack_alloc_index);
+				stack_alloc->kind = INSTR_STACK_ALLOC;
+				stack_alloc->stack_alloc.size = (uint16_t)max(
+						param_type_layout.size,
+						type_context->pointer_type_layout.size);
+
+				stack_alloc->stack_alloc.alignment = (uint16_t)max(
+						param_type_layout.alignment,
+						type_context->pointer_type_layout.alignment);
+
+				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+				stack_addr->kind = INSTR_STACK_ADDR;
+				stack_addr->stack_addr.stack_alloc = stack_alloc_index;
+
+				InstrIndex ptr_store_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* ptr_store = instr_buffer_at(instr_buffer, ptr_store_index);
+				ptr_store->kind = INSTR_PTR_STORE_64;
+				ptr_store->ptr_store.ptr = stack_addr_index;
+				ptr_store->ptr_store.value = load_arg_index;
+				ptr_store->ptr_store.io_state = compiler->io_state;
+
+				compiler->io_state = instr_new_io_state(instr_buffer,
+						instr_allocator,
+						ptr_store_index);
+
+				compiler->arg_states[arg_index] = stack_alloc_index;
+			}
+		} else {
+			InstrIndex load_arg_index = _create_arg_load_instr(compiler,
+					arg_index,
+					param_type_layout.size,
+					param_index < 4);
+
+			compiler->arg_states[arg_index] = load_arg_index;
+		}
+
+		arg_index += 1;
+	}
+
+	profile_scope_end();
+}
+
 CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	profile_scope_start(__func__);
 
@@ -2799,9 +2952,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	}
 
 	// Allocate`arg_states` buffer
-	assert_msg(compiler->function->proto.parameter_count <= 4,
-			"For now only up to 4 params are supported");
-
 	compiler->arg_states = arena_alloc_array(compiler->allocator,
 			InstrIndex,
 			compiler->function->proto.parameter_count);
@@ -2816,97 +2966,14 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
 	// Setup initial `INSTR_LOAD_ARG`
-	for (size_t i = 0; i < compiler->function->proto.parameter_count; i += 1) {
-		const TypeContext* type_context = compiler->type_context;
-		const FunctionParam* param = &compiler->function->proto.parameters[i];
-
-		TypeLayout param_type_layout;
-		if (param->type.kind == TYPE_ARRAY) {
-			param_type_layout = type_context->pointer_type_layout;
-		} else {
-			param_type_layout = _type_get_layout(type_context, &param->type);
-		}
-
-		if (param->type.kind == TYPE_STRUCT || param->type.kind == TYPE_UNION) {
-			if (param_type_layout.size > 8) {
-				InstrIndex load_arg_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* load_arg = instr_buffer_at(instr_buffer, load_arg_index);
-				load_arg->kind = INSTR_LOAD_ARG_64;
-				load_arg->load_arg.index = (uint8_t)i;
-
-				compiler->arg_states[i] = load_arg_index;
-			} else {
-				InstrIndex load_arg_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* load_arg = instr_buffer_at(instr_buffer, load_arg_index);
-				load_arg->kind = INSTR_LOAD_ARG_64;
-				load_arg->load_arg.index = (uint8_t)i;
-
-				InstrIndex stack_alloc_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* stack_alloc = instr_buffer_at(instr_buffer, stack_alloc_index);
-				stack_alloc->kind = INSTR_STACK_ALLOC;
-				stack_alloc->stack_alloc.size = (uint16_t)max(
-						param_type_layout.size,
-						type_context->pointer_type_layout.size);
-
-				stack_alloc->stack_alloc.alignment = (uint16_t)max(
-						param_type_layout.alignment,
-						type_context->pointer_type_layout.alignment);
-
-				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
-				stack_addr->kind = INSTR_STACK_ADDR;
-				stack_addr->stack_addr.stack_alloc = stack_alloc_index;
-
-				InstrIndex ptr_store_index = instr_buffer_append(instr_buffer, instr_allocator);
-				Instr* ptr_store = instr_buffer_at(instr_buffer, ptr_store_index);
-				ptr_store->kind = INSTR_PTR_STORE_64;
-				ptr_store->ptr_store.ptr = stack_addr_index;
-				ptr_store->ptr_store.value = load_arg_index;
-				ptr_store->ptr_store.io_state = compiler->io_state;
-
-				compiler->io_state = instr_new_io_state(instr_buffer,
-						instr_allocator,
-						ptr_store_index);
-
-				compiler->arg_states[i] = stack_alloc_index;
-			}
-
-			continue;
-		}
-
-		InstrIndex index = instr_buffer_append(instr_buffer, instr_allocator);
-		Instr* instr = instr_buffer_at(instr_buffer, index);
-
-		switch (param_type_layout.size) {
-		case 1:
-			instr->kind = INSTR_LOAD_ARG_8;
-			instr->load_arg.index = (uint8_t)i;
-			break;
-		case 2:
-			instr->kind = INSTR_LOAD_ARG_16;
-			instr->load_arg.index = (uint8_t)i;
-			break;
-		case 4:
-			instr->kind = INSTR_LOAD_ARG_32;
-			instr->load_arg.index = (uint8_t)i;
-			break;
-		case 8:
-			instr->kind = INSTR_LOAD_ARG_64;
-			instr->load_arg.index = (uint8_t)i;
-			break;
-		default:
-			unreachable();
-		}
-
-		compiler->arg_states[i] = index;
-	}
+	_compile_argument_loads(compiler);
 
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
 
 	assert(compiler->current_loop == NULL);
 	assert(compiler->current_loop_control_stmts == NULL);
 
-	// Free the loop cintrol staff, since it is no longer needed
+	// Free the loop control staff, since it is no longer needed
 	_free_all_loop_control_stmts(compiler);
 
 	if (compiler->function->proto.return_type.kind == TYPE_VOID) {
@@ -2915,7 +2982,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 			Instr* region_instr = instr_buffer_at(instr_buffer, final_region);
 			assert(region_instr->region.last_instr.value == INVALID_INSTR_INDEX.value);
 			assert_msg(compiler->io_state.value != INVALID_INSTR_INDEX.value,
-					"The final region of the function is still unifinished, "
+					"The final region of the function is still unfinished, "
 					"which means the `io_state` must still be valid, until it "
 					"gets consumed by a control instruction");
 

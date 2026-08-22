@@ -522,10 +522,21 @@ void expr_get_type(Expr* expr, Type* out_type) {
 	switch (expr->kind) {
 	case EXPR_CALL: {
 		Expr* callable = expr->call.callable;
-		assert_msg(callable->kind == EXPR_FUNCTION_REFERENCE,
-				"A callable expression is not function");
 
-		*out_type = callable->function_ref.func->proto.return_type;
+		Type callable_type;
+		expr_get_type(callable, &callable_type);
+
+		const FunctionPrototype* prototype = NULL;
+		if (callable_type.kind == TYPE_POINTER
+				&& callable_type.pointer_base_type->kind == TYPE_FUNCTION) {
+			prototype = callable_type.pointer_base_type->function;
+		} else if (callable_type.kind == TYPE_FUNCTION) {
+			prototype = callable_type.function;
+		}
+
+		assert_msg(prototype != NULL, "A callable expression is not function");
+
+		*out_type = prototype->return_type;
 		return;
 	}
 	case EXPR_BINARY: {

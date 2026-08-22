@@ -1425,27 +1425,12 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 	assert(keyword_token.kind == TOKEN_KEYWORD_TYPEDEF);
 
 	Type aliased_type = {};
+	Declarator declarator = {};
 	if (!_parser_parse_type(parser, &aliased_type, false)) {
+		_parser_skip_until_semicolon(parser);
 		profile_scope_end();
-		return NULL;
-	}
-
-	if (!_parser_parse_pre_declaration_modifiers(parser, &aliased_type, &aliased_type, true)) {
-		profile_scope_end();
-		return NULL;
-	}
-
-	Token new_name = preprocessor_next_token(parser->preprocessor);
-	if (new_name.kind != TOKEN_IDENT) {
-		TokenKind expected_tokens[] = {
-			TOKEN_IDENT,
-		};
-
-		diagnostics_report_unexpected_token(parser->diagnostics,
-				new_name,
-				expected_tokens,
-				array_size(expected_tokens));
-
+		return parser->dummy_node;
+	} else if (!_parser_parse_declarator(parser, &aliased_type, &declarator)) {
 		_parser_skip_until_semicolon(parser);
 		profile_scope_end();
 		return parser->dummy_node;
@@ -1468,14 +1453,14 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 	TypeDef* type_def = arena_alloc(parser->ast_allocator, TypeDef);
 	memset(type_def, 0, sizeof(*type_def));
 	
-	type_def->new_name = new_name.string;
-	type_def->new_name_source_range = source_range_pack(new_name.source_range);
-	type_def->aliased_type = aliased_type;
+	type_def->new_name = declarator.name;
+	type_def->new_name_source_range = declarator.name_source_range;
+	type_def->aliased_type = declarator.type;
 
 	IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 			IDENT_NAMESPACE_ALIAS,
 			IDENT_FIND_DEFAULT,
-			new_name.string);
+			type_def->new_name);
 	if (!entry) {
 		entry = ident_storage_insert(parser->ident_storage,
 				IDENT_NAMESPACE_ALIAS,

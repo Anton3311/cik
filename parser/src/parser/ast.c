@@ -23,10 +23,6 @@ bool type_is_callable(const Type* type) {
 		return true;
 	}
 
-	if (type->kind == TYPE_FUNCTION) {
-		return true;
-	}
-
 	return false;
 }
 
@@ -538,13 +534,8 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		Type callable_type;
 		expr_get_type(callable, &callable_type);
 
-		const FunctionPrototype* prototype = NULL;
-		if (callable_type.kind == TYPE_POINTER
-				&& callable_type.pointer_base_type->kind == TYPE_FUNCTION) {
-			prototype = callable_type.pointer_base_type->function;
-		} else if (callable_type.kind == TYPE_FUNCTION) {
-			prototype = callable_type.function;
-		}
+		assert(type_is_callable(&callable_type));
+		const FunctionPrototype* prototype = callable_type.pointer_base_type->function;
 
 		assert_msg(prototype != NULL, "A callable expression is not function");
 

@@ -1751,8 +1751,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 		StructFieldNamespaceEntry field_entry =
 			compound_type->field_namespace->entries[out_entry->field.index];
 
-		assert(compound_type == field_entry.struct_def);
-		expected_slot_type = &compound_type->fields[field_entry.field_index].type;
+		expected_slot_type = &field_entry.struct_def->fields[field_entry.field_index].type;
 
 		Token equal = preprocessor_next_token(parser->preprocessor);
 		if (equal.kind != TOKEN_EQUAL) {

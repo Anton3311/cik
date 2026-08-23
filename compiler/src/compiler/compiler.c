@@ -1232,9 +1232,6 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 	Arena* instr_allocator = compiler->instr_allocator;
 	switch (expr->kind) {
 	case EXPR_CALL: {
-		const Expr* callable = expr->call.callable;
-		assert(callable->kind == EXPR_FUNCTION_REFERENCE);
-
 		assert(expr->call.args.count <= UINT16_MAX);
 
 		InstrInputs arg_inputs = instr_allocate_inputs_array(instr_buffer, expr->call.args.count);
@@ -1270,17 +1267,10 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 			instr_buffer->inputs_buffer[arg_inputs.start + i] = arg_instr;
 		}
 
-		const Function* func = callable->function_ref.func;
+		Expr* callable = expr->call.callable;
 
-		Symbol symbol = {};
-		compiler_create_function_import_symbol(func, &symbol);
-
-		SymbolId func_symbol_id = symbol_map_find(compiler->symbol_map,
-				symbol_key_from_symbol(&symbol));
-
-		// There is a pass that runs before the compiler and collects all the imported symbols
-		// into the `symbol_map`
-		assert(func_symbol_id != SYMBOL_ID_INVALID);
+		Type callable_type;
+		expr_get_type(callable, &callable_type);
 
 		// Save the call, to later create the corresponding `AbiSignature`
 		assert(compiler->function_call_count <= UINT16_MAX);
@@ -1289,16 +1279,20 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		compiler->function_calls[compiler->function_call_count] = &expr->call;
 		compiler->function_call_count += 1;
 
-		bool is_indirect_call = func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT;
+		bool is_indirect_call = false;
+		if (callable->kind != EXPR_FUNCTION_REFERENCE) {
+			is_indirect_call = true;
+		} else {
+			Function* func = callable->function_ref.func;
+			if (func->decl_spec && func->decl_spec->kind == DECL_SPEC_DLL_IMPORT) {
+				is_indirect_call = true;
+			}
+		}
+
 		InstrIndex call_instr_index = INVALID_INSTR_INDEX;
 
 		if (is_indirect_call) {
-			InstrIndex load_func_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
-			Instr* load_func_addr = instr_buffer_at(instr_buffer, load_func_addr_index);
-			load_func_addr->kind = symbol.linkage == SYMBOL_LINKAGE_EXTERNAL_DYNAMIC
-				? INSTR_LOAD_EXTERNAL_FUNCTION_ADDR
-				: INSTR_LOAD_FUNCTION_ADDR;
-			load_func_addr->load_function_addr.function_index = func_symbol_id;
+			InstrIndex load_func_addr_index = _compile_expr(compiler, callable);
 
 			call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
@@ -1309,13 +1303,24 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 			call_instr->call_indirect.function_addr = load_func_addr_index;
 			call_instr->call_indirect.signature_index = callee_signature_index;
 		} else {
+			// First resolve the function symbol id
+			assert(callable->kind == EXPR_FUNCTION_REFERENCE);
+
+			Symbol symbol = {};
+			compiler_create_function_import_symbol(callable->function_ref.func, &symbol);
+
+			SymbolKey key = symbol_key_from_symbol(&symbol);
+			SymbolId function_symbol_id = symbol_map_find(compiler->symbol_map, key);
+			assert(function_symbol_id != SYMBOL_ID_INVALID);
+
+			// Now compile the call
 			call_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* call_instr = instr_buffer_at(instr_buffer, call_instr_index);
 
 			call_instr->kind = INSTR_CALL_DIRECT;
 			call_instr->call_direct.args = arg_inputs;
 			call_instr->call_direct.io_state = compiler->io_state;
-			call_instr->call_direct.function_index = func_symbol_id;
+			call_instr->call_direct.function_index = function_symbol_id;
 			call_instr->call_direct.signature_index = callee_signature_index;
 		}
 
@@ -1328,8 +1333,28 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		profile_scope_end();
 		return instr_index;
 	}
-	case EXPR_FUNCTION_REFERENCE:
-		break;
+	case EXPR_FUNCTION_REFERENCE: {
+		const Function* func = expr->function_ref.func;
+
+		Symbol symbol = {};
+		compiler_create_function_import_symbol(func, &symbol);
+
+		SymbolKey key = symbol_key_from_symbol(&symbol);
+		SymbolId func_symbol_id = symbol_map_find(compiler->symbol_map, key);
+
+		// There is a pass that runs before the compiler and collects all the imported symbols
+		// into the `symbol_map`. So the symbol is guaranted to appear in the symbol map.
+		assert(func_symbol_id != SYMBOL_ID_INVALID);
+
+		InstrIndex load_func_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+		Instr* load_func_addr = instr_buffer_at(instr_buffer, load_func_addr_index);
+		load_func_addr->kind = symbol.linkage == SYMBOL_LINKAGE_EXTERNAL_DYNAMIC
+			? INSTR_LOAD_EXTERNAL_FUNCTION_ADDR
+			: INSTR_LOAD_FUNCTION_ADDR;
+		load_func_addr->load_function_addr.function_index = func_symbol_id;
+		profile_scope_end();
+		return load_func_addr_index;
+	}
 	case EXPR_VARIABLE_REFERENCE: {
 		const Variable* var = compiler->vars[expr->variable_ref.var->id];
 

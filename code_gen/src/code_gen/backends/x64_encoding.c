@@ -385,7 +385,7 @@ static ModRMFields _encode_mod_rm(Encoding encoding, Operand op0, Operand op1) {
 		Operand op = operands[i];
 		if (op.kind == OP_MEM && op.extra.mem.is_rip_relative) {
 			assert(op.mem.base_reg == 5 || op.mem.base_reg == 13);
-			fields.mod = MOD_RM_ADDRESS_RM_DISP_32;
+			fields.mod = MOD_RM_ADDRESS_RM;
 			fields.displacement = op.mem.disp;
 		} else if (op.kind == OP_MEM) {
 			// NOTE: [bp] and [r13] with MOD_RM_ADDRESS_RM are used for addressing relative to
@@ -600,6 +600,10 @@ void encode_n(CodeBuffer* code_buffer,
 		*write_ptr = (int8_t)fields.displacement;
 		write_ptr += 1;
 	} else if (fields.mod == MOD_RM_ADDRESS_RM_DISP_32) {
+		memcpy(write_ptr, &fields.displacement, 4);
+		write_ptr += 4;
+	} else if ((fields.rm == 5 || fields.rm == 13) && fields.mod == MOD_RM_ADDRESS_RM) {
+		// See addressing relative to `RIP` register
 		memcpy(write_ptr, &fields.displacement, 4);
 		write_ptr += 4;
 	}

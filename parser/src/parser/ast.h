@@ -654,6 +654,9 @@ struct FunctionPrototype {
 struct Function {
 	FunctionPrototype proto;
 
+	// The function type
+	Type type;
+
 	bool is_inline;
 	bool is_forward_declared;
 	Scope* body;

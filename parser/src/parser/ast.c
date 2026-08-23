@@ -599,8 +599,8 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		return;
 	}
 	case EXPR_FUNCTION_REFERENCE:
-		out_type->kind = TYPE_FUNCTION;
-		out_type->function = &expr->function_ref.func->proto;
+		out_type->kind = TYPE_POINTER;
+		out_type->pointer_base_type = &expr->function_ref.func->type;
 		return;
 	case EXPR_VARIABLE_REFERENCE:
 		*out_type = expr->variable_ref.var->type;

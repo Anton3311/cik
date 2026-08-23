@@ -3269,6 +3269,10 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 		function_def->storage_specifier = storage_specifier;
 		function_def->var_count = 0;
 		function_def->proto.has_va_args = has_va_args;
+		function_def->type = (Type) {
+			.kind = TYPE_FUNCTION,
+			.function = &function_def->proto,
+		};
 
 		entry->function_def = function_def;
 	}

@@ -2726,9 +2726,10 @@ static void _fill_function_call_signatures(FunctionCompiler* compiler) {
 		Type callable_type;
 		expr_get_type(call->callable, &callable_type);
 
-		assert(callable_type.kind == TYPE_FUNCTION);
+		assert(callable_type.kind == TYPE_POINTER);
+		assert(callable_type.pointer_base_type->kind == TYPE_FUNCTION);
 
-		const FunctionPrototype* prototype = callable_type.function;
+		const FunctionPrototype* prototype = callable_type.pointer_base_type->function;
 
 		if (!prototype->has_va_args) {
 			compiler->function_call_signatures[call_index] = function_prototype_to_abi_signature(

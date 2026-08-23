@@ -18,6 +18,18 @@ bool type_is_enum(const Type* type, const Enum* enum_def) {
 	return type->enum_def == enum_def;
 }
 
+bool type_is_callable(const Type* type) {
+	if (type->kind == TYPE_POINTER && type->pointer_base_type->kind == TYPE_FUNCTION) {
+		return true;
+	}
+
+	if (type->kind == TYPE_FUNCTION) {
+		return true;
+	}
+
+	return false;
+}
+
 bool type_equal(const Type* a, const Type* b) {
 	TypeKind a_without_signed = a->kind & (TypeKind)(~TYPE_FLAG_SIGNED);
 	TypeKind b_without_signed = b->kind & (TypeKind)(~TYPE_FLAG_SIGNED);

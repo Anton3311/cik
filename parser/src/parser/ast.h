@@ -215,6 +215,7 @@ inline Struct* type_extract_compound(Type* type) {
 
 bool type_is_struct(const Type* type, const Struct* struct_def);
 bool type_is_enum(const Type* type, const Enum* enum_def);
+bool type_is_callable(const Type* type);
 
 //
 // L & R Values

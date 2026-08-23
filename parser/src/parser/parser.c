@@ -2466,7 +2466,7 @@ static void _type_check_call(Parser* parser, Expr* call) {
 	Type callable_type;
 	expr_get_type(callable, &callable_type);
 
-	if (callable_type.kind != TYPE_FUNCTION) {
+	if (!type_is_callable(&callable_type)) {
 		report_error(parser->diagnostics,
 				expr_get_source_range(callable),
 				STR_LIT("Expression is not callable"),
@@ -2476,9 +2476,16 @@ static void _type_check_call(Parser* parser, Expr* call) {
 		return;
 	}
 
-	assert(callable_type.kind == TYPE_FUNCTION);
+	const FunctionPrototype* proto = NULL;
+	if (callable_type.kind == TYPE_POINTER
+			&& callable_type.pointer_base_type->kind == TYPE_FUNCTION) {
+		proto = callable_type.pointer_base_type->function;
+	} else if (callable_type.kind == TYPE_FUNCTION) {
+		proto = callable_type.function;
+	} else {
+		unreachable();
+	}
 
-	const FunctionPrototype* proto = callable_type.function;
 	if (args.count < proto->parameter_count) {
 		report_error(parser->diagnostics,
 				expr_get_source_range(call),

@@ -103,7 +103,7 @@ bool type_equal(const Type* a, const Type* b) {
 		const FunctionPrototype* a_proto = a->function;
 		const FunctionPrototype* b_proto = b->function;
 
-		if (type_equal(&a_proto->return_type, &b_proto->return_type)) {
+		if (!type_equal(&a_proto->return_type, &b_proto->return_type)) {
 			return false;
 		}
 

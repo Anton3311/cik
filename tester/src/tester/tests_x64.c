@@ -2343,6 +2343,52 @@ static SmallStructArgument _return_small_struct() {
 	return (SmallStructArgument) { 0xaaddeecc };
 }
 
+static void _verify_struct_argument_passed_through_stack(int a,
+		int b,
+		int c,
+		int d,
+		int e,
+		int f,
+		int g,
+		int h,
+		StructArgument s) {
+	printf("%d %d %d %d %d %d %d %d\n", a, b, c, d, e, f, g, h);
+	assert(a == 0);
+	assert(b == 1);
+	assert(c == 2);
+	assert(d == 3);
+	assert(e == 4);
+	assert(f == 5);
+	assert(g == 6);
+	assert(h == 7);
+
+	assert(s.a == 8);
+	assert(s.b == 9);
+	assert(s.c == 10);
+}
+
+static void _verify_small_struct_argument_passed_through_stack(int a,
+		int b,
+		int c,
+		int d,
+		int e,
+		int f,
+		int g,
+		int h,
+		SmallStructArgument s) {
+	printf("%d %d %d %d %d %d %d %d\n", a, b, c, d, e, f, g, h);
+	assert(a == 0);
+	assert(b == 1);
+	assert(c == 2);
+	assert(d == 3);
+	assert(e == 4);
+	assert(f == 5);
+	assert(g == 6);
+	assert(h == 7);
+
+	assert(s.a == 8);
+}
+
 static void _resolve_struct_argument_helpers(SymbolMap* map, void* data) {
 	symbol_map_insert_dynamically_linked_impl(map,
 			STR_LIT("_verify_struct_argument"),
@@ -2356,6 +2402,12 @@ static void _resolve_struct_argument_helpers(SymbolMap* map, void* data) {
 	symbol_map_insert_dynamically_linked_impl(map,
 			STR_LIT("_return_small_struct"),
 			_return_small_struct);
+	symbol_map_insert_dynamically_linked_impl(map,
+			STR_LIT("_verify_small_struct_argument_passed_through_stack"),
+			_verify_small_struct_argument_passed_through_stack);
+	symbol_map_insert_dynamically_linked_impl(map,
+			STR_LIT("_verify_struct_argument_passed_through_stack"),
+			_verify_struct_argument_passed_through_stack);
 }
 
 void test_call_function_with_struct_argument(TestContext* context) {
@@ -2407,6 +2459,55 @@ void test_consume_struct_returned_from_call(TestContext* context) {
 			"\n"
 			"    SmallStruct s1 = _return_small_struct();\n"
 			"    assert(s1.a == 0xaaddeecc);\n"
+			"}\n");
+
+	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,
+			source_code,
+			_resolve_struct_argument_helpers,
+			NULL);
+
+	typedef void(*Function)();
+
+	Function executable_function = (Function)machine_code.code;
+	executable_function();
+	free_executable(machine_code.code, machine_code.size_in_bytes);
+}
+
+void test_call_function_with_struct_arg_passed_through_stack(TestContext* context) {
+	String source_code = STR_LIT(
+			"__declspec(dllimport) void assert(unsigned long long);\n"
+			"\n"
+			"typedef struct { size_t a; int b; int c; } Struct;\n"
+			"typedef struct { int a; } SmallStruct;\n"
+			"\n"
+			"__declspec(dllimport) void _verify_small_struct_argument_passed_through_stack(int a,\n"
+			"	int b,\n"
+			"	int c,\n"
+			"	int d,\n"
+			"	int e,\n"
+			"	int f,\n"
+			"	int g,\n"
+			"	int h,\n"
+			"	SmallStruct s);\n"
+			"\n"
+			"__declspec(dllimport) void _verify_struct_argument_passed_through_stack(int a,\n"
+			"	int b,\n"
+			"	int c,\n"
+			"	int d,\n"
+			"	int e,\n"
+			"	int f,\n"
+			"	int g,\n"
+			"	int h,\n"
+			"	Struct s);\n"
+			"\n"
+			"__declspec(dllimport) Struct _return_struct();\n"
+			"__declspec(dllimport) SmallStruct _return_small_struct();\n"
+			"\n"
+			"void main() {\n"
+			"    _verify_small_struct_argument_passed_through_stack(0, 1, 2, 3, 4,\n"
+			"		5, 6, 7, (SmallStruct) { 8 });\n"
+			"    _verify_struct_argument_passed_through_stack(0, 1, 2, 3, 4,\n"
+			"		5, 6, 7, (Struct) { 8, 9, 10 });\n"
 			"}\n");
 
 	MachineCodeBuffer machine_code = _compile_with_custom_symbols(context,

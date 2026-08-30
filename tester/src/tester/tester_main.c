@@ -253,6 +253,7 @@ int main(int argc, char* argv[]) {
 
 		test(test_call_function_with_struct_argument),
 		test(test_consume_struct_returned_from_call),
+		test(test_call_function_with_struct_arg_passed_through_stack),
 	};
 
 	TestSuite s_test_suites[] = {

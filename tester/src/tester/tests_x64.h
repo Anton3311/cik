@@ -73,5 +73,6 @@ void test_x64_compute_frame_layout_2_normal_2_struct_args_no_return(TestContext*
 // Structs as argument & return values
 void test_call_function_with_struct_argument(TestContext* context);
 void test_consume_struct_returned_from_call(TestContext* context);
+void test_call_function_with_struct_arg_passed_through_stack(TestContext* context);
 
 #endif

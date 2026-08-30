@@ -1356,7 +1356,7 @@ static void _lower_call(X64CodeGenerator* gen,
 				} else if (arg_location.kind == INSTR_STORAGE_REG
 						&& target_location.kind == INSTR_STORAGE_CALL_FRAME) {
 
-					uint32_t slot_offset = target_location.call_frame.slot * 8;
+					uint32_t slot_offset = target_location.call_frame.slot * 8 + 8;
 					encode_2(buffer,
 							MNEMONIC_MOV,
 							operand_stack_mem((int32_t)(call_frame_offset - slot_offset), 64),
@@ -1416,10 +1416,10 @@ static void _lower_call(X64CodeGenerator* gen,
 			} else if (param.kind == ABI_PARAM_STRUCT) {
 				InstrIndex arg_instr = instr_buffer->inputs_buffer[options.args.start + arg_index];
 				InstrStorageLocation arg_location = gen->instr_storage[arg_instr.value];
+				InstrStorageLocation target_location = frame_layout.locations[i];
 
-				if (arg_location.kind == INSTR_STORAGE_STACK) {
-					InstrStorageLocation target_location = frame_layout.locations[i];
-					assert(target_location.kind == INSTR_STORAGE_REG);
+				if (arg_location.kind == INSTR_STORAGE_STACK &&
+						target_location.kind == INSTR_STORAGE_REG) {
 
 					int32_t arg_offset = (int32_t)(arg_location.stack.offset + stack_adjustment);
 
@@ -1427,6 +1427,27 @@ static void _lower_call(X64CodeGenerator* gen,
 							MNEMONIC_LEA,
 							operand_reg(target_location.reg, 64),
 							operand_stack_mem(arg_offset, 64));
+				} else if (arg_location.kind == INSTR_STORAGE_STACK &&
+						target_location.kind == INSTR_STORAGE_CALL_FRAME) {
+
+					assert(allowed_temp_registers != 0);
+
+					// This will be a memory to memory move, so we need a temporary register to
+					// resolve it.
+					X64Register temp_register = count_trailing_zeros(allowed_temp_registers);
+
+					int32_t arg_offset = (int32_t)(arg_location.stack.offset + stack_adjustment);
+
+					encode_2(buffer,
+							MNEMONIC_LEA,
+							operand_reg(temp_register, 64),
+							operand_stack_mem(arg_offset, 64));
+					
+					uint32_t slot_offset = target_location.call_frame.slot * 8 + 8;
+					encode_2(buffer,
+							MNEMONIC_MOV,
+							operand_stack_mem((int32_t)(call_frame_offset - slot_offset), 64),
+							operand_reg(temp_register, 64));
 				}
 
 				arg_index += 1;
@@ -1858,7 +1879,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 				                                           // to 16 bytes
 				+ gen->stack_usage
 				+ 8 // return address pushed by the `call` instruction
-				+ call_frame_offset - alloc_loc.call_frame.slot * 8; // offset of the slot
+				+ call_frame_offset - alloc_loc.call_frame.slot * 8 - 8; // offset of the slot
 
 			encode_2(buffer,
 					MNEMONIC_LEA,

@@ -2899,6 +2899,20 @@ static void _compile_argument_loads(FunctionCompiler* compiler) {
 				InstrIndex load_arg_index = _create_arg_load_instr(compiler,
 						arg_index, 8, param_index < 4);
 
+				if (param_index >= 4 && false) {
+					InstrIndex ptr_load_index = instr_buffer_append(instr_buffer, instr_allocator);
+					Instr* ptr_load = instr_buffer_at(instr_buffer, ptr_load_index);
+					ptr_load->kind = INSTR_PTR_LOAD_64;
+					ptr_load->ptr_load.ptr = load_arg_index;
+					ptr_load->ptr_load.io_state = compiler->io_state;
+
+					compiler->io_state = instr_new_io_state(instr_buffer,
+							instr_allocator,
+							ptr_load_index);
+
+					load_arg_index = ptr_load_index;
+				}
+
 				compiler->arg_states[arg_index] = load_arg_index;
 			} else {
 				InstrIndex load_arg_index = _create_arg_load_instr(compiler,

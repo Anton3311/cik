@@ -5,6 +5,7 @@
 
 #define PREPROCESSOR_TESTS_DIRECTORY "tests/preprocessor"
 #define COMPILER_TESTS_DIRECTORY "tests/compiler"
+#define ABI_TESTS_DIRECTORY "tests/abi"
 #define MULTI_FILE_TESTS_DIRECTORY "tests/multi_file"
 #define LINKER_TESTS_DIRECTORY "tests/linker"
 #define TESTER_EXE_NAME "tester.exe"
@@ -121,6 +122,37 @@ TestResult test_run_compiler_test(TestRunnerContext* context) {
 	str_builder_append(&builder, compiler_path);
 	str_builder_append_char(&builder, ' ');
 	str_builder_append(&builder, STR_LIT(COMPILER_TESTS_DIRECTORY));
+	str_builder_append_char(&builder, '/');
+	str_builder_append(&builder, context->test_name);
+	str_builder_append(&builder, STR_LIT(" --show-ir -Istdx"));
+
+	String cmd_args = builder.string;
+
+	String output;
+	int32_t exit_code;
+	ProcessRunResult process_result = process_capture_stdout(
+			compiler_path,
+			STR_LIT("."),
+			cmd_args,
+			&exit_code,
+			&output,
+			context->allocator,
+			context->temp_allocator);
+
+	return (TestResult) {
+		.output = output,
+		.process_run_result = process_result,
+		.exit_code = exit_code,
+	};
+}
+
+TestResult test_run_abi_test(TestRunnerContext* context) {
+	String compiler_path = STR_LIT("bin/c.exe");
+
+	StringBuilder builder = { .arena = context->temp_allocator };
+	str_builder_append(&builder, compiler_path);
+	str_builder_append_char(&builder, ' ');
+	str_builder_append(&builder, STR_LIT(ABI_TESTS_DIRECTORY));
 	str_builder_append_char(&builder, '/');
 	str_builder_append(&builder, context->test_name);
 	str_builder_append(&builder, STR_LIT(" --show-ir -Istdx"));
@@ -373,6 +405,28 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 			TestDescriptor* test = &suite->tests.tests[i];
 			test->name = paths.values[i];
 			test->runner = test_run_compiler_test;
+
+		}
+	}
+
+	// Extract abi tests
+	{
+		StringArray paths = fs_enumerate_files_in_directory(
+				STR_LIT(ABI_TESTS_DIRECTORY),
+				tests_allocator,
+				suites_allocator);
+
+		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
+		suite->name = STR_LIT(ABI_TESTS_DIRECTORY);
+		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
+		suite->tests.count = paths.count;
+
+		storage->suite_count += 1;
+
+		for (size_t i = 0; i < paths.count; i += 1) {
+			TestDescriptor* test = &suite->tests.tests[i];
+			test->name = paths.values[i];
+			test->runner = test_run_abi_test;
 
 		}
 	}

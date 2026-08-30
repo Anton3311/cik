@@ -11,14 +11,7 @@
 #define TESTER_EXE_NAME "tester.exe"
 #define TESTER_EXE_PATH "bin/tester.exe"
 
-typedef struct {
-	size_t suite_index;
-	size_t test_index;
-	String test_suite_name;
-	String test_name;
-	Arena* allocator;
-	Arena* temp_allocator;
-} TestRunnerContext;
+typedef struct TestRunnerContext TestRunnerContext;
 
 typedef struct {
 	// Captured stdout
@@ -41,6 +34,7 @@ typedef struct {
 
 typedef struct {
 	String name;
+	String directory;
 	TestDescriptorArray tests;
 } TestSuiteDescriptor;
 
@@ -49,6 +43,16 @@ typedef struct {
 	size_t suite_count;
 	size_t max_test_name_length;
 } TestStorage;
+
+struct TestRunnerContext {
+	const TestStorage* storage;
+	size_t suite_index;
+	size_t test_index;
+	String test_suite_name;
+	String test_name;
+	Arena* allocator;
+	Arena* temp_allocator;
+};
 
 typedef struct {
 	size_t passed_count;
@@ -115,44 +119,13 @@ TestResult test_run_preprocessor_test(TestRunnerContext* context) {
 	};
 }
 
-TestResult test_run_compiler_test(TestRunnerContext* context) {
+TestResult test_run_single_file_test(TestRunnerContext* context) {
 	String compiler_path = STR_LIT("bin/c.exe");
 
 	StringBuilder builder = { .arena = context->temp_allocator };
 	str_builder_append(&builder, compiler_path);
 	str_builder_append_char(&builder, ' ');
-	str_builder_append(&builder, STR_LIT(COMPILER_TESTS_DIRECTORY));
-	str_builder_append_char(&builder, '/');
-	str_builder_append(&builder, context->test_name);
-	str_builder_append(&builder, STR_LIT(" --show-ir -Istdx"));
-
-	String cmd_args = builder.string;
-
-	String output;
-	int32_t exit_code;
-	ProcessRunResult process_result = process_capture_stdout(
-			compiler_path,
-			STR_LIT("."),
-			cmd_args,
-			&exit_code,
-			&output,
-			context->allocator,
-			context->temp_allocator);
-
-	return (TestResult) {
-		.output = output,
-		.process_run_result = process_result,
-		.exit_code = exit_code,
-	};
-}
-
-TestResult test_run_abi_test(TestRunnerContext* context) {
-	String compiler_path = STR_LIT("bin/c.exe");
-
-	StringBuilder builder = { .arena = context->temp_allocator };
-	str_builder_append(&builder, compiler_path);
-	str_builder_append_char(&builder, ' ');
-	str_builder_append(&builder, STR_LIT(ABI_TESTS_DIRECTORY));
+	str_builder_append(&builder, context->storage->suites[context->suite_index].directory);
 	str_builder_append_char(&builder, '/');
 	str_builder_append(&builder, context->test_name);
 	str_builder_append(&builder, STR_LIT(" --show-ir -Istdx"));
@@ -284,6 +257,33 @@ TestResult test_run_linker_test(TestRunnerContext* context) {
 // Test Extraction
 // 
 
+void init_single_file_test_suite(String directory,
+		TestRunner test_runner,
+		TestStorage* storage,
+		Arena* suites_allocator,
+		Arena* tests_allocator) {
+
+	StringArray paths = fs_enumerate_files_in_directory(
+			directory,
+			tests_allocator,
+			suites_allocator);
+
+	TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
+	suite->name = directory;
+	suite->directory = directory;
+	suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
+	suite->tests.count = paths.count;
+
+	storage->suite_count += 1;
+
+	for (size_t i = 0; i < paths.count; i += 1) {
+		TestDescriptor* test = &suite->tests.tests[i];
+		test->name = paths.values[i];
+		test->runner = test_runner;
+
+	}
+}
+
 bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* tests_allocator) {
 	storage->suites = arena_alloc_array(suites_allocator, TestSuiteDescriptor, 0);
 	storage->suite_count = 0;
@@ -365,71 +365,25 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 	}
 
 	// Extract preprocessor tests
-
-	{
-		StringArray paths = fs_enumerate_files_in_directory(
-				STR_LIT(PREPROCESSOR_TESTS_DIRECTORY),
-				tests_allocator,
-				suites_allocator);
-
-		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
-		suite->name = STR_LIT(PREPROCESSOR_TESTS_DIRECTORY);
-		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
-		suite->tests.count = paths.count;
-
-		storage->suite_count += 1;
-
-		for (size_t i = 0; i < paths.count; i += 1) {
-			TestDescriptor* test = &suite->tests.tests[i];
-			test->name = paths.values[i];
-			test->runner = test_run_preprocessor_test;
-
-		}
-	}
+	init_single_file_test_suite(STR_LIT(PREPROCESSOR_TESTS_DIRECTORY),
+			test_run_preprocessor_test,
+			storage,
+			suites_allocator,
+			tests_allocator);
 
 	// Extract compiler tests
-	{
-		StringArray paths = fs_enumerate_files_in_directory(
-				STR_LIT(COMPILER_TESTS_DIRECTORY),
-				tests_allocator,
-				suites_allocator);
-
-		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
-		suite->name = STR_LIT(COMPILER_TESTS_DIRECTORY);
-		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
-		suite->tests.count = paths.count;
-
-		storage->suite_count += 1;
-
-		for (size_t i = 0; i < paths.count; i += 1) {
-			TestDescriptor* test = &suite->tests.tests[i];
-			test->name = paths.values[i];
-			test->runner = test_run_compiler_test;
-
-		}
-	}
+	init_single_file_test_suite(STR_LIT(COMPILER_TESTS_DIRECTORY),
+			test_run_single_file_test,
+			storage,
+			suites_allocator,
+			tests_allocator);
 
 	// Extract abi tests
-	{
-		StringArray paths = fs_enumerate_files_in_directory(
-				STR_LIT(ABI_TESTS_DIRECTORY),
-				tests_allocator,
-				suites_allocator);
-
-		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
-		suite->name = STR_LIT(ABI_TESTS_DIRECTORY);
-		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, paths.count);
-		suite->tests.count = paths.count;
-
-		storage->suite_count += 1;
-
-		for (size_t i = 0; i < paths.count; i += 1) {
-			TestDescriptor* test = &suite->tests.tests[i];
-			test->name = paths.values[i];
-			test->runner = test_run_abi_test;
-
-		}
-	}
+	init_single_file_test_suite(STR_LIT(ABI_TESTS_DIRECTORY),
+			test_run_single_file_test,
+			storage,
+			suites_allocator,
+			tests_allocator);
 
 	// Extract multi-file tests
 	{
@@ -582,6 +536,7 @@ bool run_test_and_report_result(TestStorage* storage,
 	ArenaRegion temp2 = arena_begin_temp(temp_allocator);
 
 	TestRunnerContext context;
+	context.storage = storage;
 	context.suite_index = suite_index;
 	context.test_index = test_index;
 	context.test_suite_name = suite->name;

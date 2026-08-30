@@ -1293,7 +1293,7 @@ static void _lower_call(X64CodeGenerator* gen,
 	_emit_sub_rsp(buffer, align(frame_layout.stack_slot_count * 8, 16));
 	stack_adjustment += align(frame_layout.stack_slot_count * 8, 16);
 
-	uint32_t call_frame_offset = align(frame_layout.stack_slot_count * 8, 16);
+	uint32_t call_frame_offset = frame_layout.stack_slot_count * 8;
 
 	// The first major step here is to prepare the arguments.
 	//
@@ -1356,10 +1356,10 @@ static void _lower_call(X64CodeGenerator* gen,
 				} else if (arg_location.kind == INSTR_STORAGE_REG
 						&& target_location.kind == INSTR_STORAGE_CALL_FRAME) {
 
-					uint32_t slot_offset = target_location.call_frame.slot * 8 + 8;
+					uint32_t slot_offset = target_location.call_frame.slot * 8;
 					encode_2(buffer,
 							MNEMONIC_MOV,
-							operand_stack_mem((int32_t)(call_frame_offset - slot_offset), 64),
+							operand_stack_mem((int32_t)(slot_offset), 64),
 							operand_reg(arg_location.reg, 64));
 				}
 
@@ -1443,10 +1443,10 @@ static void _lower_call(X64CodeGenerator* gen,
 							operand_reg(temp_register, 64),
 							operand_stack_mem(arg_offset, 64));
 					
-					uint32_t slot_offset = target_location.call_frame.slot * 8 + 8;
+					uint32_t slot_offset = target_location.call_frame.slot * 8;
 					encode_2(buffer,
 							MNEMONIC_MOV,
-							operand_stack_mem((int32_t)(call_frame_offset - slot_offset), 64),
+							operand_stack_mem((int32_t)(slot_offset), 64),
 							operand_reg(temp_register, 64));
 				}
 
@@ -1872,14 +1872,14 @@ static void _lower_instr(X64CodeGenerator* gen,
 					gen->temp_allocator);
 			arena_end_temp(temp);
 
-			uint32_t call_frame_offset = align(frame_layout.stack_slot_count * 8, 16);
+			uint32_t call_frame_offset = frame_layout.stack_slot_count * 8;
 
 			uint32_t offset = 32 // shadow space
 				+ (array_size(CDECL_CALLEE_SAVED) * 8) + 8 // call prologue + 8 bytes to align back
 				                                           // to 16 bytes
 				+ gen->stack_usage
 				+ 8 // return address pushed by the `call` instruction
-				+ call_frame_offset - alloc_loc.call_frame.slot * 8 - 8; // offset of the slot
+				+ alloc_loc.call_frame.slot * 8; // offset of the slot
 
 			encode_2(buffer,
 					MNEMONIC_LEA,

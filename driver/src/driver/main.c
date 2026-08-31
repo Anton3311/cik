@@ -103,7 +103,6 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 	preprocessor_release(&preprocessor);
 
 	if (context->diagnostics->first != NULL) {
-		diagnostics_print(context->diagnostics);
 		profile_scope_end();
 		return (LoweredUnit) {};
 	}
@@ -242,6 +241,12 @@ int main(int argc, char *argv[]) {
 	if (argc >= 2) {
 		SourceStorage source_storage = {};
 
+		Diagnostics diagnostics = (Diagnostics) {
+			.allocator = &diagnostics_arena,
+			.source_storage = &source_storage,
+			.error_limit = 512,
+		};
+
 		// NOTE: Allocate this before the `include_dirs` array, so that they don't interfere
 		String sdk_path = path_append(install_path, sdks.values[0], &arena);
 		String um_include_path = path_append(sdk_path, STR_LIT("um"), &arena);
@@ -319,12 +324,6 @@ int main(int argc, char *argv[]) {
 		compiler_resolve_default_func_refs(&dynamically_linked_symbols);
 
 		for (size_t i = 0; i < source_files.count; i += 1) {
-			Diagnostics diagnostics = (Diagnostics) {
-				.allocator = &diagnostics_arena,
-				.source_storage = &source_storage,
-				.error_limit = 512,
-			};
-
 			CompilationUnitContext context = {};
 			context.unit_index = i;
 			context.flags = flags;
@@ -341,6 +340,15 @@ int main(int argc, char *argv[]) {
 			context.source_storage = &source_storage;
 
 		 	lowered_units[i] = compile_unit(&context);
+		}
+
+		if (diagnostics.first != NULL) {
+#ifdef FEATURE_PROFILER
+			// Wait until the profiler connects to upload all the measurements
+			profiler_wait_for_connection();
+#endif
+			diagnostics_print(&diagnostics);
+			return EXIT_FAILURE;
 		}
 
 		LinkedProgram linked;

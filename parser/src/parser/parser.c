@@ -409,11 +409,6 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 		Type* out_type,
 		bool duplicate_base_type);
 
-bool _parser_parse_post_declaration_modifiers(Parser* parser,
-		Type* base_type,
-		Type* out_type,
-		bool duplicate_base_type);
-
 static AstNode* _parser_parse_single_node(Parser* parser, Token initial_token);
 
 typedef enum {
@@ -3045,70 +3040,6 @@ bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 	return true;
 }
 
-bool _parser_parse_post_declaration_modifiers(Parser* parser,
-		Type* base_type,
-		Type* out_type,
-		bool duplicate_base_type) {
-	profile_func_colored(PROFILE_COLOR);
-
-	if (base_type == out_type) {
-		assert(duplicate_base_type);
-	}
-
-	while (true) {
-		Token token = preprocessor_view_next(parser->preprocessor);
-		if (token.kind == TOKEN_LEFT_BRACKET) {
-			assert(duplicate_base_type);
-
-			preprocessor_next_token(parser->preprocessor);
-
-			Token next_token = preprocessor_view_next(parser->preprocessor);
-			bool has_size_expr = next_token.kind != TOKEN_RIGHT_BRACKET;
-
-			Expr* size_expr = NULL;
-			if (has_size_expr) {
-				size_expr = arena_alloc(parser->ast_allocator, Expr);
-
-				if (_parser_try_parse_expr(parser, size_expr) != EXPR_PARSE_OK) {
-					diagnostics_report_error(parser->diagnostics,
-							next_token.source_range,
-							STR_LIT("Expected array size experession"),
-							NULL);
-					profile_scope_end();
-					return false;
-				}
-			}
-
-			Token closing_bracket = preprocessor_next_token(parser->preprocessor);
-			if (closing_bracket.kind != TOKEN_RIGHT_BRACKET) {
-				TokenKind expected_tokens[] = { TOKEN_RIGHT_BRACKET };
-				diagnostics_report_unexpected_token(parser->diagnostics,
-						closing_bracket,
-						expected_tokens,
-						array_size(expected_tokens));
-				profile_scope_end();
-				return false;
-			}
-
-			Type* inner_type = arena_alloc(parser->ast_allocator, Type);
-			*inner_type = *base_type;
-
-			*out_type = (Type) {
-				.kind = TYPE_ARRAY,
-				.array = {
-					.element_type = inner_type,
-					.size = size_expr,
-				}
-			};
-		} else {
-			break;
-		}
-	}
-
-	profile_scope_end();
-	return true;
-}
-
 bool _check_for_var_redefinition(Parser* parser, String var_name, PackedSourceRange name_source_range) {
 	profile_func_colored(PROFILE_COLOR);
 	IdentifierEntry* existing_identifier = ident_storage_find(parser->ident_storage,
@@ -3391,20 +3322,6 @@ static AstNode* _parser_parse_type_declaration(Parser* parser,
 		profile_scope_end();
 		return node;
 	}
-
-#if 0
-	if (token.kind == TOKEN_LEFT_BRACKET) {
-		// NOTE: This is a bit overcomplicated.
-		//       Just extract function handling into a separate function,
-		//       and simplify the logic
-		if (!_parser_parse_post_declaration_modifiers(parser, type, type, true)) {
-			profile_scope_end();
-			return NULL;
-		}
-
-		token = preprocessor_view_next(parser->preprocessor);
-	}
-#endif
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_EQUAL) {

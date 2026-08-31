@@ -2043,8 +2043,8 @@ static void _validate_parallel_moves(InstrStorageLocation* input_locs,
 		size_t loc_count,
 		RegisterMoveArray moves,
 		Arena* temp_allocator) {
-	uint16_t* state = arena_alloc_array(temp_allocator, uint16_t, loc_count);
-	memset(state, 0xff, sizeof(*state) * loc_count);
+	uint16_t state[X64_REG_COUNT];
+	memset(state, 0xff, sizeof(state));
 
 	// Initial state
 	for (size_t i = 0; i < loc_count; i += 1) {

@@ -3527,11 +3527,19 @@ static bool _parser_try_parse_calling_convention(Parser* parser, FunctionCalling
 	return false;
 }
 
-static Type* _find_declarator_inner_type(Type* type) {
+static Type* _find_declarator_inner_type(Type* type, Type* inner_type) {
 	while (true) {
 		if (type->kind == TYPE_POINTER) {
+			if (type_equal(type->pointer_base_type, inner_type)) {
+				break;
+			}
+
 			type = type->pointer_base_type;
 		} else if (type->kind == TYPE_ARRAY) {
+			if (type_equal(type->array.element_type, inner_type)) {
+				break;
+			}
+
 			type = type->array.element_type;
 		} else {
 			break;
@@ -3626,9 +3634,20 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 		prototype->parameter_count = param_count;
 		prototype->parameters = params;
 
-		Type* inner_type = has_inner_declarator
-			? _find_declarator_inner_type(&out_declarator->type)
-			: &out_declarator->type;
+		Type* inner_type = &out_declarator->type;
+		if (has_inner_declarator) {
+			Type* t = _find_declarator_inner_type(&out_declarator->type, &inner_declarator_type);
+			if (t->kind == TYPE_POINTER) {
+				inner_type = arena_alloc_zeroed(parser->ast_allocator, Type);
+				t->pointer_base_type = inner_type;
+			} else if (t->kind == TYPE_ARRAY) {
+				inner_type = arena_alloc_zeroed(parser->ast_allocator, Type);
+				t->array.element_type = inner_type;
+			}
+		}
+
+		assert(inner_type != NULL);
+
 		*inner_type = (Type) {
 			.kind = TYPE_FUNCTION,
 			.function = prototype,

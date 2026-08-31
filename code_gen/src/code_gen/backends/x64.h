@@ -171,10 +171,14 @@ typedef struct {
 	size_t count;
 } RegisterMoveArray;
 
+// Generates a sequence of moves to values from `input_locations` into their corresponding register
+// locations defined by `target_locations`.
+//
+// Both `input_locations` and `target_locations` are of the same size `location_count`.
 RegisterMoveArray _parallel_move_values(
-		const InstrStorageLocation* input_instr_storage,
-		const X64Register* expected_locs,
-		size_t expected_loc_count,
+		const InstrStorageLocation* input_locations,
+		const X64Register* target_locations,
+		size_t location_count,
 		uint16_t allowed_temp_register,
 		Arena* allocator,
 		Arena* temp_allocator);

@@ -505,15 +505,15 @@ typedef struct {
 } RegisterArray;
 
 RegisterMoveArray _parallel_move_values(
-		const InstrStorageLocation* input_instr_storage,
-		const X64Register* expected_locs,
-		size_t expected_loc_count,
+		const InstrStorageLocation* input_locations,
+		const X64Register* target_locations,
+		size_t location_count,
 		uint16_t allowed_temp_registers,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
 
-	// Validate that none of the expected and inputs locs overlap with temp registers
+	// Validate that none of the target and inputs locations overlap with temp registers
 	//
 	// In case we have a cycle, we need to save one of the registers to a temporary, same way when
 	// we need to swap values of two variables:
@@ -523,30 +523,28 @@ RegisterMoveArray _parallel_move_values(
 	// b = temp
 	//
 	// However if the bit mask of allowed temporary registers contains the ones that are assigned to
-	// `expected_locs` or `input_instr_storage`, saving to a temporary register might override one
-	// of the values we're trying to parallel move into expected locations.
-	for (size_t i = 0; i < expected_loc_count; i += 1) {
-		assert_msg(!has_flag(allowed_temp_registers, 1 << expected_locs[i]),
-				"Expected location overlaps with temporary registers");
+	// `target_locations` or `input_locations`, saving to a temporary register might override one
+	// of the values we're trying to parallel move into target locations.
+	for (size_t i = 0; i < location_count; i += 1) {
+		assert_msg(!has_flag(allowed_temp_registers, 1 << target_locations[i]),
+				"Target location overlaps with temporary registers");
 
-		assert(input_instr_storage[i].kind == INSTR_STORAGE_REG);
-		assert_msg(!has_flag(allowed_temp_registers, 1 << input_instr_storage[i].reg),
-				"Expected location overlaps with temporary registers");
+		assert(input_locations[i].kind == INSTR_STORAGE_REG);
+		assert_msg(!has_flag(allowed_temp_registers, 1 << input_locations[i].reg),
+				"Input location overlaps with temporary registers");
 	}
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
-	X64Register* map = arena_alloc_array(temp_allocator,
-			X64Register,
-			X64_REG_COUNT);
 
 	const X64Register INVALID_REGISTER = -1;
-	memset(map, 0xff, sizeof(*map) * X64_REG_COUNT);
+	X64Register map[X64_REG_COUNT];
+	memset(map, 0xff, sizeof(map));
 
-	for (uint16_t i = 0; i < expected_loc_count; i += 1) {
-		const InstrStorageLocation input_storage_loc = input_instr_storage[i];
-		assert(input_storage_loc.kind == INSTR_STORAGE_REG);
+	for (uint16_t i = 0; i < location_count; i += 1) {
+		const InstrStorageLocation input_location = input_locations[i];
+		assert(input_location.kind == INSTR_STORAGE_REG);
 
-		map[expected_locs[i]] = input_storage_loc.reg;
+		map[target_locations[i]] = input_location.reg;
 	}
 
 	BitArray is_move_target = bit_array_alloc(temp_allocator, X64_REG_COUNT);
@@ -567,8 +565,8 @@ RegisterMoveArray _parallel_move_values(
 	result.moves = arena_alloc_array(allocator, RegisterMove, 0);
 	result.count = 0;
 
-	for (size_t reg_index = 0; reg_index < expected_loc_count; reg_index += 1) {
-		X64Register reg = expected_locs[reg_index];
+	for (size_t reg_index = 0; reg_index < location_count; reg_index += 1) {
+		X64Register reg = target_locations[reg_index];
 		if (bit_array_get(&resolved_slots, reg)) {
 			continue;
 		}
@@ -616,8 +614,8 @@ RegisterMoveArray _parallel_move_values(
 		}
 	}
 
-	for (size_t reg_index = 0; reg_index < expected_loc_count; reg_index += 1) {
-		X64Register reg = expected_locs[reg_index];
+	for (size_t reg_index = 0; reg_index < location_count; reg_index += 1) {
+		X64Register reg = target_locations[reg_index];
 		if (bit_array_get(&resolved_slots, reg)) {
 			continue;
 		}
@@ -689,8 +687,8 @@ RegisterMoveArray _parallel_move_values(
 		result.count += 1;
 	}
 
-	for (size_t i = 0; i < expected_loc_count; i += 1) {
-		assert(bit_array_get(&resolved_slots, expected_locs[i]));
+	for (size_t i = 0; i < location_count; i += 1) {
+		assert(bit_array_get(&resolved_slots, target_locations[i]));
 	}
 
 	arena_end_temp(temp);

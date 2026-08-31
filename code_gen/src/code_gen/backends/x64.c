@@ -499,203 +499,6 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 	profile_scope_end();
 }
 
-typedef struct {
-	X64Register* regs;
-	size_t count;
-} RegisterArray;
-
-RegisterMoveArray _parallel_move_values(
-		const InstrStorageLocation* input_locations,
-		const X64Register* target_locations,
-		size_t location_count,
-		uint16_t allowed_temp_registers,
-		Arena* allocator,
-		Arena* temp_allocator) {
-	profile_scope_start(__func__);
-
-	// Validate that none of the target and inputs locations overlap with temp registers
-	//
-	// In case we have a cycle, we need to save one of the registers to a temporary, same way when
-	// we need to swap values of two variables:
-	//
-	// temp = a
-	// a = b
-	// b = temp
-	//
-	// However if the bit mask of allowed temporary registers contains the ones that are assigned to
-	// `target_locations` or `input_locations`, saving to a temporary register might override one
-	// of the values we're trying to parallel move into target locations.
-	for (size_t i = 0; i < location_count; i += 1) {
-		assert_msg(!has_flag(allowed_temp_registers, 1 << target_locations[i]),
-				"Target location overlaps with temporary registers");
-
-		assert(input_locations[i].kind == INSTR_STORAGE_REG);
-		assert_msg(!has_flag(allowed_temp_registers, 1 << input_locations[i].reg),
-				"Input location overlaps with temporary registers");
-	}
-
-	ArenaRegion temp = arena_begin_temp(temp_allocator);
-
-	const X64Register INVALID_REGISTER = -1;
-	X64Register map[X64_REG_COUNT];
-	memset(map, 0xff, sizeof(map));
-
-	for (uint16_t i = 0; i < location_count; i += 1) {
-		const InstrStorageLocation input_location = input_locations[i];
-		assert(input_location.kind == INSTR_STORAGE_REG);
-
-		map[target_locations[i]] = input_location.reg;
-	}
-
-	BitArray is_move_target = bit_array_alloc(temp_allocator, X64_REG_COUNT);
-	bit_array_clear(&is_move_target);
-
-	for (size_t i = 0; i < X64_REG_COUNT; i += 1) {
-		if (map[i] != INVALID_REGISTER) {
-			bit_array_set(&is_move_target, map[i], true);
-		}
-	}
-
-	BitArray resolved_slots = bit_array_alloc(temp_allocator, X64_REG_COUNT);
-	bit_array_clear(&resolved_slots);
-
-	BitArray visited = bit_array_alloc(temp_allocator, X64_REG_COUNT);
-
-	RegisterMoveArray result;
-	result.moves = arena_alloc_array(allocator, RegisterMove, 0);
-	result.count = 0;
-
-	for (size_t reg_index = 0; reg_index < location_count; reg_index += 1) {
-		X64Register reg = target_locations[reg_index];
-		if (bit_array_get(&resolved_slots, reg)) {
-			continue;
-		}
-
-		if (bit_array_get(&is_move_target, reg)) {
-			continue;
-		}
-
-		bit_array_clear(&visited);
-		X64Register current_reg = reg;
-		RegisterArray move_path;
-		move_path.regs = arena_alloc_array(temp_allocator, X64Register, 0);
-		move_path.count = 0;
-
-		while (true) {
-			assert_msg(bit_array_get(&visited, current_reg) == false, "Expected no cycles");
-			assert(bit_array_get(&resolved_slots, current_reg) == false);
-
-			bit_array_set(&visited, current_reg, true);
-			bit_array_set(&resolved_slots, current_reg, true);
-
-			arena_alloc(temp_allocator, X64Register);
-			move_path.regs[move_path.count] = current_reg;
-			move_path.count += 1;
-
-			if (map[current_reg] == INVALID_REGISTER) {
-				// No edge -> stop
-				break;
-			}
-
-			current_reg = map[current_reg];
-		}
-
-		for (size_t i = 0; i + 1 < move_path.count; i += 1) {
-			X64Register src = move_path.regs[i + 1];
-			X64Register dst = move_path.regs[i];
-
-			if (src == dst) {
-				continue;
-			}
-
-			arena_alloc(allocator, RegisterMove);
-			result.moves[result.count] = (RegisterMove) { .src = src, .dst = dst, };
-			result.count += 1;
-		}
-	}
-
-	for (size_t reg_index = 0; reg_index < location_count; reg_index += 1) {
-		X64Register reg = target_locations[reg_index];
-		if (bit_array_get(&resolved_slots, reg)) {
-			continue;
-		}
-
-		bit_array_clear(&visited);
-		X64Register current_reg = reg;
-		RegisterArray move_path;
-		move_path.regs = arena_alloc_array(temp_allocator, X64Register, 0);
-		move_path.count = 0;
-
-		while (true) {
-			if (bit_array_get(&visited, current_reg)) {
-				// found a cycle -> stop
-				break;
-			}
-
-			assert(bit_array_get(&resolved_slots, current_reg) == false);
-
-			bit_array_set(&visited, current_reg, true);
-			bit_array_set(&resolved_slots, current_reg, true);
-
-			arena_alloc(temp_allocator, X64Register);
-			move_path.regs[move_path.count] = current_reg;
-			move_path.count += 1;
-
-			if (map[current_reg] == INVALID_REGISTER) {
-				// No edge -> stop
-				break;
-			}
-
-			current_reg = map[current_reg];
-		}
-
-		if (move_path.count == 1) {
-			// The input is already at the expected location
-			continue;
-		}
-
-		assert_msg(allowed_temp_registers != 0, "Found a cycle, but there are no available temp"
-				" registers to save one of the registers in the cycle");
-
-		X64Register temp_save_register = count_trailing_zeros(allowed_temp_registers);
-
-		arena_alloc(allocator, RegisterMove);
-		result.moves[result.count] = (RegisterMove) {
-			.src = move_path.regs[0],
-			.dst = temp_save_register,
-		};
-		result.count += 1;
-
-		for (size_t i = 0; i + 1 < move_path.count; i += 1) {
-			X64Register src = move_path.regs[i + 1];
-			X64Register dst = move_path.regs[i];
-
-			if (src == dst) {
-				continue;
-			}
-
-			arena_alloc(allocator, RegisterMove);
-			result.moves[result.count] = (RegisterMove) { .src = src, .dst = dst, };
-			result.count += 1;
-		}
-
-		arena_alloc(allocator, RegisterMove);
-		result.moves[result.count] = (RegisterMove) {
-			.src = temp_save_register,
-			.dst = move_path.regs[move_path.count - 1],
-		};
-		result.count += 1;
-	}
-
-	for (size_t i = 0; i < location_count; i += 1) {
-		assert(bit_array_get(&resolved_slots, target_locations[i]));
-	}
-
-	arena_end_temp(temp);
-	profile_scope_end();
-	return result;
-}
-
 static void _arrange_phi_variants_for_size_computation(const InstrBuffer* instr_buffer,
 		InstrIndex phi_index,
 		BitArray* visited,
@@ -3478,3 +3281,205 @@ CallFrameLayout compute_call_frame_layout(const AbiSignature* signature, Arena* 
 		.stack_slot_count = stack_slot,
 	};
 }
+
+//
+// Internal
+// 
+
+typedef struct {
+	X64Register* regs;
+	size_t count;
+} RegisterArray;
+
+RegisterMoveArray _parallel_move_values(
+		const InstrStorageLocation* input_locations,
+		const X64Register* target_locations,
+		size_t location_count,
+		uint16_t allowed_temp_registers,
+		Arena* allocator,
+		Arena* temp_allocator) {
+	profile_scope_start(__func__);
+
+	// Validate that none of the target and inputs locations overlap with temp registers
+	//
+	// In case we have a cycle, we need to save one of the registers to a temporary, same way when
+	// we need to swap values of two variables:
+	//
+	// temp = a
+	// a = b
+	// b = temp
+	//
+	// However if the bit mask of allowed temporary registers contains the ones that are assigned to
+	// `target_locations` or `input_locations`, saving to a temporary register might override one
+	// of the values we're trying to parallel move into target locations.
+	for (size_t i = 0; i < location_count; i += 1) {
+		assert_msg(!has_flag(allowed_temp_registers, 1 << target_locations[i]),
+				"Target location overlaps with temporary registers");
+
+		assert(input_locations[i].kind == INSTR_STORAGE_REG);
+		assert_msg(!has_flag(allowed_temp_registers, 1 << input_locations[i].reg),
+				"Input location overlaps with temporary registers");
+	}
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	const X64Register INVALID_REGISTER = -1;
+	X64Register map[X64_REG_COUNT];
+	memset(map, 0xff, sizeof(map));
+
+	for (uint16_t i = 0; i < location_count; i += 1) {
+		const InstrStorageLocation input_location = input_locations[i];
+		assert(input_location.kind == INSTR_STORAGE_REG);
+
+		map[target_locations[i]] = input_location.reg;
+	}
+
+	BitArray is_move_target = bit_array_alloc(temp_allocator, X64_REG_COUNT);
+	bit_array_clear(&is_move_target);
+
+	for (size_t i = 0; i < X64_REG_COUNT; i += 1) {
+		if (map[i] != INVALID_REGISTER) {
+			bit_array_set(&is_move_target, map[i], true);
+		}
+	}
+
+	BitArray resolved_slots = bit_array_alloc(temp_allocator, X64_REG_COUNT);
+	bit_array_clear(&resolved_slots);
+
+	BitArray visited = bit_array_alloc(temp_allocator, X64_REG_COUNT);
+
+	RegisterMoveArray result;
+	result.moves = arena_alloc_array(allocator, RegisterMove, 0);
+	result.count = 0;
+
+	for (size_t reg_index = 0; reg_index < location_count; reg_index += 1) {
+		X64Register reg = target_locations[reg_index];
+		if (bit_array_get(&resolved_slots, reg)) {
+			continue;
+		}
+
+		if (bit_array_get(&is_move_target, reg)) {
+			continue;
+		}
+
+		bit_array_clear(&visited);
+		X64Register current_reg = reg;
+		RegisterArray move_path;
+		move_path.regs = arena_alloc_array(temp_allocator, X64Register, 0);
+		move_path.count = 0;
+
+		while (true) {
+			assert_msg(bit_array_get(&visited, current_reg) == false, "Expected no cycles");
+			assert(bit_array_get(&resolved_slots, current_reg) == false);
+
+			bit_array_set(&visited, current_reg, true);
+			bit_array_set(&resolved_slots, current_reg, true);
+
+			arena_alloc(temp_allocator, X64Register);
+			move_path.regs[move_path.count] = current_reg;
+			move_path.count += 1;
+
+			if (map[current_reg] == INVALID_REGISTER) {
+				// No edge -> stop
+				break;
+			}
+
+			current_reg = map[current_reg];
+		}
+
+		for (size_t i = 0; i + 1 < move_path.count; i += 1) {
+			X64Register src = move_path.regs[i + 1];
+			X64Register dst = move_path.regs[i];
+
+			if (src == dst) {
+				continue;
+			}
+
+			arena_alloc(allocator, RegisterMove);
+			result.moves[result.count] = (RegisterMove) { .src = src, .dst = dst, };
+			result.count += 1;
+		}
+	}
+
+	for (size_t reg_index = 0; reg_index < location_count; reg_index += 1) {
+		X64Register reg = target_locations[reg_index];
+		if (bit_array_get(&resolved_slots, reg)) {
+			continue;
+		}
+
+		bit_array_clear(&visited);
+		X64Register current_reg = reg;
+		RegisterArray move_path;
+		move_path.regs = arena_alloc_array(temp_allocator, X64Register, 0);
+		move_path.count = 0;
+
+		while (true) {
+			if (bit_array_get(&visited, current_reg)) {
+				// found a cycle -> stop
+				break;
+			}
+
+			assert(bit_array_get(&resolved_slots, current_reg) == false);
+
+			bit_array_set(&visited, current_reg, true);
+			bit_array_set(&resolved_slots, current_reg, true);
+
+			arena_alloc(temp_allocator, X64Register);
+			move_path.regs[move_path.count] = current_reg;
+			move_path.count += 1;
+
+			if (map[current_reg] == INVALID_REGISTER) {
+				// No edge -> stop
+				break;
+			}
+
+			current_reg = map[current_reg];
+		}
+
+		if (move_path.count == 1) {
+			// The input is already at the expected location
+			continue;
+		}
+
+		assert_msg(allowed_temp_registers != 0, "Found a cycle, but there are no available temp"
+				" registers to save one of the registers in the cycle");
+
+		X64Register temp_save_register = count_trailing_zeros(allowed_temp_registers);
+
+		arena_alloc(allocator, RegisterMove);
+		result.moves[result.count] = (RegisterMove) {
+			.src = move_path.regs[0],
+			.dst = temp_save_register,
+		};
+		result.count += 1;
+
+		for (size_t i = 0; i + 1 < move_path.count; i += 1) {
+			X64Register src = move_path.regs[i + 1];
+			X64Register dst = move_path.regs[i];
+
+			if (src == dst) {
+				continue;
+			}
+
+			arena_alloc(allocator, RegisterMove);
+			result.moves[result.count] = (RegisterMove) { .src = src, .dst = dst, };
+			result.count += 1;
+		}
+
+		arena_alloc(allocator, RegisterMove);
+		result.moves[result.count] = (RegisterMove) {
+			.src = temp_save_register,
+			.dst = move_path.regs[move_path.count - 1],
+		};
+		result.count += 1;
+	}
+
+	for (size_t i = 0; i < location_count; i += 1) {
+		assert(bit_array_get(&resolved_slots, target_locations[i]));
+	}
+
+	arena_end_temp(temp);
+	profile_scope_end();
+	return result;
+}
+

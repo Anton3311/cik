@@ -1135,7 +1135,6 @@ ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type)
 	profile_func_colored(PROFILE_COLOR);
 	assert(out_type != NULL);
 
-	// TODO: Migrate from using `_parser_try_parse_type_specifier` to this
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_IDENT) {
 		if (is_digit(token.string.v[0])) {
@@ -1293,10 +1292,9 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 			return PARSE_TYPE_NOT_PARSED;
 		}
 
-		// NOTE: Here we since we only do search in the alias namespace,
-		//       we only care about the type def, and since the alias namespace
-		//       contains only type defs, any other ident kind is expected
-
+		// NOTE: Here since we only search in the alias namespace, we only care about the type def,
+		//       and since the alias namespace contains only type defs, any other ident kind is
+		//       expected
 		switch (entry->kind) {
 		case IDENT_TYPE_DEF:
 			preprocessor_next_token(parser->preprocessor);
@@ -1398,18 +1396,18 @@ static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous
 }
 
 ParseTypeResult _parser_try_parse_type_name(Parser* parser, Type* out_type) {
-	ParseTypeResult result = _parser_try_parse_type(parser, out_type, true);
+	Type type = {};
+	ParseTypeResult result = _parser_try_parse_type(parser, &type, true);
 
 	if (result != PARSE_TYPE_PARSED) {
 		return result;
 	}
 
 	Declarator declarator = {};
-	if (!_parser_parse_declarator(parser, out_type, &declarator, true)) {
+	if (!_parser_parse_declarator(parser, &type, &declarator, true)) {
 		return PARSE_TYPE_ERROR;
 	}
 
-	// FIXME: I don't like this
 	*out_type = declarator.type;
 	return PARSE_TYPE_PARSED;
 }

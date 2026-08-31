@@ -2624,7 +2624,7 @@ static ExprParseResult _parser_try_parse_bin_expr_operand(Parser* parser, Expr* 
 			Type operand_type;
 			expr_get_type(operand, &operand_type);
 
-			if (!type_kind_is_int(operand_type.kind)) {
+			if (!type_kind_is_int(operand_type.kind) && operand_type.kind != TYPE_POINTER) {
 				StringBuilder builder = { parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Cannot apply '"));
 				str_builder_append(&builder, operator_token.string);

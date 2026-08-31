@@ -1421,21 +1421,17 @@ static ParseTypeResult _parser_try_parse_type(Parser* parser, Type* out_type, bo
 static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
-	// First parse qualifiers
-	TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
-
 	Token first_token = preprocessor_view_next(parser->preprocessor);
-
-	switch (_parser_try_parse_type_specifier(parser, out_type, is_anonymous)) {
-	case PARSE_TYPE_ERROR:
+	switch (_parser_try_parse_type(parser, out_type, is_anonymous)) {
 	case PARSE_TYPE_NOT_PARSED:
 		diagnostics_report_error(parser->diagnostics,
 				first_token.source_range,
 				STR_LIT("Expected a type name"),
 				NULL);
 		return false;
+	case PARSE_TYPE_ERROR:
+		return false;
 	case PARSE_TYPE_PARSED:
-		out_type->qualifiers |= qualifiers | _parser_parse_type_qualifiers(parser);
 		return true;
 	}
 

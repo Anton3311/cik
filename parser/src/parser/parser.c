@@ -1394,6 +1394,30 @@ static ParseTypeResult _parser_try_parse_type_name(Parser* parser, Type* out_typ
 	return PARSE_TYPE_PARSED;
 }
 
+static ParseTypeResult _parser_try_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
+	assert(out_type != NULL);
+
+	// First parse qualifiers
+	TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
+
+	Token first_token = preprocessor_view_next(parser->preprocessor);
+
+	ParseTypeResult result = _parser_try_parse_type_specifier(parser, out_type, is_anonymous);
+	if (result == PARSE_TYPE_NOT_PARSED && qualifiers) {
+		diagnostics_report_error(parser->diagnostics,
+				first_token.source_range,
+				STR_LIT("Expected a type name"),
+				NULL);
+		return PARSE_TYPE_ERROR;
+	}
+
+	if (result == PARSE_TYPE_PARSED) {
+		out_type->qualifiers |= qualifiers | _parser_parse_type_qualifiers(parser);
+	}
+
+	return result;
+}
+
 static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
@@ -3739,31 +3763,18 @@ AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 		StorageSpecifier storage_specifier) {
 
 	bool has_type = false;
-	TypeQualifiers type_qualifiers = _parser_parse_type_qualifiers(parser);
 	Type type = {};
 
-	Token maybe_type_specifier_token = preprocessor_view_next(parser->preprocessor);
-	switch (_parser_try_parse_type_specifier(parser, &type, true)) {
+	switch (_parser_try_parse_type(parser, &type, true)) {
 	case PARSE_TYPE_PARSED:
 		has_type = true;
 		break;
 	case PARSE_TYPE_NOT_PARSED:
-		if (type_qualifiers != TYPE_QUALIFIER_NONE) {
-			preprocessor_next_token(parser->preprocessor);
-			diagnostics_report_error(parser->diagnostics,
-					maybe_type_specifier_token.source_range,
-					STR_LIT("Expected type specifier"),
-					NULL);
-
-			return NULL;
-		}
-
+		has_type = false;
 		break;
 	case PARSE_TYPE_ERROR:
 		return NULL;
 	}
-
-	type.qualifiers |= type_qualifiers | _parser_parse_type_qualifiers(parser);
 
 	if (has_type) {
 		Declarator declarator = {};

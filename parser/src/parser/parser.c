@@ -1398,7 +1398,7 @@ static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous
 	assert(out_type != NULL);
 
 	// First parse qualifiers
-	out_type->qualifiers = _parser_parse_type_qualifiers(parser);
+	TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
 
 	Token first_token = preprocessor_view_next(parser->preprocessor);
 
@@ -1411,7 +1411,7 @@ static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous
 				NULL);
 		return false;
 	case PARSE_TYPE_PARSED:
-		out_type->qualifiers |= _parser_parse_type_qualifiers(parser);
+		out_type->qualifiers |= qualifiers | _parser_parse_type_qualifiers(parser);
 		return true;
 	}
 
@@ -3740,10 +3740,9 @@ AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 
 	bool has_type = false;
 	TypeQualifiers type_qualifiers = _parser_parse_type_qualifiers(parser);
-	Type type = { .qualifiers = type_qualifiers };
+	Type type = {};
 
 	Token maybe_type_specifier_token = preprocessor_view_next(parser->preprocessor);
-
 	switch (_parser_try_parse_type_specifier(parser, &type, true)) {
 	case PARSE_TYPE_PARSED:
 		has_type = true;
@@ -3764,7 +3763,7 @@ AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 		return NULL;
 	}
 
-	type.qualifiers |= _parser_parse_type_qualifiers(parser);
+	type.qualifiers |= type_qualifiers | _parser_parse_type_qualifiers(parser);
 
 	if (has_type) {
 		Declarator declarator = {};

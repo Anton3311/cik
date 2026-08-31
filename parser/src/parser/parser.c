@@ -2152,18 +2152,27 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
 
+		TypeQualifiers type_qualifiers = _parser_parse_type_qualifiers(parser);
+
 		Type cast_target_type = {};
 		ParseTypeResult type_result = _parser_try_parse_type_specifier(parser,
 				&cast_target_type,
-				false);
+				true);
 
 		if (type_result == PARSE_TYPE_PARSED) {
+			cast_target_type.qualifiers |= type_qualifiers;
 			if (!_parser_parse_pre_declaration_modifiers(parser,
 						&cast_target_type, 
 						&cast_target_type,
 						true)) {
 				type_result = PARSE_TYPE_ERROR;
 			}
+		} else if (type_result == PARSE_TYPE_NOT_PARSED && type_qualifiers != TYPE_QUALIFIER_NONE) {
+			report_error(parser->diagnostics,
+					source_range_pack(token.source_range),
+					STR_LIT("Expected a type name"),
+					NULL);
+			return EXPR_PARSE_ERROR;
 		}
 
 		switch (type_result) {

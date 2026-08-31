@@ -1124,12 +1124,6 @@ TypeQualifiers _parser_parse_type_qualifiers(Parser* parser) {
 	return qualifiers;
 }
 
-typedef enum {
-	TYPE_OR_EXPR_ERROR,
-	TYPE_OR_EXPR_TYPE,
-	TYPE_OR_EXPR_EXPR,
-} ParseTypeOrExprResult;
-
 ParseTypeResult _parser_try_parse_primitive_type(Parser* parser, Type* out_type) {
 	profile_func_colored(PROFILE_COLOR);
 	assert(out_type != NULL);

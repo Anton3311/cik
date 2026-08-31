@@ -403,6 +403,7 @@ typedef enum {
 
 ParseTypeResult _parser_try_parse_type(Parser* parser, Type* out_type, bool is_anonymous);
 bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous);
+ParseTypeResult _parser_try_parse_type_name(Parser* parser, Type* out_type);
 bool _parser_parse_scope(Parser* parser, Scope* out_scope);
 bool _parser_parse_pre_declaration_modifiers(Parser* parser,
 		Type* base_type,
@@ -430,7 +431,13 @@ typedef struct {
 	Type type;
 } Declarator;
 
-static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out_declarator);
+// Parses a declarator or an abstract declarator.
+//
+// An abstract declarator is pretty much the same as the declarator, but without the identifier.
+static bool _parser_parse_declarator(Parser* parser,
+		Type* type,
+		Declarator* out_declarator,
+		bool is_abstract);
 
 //
 // Parser Implementation
@@ -542,7 +549,7 @@ static bool _parser_parse_struct_fields(Parser* parser,
 
 		if (!_parser_parse_type(parser, &field_type, true)) {
 			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
-		} else if (!_parser_parse_declarator(parser, &field_type, &field_declarator)) {
+		} else if (!_parser_parse_declarator(parser, &field_type, &field_declarator, false)) {
 			_parser_skip_until(parser, TOKEN_SEMICOLON, TOKEN_RIGHT_BRACE);
 		}
 
@@ -1345,45 +1352,6 @@ ParseTypeResult _parser_try_parse_type_specifier(Parser* parser, Type* out_type,
 	return PARSE_TYPE_NOT_PARSED;
 }
 
-static ParseTypeResult _parser_try_parse_type_name(Parser* parser, Type* out_type) {
-	TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
-	
-	switch (_parser_try_parse_primitive_type(parser, out_type)) {
-	case PARSE_TYPE_NOT_PARSED:
-		if (qualifiers != TYPE_QUALIFIER_NONE) {
-			return PARSE_TYPE_ERROR;
-		}
-
-		return PARSE_TYPE_NOT_PARSED;
-	case PARSE_TYPE_ERROR:
-		return PARSE_TYPE_ERROR;
-	case PARSE_TYPE_PARSED:
-		break;
-	}
-
-	while (true) {
-		Token maybe_asterisk = preprocessor_view_next(parser->preprocessor);
-		if (maybe_asterisk.kind != TOKEN_ASTERISK) {
-			break;
-		}
-
-		preprocessor_next_token(parser->preprocessor);
-
-		TypeQualifiers qualifiers = _parser_parse_type_qualifiers(parser);
-
-		Type* inner_type = arena_alloc(parser->ast_allocator, Type);
-		*inner_type = *out_type;
-
-		*out_type = (Type) {
-			.kind = TYPE_POINTER,
-			.pointer_base_type = inner_type,
-			.qualifiers = qualifiers,
-		};
-	}
-
-	return PARSE_TYPE_PARSED;
-}
-
 static ParseTypeResult _parser_try_parse_type(Parser* parser, Type* out_type, bool is_anonymous) {
 	assert(out_type != NULL);
 
@@ -1429,6 +1397,23 @@ static bool _parser_parse_type(Parser* parser, Type* out_type, bool is_anonymous
 	return false;
 }
 
+ParseTypeResult _parser_try_parse_type_name(Parser* parser, Type* out_type) {
+	ParseTypeResult result = _parser_try_parse_type(parser, out_type, true);
+
+	if (result != PARSE_TYPE_PARSED) {
+		return result;
+	}
+
+	Declarator declarator = {};
+	if (!_parser_parse_declarator(parser, out_type, &declarator, true)) {
+		return PARSE_TYPE_ERROR;
+	}
+
+	// FIXME: I don't like this
+	*out_type = declarator.type;
+	return PARSE_TYPE_PARSED;
+}
+
 AstNode* _parser_parse_type_def(Parser* parser) {
 	profile_func_colored(PROFILE_COLOR);
 	Token keyword_token = preprocessor_next_token(parser->preprocessor);
@@ -1440,7 +1425,7 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 		_parser_skip_until_semicolon(parser);
 		profile_scope_end();
 		return parser->dummy_node;
-	} else if (!_parser_parse_declarator(parser, &aliased_type, &declarator)) {
+	} else if (!_parser_parse_declarator(parser, &aliased_type, &declarator, false)) {
 		_parser_skip_until_semicolon(parser);
 		profile_scope_end();
 		return parser->dummy_node;
@@ -1536,7 +1521,7 @@ static bool _parser_parse_function_params(Parser* parser,
 		Declarator param_declarator = {};
 		if (!_parser_parse_type(parser, &param_type, true)) {
 			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
-		} else if (!_parser_parse_declarator(parser, &param_type, &param_declarator)) {
+		} else if (!_parser_parse_declarator(parser, &param_type, &param_declarator, false)) {
 			_parser_skip_until(parser, TOKEN_COMMA, TOKEN_RIGHT_PAREN);
 		} else if (param_declarator.type.kind == TYPE_VOID
 				&& param_declarator.type.qualifiers == TYPE_QUALIFIER_NONE) {
@@ -2163,16 +2148,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		preprocessor_next_token(parser->preprocessor);
 
 		Type cast_target_type = {};
-		ParseTypeResult type_result = _parser_try_parse_type(parser, &cast_target_type, true);
-
-		if (type_result == PARSE_TYPE_PARSED) {
-			if (!_parser_parse_pre_declaration_modifiers(parser,
-						&cast_target_type, 
-						&cast_target_type,
-						true)) {
-				type_result = PARSE_TYPE_ERROR;
-			}
-		}
+		ParseTypeResult type_result = _parser_try_parse_type_name(parser, &cast_target_type);
 
 		switch (type_result) {
 		case PARSE_TYPE_PARSED: {
@@ -3476,7 +3452,13 @@ static Type* _find_declarator_inner_type(Type* type, Type* inner_type) {
 	return type;
 }
 
-static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_declarator) {
+// Parses a direct declarator or an abstract direct declarator.
+//
+// An abstract direct declarator is pretty much the same as the direct declarator, but without the
+// identifier.
+static bool _parser_parse_direct_declarator(Parser* parser,
+		Declarator* out_declarator,
+		bool is_abstract) {
 	bool result = true;
 	Token token = preprocessor_view_next(parser->preprocessor);
 
@@ -3496,8 +3478,15 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 	if (token.kind == TOKEN_IDENT) {
 		preprocessor_next_token(parser->preprocessor);
 
-		out_declarator->name = token.string;
-		out_declarator->name_source_range = source_range_pack(token.source_range);
+		if (is_abstract) {
+			report_error(parser->diagnostics,
+					source_range_pack(token.source_range),
+					STR_LIT("An indentifier is not allowed in an abstract declarator"),
+					NULL);
+		} else {
+			out_declarator->name = token.string;
+			out_declarator->name_source_range = source_range_pack(token.source_range);
+		}
 	} else if (token.kind == TOKEN_LEFT_PAREN) {
 		preprocessor_next_token(parser->preprocessor);
 
@@ -3508,7 +3497,7 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 		has_inner_declarator = result;
 		inner_declarator_type = out_declarator->type;
 
-		result = _parser_parse_declarator(parser, &out_declarator->type, out_declarator);
+		result = _parser_parse_declarator(parser, &out_declarator->type, out_declarator, false);
 		if (!result) {
 			_parser_skip_until(parser, TOKEN_RIGHT_PAREN, TOKEN_SEMICOLON);
 		}
@@ -3623,7 +3612,10 @@ static bool _parser_parse_direct_declarator(Parser* parser, Declarator* out_decl
 	return result;
 }
 
-static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out_declarator) {
+static bool _parser_parse_declarator(Parser* parser,
+		Type* type,
+		Declarator* out_declarator,
+		bool is_abstract) {
 	profile_func_colored(PROFILE_COLOR);
 
 	out_declarator->name = (String) {};
@@ -3649,7 +3641,7 @@ static bool _parser_parse_declarator(Parser* parser, Type* type, Declarator* out
 		}
 	}
 	
-	bool result = _parser_parse_direct_declarator(parser, out_declarator);
+	bool result = _parser_parse_direct_declarator(parser, out_declarator, is_abstract);
 
 	profile_scope_end();
 	return result;
@@ -3675,7 +3667,7 @@ AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 
 	if (has_type) {
 		Declarator declarator = {};
-		if (!_parser_parse_declarator(parser, &type, &declarator)) {
+		if (!_parser_parse_declarator(parser, &type, &declarator, false)) {
 			return NULL;
 		}
 

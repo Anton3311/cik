@@ -318,6 +318,10 @@ uint32_t type_get_int_convertion_rank(const Type* type) {
 	case TYPE_UNSIGNED_INT16:
 		return 2;
 
+	// NOTE: Enums are implicitely convertable to ints, so they have the same convertion ranks as
+	//       the corresponding int
+	case TYPE_ENUM:
+
 	case TYPE_INT:
 	case TYPE_SIGNED_INT:
 	case TYPE_UNSIGNED_INT:
@@ -347,7 +351,6 @@ uint32_t type_get_int_convertion_rank(const Type* type) {
 
 	case TYPE_STRUCT:
 	case TYPE_UNION:
-	case TYPE_ENUM:
 		break;
 
 	case TYPE_POINTER:
@@ -613,7 +616,8 @@ void expr_get_type(Expr* expr, Type* out_type) {
 		out_type->kind = TYPE_CHAR;
 		return;
 	case EXPR_ENUM_CONSTANT:
-		out_type->kind = TYPE_INT;
+		out_type->kind = TYPE_ENUM;
+		out_type->enum_def = (Enum*)expr->enum_constant.enum_def;
 		return;
 	case EXPR_FUNCTION_PARAM: {
 		const Function* func = expr->function_param.function_def;

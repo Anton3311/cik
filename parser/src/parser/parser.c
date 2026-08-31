@@ -2402,7 +2402,9 @@ static bool _check_is_convertable(Parser* parser,
 		return true;
 	}
 
-	if (type_kind_is_int(from->kind) && type_kind_is_int(to->kind)) {
+	bool from_is_int_like = type_kind_is_int(from->kind) || from->kind == TYPE_ENUM;
+	bool to_is_int_like = type_kind_is_int(to->kind) || to->kind == TYPE_ENUM;
+	if (from_is_int_like && to_is_int_like) {
 		return true;
 	}
 
@@ -2831,6 +2833,9 @@ static void _bin_expr_select_common_type(const Type* left_type,
 		return;
 	}
 
+	bool left_is_int_like = type_kind_is_int(left_type->kind) || left_type->kind == TYPE_ENUM;
+	bool right_is_int_like = type_kind_is_int(right_type->kind) || right_type->kind == TYPE_ENUM;
+
 	if (left_type->kind == TYPE_POINTER && type_kind_is_int(right_type->kind)) {
 		*out_type = *left_type;
 		return;
@@ -2856,7 +2861,7 @@ static void _bin_expr_select_common_type(const Type* left_type,
 		return;
 	}
 
-	if (!type_kind_is_int(left_type->kind) || !type_kind_is_int(right_type->kind)) {
+	if (!left_is_int_like  || !right_is_int_like) {
 		StringBuilder builder = { .arena = diagnostics->allocator };
 		str_builder_format(&builder,
 				"Binary operator '%.*s' is not support between types '",
@@ -2941,14 +2946,6 @@ ExprParseResult _parser_try_parse_expr(Parser* parser, Expr* out_expr) {
 			Type right_type;
 			expr_get_type(left_operand, &left_type);
 			expr_get_type(right_operand, &right_type);
-
-			if (left_type.kind == TYPE_ENUM) {
-				left_type.kind = TYPE_INT;
-			}
-
-			if (right_type.kind == TYPE_ENUM) {
-				right_type.kind = TYPE_INT;
-			}
 
 			ValueKind left_value_kind = expr_get_value_kind(left_operand);
 			ValueKind right_value_kind = expr_get_value_kind(right_operand);

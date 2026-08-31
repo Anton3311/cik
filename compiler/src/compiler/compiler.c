@@ -64,6 +64,12 @@ static TypeLayout _type_get_layout(const TypeContext* context, const Type* type)
 	case TYPE_SIGNED_INT16:
 	case TYPE_UNSIGNED_INT16:
 		return type_layout_new(2, 2);
+
+	// NOTE: Enum is implicitely castable to an int.
+	// TODO: Return the size of a corresponding int, not simply `TYPE_INT`. The enum can be larger
+	//       then `TYPE_INT`.
+	case TYPE_ENUM:
+
 	case TYPE_INT:
 	case TYPE_SIGNED_INT:
 	case TYPE_UNSIGNED_INT:
@@ -95,8 +101,6 @@ static TypeLayout _type_get_layout(const TypeContext* context, const Type* type)
 		return context->layouts[type->struct_def->id];
 	case TYPE_UNION:
 		return context->layouts[type->union_def->id];
-	case TYPE_ENUM:
-		break;
 
 	case TYPE_POINTER:
 		return context->pointer_type_layout;
@@ -194,8 +198,13 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		return value_instr;
 	}
 
-	assert(type_kind_is_int(int_type->kind) || int_type->kind == TYPE_POINTER);
-	assert(type_kind_is_int(target_type->kind) || target_type->kind == TYPE_POINTER);
+	assert(type_kind_is_int(int_type->kind)
+			|| int_type->kind == TYPE_ENUM
+			|| int_type->kind == TYPE_POINTER);
+
+	assert(type_kind_is_int(target_type->kind)
+			|| target_type->kind == TYPE_ENUM
+			|| target_type->kind == TYPE_POINTER);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;

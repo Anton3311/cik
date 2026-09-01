@@ -1,11 +1,14 @@
 #include "diagnostics.h"
 
 #include <stdarg.h>
+#include "core/core.h"
 
 void _print_indent(size_t count) {
+	profile_scope_start(__func__);
 	for (size_t i = 0; i < count; i += 1) {
 		printf("\t");
 	}
+	profile_scope_end();
 }
 
 void _diagnostics_print_entry(const Diagnostics* diagnostics,
@@ -25,6 +28,7 @@ void _diagnostics_print_entry_list(const Diagnostics* diagnostics,
 void _diagnostics_print_source_diagnostics(const Diagnostics* diagnostics,
 		const DiagnosticsEntry* entry,
 		size_t indent) {
+	profile_scope_start(__func__);
 
 	// TODO: Handle multiple highlight ranges
 	assert(entry->highlighted_range_count == 1);
@@ -84,11 +88,14 @@ void _diagnostics_print_source_diagnostics(const Diagnostics* diagnostics,
 
 	_print_indent(indent);
 	printf("\033[1;31merror:\033[0m %.*s: %.*s\n", STR_FMT(source_file->path), STR_FMT(entry->message));
+
+	profile_scope_end();
 }
 
 void _diagnostics_print_entry(const Diagnostics* diagnostics,
 		const DiagnosticsEntry* entry,
 		size_t indent) {
+	profile_scope_start(__func__);
 
 	switch (entry->kind) {
 	case DIAGNOSTICS_ENTRY_ERROR:
@@ -102,16 +109,22 @@ void _diagnostics_print_entry(const Diagnostics* diagnostics,
 	if (entry->first_child) {
 		_diagnostics_print_entry(diagnostics, entry->first_child, indent + 1);
 	}
+
+	profile_scope_end();
 }
 
 void diagnostics_print(const Diagnostics* diagnostics) {
+	profile_scope_start(__func__);
 	_diagnostics_print_entry_list(diagnostics, diagnostics->first, 0);
+	profile_scope_end();
 }
 
 DiagnosticsEntry* _diagnostics_append(Diagnostics* diagnostics, DiagnosticsEntry* parent) {
+	profile_scope_start(__func__);
 	DiagnosticsEntry* entry = arena_alloc_zeroed(diagnostics->allocator, DiagnosticsEntry);
 
 	if (diagnostics->error_count >= diagnostics->error_limit) {
+		profile_scope_end();
 		return entry;
 	}
 
@@ -143,6 +156,7 @@ DiagnosticsEntry* _diagnostics_append(Diagnostics* diagnostics, DiagnosticsEntry
 		}
 	}
 
+	profile_scope_end();
 	return entry;
 }
 
@@ -150,6 +164,8 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 		SourceRange source_range,
 		String message,
 		DiagnosticsEntry* parent) {
+	profile_scope_start(__func__);
+
 	assert(source_range.source_file);
 	assert(diagnostics->error_limit > 0);
 
@@ -168,6 +184,7 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 	entry->highlighted_range_count = 1;
 
 	entry->message = message;
+	profile_scope_end();
 	return entry;
 }
 
@@ -175,6 +192,7 @@ void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 		Token actual_token,
 		TokenKind* expected_kinds,
 		size_t expected_kind_count) {
+	profile_scope_start(__func__);
 	String actual_token_string = actual_token.string;
 	if (actual_token.kind == TOKEN_EOF) {
 		actual_token_string = token_kind_to_string(actual_token.kind);
@@ -203,6 +221,7 @@ void diagnostics_report_unexpected_token(Diagnostics* diagnostics,
 	}
 
 	diagnostics_report_error(diagnostics, actual_token.source_range, builder.string, NULL);
+	profile_scope_end();
 }
 
 DiagnosticsEntry* report_error(
@@ -211,17 +230,22 @@ DiagnosticsEntry* report_error(
 		String message, 
 		DiagnosticsEntry* parent) {
 
+	profile_scope_start(__func__);
 	SourceRange unpakced_range = source_range_unpack(
 			diagnostics->source_storage,
 			source_range);
 
-	return diagnostics_report_error(diagnostics,
+	DiagnosticsEntry* entry = diagnostics_report_error(diagnostics,
 			unpakced_range,
 			message,
 			parent);
+
+	profile_scope_end();
+	return entry;
 }
 
 DiagnosticsEntry* report_cli_error(Diagnostics* diagnostics, const char* fmt, ...) {
+	profile_scope_start(__func__);
 	va_list args;
 	va_start(args, fmt);
 
@@ -230,5 +254,7 @@ DiagnosticsEntry* report_cli_error(Diagnostics* diagnostics, const char* fmt, ..
 	entry->message = str_format_with_args(diagnostics->allocator, fmt, args);
 	
 	va_end(args);
+
+	profile_scope_end();
 	return entry;
 }

@@ -728,161 +728,163 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 	PackedSourceRange macro_name_range = macro->name_source_range;
 
 	const LineInfo* line_info = &_preprocessor_current_file(state)->line_info;
-	uint32_t expected_token_line = line_info_pos_to_source_location(line_info, macro_name_range.start).line;
+	uint32_t current_line = line_info_pos_to_source_location(
+			line_info,
+			macro_name_range.start).line;
 
 	bool next_token_is_part_of_insert_operator = false;
 
 	while (!tokenizer_is_end(state->tokenizer)) {
 		Token token = tokenizer_view_next(state->tokenizer);
-		uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line;
-		if (token_line == expected_token_line) {
-			MacroTokenHint token_hint = { .kind = MACRO_TOKEN_HINT_NONE };
+		uint32_t token_line = line_info_pos_to_source_location(
+				line_info,
+				token.source_range.end).line;
 
-			if (token.kind == TOKEN_BACKWARD_SLASH) {
-				expected_token_line += 1;
-				tokenizer_reset_to_token(state->tokenizer, token);
-				continue;
-			}
-
-			switch (token.kind) {
-			case TOKEN_IDENT: {
-				tokenizer_reset_to_token(state->tokenizer, token);
-
-				if (macro->style != MACRO_STYLE_FUNCTION) {
-					break;
-				}
-
-				bool is_va_args = str_equal(token.string, STR_LIT("__VA_ARGS__"));
-				if (is_va_args) {
-					assert(macro->has_va_args);
-					token_hint.kind = MACRO_TOKEN_HINT_VA_ARGS;
-					break;
-				}
-
-				size_t parameter_index = _macro_find_param_by_name(macro, token.string);
-
-				bool is_insert_operator = false;
-				if (next_token_is_part_of_insert_operator) {
-					is_insert_operator = true;
-					next_token_is_part_of_insert_operator = false;
-				}
-
-				Token maybe_token_insert_operator = tokenizer_view_next(state->tokenizer);
-				if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
-					tokenizer_reset_to_token(state->tokenizer, maybe_token_insert_operator);
-					is_insert_operator = true;
-					next_token_is_part_of_insert_operator = true;
-				} else if (parameter_index != SIZE_MAX) {
-					token_hint.kind = MACRO_TOKEN_HINT_PARAMETER;
-					token_hint.param.index = parameter_index;
-				}
-
-				if (is_insert_operator) {
-					assert(token_hint.kind == MACRO_TOKEN_HINT_NONE || token_hint.kind == MACRO_TOKEN_HINT_PARAMETER);
-					token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
-					token_hint.token_insert_op.param_index = parameter_index; // here an invalid param index is allowed
-				}
-
-				break;
-			}
-			case TOKEN_HASH: {
-				// Consume TOKEN_HASH, so that we can get the next identifier token,
-				// without tokenizing TOKEN_HASH twice (since `tokenizer_view_next` was used).
-				tokenizer_reset_to_token(state->tokenizer, token);
-
-				Token param_name_token = tokenizer_view_next(state->tokenizer);
-				if (param_name_token.kind != TOKEN_IDENT) {
-					TokenKind expected_token = TOKEN_IDENT;
-
-					diagnostics_report_unexpected_token(state->diagnostics,
-							param_name_token,
-							&expected_token,
-							1);
-
-					// NOTE: Terminate parsing here
-					arena_end_temp(hints_temp_region);
-					profile_scope_end();
-					return;
-				}
-
-				tokenizer_reset_to_token(state->tokenizer, param_name_token);
-
-				size_t param_index = _macro_find_param_by_name(macro, param_name_token.string);
-				if (param_index == SIZE_MAX) {
-					StringBuilder builder = { .arena = state->diagnostics->allocator };
-					str_builder_append(&builder, STR_LIT("# must be followed by parameter name. "));
-					str_builder_append_char(&builder, '\'');
-					str_builder_append(&builder, param_name_token.string);
-					str_builder_append(&builder, STR_LIT("' is not a valid macro parameter"));
-
-					diagnostics_report_error(state->diagnostics,
-							param_name_token.source_range,
-							builder.string,
-							NULL);
-
-					// NOTE: Terminate parsing here
-					arena_end_temp(hints_temp_region);
-					profile_scope_end();
-					return;
-				}
-
-				token_hint.kind = MACRO_TOKEN_HINT_STRING_OPERATOR;
-				token_hint.string_op.param_index = param_index;
-
-				// Initially token was a TOKEN_HASH. Replace it with the param name token,
-				// so the tokenizer continues after the `param_name_token`.
-				//
-				// This has a side effect that the macro token stream, won't contain the hash token,
-				// but only the param name token with `MACRO_TOKEN_HINT_STRING_OPERATOR`
-				token = param_name_token;
-				break;
-			}
-			case TOKEN_DOUBLE_HASH: {
-				unreachable();
-				break;
-			}
-			default: {
-				bool is_insert_operator = false;
-				if (next_token_is_part_of_insert_operator) {
-					is_insert_operator = true;
-					next_token_is_part_of_insert_operator = false;
-				}
-
-				tokenizer_reset_to_token(state->tokenizer, token);
-
-				Token maybe_token_insert_operator = tokenizer_view_next(state->tokenizer);
-				if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
-					tokenizer_reset_to_token(state->tokenizer, maybe_token_insert_operator);
-					is_insert_operator = true;
-					next_token_is_part_of_insert_operator = true;
-				}
-
-				if (is_insert_operator) {
-					assert(token_hint.kind == MACRO_TOKEN_HINT_NONE || token_hint.kind == MACRO_TOKEN_HINT_PARAMETER);
-					token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
-					token_hint.token_insert_op.param_index = SIZE_MAX; // here an invalid param index is allowed
-				}
-
-				break;
-			}
-			}
-
-			if (macro->style != MACRO_STYLE_FUNCTION) {
-				assert(token_hint.kind == MACRO_TOKEN_HINT_NONE);
-			}
-
-			if (macro->style == MACRO_STYLE_FUNCTION) {
-				*arena_alloc(state->temp_allocator, MacroTokenHint) = token_hint;
-				token_hint_count += 1;
-			}
-
-			// Token is on the same line as the macro definition,
-			// so it belongs to the token stream of this macro
-			*arena_alloc(state->allocator, Token) = token;
-			macro->token_count += 1;
-		} else {
+		if (token_line != current_line) {
 			break;
 		}
+
+		// Consume the token, since it definitely belongs to this macros token stream.
+		tokenizer_reset_to_token(state->tokenizer, token);
+
+		if (token.kind == TOKEN_BACKWARD_SLASH) {
+			current_line += 1;
+			continue;
+		}
+
+		MacroTokenHint token_hint = { .kind = MACRO_TOKEN_HINT_NONE };
+
+		switch (token.kind) {
+		case TOKEN_IDENT: {
+			if (macro->style != MACRO_STYLE_FUNCTION) {
+				break;
+			}
+
+			bool is_va_args = str_equal(token.string, STR_LIT("__VA_ARGS__"));
+			if (is_va_args) {
+				assert(macro->has_va_args);
+				token_hint.kind = MACRO_TOKEN_HINT_VA_ARGS;
+				break;
+			}
+
+			size_t parameter_index = _macro_find_param_by_name(macro, token.string);
+
+			bool is_insert_operator = false;
+			if (next_token_is_part_of_insert_operator) {
+				is_insert_operator = true;
+				next_token_is_part_of_insert_operator = false;
+			}
+
+			Token maybe_token_insert_operator = tokenizer_view_next(state->tokenizer);
+			if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
+				tokenizer_reset_to_token(state->tokenizer, maybe_token_insert_operator);
+				is_insert_operator = true;
+				next_token_is_part_of_insert_operator = true;
+			} else if (parameter_index != SIZE_MAX) {
+				token_hint.kind = MACRO_TOKEN_HINT_PARAMETER;
+				token_hint.param.index = parameter_index;
+			}
+
+			if (is_insert_operator) {
+				assert(token_hint.kind == MACRO_TOKEN_HINT_NONE
+						|| token_hint.kind == MACRO_TOKEN_HINT_PARAMETER);
+				token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
+				// NOTE: here an invalid param index is allowed
+				token_hint.token_insert_op.param_index = parameter_index;
+			}
+
+			break;
+		}
+		case TOKEN_HASH: {
+			Token param_name_token = tokenizer_next_token(state->tokenizer);
+			if (param_name_token.kind != TOKEN_IDENT) {
+				TokenKind expected_token = TOKEN_IDENT;
+
+				diagnostics_report_unexpected_token(state->diagnostics,
+						param_name_token,
+						&expected_token,
+						1);
+
+				// NOTE: Terminate parsing here
+				arena_end_temp(hints_temp_region);
+				profile_scope_end();
+				return;
+			}
+
+			size_t param_index = _macro_find_param_by_name(macro, param_name_token.string);
+			if (param_index == SIZE_MAX) {
+				String message = str_format(
+						state->diagnostics->allocator,
+						"'#' must be followed by parameter name. '%.*s' is not a valid macro "
+						"parameter",
+						STR_FMT(param_name_token.string));
+
+				report_error(state->diagnostics,
+						source_range_pack(param_name_token.source_range),
+						message,
+						NULL);
+
+				// NOTE: Terminate parsing here
+				arena_end_temp(hints_temp_region);
+				profile_scope_end();
+				return;
+			}
+
+			token_hint.kind = MACRO_TOKEN_HINT_STRING_OPERATOR;
+			token_hint.string_op.param_index = param_index;
+
+			// Initially token was a TOKEN_HASH. Replace it with the param name token, so the
+			// tokenizer continues after the `param_name_token`.
+			//
+			// This has a side effect that the macro token stream, won't contain the hash token, but
+			// only the param name token with `MACRO_TOKEN_HINT_STRING_OPERATOR`
+			token = param_name_token;
+			break;
+		}
+		case TOKEN_DOUBLE_HASH: {
+			unreachable();
+			break;
+		}
+		default: {
+			bool is_insert_operator = false;
+			if (next_token_is_part_of_insert_operator) {
+				is_insert_operator = true;
+				next_token_is_part_of_insert_operator = false;
+			}
+
+			Token maybe_token_insert_operator = tokenizer_view_next(state->tokenizer);
+			if (maybe_token_insert_operator.kind == TOKEN_DOUBLE_HASH) {
+				tokenizer_reset_to_token(state->tokenizer, maybe_token_insert_operator);
+				is_insert_operator = true;
+				next_token_is_part_of_insert_operator = true;
+			}
+
+			if (is_insert_operator) {
+				assert(token_hint.kind == MACRO_TOKEN_HINT_NONE
+						|| token_hint.kind == MACRO_TOKEN_HINT_PARAMETER);
+
+				token_hint.kind = MACRO_TOKEN_HINT_TOKEN_INSERT_OPERATOR;
+				// NOTE: here an invalid param index is allowed
+				token_hint.token_insert_op.param_index = SIZE_MAX;
+			}
+
+			break;
+		}
+		}
+
+		if (macro->style != MACRO_STYLE_FUNCTION) {
+			assert(token_hint.kind == MACRO_TOKEN_HINT_NONE);
+		}
+
+		if (macro->style == MACRO_STYLE_FUNCTION) {
+			*arena_alloc(state->temp_allocator, MacroTokenHint) = token_hint;
+			token_hint_count += 1;
+		}
+
+		// Token is on the same line as the macro definition, so it belongs to the token stream of
+		// this macro
+		*arena_alloc(state->allocator, Token) = token;
+		macro->token_count += 1;
 	}
 
 	if (macro->style == MACRO_STYLE_FUNCTION) {

@@ -130,7 +130,6 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		str_builder_append(&builder, include_path);
 
 		bool exists = path_exists(temp_allocator, builder.string);
-		String canonical_path = {};
 		if (exists) {
 			result = path_canonicalize(builder.string, allocator, temp_allocator);
 		}
@@ -138,23 +137,25 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		arena_end_temp(temp);
 	}
 
-	for (size_t i = 0; i < storage->include_dirs.count; i += 1) {
-		ArenaRegion temp = arena_begin_temp(temp_allocator);
+	if (result.v == NULL) {
+		for (size_t i = 0; i < storage->include_dirs.count; i += 1) {
+			ArenaRegion temp = arena_begin_temp(temp_allocator);
 
-		StringBuilder builder = { .arena = temp_allocator };
-		str_builder_append(&builder, path_trim_trailing_slash(storage->include_dirs.values[i]));
-		str_builder_append_char(&builder, '/');
-		str_builder_append(&builder, include_path);
+			StringBuilder builder = { .arena = temp_allocator };
+			str_builder_append(&builder, path_trim_trailing_slash(storage->include_dirs.values[i]));
+			str_builder_append_char(&builder, '/');
+			str_builder_append(&builder, include_path);
 
-		bool exists = path_exists(temp_allocator, builder.string);
-		if (exists) {
-			result = path_canonicalize(builder.string, allocator, temp_allocator);
-		}
+			bool exists = path_exists(temp_allocator, builder.string);
+			if (exists) {
+				result = path_canonicalize(builder.string, allocator, temp_allocator);
+			}
 
-		arena_end_temp(temp);
+			arena_end_temp(temp);
 
-		if (exists) {
-			break;
+			if (exists) {
+				break;
+			}
 		}
 	}
 

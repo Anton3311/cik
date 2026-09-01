@@ -192,76 +192,104 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 
 	String token_string = sub_str(tokenizer->source_code, token_start, string_length);
 	TokenKind token_kind = TOKEN_IDENT;
-	if (str_equal(token_string, STR_LIT("typedef"))) {
-		token_kind = TOKEN_KEYWORD_TYPEDEF;
-	} else if (str_equal(token_string, STR_LIT("struct"))) {
-		token_kind = TOKEN_KEYWORD_STRUCT;
-	} else if (str_equal(token_string, STR_LIT("union"))) {
-		token_kind = TOKEN_KEYWORD_UNION;
-	} else if (str_equal(token_string, STR_LIT("enum"))) {
-		token_kind = TOKEN_KEYWORD_ENUM;
-	} else if (str_equal(token_string, STR_LIT("const"))) {
-		token_kind = TOKEN_KEYWORD_CONST;
-	} else if (str_equal(token_string, STR_LIT("volatile"))) {
-		token_kind = TOKEN_KEYWORD_VOLATILE;
-	} else if (str_equal(token_string, STR_LIT("return"))) {
-		token_kind = TOKEN_KEYWORD_RETURN;
-	} else if (str_equal(token_string, STR_LIT("inline"))) {
-		token_kind = TOKEN_KEYWORD_INLINE;
-	} else if (str_equal(token_string, STR_LIT("__inline"))) {
-		token_kind = TOKEN_KEYWORD_INLINE;
-	} else if (str_equal(token_string, STR_LIT("extern"))) {
-		token_kind = TOKEN_KEYWORD_EXTERN;
-	} else if (str_equal(token_string, STR_LIT("static"))) {
-		token_kind = TOKEN_KEYWORD_STATIC;
-	} else if (str_equal(token_string, STR_LIT("__declspec"))) {
-		token_kind = TOKEN_DECLSPEC;
-	} else if (str_equal(token_string, STR_LIT("if"))) {
-		token_kind = TOKEN_KEYWORD_IF;
-	} else if (str_equal(token_string, STR_LIT("else"))) {
-		token_kind = TOKEN_KEYWORD_ELSE;
-	} else if (str_equal(token_string, STR_LIT("while"))) {
-		token_kind = TOKEN_KEYWORD_WHILE;
-	} else if (str_equal(token_string, STR_LIT("do"))) {
-		token_kind = TOKEN_KEYWORD_DO;
-	} else if (str_equal(token_string, STR_LIT("for"))) {
-		token_kind = TOKEN_KEYWORD_FOR;
-	} else if (str_equal(token_string, STR_LIT("break"))) {
-		token_kind = TOKEN_KEYWORD_BREAK;
-	} else if (str_equal(token_string, STR_LIT("continue"))) {
-		token_kind = TOKEN_KEYWORD_CONTINUE;
-	} else if (str_equal(token_string, STR_LIT("sizeof"))) {
-		token_kind = TOKEN_KEYWORD_SIZE_OF;
-	} else if (str_equal(token_string, STR_LIT("void"))) {
-		token_kind = TOKEN_KEYWORD_VOID;
-	} else if (str_equal(token_string, STR_LIT("size_t"))) {
-		token_kind = TOKEN_KEYWORD_SIZE_T;
-	} else if (str_equal(token_string, STR_LIT("float"))) {
-		token_kind = TOKEN_KEYWORD_FLOAT;
-	} else if (str_equal(token_string, STR_LIT("double"))) {
-		token_kind = TOKEN_KEYWORD_DOUBLE;
-	} else if (str_equal(token_string, STR_LIT("char"))) {
-		token_kind = TOKEN_KEYWORD_CHAR;
-	} else if (str_equal(token_string, STR_LIT("short"))) {
-		token_kind = TOKEN_KEYWORD_SHORT;
-	} else if (str_equal(token_string, STR_LIT("int"))) {
-		token_kind = TOKEN_KEYWORD_INT;
-	} else if (str_equal(token_string, STR_LIT("long"))) {
-		token_kind = TOKEN_KEYWORD_LONG;
-	} else if (str_equal(token_string, STR_LIT("signed"))) {
-		token_kind = TOKEN_KEYWORD_SIGNED;
-	} else if (str_equal(token_string, STR_LIT("unsigned"))) {
-		token_kind = TOKEN_KEYWORD_UNSIGNED;
-	} else if (str_equal(token_string, STR_LIT("__int8"))) {
-		token_kind = TOKEN_KEYWORD_INT8;
-	} else if (str_equal(token_string, STR_LIT("__int16"))) {
-		token_kind = TOKEN_KEYWORD_INT16;
-	} else if (str_equal(token_string, STR_LIT("__int32"))) {
-		token_kind = TOKEN_KEYWORD_INT32;
-	} else if (str_equal(token_string, STR_LIT("__int64"))) {
-		token_kind = TOKEN_KEYWORD_INT64;
-	} else if (str_equal(token_string, STR_LIT("_Bool"))) {
-		token_kind = TOKEN_KEYWORD_BOOL;
+
+	if (token_string.length >= 2 && token_string.length <= 10) {
+		switch (token_string.length) {
+		case 2:
+			if (str_equal(token_string, STR_LIT("if"))) {
+				token_kind = TOKEN_KEYWORD_IF;
+			} else if (str_equal(token_string, STR_LIT("do"))) {
+				token_kind = TOKEN_KEYWORD_DO;
+			}
+			break;
+		case 3:
+			if (str_equal(token_string, STR_LIT("for"))) {
+				token_kind = TOKEN_KEYWORD_FOR;
+			} else if (str_equal(token_string, STR_LIT("int"))) {
+				token_kind = TOKEN_KEYWORD_INT;
+			}
+			break;
+		case 4:
+			if (str_equal(token_string, STR_LIT("enum"))) {
+				token_kind = TOKEN_KEYWORD_ENUM;
+			} else if (str_equal(token_string, STR_LIT("else"))) {
+				token_kind = TOKEN_KEYWORD_ELSE;
+			} else if (str_equal(token_string, STR_LIT("void"))) {
+				token_kind = TOKEN_KEYWORD_VOID;
+			} else if (str_equal(token_string, STR_LIT("char"))) {
+				token_kind = TOKEN_KEYWORD_CHAR;
+			} else if (str_equal(token_string, STR_LIT("long"))) {
+				token_kind = TOKEN_KEYWORD_LONG;
+			}
+			break;
+		case 5:
+			if (str_equal(token_string, STR_LIT("union"))) {
+				token_kind = TOKEN_KEYWORD_UNION;
+			} else if (str_equal(token_string, STR_LIT("const"))) {
+				token_kind = TOKEN_KEYWORD_CONST;
+			} else if (str_equal(token_string, STR_LIT("while"))) {
+				token_kind = TOKEN_KEYWORD_WHILE;
+			} else if (str_equal(token_string, STR_LIT("break"))) {
+				token_kind = TOKEN_KEYWORD_BREAK;
+			} else if (str_equal(token_string, STR_LIT("float"))) {
+				token_kind = TOKEN_KEYWORD_FLOAT;
+			} else if (str_equal(token_string, STR_LIT("short"))) {
+				token_kind = TOKEN_KEYWORD_SHORT;
+			} else if (str_equal(token_string, STR_LIT("_Bool"))) {
+				token_kind = TOKEN_KEYWORD_BOOL;
+			}
+			break;
+		case 6:
+			if (str_equal(token_string, STR_LIT("struct"))) {
+				token_kind = TOKEN_KEYWORD_STRUCT;
+			} else if (str_equal(token_string, STR_LIT("return"))) {
+				token_kind = TOKEN_KEYWORD_RETURN;
+			} else if (str_equal(token_string, STR_LIT("inline"))) {
+				token_kind = TOKEN_KEYWORD_INLINE;
+			} else if (str_equal(token_string, STR_LIT("extern"))) {
+				token_kind = TOKEN_KEYWORD_EXTERN;
+			} else if (str_equal(token_string, STR_LIT("static"))) {
+				token_kind = TOKEN_KEYWORD_STATIC;
+			} else if (str_equal(token_string, STR_LIT("sizeof"))) {
+				token_kind = TOKEN_KEYWORD_SIZE_OF;
+			} else if (str_equal(token_string, STR_LIT("size_t"))) {
+				token_kind = TOKEN_KEYWORD_SIZE_T;
+			} else if (str_equal(token_string, STR_LIT("double"))) {
+				token_kind = TOKEN_KEYWORD_DOUBLE;
+			} else if (str_equal(token_string, STR_LIT("signed"))) {
+				token_kind = TOKEN_KEYWORD_SIGNED;
+			} else if (str_equal(token_string, STR_LIT("__int8"))) {
+				token_kind = TOKEN_KEYWORD_INT8;
+			}
+			break;
+		case 7:
+			if (str_equal(token_string, STR_LIT("typedef"))) {
+				token_kind = TOKEN_KEYWORD_TYPEDEF;
+			} else if (str_equal(token_string, STR_LIT("__int16"))) {
+				token_kind = TOKEN_KEYWORD_INT16;
+			} else if (str_equal(token_string, STR_LIT("__int32"))) {
+				token_kind = TOKEN_KEYWORD_INT32;
+			} else if (str_equal(token_string, STR_LIT("__int64"))) {
+				token_kind = TOKEN_KEYWORD_INT64;
+			}
+			break;
+		case 8:
+			if (str_equal(token_string, STR_LIT("volatile"))) {
+				token_kind = TOKEN_KEYWORD_VOLATILE;
+			} else if (str_equal(token_string, STR_LIT("continue"))) {
+				token_kind = TOKEN_KEYWORD_CONTINUE;
+			} else if (str_equal(token_string, STR_LIT("unsigned"))) {
+				token_kind = TOKEN_KEYWORD_UNSIGNED;
+			} else if (str_equal(token_string, STR_LIT("__inline"))) {
+				token_kind = TOKEN_KEYWORD_INLINE;
+			}
+			break;
+		case 10:
+			if (str_equal(token_string, STR_LIT("__declspec"))) {
+				token_kind = TOKEN_DECLSPEC;
+			}
+			break;
+		}
 	}
 
 	*out_token = (Token) {

@@ -7,6 +7,7 @@
 
 typedef enum {
 	DIAGNOSTICS_ENTRY_ERROR,
+	DIAGNOSTICS_ENTRY_CLI_ERROR,
 } DiagnosticsEntryKind;
 
 typedef struct DiagnosticsEntry DiagnosticsEntry;
@@ -56,5 +57,7 @@ DiagnosticsEntry* report_error(
 		PackedSourceRange source_range, 
 		String message, 
 		DiagnosticsEntry* parent);
+
+DiagnosticsEntry* report_cli_error(Diagnostics* diagnostics, const char* fmt, ...);
 
 #endif

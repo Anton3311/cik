@@ -1,5 +1,7 @@
 #include "diagnostics.h"
 
+#include <stdarg.h>
+
 void _print_indent(size_t count) {
 	for (size_t i = 0; i < count; i += 1) {
 		printf("\t");
@@ -20,9 +22,10 @@ void _diagnostics_print_entry_list(const Diagnostics* diagnostics,
 	}
 }
 
-void _diagnostics_print_entry(const Diagnostics* diagnostics,
+void _diagnostics_print_source_diagnostics(const Diagnostics* diagnostics,
 		const DiagnosticsEntry* entry,
 		size_t indent) {
+
 	// TODO: Handle multiple highlight ranges
 	assert(entry->highlighted_range_count == 1);
 
@@ -80,7 +83,21 @@ void _diagnostics_print_entry(const Diagnostics* diagnostics,
 	}
 
 	_print_indent(indent);
-	printf("%.*s: %.*s\n", STR_FMT(source_file->path), STR_FMT(entry->message));
+	printf("\033[1;31merror:\033[0m %.*s: %.*s\n", STR_FMT(source_file->path), STR_FMT(entry->message));
+}
+
+void _diagnostics_print_entry(const Diagnostics* diagnostics,
+		const DiagnosticsEntry* entry,
+		size_t indent) {
+
+	switch (entry->kind) {
+	case DIAGNOSTICS_ENTRY_ERROR:
+		_diagnostics_print_source_diagnostics(diagnostics, entry, indent);
+		break;
+	case DIAGNOSTICS_ENTRY_CLI_ERROR:
+		printf("\033[1;31merror:\033[0m %.*s\n", STR_FMT(entry->message));
+		break;
+	}
 
 	if (entry->first_child) {
 		_diagnostics_print_entry(diagnostics, entry->first_child, indent + 1);
@@ -91,27 +108,8 @@ void diagnostics_print(const Diagnostics* diagnostics) {
 	_diagnostics_print_entry_list(diagnostics, diagnostics->first, 0);
 }
 
-DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
-		SourceRange source_range,
-		String message,
-		DiagnosticsEntry* parent) {
-	assert(source_range.source_file);
-	assert(diagnostics->error_limit > 0);
-
-	const LineInfo* line_info = &source_range.source_file->line_info;
-
-	DiagnosticsEntry* entry = arena_alloc(diagnostics->allocator, DiagnosticsEntry);
-	entry->start_line = line_info_pos_to_source_location(line_info, source_range.start).line;
-	entry->end_line = line_info_pos_to_source_location(line_info, source_range.end).line;
-	entry->source_file = source_range.source_file;
-	entry->first_child = NULL;
-	entry->last_child = NULL;
-
-	entry->highlighted_ranges = arena_alloc(diagnostics->allocator, SourceRange);
-	entry->highlighted_ranges[0] = source_range;
-	entry->highlighted_range_count = 1;
-
-	entry->message = message;
+DiagnosticsEntry* _diagnostics_append(Diagnostics* diagnostics, DiagnosticsEntry* parent) {
+	DiagnosticsEntry* entry = arena_alloc_zeroed(diagnostics->allocator, DiagnosticsEntry);
 
 	if (diagnostics->error_count >= diagnostics->error_limit) {
 		return entry;
@@ -145,6 +143,31 @@ DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
 		}
 	}
 
+	return entry;
+}
+
+DiagnosticsEntry* diagnostics_report_error(Diagnostics* diagnostics,
+		SourceRange source_range,
+		String message,
+		DiagnosticsEntry* parent) {
+	assert(source_range.source_file);
+	assert(diagnostics->error_limit > 0);
+
+	const LineInfo* line_info = &source_range.source_file->line_info;
+
+	DiagnosticsEntry* entry = _diagnostics_append(diagnostics, parent);
+	entry->kind = DIAGNOSTICS_ENTRY_ERROR;
+	entry->start_line = line_info_pos_to_source_location(line_info, source_range.start).line;
+	entry->end_line = line_info_pos_to_source_location(line_info, source_range.end).line;
+	entry->source_file = source_range.source_file;
+	entry->first_child = NULL;
+	entry->last_child = NULL;
+
+	entry->highlighted_ranges = arena_alloc(diagnostics->allocator, SourceRange);
+	entry->highlighted_ranges[0] = source_range;
+	entry->highlighted_range_count = 1;
+
+	entry->message = message;
 	return entry;
 }
 
@@ -196,4 +219,16 @@ DiagnosticsEntry* report_error(
 			unpakced_range,
 			message,
 			parent);
+}
+
+DiagnosticsEntry* report_cli_error(Diagnostics* diagnostics, const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+
+	DiagnosticsEntry* entry = _diagnostics_append(diagnostics, NULL);
+	entry->kind = DIAGNOSTICS_ENTRY_CLI_ERROR;
+	entry->message = str_format_with_args(diagnostics->allocator, fmt, args);
+	
+	va_end(args);
+	return entry;
 }

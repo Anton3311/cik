@@ -1458,19 +1458,27 @@ AstNode* _parser_parse_type_def(Parser* parser) {
 	type_def->new_name_source_range = declarator.name_source_range;
 	type_def->aliased_type = declarator.type;
 
-	IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
-			IDENT_NAMESPACE_ALIAS,
-			IDENT_FIND_DEFAULT,
-			type_def->new_name);
-	if (!entry) {
-		entry = ident_storage_insert(parser->ident_storage,
+	if (type_def->new_name.length > 0) {
+		IdentifierEntry* entry = ident_storage_find(parser->ident_storage,
 				IDENT_NAMESPACE_ALIAS,
-				IDENT_TYPE_DEF,
-				type_def->new_name,
-				type_def->new_name_source_range);
-	}
+				IDENT_FIND_DEFAULT,
+				type_def->new_name);
 
-	entry->type_def = type_def;
+		if (!entry) {
+			entry = ident_storage_insert(parser->ident_storage,
+					IDENT_NAMESPACE_ALIAS,
+					IDENT_TYPE_DEF,
+					type_def->new_name,
+					type_def->new_name_source_range);
+		}
+
+		entry->type_def = type_def;
+	} else {
+		report_error(parser->diagnostics,
+				source_range_pack(keyword_token.source_range),
+				STR_LIT("typedef requires a name"),
+				NULL);
+	}
 
 	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	node->kind = AST_NODE_TYPE_DEF;

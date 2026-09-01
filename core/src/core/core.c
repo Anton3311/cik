@@ -337,7 +337,7 @@ String str_from_wstr(WideString string, Arena* allocator) {
 	return (String) { .v = buffer, .length = required_size };
 }
 
-static String str_format_with_args(Arena* allocator, const char* fmt, va_list args) {
+String str_format_with_args(Arena* allocator, const char* fmt, va_list args) {
 	va_list args_copy;
 	va_copy(args_copy, args);
 

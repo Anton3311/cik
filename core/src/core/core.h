@@ -516,6 +516,9 @@ inline String str_trim_line_ending(String str) {
 	return (String) {};
 }
 
+String str_format_with_args(Arena* allocator, const char* fmt, va_list args);
+String str_format(Arena* allocator, const char* fmt, ...);
+
 // Splits `string` at `by_char`, returns the part before the `by_char`, the part after `by_char`
 // is stored back in `string`. In case the end has been reached, returns a string with an underlying
 // pointer being NULL.

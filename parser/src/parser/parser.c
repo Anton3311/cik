@@ -169,6 +169,7 @@ IdentifierEntry* ident_storage_find(IdentifierStorage* storage,
 			return entry;
 		}
 
+		profile_scope_end();
 		return NULL;
 	case IDENT_FIND_IN_ALL_PARENT_SCOPES:
 		profile_scope_end();
@@ -1714,6 +1715,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 	profile_func_colored(PROFILE_COLOR);
 
 	if (type->kind != TYPE_STRUCT && type->kind != TYPE_UNION) {
+		profile_scope_end();
 		return EXPR_PARSE_ERROR;
 	}
 
@@ -1734,6 +1736,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 					field_name, 
 					expected_tokens, 
 					array_size(expected_tokens));
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
@@ -1754,6 +1757,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 					source_range_pack(field_name.source_range),
 					builder.string,
 					NULL);
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
@@ -1769,6 +1773,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 					equal, 
 					expected_tokens, 
 					array_size(expected_tokens));
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 	} else if (token.kind == TOKEN_LEFT_BRACKET) {
@@ -1782,6 +1787,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 					source_range_pack(token.source_range),
 					builder.string,
 					NULL);
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 
@@ -1800,6 +1806,7 @@ static ExprParseResult _parser_parse_compound_literal_entry(Parser* parser,
 					source_range_pack(preprocessor_view_next(parser->preprocessor).source_range),
 					STR_LIT("Too many initializers"),
 					NULL);
+			profile_scope_end();
 			return EXPR_PARSE_ERROR;
 		}
 

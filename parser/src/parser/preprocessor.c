@@ -190,6 +190,7 @@ bool include_history_contains(IncludeHistory* history, const SourceFile* source_
 	profile_scope_start(__func__);
 
 	if (history->count == 0) {
+		profile_scope_end();
 		return false;
 	}
 

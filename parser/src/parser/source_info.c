@@ -206,8 +206,12 @@ SourceFile* source_storage_append_from_path(SourceStorage* storage, String path,
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 	String source_code = read_entire_file_to_str(str_to_cstr(path, temp_allocator), storage->allocator);
-	SourceFile* source_file = source_storage_append(storage, path, source_code);
 	arena_end_temp(temp);
+
+	SourceFile* source_file = NULL;
+	if (source_code.v != NULL) {
+		source_file = source_storage_append(storage, path, source_code);
+	}
 
 	profile_scope_end();
 	return source_file;

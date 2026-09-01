@@ -71,6 +71,10 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 			context->source_file_path,
 			context->temp_arena);
 
+	if (source_file == NULL) {
+		return (LoweredUnit) {};
+	}
+
 	Preprocessor preprocessor = {};
 	preprocessor_init(&preprocessor,
 			context->source_storage,

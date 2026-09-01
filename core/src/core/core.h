@@ -212,6 +212,10 @@ inline void heap_release(void* ptr) {
 
 Allocator heap_allocator_new();
 
+#define KiB(a) ((a) * 1024)
+#define MiB(a) ((a) * 1024 * 1024)
+#define GiB(a) ((a) * 1024 * 1024 * 1024)
+
 //
 // Panic Allocator
 //

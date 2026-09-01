@@ -207,13 +207,13 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 
 int main(int argc, char *argv[]) {
 	Arena arena = {};
-	arena.capacity = align_to_page_size(512 * 8 * 4096);
+	arena.capacity = align_to_page_size(MiB(32));
 
 	Arena diagnostics_arena = {};
-	diagnostics_arena.capacity = align_to_page_size(512 * 8 * 4096);
+	diagnostics_arena.capacity = align_to_page_size(MiB(4));
 
 	Arena temp_arena = {};
-	temp_arena.capacity = align_to_page_size(512 * 4096);
+	temp_arena.capacity = align_to_page_size(MiB(4));
 
 	String install_path = {};
 	if (!win_sdk_get_install_path(&arena, &install_path)) {
@@ -297,8 +297,8 @@ int main(int argc, char *argv[]) {
 				&arena);
 
 		Arena generated_tokens_arena = { .capacity = 128 * 4096 };
-		Arena ident_arena = { .capacity = 128 * 4096 };
-		Arena ast_arena = { .capacity = 512 * 4096 };
+		Arena ident_arena = { .capacity = MiB(16) };
+		Arena ast_arena = { .capacity = MiB(32) };
 
 		SymbolMap* imported_symbol_maps = arena_alloc_array(&arena, SymbolMap, source_files.count);
 		SymbolMap* exported_symbol_maps = arena_alloc_array(&arena, SymbolMap, source_files.count);

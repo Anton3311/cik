@@ -42,13 +42,13 @@ inline StringArray str_storage_to_array(StringStorage* storage) {
 //
 
 typedef enum {
-	LOOP_CONTROL_BREAK,
-	LOOP_CONTROL_CONTINUE,
-} LoopControlKind;
+	CONTROL_FLOW_BREAK,
+	CONTROL_FLOW_CONTINUE,
+} ControlFlowKind;
 
-typedef struct LoopControlStmt LoopControlStmt;
-struct LoopControlStmt {
-	LoopControlKind kind;
+typedef struct ControlFlowStmt ControlFlowStmt;
+struct ControlFlowStmt {
+	ControlFlowKind kind;
 
 	// A region where this `break` or `continue` statement appears
 	InstrIndex region;
@@ -57,7 +57,7 @@ struct LoopControlStmt {
 	InstrIndex* var_values;
 	InstrIndex* arg_values;
 
-	LoopControlStmt* next;
+	ControlFlowStmt* next;
 };
 
 typedef struct {
@@ -71,9 +71,26 @@ typedef struct {
 
 	InstrIndex io_state;
 
+	// The total number of variables in the function.
+	//
+	// Invariant `var_count == function->var_count`.
 	size_t var_count;
+	// The size is `var_count`.
+	// Index using the variable id.
+	//
+	// Each element is only assigned when the varialbe definition is encountered, otherwise it stays
+	// as `NULL`.
 	const Variable** vars;
+	// The size is `var_count`.
+	// Index using the variable id.
+	//
+	// Elements are assigned in the same way as for `vars`.
 	const Scope** var_parent_scopes;
+	// The size is `var_count`.
+	// Index using the variable id.
+	//
+	// If variable definition has already been encountered, the corresponding element will contain a
+	// valid instruction, otherwise `INVALID_INSTR_INDEX`
 	InstrIndex* var_values;
 	InstrIndex* arg_states;
 
@@ -83,8 +100,8 @@ typedef struct {
 	SymbolMap* symbol_map;
 
 	AstNode* current_loop;
-	LoopControlStmt* current_loop_control_stmts;
-	LoopControlStmt* free_loop_control_stmt;
+	ControlFlowStmt* current_control_flow_stmts;
+	ControlFlowStmt* free_control_flow_stmt;
 
 	// An array internal to the compiler, which is used to defer filling of the
 	// `function_call_signatures`. The array is allocated using the `temp_allocator`.
@@ -95,7 +112,7 @@ typedef struct {
 	// Number of calls currently stored in `function_calls`.
 	size_t function_call_count;
 
-	// Signature used to tell the backend how to call a function
+	// Signatures used to tell the backend how to call functions
 	//
 	// Size is `function->function_call_count`
 	AbiSignature* function_call_signatures;

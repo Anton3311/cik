@@ -127,15 +127,15 @@ static TypeLayout _type_get_layout(const TypeContext* context, const Type* type)
 	return (TypeLayout) {};
 }
 
-static LoopControlStmt* _alloc_loop_control_stmt(FunctionCompiler* compiler) {
-	if (compiler->free_loop_control_stmt) {
-		LoopControlStmt* stmt = compiler->free_loop_control_stmt;
-		compiler->free_loop_control_stmt = stmt->next;
+static ControlFlowStmt* _alloc_control_flow_stmt(FunctionCompiler* compiler) {
+	if (compiler->free_control_flow_stmt) {
+		ControlFlowStmt* stmt = compiler->free_control_flow_stmt;
+		compiler->free_control_flow_stmt = stmt->next;
 		stmt->next = NULL;
 		return stmt;
 	}
 
-	LoopControlStmt* stmt = heap_alloc(LoopControlStmt);
+	ControlFlowStmt* stmt = heap_alloc(ControlFlowStmt);
 	stmt->next = NULL;
 
 	size_t arg_count = compiler->function->proto.parameter_count;
@@ -145,20 +145,20 @@ static LoopControlStmt* _alloc_loop_control_stmt(FunctionCompiler* compiler) {
 	return stmt;
 }
 
-static void _free_loop_control_stmt(FunctionCompiler* compiler, LoopControlStmt* stmt) {
+static void _free_control_flow_stmt(FunctionCompiler* compiler, ControlFlowStmt* stmt) {
 	assert(stmt != NULL);
 
-	LoopControlStmt* last = stmt;
+	ControlFlowStmt* last = stmt;
 	for (; last->next != NULL; last = last->next) {}
 
-	last->next = compiler->free_loop_control_stmt;
-	compiler->free_loop_control_stmt = stmt;
+	last->next = compiler->free_control_flow_stmt;
+	compiler->free_control_flow_stmt = stmt;
 }
 
-static void _free_all_loop_control_stmts(FunctionCompiler* compiler) {
-	LoopControlStmt* stmt = compiler->free_loop_control_stmt;
+static void _free_all_control_flow_stmts(FunctionCompiler* compiler) {
+	ControlFlowStmt* stmt = compiler->free_control_flow_stmt;
 	while (stmt) {
-		LoopControlStmt* next = stmt->next;
+		ControlFlowStmt* next = stmt->next;
 
 		heap_release(stmt->var_values);
 		heap_release(stmt->arg_values);
@@ -1716,7 +1716,7 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 		InstrIndex phi_index,
 		size_t value_index,
 		bool is_var,
-		const LoopControlStmt* loop_control_stmts,
+		const ControlFlowStmt* control_flow_stmts,
 		size_t loop_control_stmt_count) {
 	profile_scope_start(__func__);
 
@@ -1735,7 +1735,7 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	InstrIndex* select_inputs = &instr_buffer->inputs_buffer[select_inputs_buffer.start];
 
 	size_t loop_control_index = 0;
-	for (const LoopControlStmt* stmt = loop_control_stmts;
+	for (const ControlFlowStmt* stmt = control_flow_stmts;
 			stmt != NULL;
 			stmt = stmt->next, loop_control_index += 1) {
 
@@ -1783,23 +1783,23 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 	// Although these are not control statements, chaining them together makes everything flow
 	// through the same path in `_fill_phi_variants`, without the need to manually add
 	// `INSTR_SELECT` for the original value and the ones produced inside the loop.
-	LoopControlStmt original = {};
+	ControlFlowStmt original = {};
 	original.region = pre_loop_region;
 	original.var_values = original_var_values;
 	original.arg_values = original_arg_values;
 
-	LoopControlStmt inner = {};
+	ControlFlowStmt inner = {};
 	inner.region = final_body_region;
 	inner.var_values = compiler->var_values;
 	inner.arg_values = compiler->arg_states;
 
 	original.next = &inner;
-	inner.next = compiler->current_loop_control_stmts;
+	inner.next = compiler->current_control_flow_stmts;
 
-	LoopControlStmt* control_stmts = &original;
+	ControlFlowStmt* control_stmts = &original;
 
 	size_t control_stmt_count = 0;
-	for (LoopControlStmt* stmt = control_stmts; stmt != NULL; stmt = stmt->next) {
+	for (ControlFlowStmt* stmt = control_stmts; stmt != NULL; stmt = stmt->next) {
 		control_stmt_count += 1;
 	}
 
@@ -1836,12 +1836,12 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 }
 
 static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
-		LoopControlStmt* stmts,
+		ControlFlowStmt* stmts,
 		InstrIndex break_target,
 		InstrIndex continue_target) {
 	profile_scope_start(__func__);
 
-	for (LoopControlStmt* stmt = stmts;
+	for (ControlFlowStmt* stmt = stmts;
 			stmt != NULL;
 			stmt = stmt->next) {
 
@@ -1852,9 +1852,9 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 		assert(jump->kind == INSTR_JUMP);
 		assert(jump->jump.target_region.value == INVALID_INSTR_INDEX.value);
 
-		if (stmt->kind == LOOP_CONTROL_BREAK) {
+		if (stmt->kind == CONTROL_FLOW_BREAK) {
 			jump->jump.target_region = break_target;
-		} else if (stmt->kind == LOOP_CONTROL_CONTINUE) {
+		} else if (stmt->kind == CONTROL_FLOW_CONTINUE) {
 			jump->jump.target_region = continue_target;
 		} else {
 			unreachable();
@@ -1921,9 +1921,9 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
 	AstNode* previous_loop = compiler->current_loop;
-	LoopControlStmt* previous_loop_control_stmts = compiler->current_loop_control_stmts;
+	ControlFlowStmt* previous_control_flow_stmts = compiler->current_control_flow_stmts;
 	compiler->current_loop = node;
-	compiler->current_loop_control_stmts = NULL;
+	compiler->current_control_flow_stmts = NULL;
 
 	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -2102,18 +2102,18 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
-			compiler->current_loop_control_stmts,
+			compiler->current_control_flow_stmts,
 			post_loop_region_index, 
 			condition_region);
 
 	arena_end_temp(temp);
 
-	if (compiler->current_loop_control_stmts) {
-		_free_loop_control_stmt(compiler, compiler->current_loop_control_stmts);
+	if (compiler->current_control_flow_stmts) {
+		_free_control_flow_stmt(compiler, compiler->current_control_flow_stmts);
 	}
 
 	compiler->current_loop = previous_loop;
-	compiler->current_loop_control_stmts = previous_loop_control_stmts;
+	compiler->current_control_flow_stmts = previous_control_flow_stmts;
 
 	profile_scope_end();
 	return post_loop_region_index;
@@ -2130,9 +2130,9 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 
 	// Save the previous loop state
 	AstNode* previous_loop = compiler->current_loop;
-	LoopControlStmt* previous_loop_control_stmts = compiler->current_loop_control_stmts;
+	ControlFlowStmt* previous_control_flow_stmts = compiler->current_control_flow_stmts;
 	compiler->current_loop = node;
-	compiler->current_loop_control_stmts = NULL;
+	compiler->current_control_flow_stmts = NULL;
 
 	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -2273,19 +2273,19 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
-			compiler->current_loop_control_stmts,
+			compiler->current_control_flow_stmts,
 			post_loop_region, 
 			body_block.initial_region);
 
 	arena_end_temp(temp);
 
 	// Restore the previous loop state
-	if (compiler->current_loop_control_stmts) {
-		_free_loop_control_stmt(compiler, compiler->current_loop_control_stmts);
+	if (compiler->current_control_flow_stmts) {
+		_free_control_flow_stmt(compiler, compiler->current_control_flow_stmts);
 	}
 
 	compiler->current_loop = previous_loop;
-	compiler->current_loop_control_stmts = previous_loop_control_stmts;
+	compiler->current_control_flow_stmts = previous_control_flow_stmts;
 
 	profile_scope_end();
 	return post_loop_region;
@@ -2576,6 +2576,13 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 	profile_scope_end();
 }
 
+static void _compile_switch(FunctionCompiler* compiler, AstNode* stmt) {
+	profile_scope_start(__func__);
+	assert(stmt->kind == AST_NODE_SWITCH);
+
+	profile_scope_end();
+}
+
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, AstNode* first_node) {
 	profile_scope_start(__func__);
 
@@ -2714,10 +2721,10 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 
 			region_instr->region.last_instr = jump;
 
-			LoopControlStmt* control = _alloc_loop_control_stmt(compiler);
+			ControlFlowStmt* control = _alloc_control_flow_stmt(compiler);
 			control->kind = node->kind == AST_NODE_BREAK
-				? LOOP_CONTROL_BREAK
-				: LOOP_CONTROL_CONTINUE;
+				? CONTROL_FLOW_BREAK
+				: CONTROL_FLOW_CONTINUE;
 			control->region = region_instr_index;
 
 			size_t arg_count = compiler->function->proto.parameter_count;
@@ -2725,8 +2732,8 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			array_copy(control->var_values, compiler->var_values, compiler->var_count);
 			array_copy(control->arg_values, compiler->arg_states, arg_count);
 
-			control->next = compiler->current_loop_control_stmts;
-			compiler->current_loop_control_stmts = control;
+			control->next = compiler->current_control_flow_stmts;
+			compiler->current_control_flow_stmts = control;
 			break;
 		}
 		case AST_NODE_EXPR: 
@@ -2978,14 +2985,26 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	assert(body);
 
 	compiler->current_loop = NULL;
-	compiler->current_loop_control_stmts = NULL;
-	compiler->free_loop_control_stmt = NULL;
+	compiler->current_control_flow_stmts = NULL;
+	compiler->free_control_flow_stmt = NULL;
+
+	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
 	// Allocate var states buffer
 	compiler->var_count = compiler->function->var_count;
-	compiler->vars = arena_alloc_array_zeroed(compiler->allocator, const Variable*, compiler->var_count);
-	compiler->var_values = arena_alloc_array(compiler->allocator, InstrIndex, compiler->var_count);
-	compiler->var_parent_scopes = arena_alloc_array_zeroed(compiler->allocator, const Scope*, compiler->var_count);
+	compiler->vars = arena_alloc_array_zeroed(compiler->temp_allocator,
+			const Variable*,
+			compiler->var_count);
+	compiler->var_values = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			compiler->var_count);
+	compiler->var_parent_scopes = arena_alloc_array_zeroed(compiler->temp_allocator,
+			const Scope*,
+			compiler->var_count);
+
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		compiler->var_values[i] = INVALID_INSTR_INDEX;
+	}
 
 	compiler->function_call_count = 0;
 	compiler->function_call_signatures = arena_alloc_array(compiler->allocator,
@@ -2995,10 +3014,6 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	compiler->function_calls = arena_alloc_array(compiler->temp_allocator,
 			Call*,
 			compiler->function->function_call_count);
-
-	for (size_t i = 0; i < compiler->var_count; i += 1) {
-		compiler->var_values[i] = INVALID_INSTR_INDEX;
-	}
 
 	// Allocate`arg_states` buffer
 	compiler->arg_states = arena_alloc_array(compiler->allocator,
@@ -3014,16 +3029,20 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	// Create the initial `io_state`
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, INVALID_INSTR_INDEX);
 
-	// Setup initial `INSTR_LOAD_ARG`
+	// Setup initial `INSTR_LOAD_ARG`.
+	//
+	// NOTE: This has to happen after the initial `io_state` has been set up. Since argument loads
+	//       might use memory loads that requires a valid `io_state`.
 	_compile_argument_loads(compiler);
 
-	CompiledBlockRegions body_block = _compile_block_to_region(compiler, compiler->function->body->nodes.first);
+	CompiledBlockRegions body_block = _compile_block_to_region(compiler,
+			compiler->function->body->nodes.first);
 
 	assert(compiler->current_loop == NULL);
-	assert(compiler->current_loop_control_stmts == NULL);
+	assert(compiler->current_control_flow_stmts == NULL);
 
 	// Free the loop control staff, since it is no longer needed
-	_free_all_loop_control_stmts(compiler);
+	_free_all_control_flow_stmts(compiler);
 
 	if (compiler->function->proto.return_type.kind == TYPE_VOID) {
 		InstrIndex final_region = body_block.final_region;
@@ -3055,6 +3074,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	compiled_function.function_call_signatures = compiler->function_call_signatures;
 	compiled_function.function_call_signature_count = compiler->function_call_count;
 
+	arena_end_temp(temp);
 	profile_scope_end();
 	return compiled_function;
 }

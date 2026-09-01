@@ -166,6 +166,7 @@ typedef struct {
 	IdentifierStorage* ident_storage;
 
 	bool inside_a_loop;
+	bool inside_a_switch;
 
 	uint32_t next_var_id;
 

@@ -4220,7 +4220,12 @@ static AstNode* _parser_parse_switch(Parser* parser) {
 
 	Token body_token = preprocessor_view_next(parser->preprocessor);
 	if (body_token.kind != TOKEN_SEMICOLON) {
+		bool previous_inside_a_switch = parser->inside_a_switch;
+		parser->inside_a_switch = true;
+
 		node->switch_stmt.body = _parser_parse_single_node(parser, body_token);
+
+		parser->inside_a_switch = previous_inside_a_switch;
 	}
 
 	profile_scope_end();
@@ -4406,7 +4411,7 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	case TOKEN_KEYWORD_BREAK: {
 		preprocessor_next_token(parser->preprocessor);
 
-		if (!parser->inside_a_loop) {
+		if (!parser->inside_a_loop && !parser->inside_a_switch) {
 			diagnostics_report_error(parser->diagnostics,
 					initial_token.source_range,
 					STR_LIT("`break` outside of a loop"),

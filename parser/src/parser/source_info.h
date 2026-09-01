@@ -33,6 +33,8 @@ typedef struct {
 
 typedef struct {
 	uint32_t line_count;
+
+	// Size of this array is `line_count + 1`. The last element is `source_length`.
 	uint32_t* line_starts;
 	size_t source_length;
 } LineInfo;

@@ -35,6 +35,8 @@ PackedSourceRange source_range_merge(PackedSourceRange a, PackedSourceRange b) {
 }
 
 LineInfo line_info_from_source(Arena* allocator, String source) {
+	profile_scope_start(__func__);
+
 	LineInfo line_info = {};
 	line_info.line_starts = arena_alloc_array(allocator, uint32_t, 0);
 	line_info.line_count = 0;
@@ -62,6 +64,7 @@ LineInfo line_info_from_source(Arena* allocator, String source) {
 
 	line_info.source_length = source.length;
 
+	profile_scope_end();
 	return line_info;
 }
 

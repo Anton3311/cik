@@ -1568,10 +1568,15 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 		printer_end_struct(printer);
 		break;
 	case AST_NODE_CASE:
-		printer_begin_struct(printer, "case");
-		printer_field(printer, "expr");
-		print_expr(printer, node->case_stmt.value);
-		printer_end_struct(printer);
+		if (node->case_stmt.value) {
+			printer_begin_struct(printer, "case");
+			printer_field(printer, "expr");
+			print_expr(printer, node->case_stmt.value);
+			printer_end_struct(printer);
+		} else {
+			printer_begin_struct(printer, "default");
+			printer_end_struct(printer);
+		}
 		break;
 	}
 }

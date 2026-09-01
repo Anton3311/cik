@@ -117,6 +117,7 @@ String token_kind_to_string(TokenKind kind) {
 	case TOKEN_KEYWORD_SIZE_OF: return STR_LIT("sizeof");
 	case TOKEN_KEYWORD_SWITCH: return STR_LIT("switch");
 	case TOKEN_KEYWORD_CASE: return STR_LIT("case");
+	case TOKEN_KEYWORD_DEFAULT: return STR_LIT("default");
 
 	case TOKEN_KEYWORD_VOID: return STR_LIT("void");
 	case TOKEN_KEYWORD_SIZE_T: return STR_LIT("size_t");
@@ -277,6 +278,8 @@ bool _tokenizer_try_create_ident_token(Tokenizer* tokenizer, Token* out_token) {
 				token_kind = TOKEN_KEYWORD_INT32;
 			} else if (str_equal(token_string, STR_LIT("__int64"))) {
 				token_kind = TOKEN_KEYWORD_INT64;
+			} else if (str_equal(token_string, STR_LIT("default"))) {
+				token_kind = TOKEN_KEYWORD_DEFAULT;
 			}
 			break;
 		case 8:

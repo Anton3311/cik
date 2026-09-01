@@ -4258,6 +4258,29 @@ static AstNode* _parser_parse_case(Parser* parser) {
 	return node;
 }
 
+static AstNode* _parser_parse_default_case(Parser* parser) {
+	profile_func_colored(PROFILE_COLOR);
+
+	Token case_token = preprocessor_next_token(parser->preprocessor);
+	assert(case_token.kind == TOKEN_KEYWORD_DEFAULT);
+
+	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+	node->kind = AST_NODE_CASE;
+	node->case_stmt.value = NULL;
+
+	Token colon = preprocessor_next_token(parser->preprocessor);
+	if (colon.kind != TOKEN_COLON) {
+		TokenKind expected_tokens[] = { TOKEN_COLON };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				colon,
+				expected_tokens,
+				array_size(expected_tokens));
+	}
+
+	profile_scope_end();
+	return node;
+}
+
 AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
 	case TOKEN_LEFT_BRACE: {
@@ -4420,6 +4443,8 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		return _parser_parse_switch(parser);
 	case TOKEN_KEYWORD_CASE:
 		return _parser_parse_case(parser);
+	case TOKEN_KEYWORD_DEFAULT:
+		return _parser_parse_default_case(parser);
 	default: {
 		// TODO: Actually use the inline information
 		Token maybe_inline = preprocessor_view_next(parser->preprocessor);

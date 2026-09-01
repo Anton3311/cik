@@ -743,6 +743,7 @@ struct Switch {
 };
 
 struct Case {
+	// If `value` is null this is a `default` case.
 	Expr* value;
 };
 

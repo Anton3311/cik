@@ -292,6 +292,8 @@ void preprocessor_init(Preprocessor* state,
 		Arena* allocator,
 		Arena* temp_allocator,
 		Arena* generated_tokens_allocator) {
+	profile_scope_start(__func__);
+
 	assert(allocator != generated_tokens_allocator);
 	assert(temp_allocator != generated_tokens_allocator);
 
@@ -378,6 +380,8 @@ void preprocessor_init(Preprocessor* state,
 		.capacity = call_stack_capacity,
 		.frames = arena_alloc_array(state->allocator, MacroCall, call_stack_capacity),
 	};
+
+	profile_scope_end();
 }
 
 void preprocessor_release(Preprocessor* state) {
@@ -633,6 +637,7 @@ TokenArray _generate_directive_token_stream(Arena* allocator,
 		Tokenizer* tokenizer,
 		const SourceFile* source_file,
 		uint32_t initial_line_index) {
+	profile_scope_start(__func__);
 
 	TokenArray tokens = {};
 	tokens.tokens = arena_alloc_array(allocator, Token, 0);
@@ -667,6 +672,7 @@ TokenArray _generate_directive_token_stream(Arena* allocator,
 		}
 	}
 
+	profile_scope_end();
 	return tokens;
 }
 
@@ -693,7 +699,8 @@ void _macro_call_stack_pop(MacroCallStack* call_stack) {
 	//       So validate here, that nothing was allocated in that process.
 	assert(macro_call->arena_size_before_call <= macro_call->arena_size_after_call);
 	assert_msg(call_allocator->allocated >= macro_call->arena_size_after_call,
-			"`state->allocator` was most likely reset during the expansion of the current macro call");
+			"`state->allocator` was most likely reset during the expansion of the current macro"
+			" call");
 	assert_msg(call_allocator->allocated == macro_call->arena_size_after_call,
 			"`state->allocator` was used in an allocation during a macro call expansion. "
 			"Ending the macro call will lead to invalidation of "
@@ -701,13 +708,17 @@ void _macro_call_stack_pop(MacroCallStack* call_stack) {
 
 	// NOTE: Deallocate the call memory, by reseting the arena size back,
 	//       to where it was before the call.
-	arena_end_temp((ArenaRegion) {.arena = call_allocator, .allocated_state = macro_call->arena_size_before_call });
+	arena_end_temp((ArenaRegion) {
+		.arena = call_allocator,
+		.allocated_state = macro_call->arena_size_before_call
+	});
 
 	// And finally pop the frame
 	call_stack->depth -= 1;
 }
 
 void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition* macro) {
+	profile_scope_start(__func__);
 	macro->tokens = arena_alloc_array(state->allocator, Token, 0);
 
 	ArenaRegion hints_temp_region = arena_begin_temp(state->temp_allocator);
@@ -790,6 +801,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 
 					// NOTE: Terminate parsing here
 					arena_end_temp(hints_temp_region);
+					profile_scope_end();
 					return;
 				}
 
@@ -810,6 +822,7 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 
 					// NOTE: Terminate parsing here
 					arena_end_temp(hints_temp_region);
+					profile_scope_end();
 					return;
 				}
 
@@ -881,14 +894,17 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 	}
 
 	arena_end_temp(hints_temp_region);
+	profile_scope_end();
 }
 
 bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
+	profile_scope_start(__func__);
 	ArenaRegion temp_region = arena_begin_temp(state->allocator);
 
 	Token name_token = tokenizer_next_token(state->tokenizer);
 	if (name_token.kind != TOKEN_IDENT) {
 		diagnostics_report_error(state->diagnostics, name_token.source_range, STR_LIT("Expected macro name"), NULL);
+		profile_scope_end();
 		return false;
 	}
 
@@ -954,25 +970,31 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 						array_size(expected_tokens));
 
 				arena_end_temp(temp_region);
+				profile_scope_end();
 				return false;
 			}
 		}
 	}
 
 	_preprocessor_parse_macro_token_stream(state, macro);
+	profile_scope_end();
 	return true;
 }
 
 size_t _macro_find_param_by_name(const MacroDefinition* macro, String param_name) {
+	profile_scope_start(__func__);
 	assert(macro->style == MACRO_STYLE_FUNCTION);
 
+	size_t result = SIZE_MAX;
 	for (size_t i = 0; i < macro->parameter_count; i += 1) {
 		if (str_equal(macro->parameter_names[i], param_name)) {
-			return i;
+			result = i;
+			break;
 		}
 	}
 
-	return SIZE_MAX;
+	profile_scope_end();
+	return result;
 }
 
 //
@@ -1226,6 +1248,8 @@ Expr* _preprocessor_parse_expr_operand(Preprocessor* state,
 }
 
 Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider, Arena* allocator, bool expand_macro_calls) {
+	profile_scope_start(__func__);
+
 	Expr* expr = _preprocessor_parse_expr_operand(state, token_provider, allocator, expand_macro_calls);
 	Expr** current_expr = &expr;
 
@@ -1265,6 +1289,7 @@ Expr* _preprocessor_parse_expr(Preprocessor* state, TokenProvider token_provider
 		}
 	}
 
+	profile_scope_end();
 	return expr;
 }
 
@@ -1439,6 +1464,7 @@ DirectiveKind _directive_kind_from_string(String string) {
 }
 
 static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result, ParsedDirective directive) {
+	profile_scope_start(__func__);
 	ArenaRegion temp = arena_begin_temp(state->temp_allocator);
 
 	ArrayTokenProvider fallback_provider_state;
@@ -1471,6 +1497,7 @@ static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result,
 
 	if (!expr) {
 		arena_end_temp(temp);
+		profile_scope_end();
 		return false;
 	}
 
@@ -1485,6 +1512,7 @@ static bool _preprocessor_parse_condition(Preprocessor* state, bool* out_result,
 	}
 
 	arena_end_temp(temp);
+	profile_scope_end();
 	return true;
 }
 
@@ -1900,6 +1928,7 @@ bool _preprocessor_parse_directive(Preprocessor* state, ParsedDirective directiv
 }
 
 bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirective* out_directive) {
+	profile_scope_start(__func__);
 	assert(out_directive != NULL);
 
 	Token hash_token = tokenizer_next_token(state->tokenizer);
@@ -1914,6 +1943,8 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 				directive_name_token,
 				expected_tokens,
 				array_size(expected_tokens));
+
+		profile_scope_end();
 		return false;
 	}
 
@@ -1927,6 +1958,8 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 				directive_name_token.source_range,
 				builder.string,
 				NULL);
+
+		profile_scope_end();
 		return false;
 	}
 
@@ -1936,6 +1969,8 @@ bool _preprocessor_parse_directive_statement(Preprocessor* state, ParsedDirectiv
 		.start = hash_token.source_range.start,
 		.end = directive_name_token.source_range.end,
 	};
+
+	profile_scope_end();
 	return true;
 }
 

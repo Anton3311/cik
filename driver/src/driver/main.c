@@ -72,6 +72,9 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 			context->temp_arena);
 
 	if (source_file == NULL) {
+		report_cli_error(context->diagnostics,
+				"File '%.*s' not found",
+				STR_FMT(context->source_file_path));
 		return (LoweredUnit) {};
 	}
 

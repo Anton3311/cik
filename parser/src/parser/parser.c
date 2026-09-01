@@ -4178,6 +4178,55 @@ static AstNode* _parser_parse_for_loop(Parser* parser) {
 	return loop;
 }
 
+static AstNode* _parser_parse_switch(Parser* parser) {
+	profile_func_colored(PROFILE_COLOR);
+
+	assert(preprocessor_next_token(parser->preprocessor).kind == TOKEN_KEYWORD_SWITCH);
+
+	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+	node->kind = AST_NODE_SWITCH;
+
+	Token left_paren = preprocessor_next_token(parser->preprocessor);
+	if (left_paren.kind != TOKEN_LEFT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_LEFT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				left_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		profile_scope_end();
+		return NULL;
+	}
+
+	node->switch_stmt.expr = arena_alloc_zeroed(parser->ast_allocator, Expr);
+
+	ExprParseResult expr_result = _parser_try_parse_expr(parser, node->switch_stmt.expr);
+	if (expr_result) {
+		report_error(parser->diagnostics,
+				source_range_pack(left_paren.source_range),
+				STR_LIT("Expected an expression after '('"),
+				NULL);
+	}
+
+	Token right_paren = preprocessor_next_token(parser->preprocessor);
+	if (right_paren.kind != TOKEN_RIGHT_PAREN) {
+		TokenKind expected_tokens[] = { TOKEN_RIGHT_PAREN };
+		diagnostics_report_unexpected_token(parser->diagnostics,
+				right_paren,
+				expected_tokens,
+				array_size(expected_tokens));
+		profile_scope_end();
+		return NULL;
+	}
+
+	Token body_token = preprocessor_view_next(parser->preprocessor);
+	if (body_token.kind != TOKEN_SEMICOLON) {
+		node->switch_stmt.body = _parser_parse_single_node(parser, body_token);
+	}
+
+	profile_scope_end();
+	return node;
+}
+
 AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	switch (initial_token.kind) {
 	case TOKEN_LEFT_BRACE: {
@@ -4336,6 +4385,8 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		stmt->kind = AST_NODE_CONTINUE;
 		return stmt;
 	}
+	case TOKEN_KEYWORD_SWITCH:
+		return _parser_parse_switch(parser);
 	default: {
 		// TODO: Actually use the inline information
 		Token maybe_inline = preprocessor_view_next(parser->preprocessor);

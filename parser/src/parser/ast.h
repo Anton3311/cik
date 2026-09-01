@@ -36,6 +36,8 @@ typedef struct ForLoop ForLoop;
 typedef struct ArrayIndex ArrayIndex;
 typedef struct CompoundLiteralEntry CompoundLiteralEntry;
 typedef struct CompoundLiteral CompoundLiteral;
+typedef struct Switch Switch;
+typedef struct Case Case;
 
 //
 // AST
@@ -57,6 +59,8 @@ typedef enum {
 	AST_NODE_FOR_LOOP,
 	AST_NODE_BREAK,
 	AST_NODE_CONTINUE,
+	AST_NODE_SWITCH,
+	AST_NODE_CASE,
 } AstNodeKind;
 
 typedef enum {
@@ -728,6 +732,21 @@ struct ForLoop {
 };
 
 //
+// Switch
+//
+
+struct Switch {
+	Expr* expr;
+	AstNode* body;
+	uint32_t case_count;
+	bool has_default;
+};
+
+struct Case {
+	Expr* value;
+};
+
+//
 // Node
 //
 
@@ -750,6 +769,8 @@ struct AstNode {
 		IfStmt if_stmt;
 		WhileLoop while_loop;
 		ForLoop for_loop;
+		Switch switch_stmt;
+		Case case_stmt;
 	};
 };
 

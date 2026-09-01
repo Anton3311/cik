@@ -1557,6 +1557,22 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 	case AST_NODE_CONTINUE:
 		printf("continue\n");
 		break;
+	case AST_NODE_SWITCH:
+		printer_begin_struct(printer, "switch");
+		printer_field(printer, "expr");
+		print_expr(printer, node->switch_stmt.expr);
+
+		printer_field(printer, "body");
+		print_single_node(printer, node->switch_stmt.body);
+
+		printer_end_struct(printer);
+		break;
+	case AST_NODE_CASE:
+		printer_begin_struct(printer, "case");
+		printer_field(printer, "expr");
+		print_expr(printer, node->case_stmt.value);
+		printer_end_struct(printer);
+		break;
 	}
 }
 

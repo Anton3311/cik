@@ -3271,6 +3271,13 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 	AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	node->kind = function_def->is_forward_declared ? AST_NODE_FUNCTION_DECL : AST_NODE_FUNCTION_DEF;
 	node->function_def = function_def;
+
+	if (node->kind == AST_NODE_FUNCTION_DEF) {
+		assert(node->function_def->body);
+		node->function_def->id = parser->ast->stats.function_def_count;
+		parser->ast->stats.function_def_count += 1;
+	}
+
 	profile_scope_end();
 	return node;
 }

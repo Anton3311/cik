@@ -657,6 +657,7 @@ struct Function {
 	// The function type
 	Type type;
 
+	uint32_t id;
 	bool is_inline;
 	bool is_forward_declared;
 	Scope* body;
@@ -758,6 +759,7 @@ struct AstNode {
 
 typedef struct {
 	uint32_t compound_type_count;
+	uint32_t function_def_count;
 } ASTStatistics;
 
 typedef struct {

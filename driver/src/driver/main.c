@@ -127,18 +127,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 
 	compiler_collect_imported_symbols(&parsed_ast, context->imported_symbol_map);
 
-	uint32_t function_count = 0;
-	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
-		if (node->kind != AST_NODE_FUNCTION_DEF) {
-			continue;
-		}
-
-		if (node->function_def->body == NULL) {
-			continue;
-		}
-
-		function_count += 1;
-	}
+	uint32_t function_count = parsed_ast.stats.function_def_count;
 
 	LoweredFunction* lowered_functions = arena_alloc_array(context->arena,
 			LoweredFunction,
@@ -147,7 +136,6 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 	StringStorage string_storage = {};
 	string_storage.allocator = heap_allocator_new();
 
-	uint32_t function_index = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {
 		if (node->kind != AST_NODE_FUNCTION_DEF) {
 			continue;
@@ -167,7 +155,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 			symbol.linkage = func->storage_specifier == STORAGE_SPEC_STATIC
 				? SYMBOL_LINKAGE_INTERNAL
 				: SYMBOL_LINKAGE_EXTERNAL_STATIC;
-			symbol.data.func_index = function_index;
+			symbol.data.func_index = func->id;
 
 			if (symbol.linkage == SYMBOL_LINKAGE_INTERNAL) {
 				symbol.linkage_data.internal.compilation_unit_index = context->unit_index;
@@ -200,10 +188,9 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 				arena_allocator_new(context->temp_arena));
 		gen.function_call_signatures = compiled_function.function_call_signatures;
 
-		lowered_functions[function_index] = x64_generate_code(&gen, compiled_function.start_region);
+		lowered_functions[func->id] = x64_generate_code(&gen, compiled_function.start_region);
 
 		instr_buffer_release(&gen.instr_buffer);
-		function_index += 1;
 	}
 
 	// Free string storage

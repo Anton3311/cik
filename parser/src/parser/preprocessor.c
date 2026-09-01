@@ -1945,22 +1945,14 @@ void _preprocessor_skip_until_newline(Preprocessor* state) {
 	const SourceFile* source_file = _preprocessor_current_file(state);
 	const LineInfo* line_info = &source_file->line_info;
 
-	uint32_t initial_line = line_info_pos_to_source_location(line_info, state->tokenizer->read_position).line;
+	SourceLocation current_line_column = line_info_pos_to_source_location(
+			line_info,
+			state->tokenizer->read_position);
 
-	while (true) {
-		Token token = tokenizer_view_next(state->tokenizer);
-		uint32_t token_line = line_info_pos_to_source_location(line_info, token.source_range.end).line; 
+	uint32_t initial_line = current_line_column.line;
+	uint32_t next_line_start = line_info->line_starts[initial_line + 1];
 
-		if (token_line > initial_line) {
-			break;
-		} else if (token.kind == TOKEN_EOF) {
-			// Stop only if the EOF token is on this line
-			tokenizer_reset_to_token(state->tokenizer, token);
-			break;
-		} else {
-			tokenizer_reset_to_token(state->tokenizer, token);
-		}
-	}
+	state->tokenizer->read_position = next_line_start;
 
 	profile_scope_end();
 }

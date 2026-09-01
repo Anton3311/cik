@@ -641,6 +641,7 @@ static void _parser_gather_named_field_locations_of_anonymous_type_defs(const St
 }
 
 static void _parser_initialize_struct_fields_namespace(Struct* struct_def,
+		Diagnostics* diagnostics,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_func_colored(PROFILE_COLOR);
@@ -683,7 +684,13 @@ static void _parser_initialize_struct_fields_namespace(Struct* struct_def,
 				field_namespace->size += 1;
 				break;
 			} else if (str_equal(key, field->name)) {
-				panic("Duplicate struct fields. TODO: Handle");
+				report_error(diagnostics,
+						field->name_source_range,
+						str_format(diagnostics->allocator,
+							"Duplicate field '%.*s'",
+							STR_FMT(field->name)),
+						NULL);
+				break;
 			}
 
 			index = (index + 1) % field_namespace->capacity;
@@ -840,6 +847,7 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 		struct_def->is_forward_declared = false;
 
 		_parser_initialize_struct_fields_namespace(struct_def,
+				parser->diagnostics,
 				parser->ast_allocator,
 				parser->temp_allocator);
 	}

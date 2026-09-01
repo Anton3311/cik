@@ -901,14 +901,19 @@ void _preprocessor_parse_macro_token_stream(Preprocessor* state, MacroDefinition
 
 bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 	profile_scope_start(__func__);
-	ArenaRegion temp_region = arena_begin_temp(state->allocator);
 
 	Token name_token = tokenizer_next_token(state->tokenizer);
 	if (name_token.kind != TOKEN_IDENT) {
-		diagnostics_report_error(state->diagnostics, name_token.source_range, STR_LIT("Expected macro name"), NULL);
+		report_error(state->diagnostics,
+				source_range_pack(name_token.source_range),
+				STR_LIT("Expected macro name"),
+				NULL);
+
 		profile_scope_end();
 		return false;
 	}
+
+	ArenaRegion temp_region = arena_begin_temp(state->allocator);
 
 	macro->style = MACRO_STYLE_DEFAULT;
 	macro->name = name_token.string;
@@ -916,15 +921,17 @@ bool _preprocessor_parse_macro(Preprocessor* state, MacroDefinition* macro) {
 
 	Token maybe_paren = tokenizer_view_next(state->tokenizer);
 
-	// A function style is defined by a name followed by a left paren right after it (without any whitespace)
+	// A function style is defined by a name followed by a left paren right after it (without any
+	// whitespace)
 	if (maybe_paren.kind == TOKEN_LEFT_PAREN
 			&& name_token.source_range.end == maybe_paren.source_range.start) {
 
-		macro->style = MACRO_STYLE_FUNCTION;
 		// We have a function style macro => parse paremeter names
-		tokenizer_reset_to_token(state->tokenizer, maybe_paren);
-
+		macro->style = MACRO_STYLE_FUNCTION;
 		macro->parameter_names = arena_alloc_array(state->allocator, String, 0);
+
+		// Consume '('
+		tokenizer_reset_to_token(state->tokenizer, maybe_paren);
 
 		while (true) {
 			Token token = tokenizer_next_token(state->tokenizer);

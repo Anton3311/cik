@@ -112,8 +112,11 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		const SourceFile* current_file,
 		Arena* allocator,
 		Arena* temp_allocator) {
+	profile_scope_start(__func__);
 
 	// First check for relative includes
+
+	String result = (String) {};
 
 	{
 		ArenaRegion temp = arena_begin_temp(temp_allocator);
@@ -124,16 +127,12 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		str_builder_append(&builder, include_path);
 
 		bool exists = path_exists(temp_allocator, builder.string);
-		String result = {};
+		String canonical_path = {};
 		if (exists) {
 			result = path_canonicalize(builder.string, allocator, temp_allocator);
 		}
 
 		arena_end_temp(temp);
-
-		if (exists) {
-			return result;
-		}
 	}
 
 	for (size_t i = 0; i < storage->include_dirs.count; i += 1) {
@@ -145,7 +144,6 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		str_builder_append(&builder, include_path);
 
 		bool exists = path_exists(temp_allocator, builder.string);
-		String result = {};
 		if (exists) {
 			result = path_canonicalize(builder.string, allocator, temp_allocator);
 		}
@@ -153,11 +151,12 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		arena_end_temp(temp);
 
 		if (exists) {
-			return result;
+			break;
 		}
 	}
 
-	return (String) {};
+	profile_scope_end();
+	return result;
 }
 
 SourceFile* _source_storage_insert(SourceStorage* storage, String path, Arena* temp_allocator) {
@@ -171,7 +170,9 @@ SourceFile* _source_storage_insert(SourceStorage* storage, String path, Arena* t
 	SourceFile* file = &storage->files[storage->count];
 	file->id = (uint16_t)storage->count;
 	file->path = path;
-	file->source_code = read_entire_file_to_str(str_to_cstr(path, temp_allocator), storage->allocator);
+	file->source_code = read_entire_file_to_str(
+			str_to_cstr(path, temp_allocator),
+			storage->allocator);
 	file->line_info = line_info_from_source(storage->allocator, file->source_code);
 
 	storage->count += 1;
@@ -198,14 +199,19 @@ SourceFile* source_storage_append(SourceStorage* storage, String path, String so
 	return file;
 }
 
-SourceFile* source_storage_append_from_path(SourceStorage* storage, String path, Arena* temp_allocator) {
+SourceFile* source_storage_append_from_path(SourceStorage* storage,
+		String path,
+		Arena* temp_allocator) {
 	profile_scope_start(__func__);
 
 	assert(path.length > 0);
 	assert(temp_allocator);
 
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
-	String source_code = read_entire_file_to_str(str_to_cstr(path, temp_allocator), storage->allocator);
+	String source_code = read_entire_file_to_str(
+			str_to_cstr(path, temp_allocator),
+			storage->allocator);
+
 	arena_end_temp(temp);
 
 	SourceFile* source_file = NULL;

@@ -48,7 +48,9 @@ inline SourceRange line_info_get_line_range(const LineInfo* line_info, size_t li
 	};
 }
 
-inline String line_info_get_line_string(const LineInfo* line_info, String source_code, size_t line_index) {
+inline String line_info_get_line_string(const LineInfo* line_info,
+		String source_code,
+		size_t line_index) {
 	SourceRange line_range = line_info_get_line_range(line_info, line_index);
 	size_t line_length = line_range.end - line_range.start;
 	return sub_str(source_code, line_range.start, line_length);
@@ -94,7 +96,11 @@ String source_storage_resolve_include_path(const SourceStorage* storage,
 		Arena* temp_allocator);
 
 SourceFile* source_storage_append(SourceStorage* storage, String path, String source_code);
-SourceFile* source_storage_append_from_path(SourceStorage* storage, String path, Arena* temp_allocator);
+
+SourceFile* source_storage_append_from_path(SourceStorage* storage,
+		String path,
+		Arena* temp_allocator);
+
 SourceFile* source_storage_find_file(SourceStorage* storage, String path); 
 
 #endif

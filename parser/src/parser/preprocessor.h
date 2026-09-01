@@ -106,11 +106,13 @@ typedef struct {
 } IncludeStack;
 
 typedef struct {
+	Allocator allocator;
 	size_t capacity;
-	size_t size;
+	size_t count;
 	const SourceFile** entries;
 } IncludeHistory;
 
+void include_history_release(IncludeHistory* history);
 bool include_history_contains(IncludeHistory* history, const SourceFile* source_file);
 bool include_history_try_insert(IncludeHistory* history, const SourceFile* source_file);
 

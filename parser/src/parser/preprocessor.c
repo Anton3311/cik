@@ -115,21 +115,83 @@ const MacroDefinition* macro_table_find(const MacroTable* table, String name) {
 // IncludeHistory
 //
 
-const SourceFile** _include_history_find_entry(IncludeHistory* history, const SourceFile* source_file) {
+inline size_t _include_history_max_entry_count(size_t capacity) {
+	return capacity * 80 / 100;
+}
+
+const SourceFile** _include_history_find_entry(IncludeHistory* history,
+		const SourceFile* source_file) {
+
 	profile_scope_start(__func__);
 	assert(source_file);
 
-	size_t index = hash_ptr(source_file) % history->capacity;
-	while (history->entries[index] != NULL) {
-		index = (index + 1) % history->capacity;
+	const SourceFile** insert_entry = NULL;
+
+	size_t hash = hash_ptr(source_file);
+	for (size_t i = 0; i < history->capacity; i += 1) {
+		size_t index = (hash + i) % history->capacity;
+		if (history->entries[index] == NULL) {
+			insert_entry = &history->entries[index];
+			break;
+		}
 	}
 
 	profile_scope_end();
-	return &history->entries[index];
+	return insert_entry;
+}
+
+void include_history_grow(IncludeHistory* history) {
+	profile_scope_start(__func__);
+
+	const SourceFile** old_entries = history->entries;
+	size_t old_capacity = history->capacity;
+
+	size_t new_capacity = max(16, history->capacity * 2);
+	history->entries = allocator_alloc_array(history->allocator, const SourceFile*, new_capacity);
+	history->capacity = new_capacity;
+
+	memset(history->entries, 0, sizeof(*history->entries) * new_capacity);
+
+	if (old_capacity) {
+		assert(old_entries);
+	}
+
+	for (size_t i = 0; i < old_capacity; i += 1) {
+		if (old_entries[i] == NULL) {
+			continue;
+		}
+
+		const SourceFile** insert_entry = _include_history_find_entry(history, old_entries[i]);
+		assert(insert_entry);
+
+		*insert_entry = old_entries[i];
+	}
+
+	if (old_entries) {
+		allocator_release(history->allocator, old_entries);
+	}
+
+	profile_scope_end();
+}
+
+void include_history_release(IncludeHistory* history) {
+	profile_scope_start(__func__);
+
+	if (history->entries) {
+		allocator_release(history->allocator, history->entries);
+	}
+
+	*history = (IncludeHistory) {};
+
+	profile_scope_end();
 }
 
 bool include_history_contains(IncludeHistory* history, const SourceFile* source_file) {
 	profile_scope_start(__func__);
+
+	if (history->count == 0) {
+		return false;
+	}
 
 	size_t index = hash_ptr(source_file) % history->capacity;
 	const SourceFile** it = history->entries + index;
@@ -153,9 +215,8 @@ bool include_history_contains(IncludeHistory* history, const SourceFile* source_
 bool include_history_try_insert(IncludeHistory* history, const SourceFile* source_file) {
 	profile_scope_start(__func__);
 
-	if (history->size >= history->capacity) {
-		profile_scope_end();
-		return false;
+	if (history->count >= _include_history_max_entry_count(history->capacity)) {
+		include_history_grow(history);
 	}
 
 	const SourceFile** entry = _include_history_find_entry(history, source_file);
@@ -167,7 +228,7 @@ bool include_history_try_insert(IncludeHistory* history, const SourceFile* sourc
 	assert(*entry == NULL);
 
 	*entry = source_file;
-	history->size += 1;
+	history->count += 1;
 	profile_scope_end();
 	return true;
 }
@@ -246,10 +307,7 @@ void preprocessor_init(Preprocessor* state,
 	state->include_stack.capacity = 32;
 	state->include_stack.includes = arena_alloc_array(state->allocator, Tokenizer, state->include_stack.capacity);
 	
-	state->include_history.size = 0;
-	state->include_history.capacity = 128;
-	state->include_history.entries = arena_alloc_array(state->allocator, const SourceFile*, state->include_history.capacity);
-	memset(state->include_history.entries, 0, sizeof(*state->include_history.entries) * state->include_history.capacity);
+	state->include_history = (IncludeHistory) { .allocator = gpa };
 
 	state->branch_stack_depth = MIN_BRANCH_REGION_STACK_DEPTH;
 	state->branch_stack_capacity = 64;
@@ -322,6 +380,7 @@ void preprocessor_init(Preprocessor* state,
 }
 
 void preprocessor_release(Preprocessor* state) {
+	profile_scope_start(__func__);
 	MacroTable* table = &state->macro_table;
 	if (table->count > 0) {
 		assert(table->macros);
@@ -329,6 +388,9 @@ void preprocessor_release(Preprocessor* state) {
 	} else {
 		assert(table->macros == NULL);
 	}
+
+	include_history_release(&state->include_history);
+	profile_scope_end();
 }
 
 bool _preprocessor_push_file(Preprocessor* state, const SourceFile* source_file) {

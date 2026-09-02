@@ -2615,6 +2615,66 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 	profile_scope_end();
 }
 
+// `initial_values`     - values from before entering the switch
+// `alternative_values` - values inherited from a previous `case`
+//
+// All of the arrays are of the same size.
+static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
+		Arena* instr_allocator,
+		InstrIndex initial_region_index,
+		InstrIndex alternative_region_index,
+		InstrIndex* initial_values,
+		InstrIndex* alternative_values,
+		InstrIndex* out_phis,
+		size_t value_count) {
+
+	profile_scope_start(__func__);
+
+	for (size_t i = 0; i < value_count; i += 1) {
+		if (initial_values[i].value == alternative_values[i].value) {
+			continue;
+		}
+
+		if (initial_values[i].value == INVALID_INSTR_INDEX.value) {
+			out_phis[i] = alternative_values[i];
+			continue;
+		}
+
+		InstrIndex select_initial = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_SELECT,
+			.select = {
+				.value = initial_values[i],
+				.region = initial_region_index,
+			}
+		});
+
+		InstrIndex select_alternative = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_SELECT,
+			.select = {
+				.value = alternative_values[i],
+				.region = alternative_region_index,
+			}
+		});
+
+		InstrInputs phi_inputs_buffer = instr_allocate_inputs_array(instr_buffer, 2);
+		InstrIndex* phi_inputs = &instr_buffer->inputs_buffer[phi_inputs_buffer.start];
+
+		phi_inputs[0] = select_initial;
+		phi_inputs[1] = select_alternative;
+
+		InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_PHI,
+			.phi = {
+				.variants = phi_inputs_buffer,
+			}
+		});
+
+		out_phis[i] = phi;
+	}
+
+	profile_scope_end();
+}
+
 static void _compile_switch(FunctionCompiler* compiler,
 		AstNode* stmt,
 		InstrIndex* region_instr_index) {
@@ -2645,11 +2705,22 @@ static void _compile_switch(FunctionCompiler* compiler,
 
 	InstrIndex default_case_region = INVALID_INSTR_INDEX;
 
+	size_t arg_count = compiler->function->proto.parameter_count;
+	size_t var_count = compiler->var_count;
+
+	InstrIndex* initial_arg_values = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			arg_count);
+	InstrIndex* initial_var_values = arena_alloc_array(compiler->temp_allocator,
+			InstrIndex,
+			var_count);
+
+	array_copy(initial_arg_values, compiler->arg_states, arg_count);
+	array_copy(initial_var_values, compiler->var_values, var_count);
+
 	AstNode* first_body_node = stmt->switch_stmt.body->block.nodes.first;
 	for (AstNode* child = first_body_node; child != NULL; child = child->next) {
 		if (child->kind == AST_NODE_CASE) {
-			// TODO: Phis
-
 			InstrIndex new_true_region = instr_new_region(instr_buffer, instr_allocator);
 			InstrIndex new_false_region = instr_new_region(instr_buffer, instr_allocator);
 
@@ -2671,6 +2742,30 @@ static void _compile_switch(FunctionCompiler* compiler,
 						&compiler->io_state);
 
 				instr_region_set_last(instr_buffer, true_region_index, jump_to_current);
+			}
+
+			// Setup variable and argument state.
+			if (fallthrough_from_previous_possible) {
+				_create_phis_for_switch_case(instr_buffer,
+						instr_allocator,
+						initial_region_index,
+						true_region_index,
+						initial_var_values,
+						compiler->var_values,
+						compiler->var_values,
+						var_count);
+
+				_create_phis_for_switch_case(instr_buffer,
+						instr_allocator,
+						initial_region_index,
+						true_region_index,
+						initial_arg_values,
+						compiler->arg_states,
+						compiler->arg_states,
+						arg_count);
+			} else {
+				array_copy(compiler->var_values, initial_var_values, var_count);
+				array_copy(compiler->arg_states, initial_arg_values, arg_count);
 			}
 
 			bool is_default_case = child->case_stmt.value == NULL;
@@ -2744,6 +2839,40 @@ static void _compile_switch(FunctionCompiler* compiler,
 						instr_allocator,
 						INVALID_INSTR_INDEX);
 			}
+		}
+	}
+
+	{
+		bool fallthrough_from_previous_possible = false;
+
+		if (true_region_index.value != false_region_index.value) {
+			fallthrough_from_previous_possible = !instr_region_finished(
+					instr_buffer,
+					true_region_index);
+		}
+
+		if (fallthrough_from_previous_possible) {
+			assert(default_case_region.value == INVALID_INSTR_INDEX.value);
+			_create_phis_for_switch_case(instr_buffer,
+					instr_allocator,
+					initial_region_index,
+					true_region_index,
+					initial_var_values,
+					compiler->var_values,
+					compiler->var_values,
+					var_count);
+
+			_create_phis_for_switch_case(instr_buffer,
+					instr_allocator,
+					initial_region_index,
+					true_region_index,
+					initial_arg_values,
+					compiler->arg_states,
+					compiler->arg_states,
+					arg_count);
+		} else {
+			array_copy(compiler->var_values, initial_var_values, var_count);
+			array_copy(compiler->arg_states, initial_arg_values, arg_count);
 		}
 	}
 

@@ -12,10 +12,16 @@
 	#define COMPILER_CLANG
 #elif defined(_MSC_VER)
 	#define COMPILER_MSVC
+#elif defined(__crankshaft__)
+	#define COMPILER_CRANKSHAFT
+#else
+	#error "Unsupported compiler"
 #endif
 
-#if _WIN32
+#if _WIN32 || defined(_WIN64)
 	#define PLATFORM_WINDOWS
+#else
+	#error "Unsupported platform"
 #endif
 
 typedef uint8_t bool;
@@ -29,7 +35,19 @@ void print_assertion_stack_trace();
 #define true (bool)(1)
 #define false (bool)(0)
 
-#define debug_break() __debugbreak()
+#ifdef COMPILER_CRANKSHAFT
+	#define va_list int
+	#define static_assert(expr, message)
+#endif
+
+#if defined(COMPILER_CLANG)
+	#define debug_break() __builtin_trap()
+#elif defined(COMPILER_MSVC)
+	#define debug_break() __debugbreak()
+#elif defined(COMPILER_CRANKSHAFT)
+	#define debug_break() exit(-1)
+#endif
+
 #define crash() if (is_debugger_connected()) { debug_break(); } else { exit(EXIT_FAILURE); }
 
 #define has_flag(flag_set, flag) (((flag_set) & (flag)) == (flag))
@@ -138,8 +156,13 @@ size_t align_to_page_size(size_t bytes);
 	#define asan_poison_memory_region(addr, size) __asan_poison_memory_region((addr), (size))
 	#define asan_unpoison_memory_region(addr, size) __asan_unpoison_memory_region((addr), (size))
 #else
-	#define asan_poison_memory_region(addr, size) ((void)(addr), (void)(size))
-	#define asan_unpoison_memory_region(addr, size) ((void)(addr), (void)(size))
+	#ifdef COMPILER_CRANKSHAFT
+		#define asan_poison_memory_region(addr, size)
+		#define asan_unpoison_memory_region(addr, size)
+	#else
+		#define asan_poison_memory_region(addr, size) ((void)(addr), (void)(size))
+		#define asan_unpoison_memory_region(addr, size) ((void)(addr), (void)(size))
+	#endif
 #endif
 
 

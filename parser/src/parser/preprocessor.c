@@ -372,6 +372,18 @@ void preprocessor_init(Preprocessor* state,
 		};
 
 		macro_table_append(&state->macro_table, &_win64_macro);
+
+		MacroDefinition __crankshaft__macro = {
+			.name = STR_LIT("__crankshaft__"),
+			.style = MACRO_STYLE_DEFAULT,
+			.builtin_kind = BUILTIN_MACRO_NONE,
+			.has_va_args = 0,
+			.token_count = 0,
+			.tokens = NULL,
+			.token_hints = NULL,
+		};
+
+		macro_table_append(&state->macro_table, &__crankshaft__macro);
 	}
 
 	const size_t call_stack_capacity = 32;

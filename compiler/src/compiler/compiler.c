@@ -2620,16 +2620,10 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 	profile_scope_end();
 }
 
-// `initial_values`     - values from before entering the switch
-// `alternative_values` - values inherited from a previous `case`
-//
-// All of the arrays are of the same size.
 static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
 		Arena* instr_allocator,
 		InstrIndex initial_region_index,
 		InstrIndex alternative_region_index,
-		InstrIndex* initial_values,
-		InstrIndex* alternative_values,
 		InstrIndex* out_phis,
 		ControlFlowStmt* control_flow_stmts,
 		bool is_var,
@@ -2644,48 +2638,11 @@ static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
 	}
 
 	size_t max_variant_count = control_flow_stmt_count + 2;
-
 	for (size_t i = 0; i < value_count; i += 1) {
 		InstrInputs phi_inputs_buffer = instr_allocate_inputs_array(instr_buffer, max_variant_count);
 		InstrIndex* phi_inputs = &instr_buffer->inputs_buffer[phi_inputs_buffer.start];
 
 		size_t variant_count = 0;
-
-#if 0
-		if (initial_values[i].value == alternative_values[i].value) {
-		} else {
-			if (initial_values[i].value != INVALID_INSTR_INDEX.value) {
-				InstrIndex select_initial = instr_buffer_push(instr_buffer,
-					instr_allocator,
-					(Instr) {
-						.kind = INSTR_SELECT,
-						.select = {
-							.value = initial_values[i],
-							.region = initial_region_index,
-						}
-					});
-
-				phi_inputs[variant_count] = select_initial;
-				variant_count += 1;
-			}
-
-			if (alternative_values[i].value != INVALID_INSTR_INDEX.value) {
-				InstrIndex select_alternative = instr_buffer_push(instr_buffer,
-					instr_allocator,
-					(Instr) {
-						.kind = INSTR_SELECT,
-						.select = {
-							.value = alternative_values[i],
-							.region = alternative_region_index,
-						}
-					});
-
-				phi_inputs[variant_count] = select_alternative;
-				variant_count += 1;
-			}
-		}
-#endif
-
 		for (ControlFlowStmt* stmt = control_flow_stmts; stmt != NULL; stmt = stmt->next) {
 			InstrIndex value;
 			if (is_var) {
@@ -2711,21 +2668,18 @@ static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
 		}
 
 		assert(variant_count <= max_variant_count);
-		if (variant_count > 0) {
-			InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-				.kind = INSTR_PHI,
-				.phi = {
-					.variants = (InstrInputs) {
-						.start = phi_inputs_buffer.start,
-						.count = (uint16_t)variant_count,
-					},
-				}
-			});
+		assert(variant_count > 0);
+		InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_PHI,
+			.phi = {
+				.variants = (InstrInputs) {
+					.start = phi_inputs_buffer.start,
+					.count = (uint16_t)variant_count,
+				},
+			}
+		});
 
-			out_phis[i] = phi;
-		} else {
-			out_phis[i] = initial_values[i];
-		}
+		out_phis[i] = phi;
 	}
 
 	profile_scope_end();
@@ -2831,8 +2785,6 @@ static void _compile_switch(FunctionCompiler* compiler,
 					instr_allocator,
 					initial_region_index,
 					true_region_index,
-					initial_var_values,
-					compiler->var_values,
 					compiler->var_values,
 					stmts,
 					true,
@@ -2842,8 +2794,6 @@ static void _compile_switch(FunctionCompiler* compiler,
 					instr_allocator,
 					initial_region_index,
 					true_region_index,
-					initial_arg_values,
-					compiler->arg_states,
 					compiler->arg_states,
 					stmts,
 					false,
@@ -2924,10 +2874,10 @@ static void _compile_switch(FunctionCompiler* compiler,
 	}
 
 	{
-		bool fallthrough_from_previous_possible = false;
+		bool fallthrough_possible = false;
 
 		if (true_region_index.value != false_region_index.value) {
-			fallthrough_from_previous_possible = !instr_region_finished(
+			fallthrough_possible = !instr_region_finished(
 					instr_buffer,
 					true_region_index);
 		}
@@ -2950,7 +2900,7 @@ static void _compile_switch(FunctionCompiler* compiler,
 
 		ControlFlowStmt* stmts = break_stmts;
 
-		if (fallthrough_from_previous_possible) {
+		if (fallthrough_possible) {
 			previous_case_stmt.next = stmts;
 			stmts = &previous_case_stmt;
 		}
@@ -2962,8 +2912,6 @@ static void _compile_switch(FunctionCompiler* compiler,
 				instr_allocator,
 				initial_region_index,
 				true_region_index,
-				initial_var_values,
-				compiler->var_values,
 				compiler->var_values,
 				stmts,
 				true,
@@ -2973,8 +2921,6 @@ static void _compile_switch(FunctionCompiler* compiler,
 				instr_allocator,
 				initial_region_index,
 				true_region_index,
-				initial_arg_values,
-				compiler->arg_states,
 				compiler->arg_states,
 				stmts,
 				false,

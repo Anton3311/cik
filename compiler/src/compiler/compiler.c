@@ -2932,10 +2932,6 @@ static void _compile_switch(FunctionCompiler* compiler,
 					true_region_index);
 		}
 
-		if (fallthrough_from_previous_possible) {
-			assert(default_case_region.value == INVALID_INSTR_INDEX.value);
-		}
-
 		ControlFlowStmt initial_stmt = {
 			.kind = CONTROL_FLOW_BREAK,
 			.region = initial_region_index,

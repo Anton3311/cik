@@ -205,8 +205,17 @@ typedef struct {
 static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr);
 static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr);
 static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr);
+
+// Compiles a single ast node, and places in in the `*region_instr_index`. If the ast node produces
+// new regions, `region_instr_index` is modified to point to a new desird region, where the control
+// should continue.
+static void _compile_single_node(FunctionCompiler* compiler,
+		AstNode* node,
+		InstrIndex* region_instr_index);
+
 static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		AstNode* first_node);
+
 static void _compile_statement(FunctionCompiler* compiler, AstNode* node);
 
 typedef struct {
@@ -2613,7 +2622,192 @@ static void _compile_switch(FunctionCompiler* compiler, AstNode* stmt) {
 	profile_scope_end();
 }
 
-static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler, AstNode* first_node) {
+static void _compile_single_node(FunctionCompiler* compiler,
+		AstNode* node,
+		InstrIndex* region_instr_index) {
+
+	profile_scope_start(__func__);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	Instr* region_instr = instr_buffer_at(instr_buffer, *region_instr_index);
+
+	switch (node->kind) {
+	case AST_NODE_VARIABLE:
+		_compile_statement(compiler, node);
+		break;
+	case AST_NODE_IF:
+		*region_instr_index = _compile_if_statement(compiler, node, *region_instr_index);
+		break;
+	case AST_NODE_BLOCK: {
+		InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer,
+				instr_allocator,
+				INVALID_INSTR_INDEX,
+				&compiler->io_state);
+
+		CompiledBlockRegions inner_block = _compile_block_to_region(compiler,
+				node->block.nodes.first);
+
+		Instr* jump_to_inner = instr_buffer_at(instr_buffer, jump_to_inner_region);
+		jump_to_inner->jump.target_region = inner_block.initial_region;
+		region_instr->region.last_instr = jump_to_inner_region;
+
+		if (!instr_region_finished(instr_buffer, inner_block.final_region)) {
+			InstrIndex post_block_region = instr_new_region(instr_buffer, instr_allocator);
+			InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer,
+					instr_allocator,
+					post_block_region,
+					&compiler->io_state);
+
+			Instr* inner_region_instr = instr_buffer_at(instr_buffer, inner_block.final_region);
+			inner_region_instr->region.last_instr = jump_to_post_block_region;
+
+			*region_instr_index = post_block_region;
+		} else {
+			*region_instr_index = inner_block.final_region;
+		}
+
+		break;
+	}
+	case AST_NODE_RETURN: {
+		bool should_return_value = compiler->function->proto.return_type.kind != TYPE_VOID;
+
+		if (should_return_value) {
+			assert(node->return_stmt.value != NULL);
+
+			InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
+
+			Type return_type = compiler->function->proto.return_type;
+			TypeLayout return_type_layout = _type_get_layout(compiler->type_context,
+					&return_type);
+
+			bool is_compound_type = return_type.kind == TYPE_STRUCT
+				                 || return_type.kind == TYPE_UNION;
+
+			if (is_compound_type && return_type_layout.size <= 8) {
+				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
+				stack_addr->kind = INSTR_STACK_ADDR;
+				stack_addr->stack_addr.stack_alloc = value;
+
+				InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
+				Instr* load = instr_buffer_at(instr_buffer, load_index);
+				load->kind = INSTR_PTR_LOAD_64;
+				load->ptr_load.ptr = stack_addr_index;
+				load->ptr_load.io_state = compiler->io_state;
+
+				compiler->io_state = instr_new_io_state(instr_buffer,
+						instr_allocator,
+						load_index);
+
+				value = load_index;
+			}
+
+			region_instr->region.last_instr = instr_new_return_value(instr_buffer,
+					instr_allocator,
+					value,
+					&compiler->io_state);
+			compiler->io_state = INVALID_INSTR_INDEX;
+		} else {
+			assert(node->return_stmt.value == NULL);
+
+			InstrIndex instr_index = instr_new_return(instr_buffer,
+					instr_allocator,
+					&compiler->io_state);
+
+			region_instr->region.last_instr = instr_index;
+		}
+		break;
+	}
+	case AST_NODE_WHILE_LOOP:
+		if (node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION) {
+			*region_instr_index = _compile_loop(compiler,
+					*region_instr_index,
+					node,
+					NULL,
+					&node->while_loop.condition,
+					node->while_loop.body,
+					NULL);
+		} else  if (node->while_loop.condition_kind == WHILE_LOOP_POST_CONDITION) {
+			*region_instr_index = _compile_do_while_loop(compiler, *region_instr_index, node);
+		} else {
+			unreachable();
+		}
+		break;
+	case AST_NODE_FOR_LOOP: {
+		*region_instr_index = _compile_loop(compiler,
+				*region_instr_index,
+				node,
+				node->for_loop.init_stmt,
+				node->for_loop.condition,
+				node->for_loop.body,
+				node->for_loop.advance_expr);
+		break;
+	}
+	case AST_NODE_BREAK:
+	case AST_NODE_CONTINUE: {
+
+		if (node->kind == AST_NODE_BREAK) {
+			assert_msg(compiler->loop_switch_state,
+					"`break` statement appears outside of a loop or a switch");
+			assert(compiler->loop_switch_state->node);
+		} else if (node->kind == AST_NODE_CONTINUE) {
+			LoopSwitchState* loop = _get_current_loop_state(compiler);
+			assert_msg(loop,
+					"`break` statement appears outside of a loop");
+			assert(loop->node);
+		}
+
+		InstrIndex jump = instr_new_jump(instr_buffer,
+				instr_allocator,
+				INVALID_INSTR_INDEX,
+				&compiler->io_state);
+
+		region_instr->region.last_instr = jump;
+
+		ControlFlowStmt* control = _alloc_control_flow_stmt(compiler);
+		control->kind = node->kind == AST_NODE_BREAK
+			? CONTROL_FLOW_BREAK
+			: CONTROL_FLOW_CONTINUE;
+		control->region = *region_instr_index;
+
+		size_t arg_count = compiler->function->proto.parameter_count;
+
+		array_copy(control->var_values, compiler->var_values, compiler->var_count);
+		array_copy(control->arg_values, compiler->arg_states, arg_count);
+
+		LoopSwitchState* state = compiler->loop_switch_state;
+		if (node->kind == AST_NODE_CONTINUE) {
+			state = _get_current_loop_state(compiler);
+		}
+
+		control->next = state->control_flow_stmts;
+		state->control_flow_stmts = control;
+		break;
+	}
+	case AST_NODE_EXPR: 
+		_compile_statement(compiler, node);
+		break;
+	case AST_NODE_TYPE_DEF:
+	case AST_NODE_STRUCT:
+	case AST_NODE_UNION:
+	case AST_NODE_ENUM:
+		break;
+	case AST_NODE_FUNCTION_DEF:
+	case AST_NODE_FUNCTION_DECL:
+		panic("Function is not allowed here");
+	case AST_NODE_SWITCH:
+		_compile_switch(compiler, node);
+		break;
+	}
+
+	profile_scope_end();
+}
+
+static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
+		AstNode* first_node) {
+
 	profile_scope_start(__func__);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -2627,171 +2821,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			break;
 		}
 
-		Instr* region_instr = instr_buffer_at(instr_buffer, region_instr_index);
-
-		switch (node->kind) {
-		case AST_NODE_VARIABLE:
-			_compile_statement(compiler, node);
-			break;
-		case AST_NODE_IF:
-			region_instr_index = _compile_if_statement(compiler, node, region_instr_index);
-			break;
-		case AST_NODE_BLOCK: {
-			InstrIndex jump_to_inner_region = instr_new_jump(instr_buffer,
-					instr_allocator,
-					INVALID_INSTR_INDEX,
-					&compiler->io_state);
-
-			CompiledBlockRegions inner_block = _compile_block_to_region(compiler, node->block.nodes.first);
-
-			Instr* jump_to_inner = instr_buffer_at(instr_buffer, jump_to_inner_region);
-			jump_to_inner->jump.target_region = inner_block.initial_region;
-			region_instr->region.last_instr = jump_to_inner_region;
-
-			if (!instr_region_finished(instr_buffer, inner_block.final_region)) {
-				InstrIndex post_block_region = instr_new_region(instr_buffer, instr_allocator);
-				InstrIndex jump_to_post_block_region = instr_new_jump(instr_buffer,
-						instr_allocator,
-						post_block_region,
-						&compiler->io_state);
-
-				Instr* inner_region_instr = instr_buffer_at(instr_buffer, inner_block.final_region);
-				inner_region_instr->region.last_instr = jump_to_post_block_region;
-
-				region_instr_index = post_block_region;
-			} else {
-				region_instr_index = inner_block.final_region;
-			}
-
-			break;
-		}
-		case AST_NODE_RETURN: {
-			bool should_return_value = compiler->function->proto.return_type.kind != TYPE_VOID;
-
-			if (should_return_value) {
-				assert(node->return_stmt.value != NULL);
-
-				InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
-
-				Type return_type = compiler->function->proto.return_type;
-				TypeLayout return_type_layout = _type_get_layout(compiler->type_context,
-						&return_type);
-
-				if (return_type.kind == TYPE_STRUCT || return_type.kind == TYPE_UNION) {
-					if (return_type_layout.size <= 8) {
-						InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
-						Instr* stack_addr = instr_buffer_at(instr_buffer, stack_addr_index);
-						stack_addr->kind = INSTR_STACK_ADDR;
-						stack_addr->stack_addr.stack_alloc = value;
-
-						InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
-						Instr* load = instr_buffer_at(instr_buffer, load_index);
-						load->kind = INSTR_PTR_LOAD_64;
-						load->ptr_load.ptr = stack_addr_index;
-						load->ptr_load.io_state = compiler->io_state;
-
-						compiler->io_state = instr_new_io_state(instr_buffer,
-								instr_allocator,
-								load_index);
-
-						value = load_index;
-					}
-				}
-
-				region_instr->region.last_instr = instr_new_return_value(instr_buffer,
-						instr_allocator,
-						value,
-						&compiler->io_state);
-				compiler->io_state = INVALID_INSTR_INDEX;
-			} else {
-				assert(node->return_stmt.value == NULL);
-
-				InstrIndex instr_index = instr_new_return(instr_buffer,
-						instr_allocator,
-						&compiler->io_state);
-
-				region_instr->region.last_instr = instr_index;
-			}
-			break;
-		}
-		case AST_NODE_WHILE_LOOP:
-			if (node->while_loop.condition_kind == WHILE_LOOP_PRE_CONDITION) {
-				region_instr_index = _compile_loop(compiler,
-						region_instr_index,
-						node,
-						NULL,
-						&node->while_loop.condition,
-						node->while_loop.body,
-						NULL);
-			} else  if (node->while_loop.condition_kind == WHILE_LOOP_POST_CONDITION) {
-				region_instr_index = _compile_do_while_loop(compiler, region_instr_index, node);
-			} else {
-				unreachable();
-			}
-			break;
-		case AST_NODE_FOR_LOOP: {
-			region_instr_index = _compile_loop(compiler,
-					region_instr_index,
-					node,
-					node->for_loop.init_stmt,
-					node->for_loop.condition,
-					node->for_loop.body,
-					node->for_loop.advance_expr);
-			break;
-		}
-		case AST_NODE_BREAK:
-		case AST_NODE_CONTINUE: {
-
-			if (node->kind == AST_NODE_BREAK) {
-				assert_msg(compiler->loop_switch_state,
-						"`break` statement appears outside of a loop or a switch");
-				assert(compiler->loop_switch_state->node);
-			} else if (node->kind == AST_NODE_CONTINUE) {
-				LoopSwitchState* loop = _get_current_loop_state(compiler);
-				assert_msg(loop,
-						"`break` statement appears outside of a loop");
-				assert(loop->node);
-			}
-
-			InstrIndex jump = instr_new_jump(instr_buffer,
-					instr_allocator,
-					INVALID_INSTR_INDEX,
-					&compiler->io_state);
-
-			region_instr->region.last_instr = jump;
-
-			ControlFlowStmt* control = _alloc_control_flow_stmt(compiler);
-			control->kind = node->kind == AST_NODE_BREAK
-				? CONTROL_FLOW_BREAK
-				: CONTROL_FLOW_CONTINUE;
-			control->region = region_instr_index;
-
-			size_t arg_count = compiler->function->proto.parameter_count;
-
-			array_copy(control->var_values, compiler->var_values, compiler->var_count);
-			array_copy(control->arg_values, compiler->arg_states, arg_count);
-
-			LoopSwitchState* state = compiler->loop_switch_state;
-			if (node->kind == AST_NODE_CONTINUE) {
-				state = _get_current_loop_state(compiler);
-			}
-
-			control->next = state->control_flow_stmts;
-			state->control_flow_stmts = control;
-			break;
-		}
-		case AST_NODE_EXPR: 
-			_compile_statement(compiler, node);
-			break;
-		case AST_NODE_TYPE_DEF:
-		case AST_NODE_STRUCT:
-		case AST_NODE_UNION:
-		case AST_NODE_ENUM:
-			break;
-		case AST_NODE_FUNCTION_DEF:
-		case AST_NODE_FUNCTION_DECL:
-			panic("Function is not allowed here");
-		}
+		_compile_single_node(compiler, node, &region_instr_index);
 	}
 
 	CompiledBlockRegions regions;

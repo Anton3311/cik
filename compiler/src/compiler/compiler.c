@@ -167,6 +167,34 @@ static void _free_all_control_flow_stmts(FunctionCompiler* compiler) {
 	}
 }
 
+static LoopSwitchState* _get_current_loop_state(FunctionCompiler* compiler) {
+	LoopSwitchState* state = &compiler->loop_switch_state;
+
+	while (state->node) {
+		switch (state->node->kind) {
+		case AST_NODE_WHILE_LOOP:
+		case AST_NODE_FOR_LOOP:
+			return state;
+		case AST_NODE_SWITCH:
+			panic("Nearest loop is actually a switch statement. This is not allowed");
+		default:
+			panic("`node` in `LoopSwitchState` can only be either a loop (for, while) or a switch");
+		}
+
+		state = state->parent;
+	}
+
+	return NULL;
+}
+
+static void _restore_loop_switch_state(FunctionCompiler* compiler, LoopSwitchState* previous) {
+	if (compiler->loop_switch_state.control_flow_stmts) {
+		_free_control_flow_stmt(compiler, compiler->loop_switch_state.control_flow_stmts);
+	}
+
+	compiler->loop_switch_state = *previous;
+}
+
 typedef struct {
 	InstrIndex initial_region;
 	InstrIndex final_region;
@@ -1763,9 +1791,11 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	profile_scope_end();
 }
 
-// This is a part of loop compilation process. This function is responsible for creating phi
-// variants, that merge values from before the loop, values assigned during the loop execution and
-// values assigned before encountering the `break` or `continue` statements.
+// This is a part of loop compilation process. This function is responsible for filling phi
+// variants, that merge values from:
+// * before the loop
+// * values assigned inside the loop
+// * values assigned before encountering the `break` or `continue` statements.
 static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 		InstrIndex* var_phis,
 		InstrIndex* arg_phis,
@@ -1775,7 +1805,8 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 		InstrIndex final_body_region) {
 	profile_scope_start(__func__);
 
-	assert(compiler->current_loop);
+	LoopSwitchState* current_loop = _get_current_loop_state(compiler);
+	assert(current_loop != NULL);
 
 	// Put the original (from before the loop) and inner (from inside the loop) values on the chain
 	// of control statements.
@@ -1794,7 +1825,7 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 	inner.arg_values = compiler->arg_states;
 
 	original.next = &inner;
-	inner.next = compiler->current_control_flow_stmts;
+	inner.next = current_loop->control_flow_stmts;
 
 	ControlFlowStmt* control_stmts = &original;
 
@@ -1803,7 +1834,7 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 		control_stmt_count += 1;
 	}
 
-	const Scope* body_scope = _loop_body_scope(compiler->current_loop);
+	const Scope* body_scope = _loop_body_scope(current_loop->node);
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
 			continue;
@@ -1895,12 +1926,13 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 // NOTE: Phi nodes are created for all variables and function arguments, since we don't really know
 //       which variables will be modified inside the loop, without doing extra `Ast` traversals.
 //
-// * `node` - loop node
-// * `init_stmt` - statement that defines the initial state of a for loop (irrelevant for while loops)
+// * `node`           - loop node
+// * `init_stmt`      - statement that defines the initial state of a for loop (irrelevant for while
+//                      loops)
 // * `condition_expr` - the loop condition
-// * `body` - loop body
-// * `advance_expr` - an expression, that advances the state forward after each iteration (relevant
-// only for `for loop`s)
+// * `body`           - loop body
+// * `advance_expr`   - an expression, that advances the state forward after each iteration
+//                      (relevant only for `for loop`s)
 static InstrIndex _compile_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
 		AstNode* node,
@@ -1920,10 +1952,12 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
-	AstNode* previous_loop = compiler->current_loop;
-	ControlFlowStmt* previous_control_flow_stmts = compiler->current_control_flow_stmts;
-	compiler->current_loop = node;
-	compiler->current_control_flow_stmts = NULL;
+	LoopSwitchState previous_loop_switch_state = compiler->loop_switch_state;
+	compiler->loop_switch_state = (LoopSwitchState) {
+		.parent = &previous_loop_switch_state,
+		.control_flow_stmts = NULL,
+		.node = node,
+	};
 
 	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -2102,18 +2136,13 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
-			compiler->current_control_flow_stmts,
+			compiler->loop_switch_state.control_flow_stmts,
 			post_loop_region_index, 
 			condition_region);
 
 	arena_end_temp(temp);
 
-	if (compiler->current_control_flow_stmts) {
-		_free_control_flow_stmt(compiler, compiler->current_control_flow_stmts);
-	}
-
-	compiler->current_loop = previous_loop;
-	compiler->current_control_flow_stmts = previous_control_flow_stmts;
+	_restore_loop_switch_state(compiler, &previous_loop_switch_state);
 
 	profile_scope_end();
 	return post_loop_region_index;
@@ -2129,10 +2158,12 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
 	// Save the previous loop state
-	AstNode* previous_loop = compiler->current_loop;
-	ControlFlowStmt* previous_control_flow_stmts = compiler->current_control_flow_stmts;
-	compiler->current_loop = node;
-	compiler->current_control_flow_stmts = NULL;
+	LoopSwitchState previous_loop_switch_state = compiler->loop_switch_state;
+	compiler->loop_switch_state = (LoopSwitchState) {
+		.parent = &previous_loop_switch_state,
+		.control_flow_stmts = NULL,
+		.node = node,
+	};
 
 	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -2273,19 +2304,14 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
-			compiler->current_control_flow_stmts,
+			compiler->loop_switch_state.control_flow_stmts,
 			post_loop_region, 
 			body_block.initial_region);
 
 	arena_end_temp(temp);
 
 	// Restore the previous loop state
-	if (compiler->current_control_flow_stmts) {
-		_free_control_flow_stmt(compiler, compiler->current_control_flow_stmts);
-	}
-
-	compiler->current_loop = previous_loop;
-	compiler->current_control_flow_stmts = previous_control_flow_stmts;
+	_restore_loop_switch_state(compiler, &previous_loop_switch_state);
 
 	profile_scope_end();
 	return post_loop_region;
@@ -2711,8 +2737,14 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		}
 		case AST_NODE_BREAK:
 		case AST_NODE_CONTINUE: {
-			assert_msg(compiler->current_loop,
-					"`break` or `continue` statement appears outside of the loop");
+
+			if (node->kind == AST_NODE_BREAK) {
+				assert_msg(compiler->loop_switch_state.node,
+						"`break` statement appears outside of a loop or a switch");
+			} else if (node->kind == AST_NODE_CONTINUE) {
+				assert_msg(_get_current_loop_state(compiler),
+						"`break` statement appears outside of a loop");
+			}
 
 			InstrIndex jump = instr_new_jump(instr_buffer,
 					instr_allocator,
@@ -2732,8 +2764,13 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			array_copy(control->var_values, compiler->var_values, compiler->var_count);
 			array_copy(control->arg_values, compiler->arg_states, arg_count);
 
-			control->next = compiler->current_control_flow_stmts;
-			compiler->current_control_flow_stmts = control;
+			LoopSwitchState* state = &compiler->loop_switch_state;
+			if (node->kind == AST_NODE_CONTINUE) {
+				state = _get_current_loop_state(compiler);
+			}
+
+			control->next = state->control_flow_stmts;
+			state->control_flow_stmts = control;
 			break;
 		}
 		case AST_NODE_EXPR: 
@@ -2984,9 +3021,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	const Scope* body = compiler->function->body;
 	assert(body);
 
-	compiler->current_loop = NULL;
-	compiler->current_control_flow_stmts = NULL;
-	compiler->free_control_flow_stmt = NULL;
+	compiler->loop_switch_state = (LoopSwitchState) {};
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
@@ -3038,8 +3073,9 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler,
 			compiler->function->body->nodes.first);
 
-	assert(compiler->current_loop == NULL);
-	assert(compiler->current_control_flow_stmts == NULL);
+	assert(compiler->loop_switch_state.node == NULL);
+	assert(compiler->loop_switch_state.parent == NULL);
+	assert(compiler->loop_switch_state.control_flow_stmts == NULL);
 
 	// Free the loop control staff, since it is no longer needed
 	_free_all_control_flow_stmts(compiler);

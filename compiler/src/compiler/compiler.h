@@ -41,12 +41,14 @@ inline StringArray str_storage_to_array(StringStorage* storage) {
 // FunctionCompiler
 //
 
+typedef struct ControlFlowStmt ControlFlowStmt;
+typedef struct LoopSwitchState LoopSwitchState;
+
 typedef enum {
 	CONTROL_FLOW_BREAK,
 	CONTROL_FLOW_CONTINUE,
 } ControlFlowKind;
 
-typedef struct ControlFlowStmt ControlFlowStmt;
 struct ControlFlowStmt {
 	ControlFlowKind kind;
 
@@ -58,6 +60,27 @@ struct ControlFlowStmt {
 	InstrIndex* arg_values;
 
 	ControlFlowStmt* next;
+};
+
+// This is ment to keep track of the nearest loop or switch statement to the current compiler
+// location in the ast. Together with the nearest loop or switch, this struct also keeps track of
+// the control flow statements (`break`s and `continue`s).
+//
+// NOTE: Here by the "compiler location in the ast" is ment, the ast node the compiler is currently
+//       processing.
+//
+// Important considerations:
+// * `break` can break from both loops and switch statement, whichever is the nearest one.
+// * `continue`, however, only applies to loops. That means, when inside a switch statement a
+//   `continue` will apply to the outer loop.
+struct LoopSwitchState {
+	// The parent loop/switch
+	LoopSwitchState* parent;
+
+	// Control flow statement for the this loop or switch.
+	ControlFlowStmt* control_flow_stmts;
+
+	AstNode* node;
 };
 
 typedef struct {
@@ -99,8 +122,7 @@ typedef struct {
 	StringStorage* str_storage;
 	SymbolMap* symbol_map;
 
-	AstNode* current_loop;
-	ControlFlowStmt* current_control_flow_stmts;
+	LoopSwitchState loop_switch_state;
 	ControlFlowStmt* free_control_flow_stmt;
 
 	// An array internal to the compiler, which is used to defer filling of the

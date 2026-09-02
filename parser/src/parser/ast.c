@@ -26,15 +26,11 @@ bool type_is_callable(const Type* type) {
 	return false;
 }
 
-bool type_equal(const Type* a, const Type* b) {
+bool type_equal_ignore_qualifiers(const Type* a, const Type* b) {
 	TypeKind a_without_signed = a->kind & (TypeKind)(~TYPE_FLAG_SIGNED);
 	TypeKind b_without_signed = b->kind & (TypeKind)(~TYPE_FLAG_SIGNED);
 
 	if (a_without_signed != b_without_signed) {
-		return false;
-	}
-
-	if (a->qualifiers != b->qualifiers) {
 		return false;
 	}
 
@@ -130,6 +126,14 @@ bool type_equal(const Type* a, const Type* b) {
 
 	unreachable();
 	return false;
+}
+
+bool type_equal(const Type* a, const Type* b) {
+	if (a->qualifiers != b->qualifiers) {
+		return false;
+	}
+
+	return type_equal_ignore_qualifiers(a, b);
 }
 
 void type_array_to_pointer(const Type* type, Type* out_type) {

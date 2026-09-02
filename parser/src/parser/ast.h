@@ -175,6 +175,7 @@ struct Type {
 };
 
 bool type_equal(const Type* a, const Type* b);
+bool type_equal_ignore_qualifiers(const Type* a, const Type* b);
 void type_array_to_pointer(const Type* type, Type* out_type);
 void type_format(const Type* type, StringBuilder* builder);
 

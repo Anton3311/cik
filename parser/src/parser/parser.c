@@ -2417,15 +2417,28 @@ static bool _check_is_convertable(Parser* parser,
 		Type* to_base_type = to->pointer_base_type;
 		Type* from_base_type = type_extract_pointer_base_type(from);
 
-		if (has_flag(from_base_type->qualifiers, TYPE_QUALIFIER_CONST)
-				&& !has_flag(to_base_type->qualifiers, TYPE_QUALIFIER_CONST)) {
-			
+		if ((from_base_type->qualifiers & to_base_type->qualifiers) != from_base_type->qualifiers) {
+			TypeQualifiers discarded = from_base_type->qualifiers & (~to_base_type->qualifiers);
+			assert(discarded != TYPE_QUALIFIER_NONE);
+
 			StringBuilder builder = { parser->diagnostics->allocator };
 			str_builder_append(&builder, STR_LIT("Convertion from '"));
 			type_format(from, &builder);
 			str_builder_append(&builder, STR_LIT("' to '"));
 			type_format(to, &builder);
-			str_builder_append(&builder, STR_LIT("' discards 'const' qualifier"));
+
+			if (discarded == (TYPE_QUALIFIER_CONST)) {
+				str_builder_append(&builder, STR_LIT("' discards 'const' qualifier"));
+			}
+
+			if (discarded == (TYPE_QUALIFIER_VOLATILE)) {
+				str_builder_append(&builder, STR_LIT("' discards 'volatile' qualifier"));
+			}
+
+			if (discarded == (TYPE_QUALIFIER_CONST | TYPE_QUALIFIER_VOLATILE)) {
+				str_builder_append(&builder,
+						STR_LIT("' discards 'const' and 'volatile' qualifiers"));
+			}
 
 			report_error(parser->diagnostics,
 					from_source_range,
@@ -2435,7 +2448,7 @@ static bool _check_is_convertable(Parser* parser,
 			return false;
 		}
 		
-		if (type_equal(to_base_type, from_base_type)) {
+		if (type_equal_ignore_qualifiers(to_base_type, from_base_type)) {
 			return true;
 		}
 

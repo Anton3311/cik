@@ -1883,6 +1883,9 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 		InstrIndex continue_target) {
 	profile_scope_start(__func__);
 
+	maybe(break_target.value == INVALID_INSTR_INDEX.value);
+	maybe(continue_target.value == INVALID_INSTR_INDEX.value);
+
 	for (ControlFlowStmt* stmt = stmts;
 			stmt != NULL;
 			stmt = stmt->next) {
@@ -1895,8 +1898,10 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 		assert(jump->jump.target_region.value == INVALID_INSTR_INDEX.value);
 
 		if (stmt->kind == CONTROL_FLOW_BREAK) {
+			assert(break_target.value != INVALID_INSTR_INDEX.value);
 			jump->jump.target_region = break_target;
 		} else if (stmt->kind == CONTROL_FLOW_CONTINUE) {
+			assert(continue_target.value != INVALID_INSTR_INDEX.value);
 			jump->jump.target_region = continue_target;
 		} else {
 			unreachable();
@@ -2879,6 +2884,11 @@ static void _compile_switch(FunctionCompiler* compiler,
 	maybe(true_region_index.value == false_region_index.value);
 
 	InstrIndex post_switch_region_index = instr_new_region(instr_buffer, instr_allocator);
+
+	_fix_loop_control_jumps(instr_buffer,
+			compiler->loop_switch_state->control_flow_stmts,
+			post_switch_region_index,
+			INVALID_INSTR_INDEX);
 
 	if (!instr_region_finished(instr_buffer, true_region_index)) {
 		InstrIndex jump = instr_new_jump(instr_buffer,

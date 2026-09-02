@@ -2631,50 +2631,101 @@ static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
 		InstrIndex* initial_values,
 		InstrIndex* alternative_values,
 		InstrIndex* out_phis,
+		ControlFlowStmt* control_flow_stmts,
+		bool is_var,
 		size_t value_count) {
 
 	profile_scope_start(__func__);
 
+	size_t control_flow_stmt_count = 0;
+	for (ControlFlowStmt* stmt = control_flow_stmts; stmt != NULL; stmt = stmt->next) {
+		assert(stmt->kind == CONTROL_FLOW_BREAK);
+		control_flow_stmt_count += 1;
+	}
+
+	size_t max_variant_count = control_flow_stmt_count + 2;
+
 	for (size_t i = 0; i < value_count; i += 1) {
-		if (initial_values[i].value == alternative_values[i].value) {
-			continue;
-		}
-
-		if (initial_values[i].value == INVALID_INSTR_INDEX.value) {
-			out_phis[i] = alternative_values[i];
-			continue;
-		}
-
-		InstrIndex select_initial = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_SELECT,
-			.select = {
-				.value = initial_values[i],
-				.region = initial_region_index,
-			}
-		});
-
-		InstrIndex select_alternative = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_SELECT,
-			.select = {
-				.value = alternative_values[i],
-				.region = alternative_region_index,
-			}
-		});
-
-		InstrInputs phi_inputs_buffer = instr_allocate_inputs_array(instr_buffer, 2);
+		InstrInputs phi_inputs_buffer = instr_allocate_inputs_array(instr_buffer, max_variant_count);
 		InstrIndex* phi_inputs = &instr_buffer->inputs_buffer[phi_inputs_buffer.start];
 
-		phi_inputs[0] = select_initial;
-		phi_inputs[1] = select_alternative;
+		size_t variant_count = 0;
 
-		InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_PHI,
-			.phi = {
-				.variants = phi_inputs_buffer,
+#if 0
+		if (initial_values[i].value == alternative_values[i].value) {
+		} else {
+			if (initial_values[i].value != INVALID_INSTR_INDEX.value) {
+				InstrIndex select_initial = instr_buffer_push(instr_buffer,
+					instr_allocator,
+					(Instr) {
+						.kind = INSTR_SELECT,
+						.select = {
+							.value = initial_values[i],
+							.region = initial_region_index,
+						}
+					});
+
+				phi_inputs[variant_count] = select_initial;
+				variant_count += 1;
 			}
-		});
 
-		out_phis[i] = phi;
+			if (alternative_values[i].value != INVALID_INSTR_INDEX.value) {
+				InstrIndex select_alternative = instr_buffer_push(instr_buffer,
+					instr_allocator,
+					(Instr) {
+						.kind = INSTR_SELECT,
+						.select = {
+							.value = alternative_values[i],
+							.region = alternative_region_index,
+						}
+					});
+
+				phi_inputs[variant_count] = select_alternative;
+				variant_count += 1;
+			}
+		}
+#endif
+
+		for (ControlFlowStmt* stmt = control_flow_stmts; stmt != NULL; stmt = stmt->next) {
+			InstrIndex value;
+			if (is_var) {
+				value = stmt->var_values[i];
+			} else {
+				value = stmt->arg_values[i];
+			}
+
+			assert(value.value != INVALID_INSTR_INDEX.value);
+
+			InstrIndex select = instr_buffer_push(instr_buffer,
+				instr_allocator,
+				(Instr) {
+					.kind = INSTR_SELECT,
+					.select = {
+						.value = value,
+						.region = stmt->region,
+					}
+				});
+
+			phi_inputs[variant_count] = select;
+			variant_count += 1;
+		}
+
+		assert(variant_count <= max_variant_count);
+		if (variant_count > 0) {
+			InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+				.kind = INSTR_PHI,
+				.phi = {
+					.variants = (InstrInputs) {
+						.start = phi_inputs_buffer.start,
+						.count = (uint16_t)variant_count,
+					},
+				}
+			});
+
+			out_phis[i] = phi;
+		} else {
+			out_phis[i] = initial_values[i];
+		}
 	}
 
 	profile_scope_end();
@@ -2749,29 +2800,54 @@ static void _compile_switch(FunctionCompiler* compiler,
 				instr_region_set_last(instr_buffer, true_region_index, jump_to_current);
 			}
 
-			// Setup variable and argument state.
-			if (fallthrough_from_previous_possible) {
-				_create_phis_for_switch_case(instr_buffer,
-						instr_allocator,
-						initial_region_index,
-						true_region_index,
-						initial_var_values,
-						compiler->var_values,
-						compiler->var_values,
-						var_count);
+			ControlFlowStmt initial_stmt = {
+				.kind = CONTROL_FLOW_BREAK,
+				.region = initial_region_index,
+				.var_values = initial_var_values,
+				.arg_values = initial_arg_values,
+			};
 
-				_create_phis_for_switch_case(instr_buffer,
-						instr_allocator,
-						initial_region_index,
-						true_region_index,
-						initial_arg_values,
-						compiler->arg_states,
-						compiler->arg_states,
-						arg_count);
-			} else {
-				array_copy(compiler->var_values, initial_var_values, var_count);
-				array_copy(compiler->arg_states, initial_arg_values, arg_count);
+			ControlFlowStmt previous_case_stmt = {
+				.kind = CONTROL_FLOW_BREAK,
+				.region = true_region_index,
+				.var_values = compiler->var_values,
+				.arg_values = compiler->arg_states,
+			};
+
+			ControlFlowStmt* break_stmts = compiler->loop_switch_state->control_flow_stmts;
+
+			ControlFlowStmt* stmts = break_stmts;
+
+			if (fallthrough_from_previous_possible) {
+				previous_case_stmt.next = stmts;
+				stmts = &previous_case_stmt;
 			}
+
+			initial_stmt.next = stmts;
+			stmts = &initial_stmt;
+
+			// Setup variable and argument state.
+			_create_phis_for_switch_case(instr_buffer,
+					instr_allocator,
+					initial_region_index,
+					true_region_index,
+					initial_var_values,
+					compiler->var_values,
+					compiler->var_values,
+					stmts,
+					true,
+					var_count);
+
+			_create_phis_for_switch_case(instr_buffer,
+					instr_allocator,
+					initial_region_index,
+					true_region_index,
+					initial_arg_values,
+					compiler->arg_states,
+					compiler->arg_states,
+					stmts,
+					false,
+					arg_count);
 
 			bool is_default_case = child->case_stmt.value == NULL;
 			if (is_default_case) {
@@ -2858,27 +2934,55 @@ static void _compile_switch(FunctionCompiler* compiler,
 
 		if (fallthrough_from_previous_possible) {
 			assert(default_case_region.value == INVALID_INSTR_INDEX.value);
-			_create_phis_for_switch_case(instr_buffer,
-					instr_allocator,
-					initial_region_index,
-					true_region_index,
-					initial_var_values,
-					compiler->var_values,
-					compiler->var_values,
-					var_count);
-
-			_create_phis_for_switch_case(instr_buffer,
-					instr_allocator,
-					initial_region_index,
-					true_region_index,
-					initial_arg_values,
-					compiler->arg_states,
-					compiler->arg_states,
-					arg_count);
-		} else {
-			array_copy(compiler->var_values, initial_var_values, var_count);
-			array_copy(compiler->arg_states, initial_arg_values, arg_count);
 		}
+
+		ControlFlowStmt initial_stmt = {
+			.kind = CONTROL_FLOW_BREAK,
+			.region = initial_region_index,
+			.var_values = initial_var_values,
+			.arg_values = initial_arg_values,
+		};
+
+		ControlFlowStmt previous_case_stmt = {
+			.kind = CONTROL_FLOW_BREAK,
+			.region = true_region_index,
+			.var_values = compiler->var_values,
+			.arg_values = compiler->arg_states,
+		};
+
+		ControlFlowStmt* break_stmts = compiler->loop_switch_state->control_flow_stmts;
+
+		ControlFlowStmt* stmts = break_stmts;
+
+		if (fallthrough_from_previous_possible) {
+			previous_case_stmt.next = stmts;
+			stmts = &previous_case_stmt;
+		}
+
+		initial_stmt.next = stmts;
+		stmts = &initial_stmt;
+
+		_create_phis_for_switch_case(instr_buffer,
+				instr_allocator,
+				initial_region_index,
+				true_region_index,
+				initial_var_values,
+				compiler->var_values,
+				compiler->var_values,
+				stmts,
+				true,
+				var_count);
+
+		_create_phis_for_switch_case(instr_buffer,
+				instr_allocator,
+				initial_region_index,
+				true_region_index,
+				initial_arg_values,
+				compiler->arg_states,
+				compiler->arg_states,
+				stmts,
+				false,
+				arg_count);
 	}
 
 	maybe(true_region_index.value == false_region_index.value);

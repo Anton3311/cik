@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 __declspec(dllimport) void assert(unsigned long long);
 
 int sum_cases(int a) {

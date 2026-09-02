@@ -168,9 +168,10 @@ static void _free_all_control_flow_stmts(FunctionCompiler* compiler) {
 }
 
 static LoopSwitchState* _get_current_loop_state(FunctionCompiler* compiler) {
-	LoopSwitchState* state = &compiler->loop_switch_state;
+	LoopSwitchState* state = compiler->loop_switch_state;
 
-	while (state->node) {
+	while (state) {
+		assert(state->node);
 		switch (state->node->kind) {
 		case AST_NODE_WHILE_LOOP:
 		case AST_NODE_FOR_LOOP:
@@ -187,12 +188,13 @@ static LoopSwitchState* _get_current_loop_state(FunctionCompiler* compiler) {
 	return NULL;
 }
 
-static void _restore_loop_switch_state(FunctionCompiler* compiler, LoopSwitchState* previous) {
-	if (compiler->loop_switch_state.control_flow_stmts) {
-		_free_control_flow_stmt(compiler, compiler->loop_switch_state.control_flow_stmts);
+static void _restore_loop_switch_state(FunctionCompiler* compiler) {
+	assert(compiler->loop_switch_state);
+	if (compiler->loop_switch_state->control_flow_stmts) {
+		_free_control_flow_stmt(compiler, compiler->loop_switch_state->control_flow_stmts);
 	}
 
-	compiler->loop_switch_state = *previous;
+	compiler->loop_switch_state = compiler->loop_switch_state->parent;
 }
 
 typedef struct {
@@ -1952,12 +1954,13 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
-	LoopSwitchState previous_loop_switch_state = compiler->loop_switch_state;
-	compiler->loop_switch_state = (LoopSwitchState) {
-		.parent = &previous_loop_switch_state,
+	LoopSwitchState current_loop_switch_state = (LoopSwitchState) {
+		.parent = compiler->loop_switch_state,
 		.control_flow_stmts = NULL,
 		.node = node,
 	};
+
+	compiler->loop_switch_state = &current_loop_switch_state;
 
 	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -2136,13 +2139,13 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
-			compiler->loop_switch_state.control_flow_stmts,
+			compiler->loop_switch_state->control_flow_stmts,
 			post_loop_region_index, 
 			condition_region);
 
 	arena_end_temp(temp);
 
-	_restore_loop_switch_state(compiler, &previous_loop_switch_state);
+	_restore_loop_switch_state(compiler);
 
 	profile_scope_end();
 	return post_loop_region_index;
@@ -2158,12 +2161,13 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
 	// Save the previous loop state
-	LoopSwitchState previous_loop_switch_state = compiler->loop_switch_state;
-	compiler->loop_switch_state = (LoopSwitchState) {
-		.parent = &previous_loop_switch_state,
+	LoopSwitchState current_loop_switch_state = (LoopSwitchState) {
+		.parent = compiler->loop_switch_state,
 		.control_flow_stmts = NULL,
 		.node = node,
 	};
+
+	compiler->loop_switch_state = &current_loop_switch_state;
 
 	size_t arg_count = compiler->function->proto.parameter_count;
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -2304,14 +2308,14 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
-			compiler->loop_switch_state.control_flow_stmts,
+			compiler->loop_switch_state->control_flow_stmts,
 			post_loop_region, 
 			body_block.initial_region);
 
 	arena_end_temp(temp);
 
 	// Restore the previous loop state
-	_restore_loop_switch_state(compiler, &previous_loop_switch_state);
+	_restore_loop_switch_state(compiler);
 
 	profile_scope_end();
 	return post_loop_region;
@@ -2739,11 +2743,14 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 		case AST_NODE_CONTINUE: {
 
 			if (node->kind == AST_NODE_BREAK) {
-				assert_msg(compiler->loop_switch_state.node,
+				assert_msg(compiler->loop_switch_state,
 						"`break` statement appears outside of a loop or a switch");
+				assert(compiler->loop_switch_state->node);
 			} else if (node->kind == AST_NODE_CONTINUE) {
-				assert_msg(_get_current_loop_state(compiler),
+				LoopSwitchState* loop = _get_current_loop_state(compiler);
+				assert_msg(loop,
 						"`break` statement appears outside of a loop");
+				assert(loop->node);
 			}
 
 			InstrIndex jump = instr_new_jump(instr_buffer,
@@ -2764,7 +2771,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 			array_copy(control->var_values, compiler->var_values, compiler->var_count);
 			array_copy(control->arg_values, compiler->arg_states, arg_count);
 
-			LoopSwitchState* state = &compiler->loop_switch_state;
+			LoopSwitchState* state = compiler->loop_switch_state;
 			if (node->kind == AST_NODE_CONTINUE) {
 				state = _get_current_loop_state(compiler);
 			}
@@ -3021,7 +3028,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	const Scope* body = compiler->function->body;
 	assert(body);
 
-	compiler->loop_switch_state = (LoopSwitchState) {};
+	compiler->loop_switch_state = NULL;
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
@@ -3073,9 +3080,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	CompiledBlockRegions body_block = _compile_block_to_region(compiler,
 			compiler->function->body->nodes.first);
 
-	assert(compiler->loop_switch_state.node == NULL);
-	assert(compiler->loop_switch_state.parent == NULL);
-	assert(compiler->loop_switch_state.control_flow_stmts == NULL);
+	assert(compiler->loop_switch_state == NULL);
 
 	// Free the loop control staff, since it is no longer needed
 	_free_all_control_flow_stmts(compiler);

@@ -122,7 +122,7 @@ typedef struct {
 	StringStorage* str_storage;
 	SymbolMap* symbol_map;
 
-	LoopSwitchState loop_switch_state;
+	LoopSwitchState* loop_switch_state;
 	ControlFlowStmt* free_control_flow_stmt;
 
 	// An array internal to the compiler, which is used to defer filling of the

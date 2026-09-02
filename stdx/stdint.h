@@ -16,4 +16,6 @@ typedef signed long long int64_t;
 #define UINT32_MAX 0xffffffff
 #define UINT64_MAX 0xffffffffffffffffull
 
+#define SIZE_MAX   UINT64_MAX
+
 #endif

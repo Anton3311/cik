@@ -481,7 +481,11 @@ inline bool str_ends_with(String str, String sufix) {
 
 inline size_t str_find_char(String str, char c) {
 	const char* position = memchr(str.v, c, str.length);
-	return position ? (size_t)(position - str.v) : SIZE_MAX;
+	if (position) {
+		return (size_t)(position - str.v);
+	} else {
+		return SIZE_MAX;
+	}
 }
 
 typedef enum {

@@ -1,11 +1,15 @@
 #pragma once
 
-#define STD_IMPORT __declspec(dllimport)
-
-__declspec(dllimport) int printf(const char* fmt, ...);
-
 typedef struct FILE FILE;
 
+__declspec(dllimport) FILE* __cdecl __acrt_iob_func(unsigned int index);
+
+#define stdin  (__acrt_iob_func(0))
+#define stdout (__acrt_iob_func(1))
+#define stderr (__acrt_iob_func(2))
+
+__declspec(dllimport) int printf(const char* fmt, ...);
+__declspec(dllimport) int fprintf(FILE* stream, const char* fmt, ...);
 __declspec(dllimport) FILE* fopen(const char* path,
 		const char* mode);
 

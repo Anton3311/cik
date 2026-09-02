@@ -2615,10 +2615,142 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 	profile_scope_end();
 }
 
-static void _compile_switch(FunctionCompiler* compiler, AstNode* stmt) {
+static void _compile_switch(FunctionCompiler* compiler,
+		AstNode* stmt,
+		InstrIndex* region_instr_index) {
+
 	profile_scope_start(__func__);
 	assert(stmt->kind == AST_NODE_SWITCH);
 
+	LoopSwitchState current_loop_switch_state = (LoopSwitchState) {
+		.parent = compiler->loop_switch_state,
+		.control_flow_stmts = NULL,
+		.node = stmt,
+	};
+
+	compiler->loop_switch_state = &current_loop_switch_state;
+
+	InstrIndex tested_expr = _compile_expr(compiler, stmt->switch_stmt.expr);
+
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
+	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
+
+	InstrIndex initial_region_index = *region_instr_index;
+	InstrIndex true_region_index = initial_region_index;
+	InstrIndex false_region_index = initial_region_index;
+
+	assert(stmt->switch_stmt.body->kind == AST_NODE_BLOCK);
+
+	AstNode* first_body_node = stmt->switch_stmt.body->block.nodes.first;
+	for (AstNode* child = first_body_node; child != NULL; child = child->next) {
+		if (child->kind == AST_NODE_CASE) {
+			// TODO: Phis
+			// TODO: default:
+
+			InstrIndex new_true_region = instr_new_region(instr_buffer, instr_allocator);
+			InstrIndex new_false_region = instr_new_region(instr_buffer, instr_allocator);
+
+			// If the previous region has been terminated by a jump or a return yet, the fallthrough
+			// is possible
+			bool fallthrough_from_previous_possible = false;
+
+			if (true_region_index.value != false_region_index.value) {
+				fallthrough_from_previous_possible = !instr_region_finished(
+						instr_buffer,
+						true_region_index);
+			}
+
+			// NOTE: Fallthrough
+			if (fallthrough_from_previous_possible) {
+				InstrIndex jump_to_current = instr_new_jump(instr_buffer,
+						instr_allocator,
+						new_true_region,
+						&compiler->io_state);
+
+				instr_region_set_last(instr_buffer, true_region_index, jump_to_current);
+			}
+
+			assert(child->case_stmt.value);
+			InstrIndex case_value_instr = _compile_expr(compiler, child->case_stmt.value);
+
+			InstrIndex compare_index = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+				// FIXME: Don't hardcode
+				.kind = INSTR_COMPARE_64,
+				.compare = {
+					.kind = INSTR_CMP_EQUAL,
+					.left = tested_expr,
+					.right = case_value_instr,
+				}
+			});
+
+			assert(compiler->io_state.value != INVALID_INSTR_INDEX.value);
+
+			InstrIndex branch_index = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+				.kind = INSTR_BRANCH,
+				.branch = {
+					.condition = compare_index,
+					.true_region = new_true_region,
+					.false_region = new_false_region,
+					.io_state = compiler->io_state,
+				}
+			});
+
+			compiler->io_state = instr_new_io_state(instr_buffer,
+					instr_allocator,
+					INVALID_INSTR_INDEX);
+
+			assert(!instr_region_finished(instr_buffer, false_region_index));
+			instr_region_set_last(instr_buffer, false_region_index, branch_index);
+
+			true_region_index = new_true_region;
+			false_region_index = new_false_region;
+		} else {
+			_compile_single_node(compiler, child, &true_region_index);
+
+			if (child->kind == AST_NODE_RETURN) {
+				// NOTE: Return statement compilation consumes the `io_state` and leaves an invalid
+				//       one behind, however we will definitely need a valid `io_state` to finish
+				//       other switch cases and the post switch statement code. So here, we just
+				//       create an empty one. Creating one here, gives us a valid `io_state` to work
+				//       with, while keeping us independent from control flow that was terminated by
+				//       the return in the previous case.
+				assert(compiler->io_state.value == INVALID_INSTR_INDEX.value);
+				compiler->io_state = instr_new_io_state(instr_buffer,
+						instr_allocator,
+						INVALID_INSTR_INDEX);
+			}
+		}
+	}
+
+	maybe(true_region_index.value == false_region_index.value);
+
+	InstrIndex post_switch_region_index = instr_new_region(instr_buffer, instr_allocator);
+
+	if (!instr_region_finished(instr_buffer, true_region_index)) {
+		InstrIndex jump = instr_new_jump(instr_buffer,
+				instr_allocator,
+				post_switch_region_index,
+				&compiler->io_state);
+
+		instr_region_set_last(instr_buffer, true_region_index, jump);
+	}
+
+	if (!instr_region_finished(instr_buffer, false_region_index)) {
+		InstrIndex jump = instr_new_jump(instr_buffer,
+				instr_allocator,
+				post_switch_region_index,
+				&compiler->io_state);
+
+		instr_region_set_last(instr_buffer, false_region_index, jump);
+	}
+
+	*region_instr_index = post_switch_region_index;
+
+	_restore_loop_switch_state(compiler);
+
+	arena_end_temp(temp);
 	profile_scope_end();
 }
 
@@ -2798,7 +2930,7 @@ static void _compile_single_node(FunctionCompiler* compiler,
 	case AST_NODE_FUNCTION_DECL:
 		panic("Function is not allowed here");
 	case AST_NODE_SWITCH:
-		_compile_switch(compiler, node);
+		_compile_switch(compiler, node, region_instr_index);
 		break;
 	}
 

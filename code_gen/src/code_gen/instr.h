@@ -386,6 +386,12 @@ inline InstrIndex instr_buffer_append(InstrBuffer* buffer, Arena* allocator) {
 	return i;
 }
 
+inline InstrIndex instr_buffer_push(InstrBuffer* buffer, Arena* allocator, Instr data) {
+	InstrIndex index = instr_buffer_append(buffer, allocator);
+	buffer->instr[index.value] = data;
+	return index;
+}
+
 //
 // InstrQueue
 //

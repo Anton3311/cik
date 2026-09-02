@@ -70,6 +70,8 @@ void print_assertion_stack_trace();
 	printf("%s:%u: \033[31;1mPanic: '%s'\033[0m\n", __FILE__, __LINE__, msg); \
 	crash();
 
+#define maybe(expression) (void)(expression)
+
 #define debug_log_info(...) { printf("%s:%u: \033[32;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
 #define debug_log_warn(...) { printf("%s:%u: \033[33;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }
 #define debug_log_error(...) { printf("%s:%u: \033[31;1m", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\033[0m\n"); }

@@ -2643,11 +2643,12 @@ static void _compile_switch(FunctionCompiler* compiler,
 
 	assert(stmt->switch_stmt.body->kind == AST_NODE_BLOCK);
 
+	InstrIndex default_case_region = INVALID_INSTR_INDEX;
+
 	AstNode* first_body_node = stmt->switch_stmt.body->block.nodes.first;
 	for (AstNode* child = first_body_node; child != NULL; child = child->next) {
 		if (child->kind == AST_NODE_CASE) {
 			// TODO: Phis
-			// TODO: default:
 
 			InstrIndex new_true_region = instr_new_region(instr_buffer, instr_allocator);
 			InstrIndex new_false_region = instr_new_region(instr_buffer, instr_allocator);
@@ -2672,40 +2673,62 @@ static void _compile_switch(FunctionCompiler* compiler,
 				instr_region_set_last(instr_buffer, true_region_index, jump_to_current);
 			}
 
-			assert(child->case_stmt.value);
-			InstrIndex case_value_instr = _compile_expr(compiler, child->case_stmt.value);
+			bool is_default_case = child->case_stmt.value == NULL;
+			if (is_default_case) {
+				// NOTE: If the control flow is comming from a different switch case, just jump over
+				//       the `default` case part. After going through all of the cases, and if the
+				//       tested expression doesn't match any of them, we can safely jump here and
+				//       execute the `default` case.
+				InstrIndex threaded_jump = instr_new_jump(instr_buffer,
+						instr_allocator,
+						new_false_region,
+						&compiler->io_state);
 
-			InstrIndex compare_index = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-				// FIXME: Don't hardcode
-				.kind = INSTR_COMPARE_64,
-				.compare = {
-					.kind = INSTR_CMP_EQUAL,
-					.left = tested_expr,
-					.right = case_value_instr,
-				}
-			});
+				assert(!instr_region_finished(instr_buffer, false_region_index));
+				instr_region_set_last(instr_buffer, false_region_index, threaded_jump);
+			} else {
+				InstrIndex case_value_instr = _compile_expr(compiler, child->case_stmt.value);
 
-			assert(compiler->io_state.value != INVALID_INSTR_INDEX.value);
-
-			InstrIndex branch_index = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-				.kind = INSTR_BRANCH,
-				.branch = {
-					.condition = compare_index,
-					.true_region = new_true_region,
-					.false_region = new_false_region,
-					.io_state = compiler->io_state,
-				}
-			});
-
-			compiler->io_state = instr_new_io_state(instr_buffer,
+				InstrIndex compare_index = instr_buffer_push(instr_buffer,
 					instr_allocator,
-					INVALID_INSTR_INDEX);
+					(Instr) {
+						// FIXME: Don't hardcode
+						.kind = INSTR_COMPARE_64,
+						.compare = {
+						.kind = INSTR_CMP_EQUAL,
+						.left = tested_expr,
+						.right = case_value_instr,
+					}
+				});
 
-			assert(!instr_region_finished(instr_buffer, false_region_index));
-			instr_region_set_last(instr_buffer, false_region_index, branch_index);
+				assert(compiler->io_state.value != INVALID_INSTR_INDEX.value);
+
+				InstrIndex branch_index = instr_buffer_push(instr_buffer,
+					instr_allocator,
+					(Instr) {
+					.kind = INSTR_BRANCH,
+					.branch = {
+						.condition = compare_index,
+						.true_region = new_true_region,
+						.false_region = new_false_region,
+						.io_state = compiler->io_state,
+					}
+				});
+
+				compiler->io_state = instr_new_io_state(instr_buffer,
+						instr_allocator,
+						INVALID_INSTR_INDEX);
+
+				assert(!instr_region_finished(instr_buffer, false_region_index));
+				instr_region_set_last(instr_buffer, false_region_index, branch_index);
+			}
 
 			true_region_index = new_true_region;
 			false_region_index = new_false_region;
+
+			if (is_default_case) {
+				default_case_region = true_region_index;
+			}
 		} else {
 			_compile_single_node(compiler, child, &true_region_index);
 
@@ -2738,9 +2761,13 @@ static void _compile_switch(FunctionCompiler* compiler,
 	}
 
 	if (!instr_region_finished(instr_buffer, false_region_index)) {
+		// If this `switch` has a default case, we jump to there instead, otherwise leave the 
+		// `switch` statement by jumping to the `post_switch_region_index`.
 		InstrIndex jump = instr_new_jump(instr_buffer,
 				instr_allocator,
-				post_switch_region_index,
+				default_case_region.value == INVALID_INSTR_INDEX.value
+					? post_switch_region_index
+					: default_case_region,
 				&compiler->io_state);
 
 		instr_region_set_last(instr_buffer, false_region_index, jump);

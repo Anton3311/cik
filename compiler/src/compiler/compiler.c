@@ -3144,6 +3144,8 @@ static void _compile_single_node(FunctionCompiler* compiler,
 	case AST_NODE_SWITCH:
 		_compile_switch(compiler, node, region_instr_index);
 		break;
+	case AST_NODE_CASE:
+		unreachable();
 	}
 
 	profile_scope_end();

@@ -30,7 +30,7 @@ Although the compiler doesn't yet support a lot of C features, it is already cap
 Features and limitations:
 
 1. `x64` machine code generation
-2. Partially supported `cdecl` calling convention
+2. `cdecl` calling convention
 3. Support for using structs as function return types.
 4. Calling of external functions. These are provided inernally as function pointers by the compiler.
 5. A custom [linker](code_gen/src/code_gen/x64_linker.c) that enables compilation of multiple functions and source files into a single program.
@@ -39,6 +39,7 @@ Features and limitations:
 7. Pointer dereferencing and assignment.
 8. Array indexing and element assignment
 9. Conditional branches
+10. Switch statements
 10. Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=` and unary not `!`.
 11. `while`, `for` and `do while` loops
 10. String constants

@@ -634,6 +634,10 @@ void expr_get_type(Expr* expr, Type* out_type) {
 	case EXPR_BINARY: {
 		if (bin_op_is_compare(expr->binary.op)) {
 			out_type->kind = TYPE_INT;
+		} else if (expr->binary.op == BIN_OP_LOGICAL_AND) {
+			out_type->kind = TYPE_INT;
+		} else if (expr->binary.op == BIN_OP_LOGICAL_OR) {
+			out_type->kind = TYPE_INT;
 		} else {
 			out_type->kind = expr->binary.common_type_kind;
 			out_type->pointer_base_type = expr->binary.pointer_base_type;
@@ -782,7 +786,9 @@ void expr_get_type(Expr* expr, Type* out_type) {
 
 bool expr_is_bool(Expr* expr) {
 	if (expr->kind == EXPR_BINARY) {
-		return bin_op_is_compare(expr->binary.op);
+		return bin_op_is_compare(expr->binary.op)
+			|| expr->binary.op == BIN_OP_LOGICAL_AND
+			|| expr->binary.op == BIN_OP_LOGICAL_AND;
 	} else if (expr->kind == EXPR_UNARY && expr->unary.op == UNARY_OP_LOGICAL_NOT) {
 		return true;
 	}

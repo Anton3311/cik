@@ -1712,6 +1712,10 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 	case INSTR_NOT:
 		return;
+	
+	case INSTR_LOGICAL_AND:
+	case INSTR_LOGICAL_OR:
+		return;
 
 	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:
@@ -1744,6 +1748,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 			operand_instr = instr_buffer_at(instr_buffer, operand_instr->not.operand);
 		}
 
+		assert(operand_instr->kind >= INSTR_COMPARE_8 && operand_instr->kind <= INSTR_COMPARE_64);
 		InstrCompareKind compare_kind = operand_instr->compare.kind;
 		if (condition_is_flipped) {
 			compare_kind = instr_compare_kind_flip(compare_kind);
@@ -2623,6 +2628,14 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 		break;
 	case INSTR_NOT:
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->not.operand);
+		break;
+	case INSTR_LOGICAL_AND:
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->logical_and.left);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->logical_and.right);
+		break;
+	case INSTR_LOGICAL_OR:
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->logical_or.left);
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->logical_or.right);
 		break;
 	case INSTR_COMPARE_8:
 	case INSTR_COMPARE_16:

@@ -954,8 +954,11 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		break;
 
 	case BIN_OP_LOGICAL_AND:
+		*instr = (Instr) { .kind = INSTR_LOGICAL_AND, .logical_and = { left, right } };
+		break;
 	case BIN_OP_LOGICAL_OR:
-		panic("todo");
+		*instr = (Instr) { .kind = INSTR_LOGICAL_OR, .logical_and = { left, right } };
+		break;
 
 	case BIN_OP_LOGICAL_EQUAL:
 		instr->compare.kind = INSTR_CMP_EQUAL;
@@ -1009,6 +1012,8 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		instr->kind = INSTR_COMPARE_8 + result_bit_size_index;
 		instr->compare.left = left;
 		instr->compare.right = right;
+	} else if (expr->binary.op == BIN_OP_LOGICAL_AND || expr->binary.op == BIN_OP_LOGICAL_OR) {
+		// Already handled
 	} else {
 		instr->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		instr->bin_op.left = left;

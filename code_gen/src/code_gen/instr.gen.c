@@ -31,6 +31,8 @@ String instr_name(InstrKind variant) {
     case INSTR_BITWISE_NOT_32: return STR_LIT("bitwise_not_32");
     case INSTR_BITWISE_NOT_64: return STR_LIT("bitwise_not_64");
     case INSTR_NOT: return STR_LIT("not");
+    case INSTR_LOGICAL_AND: return STR_LIT("logical_and");
+    case INSTR_LOGICAL_OR: return STR_LIT("logical_or");
     case INSTR_COMPARE_8: return STR_LIT("compare_8");
     case INSTR_COMPARE_16: return STR_LIT("compare_16");
     case INSTR_COMPARE_32: return STR_LIT("compare_32");
@@ -172,6 +174,14 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         break;
     case INSTR_NOT:
         instr_queue_push_back(out_dependencies, instr->not.operand);
+        break;
+    case INSTR_LOGICAL_AND:
+        instr_queue_push_back(out_dependencies, instr->logical_and.left);
+        instr_queue_push_back(out_dependencies, instr->logical_and.right);
+        break;
+    case INSTR_LOGICAL_OR:
+        instr_queue_push_back(out_dependencies, instr->logical_or.left);
+        instr_queue_push_back(out_dependencies, instr->logical_or.right);
         break;
     case INSTR_COMPARE_8:
         instr_queue_push_back(out_dependencies, instr->compare.left);
@@ -382,6 +392,12 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_NOT:
         printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->not.operand.value);
+        break;
+    case INSTR_LOGICAL_AND:
+        printf("left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", (uint32_t)instr->logical_and.left.value, (uint32_t)instr->logical_and.right.value);
+        break;
+    case INSTR_LOGICAL_OR:
+        printf("left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", (uint32_t)instr->logical_or.left.value, (uint32_t)instr->logical_or.right.value);
         break;
     case INSTR_COMPARE_8:
         printf("kind: %.*s left: \033[33;1m%%%u\033[0m right: \033[33;1m%%%u\033[0m ", STR_FMT(instr_compare_kind_name(instr->compare.kind)), (uint32_t)instr->compare.left.value, (uint32_t)instr->compare.right.value);

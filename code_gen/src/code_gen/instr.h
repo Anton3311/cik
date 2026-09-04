@@ -59,6 +59,12 @@ typedef enum {
 	// A boolean not
 	INSTR_NOT,
 
+	// A logical and
+	INSTR_LOGICAL_AND,
+
+	// A logical or
+	INSTR_LOGICAL_OR,
+
 	INSTR_COMPARE_8,
 	INSTR_COMPARE_16,
 	INSTR_COMPARE_32,
@@ -227,6 +233,16 @@ struct Instr {
 		struct {
 			InstrIndex operand;
 		} not;
+
+		struct {
+			InstrIndex left;
+			InstrIndex right;
+		} logical_and;
+
+		struct {
+			InstrIndex left;
+			InstrIndex right;
+		} logical_or;
 
 		struct {
 			InstrCompareKind kind;

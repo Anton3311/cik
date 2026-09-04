@@ -45,88 +45,6 @@ void str_storage_release(StringStorage* storage) {
 // FunctionCompiler
 //
 
-static TypeLayout _type_get_layout(const TypeContext* context, const Type* type) {
-	switch (type->kind) {
-	case TYPE_VOID:
-		return type_layout_new(0, 0);
-
-	case TYPE_CHAR:
-	case TYPE_SIGNED_CHAR:
-	case TYPE_UNSIGNED_CHAR:
-	case TYPE_INT8:
-	case TYPE_SIGNED_INT8:
-	case TYPE_UNSIGNED_INT8:
-		return type_layout_new(1, 1);
-	case TYPE_SHORT:
-	case TYPE_SIGNED_SHORT:
-	case TYPE_UNSIGNED_SHORT:
-	case TYPE_INT16:
-	case TYPE_SIGNED_INT16:
-	case TYPE_UNSIGNED_INT16:
-		return type_layout_new(2, 2);
-
-	// NOTE: Enum is implicitely castable to an int.
-	// TODO: Return the size of a corresponding int, not simply `TYPE_INT`. The enum can be larger
-	//       then `TYPE_INT`.
-	case TYPE_ENUM:
-
-	case TYPE_INT:
-	case TYPE_SIGNED_INT:
-	case TYPE_UNSIGNED_INT:
-	case TYPE_LONG:
-	case TYPE_SIGNED_LONG:
-	case TYPE_UNSIGNED_LONG:
-	case TYPE_INT32:
-	case TYPE_SIGNED_INT32:
-	case TYPE_UNSIGNED_INT32:
-		return type_layout_new(4, 4);
-	case TYPE_LONG_LONG:
-	case TYPE_SIGNED_LONG_LONG:
-	case TYPE_UNSIGNED_LONG_LONG:
-	case TYPE_INT64:
-	case TYPE_SIGNED_INT64:
-	case TYPE_UNSIGNED_INT64:
-		return type_layout_new(8, 8);
-
-	case TYPE_SIZE_T:
-		return context->pointer_type_layout;
-
-	case TYPE_FLOAT:
-		return type_layout_new(4, 4);
-	case TYPE_DOUBLE:
-	case TYPE_LONG_DOUBLE:
-		return type_layout_new(8, 8);
-
-	case TYPE_STRUCT:
-		return context->layouts[type->struct_def->id];
-	case TYPE_UNION:
-		return context->layouts[type->union_def->id];
-
-	case TYPE_POINTER:
-		return context->pointer_type_layout;
-	case TYPE_ARRAY: {
-		if (type->array.size) {
-			// NOTE: I think that, if the function param has a type of a sized array, that this
-			//       function should still return `context->pointer_type_layout`
-			assert(type->array.size->kind == EXPR_INTEGER_LITERAL);
-
-			TypeLayout element_type_layout = _type_get_layout(context, type->array.element_type);
-			size_t size = element_type_layout.size * type->array.size->int_literal.value;
-			return type_layout_new(size, element_type_layout.alignment);
-		}
-
-		return context->pointer_type_layout;
-	}
-	case TYPE_FUNCTION:
-		return context->pointer_type_layout;
-	case TYPE_BOOL:
-		unreachable();
-	}
-
-	unreachable();
-	return (TypeLayout) {};
-}
-
 static ControlFlowStmt* _alloc_control_flow_stmt(FunctionCompiler* compiler) {
 	if (compiler->free_control_flow_stmt) {
 		ControlFlowStmt* stmt = compiler->free_control_flow_stmt;
@@ -248,8 +166,8 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
 
-	TypeLayout int_layout = _type_get_layout(compiler->type_context, int_type);
-	TypeLayout result_layout = _type_get_layout(compiler->type_context, target_type);
+	TypeLayout int_layout = type_get_layout(compiler->type_context, int_type);
+	TypeLayout result_layout = type_get_layout(compiler->type_context, target_type);
 
 	if (int_layout.size == result_layout.size) {
 		assert(int_layout.alignment == result_layout.alignment);
@@ -272,7 +190,7 @@ static void _compile_compound_literal_init(FunctionCompiler* compiler,
 	const TypeContext* type_context = compiler->type_context;
 
 	Type* type = literal->type;
-	TypeLayout layout = _type_get_layout(type_context, type);
+	TypeLayout layout = type_get_layout(type_context, type);
 
 	InstrIndex mem_zero_index = instr_buffer_append(instr_buffer, instr_allocator);
 	Instr* mem_zero = instr_buffer_at(instr_buffer, mem_zero_index);
@@ -295,7 +213,7 @@ static void _compile_compound_literal_init(FunctionCompiler* compiler,
 		case COMPOUND_LITERAL_VALUE: {
 			assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
 			const Struct* compound_type = type_extract_compound(type);
-			const size_t* field_offsets = type_context->field_offsets[compound_type->id];
+			const size_t* field_offsets = compound_type->field_offsets;
 
 			assert(entry->not_designated.index < compound_type->field_count);
 			offset = field_offsets[entry->not_designated.index];
@@ -306,7 +224,7 @@ static void _compile_compound_literal_init(FunctionCompiler* compiler,
 		case COMPOUND_LITERAL_FIELD_INIT: {
 			assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
 			const Struct* compound_type = type_extract_compound(type);
-			const size_t* field_offsets = type_context->field_offsets[compound_type->id];
+			const size_t* field_offsets = compound_type->field_offsets;
 
 			StructFieldNamespaceEntry field_entry =
 				compound_type->field_namespace->entries[entry->field.index];
@@ -321,7 +239,7 @@ static void _compile_compound_literal_init(FunctionCompiler* compiler,
 			panic("todo");
 		}
 
-		TypeLayout slot_type_layout = _type_get_layout(type_context, &slot_type);
+		TypeLayout slot_type_layout = type_get_layout(type_context, &slot_type);
 		if (slot_type.kind == TYPE_STRUCT
 				|| slot_type.kind == TYPE_UNION
 				|| slot_type.kind == TYPE_ARRAY) {
@@ -404,7 +322,7 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	InstrIndex index = _compile_expr(compiler, expr->array_index.index);
 
 	const TypeContext* type_context = compiler->type_context;
-	if (_type_get_layout(type_context, &index_type).size != type_context->pointer_type_layout.size) {
+	if (type_get_layout(type_context, &index_type).size != type_context->pointer_type_layout.size) {
 		index = instr_new_cast(instr_buffer,
 				instr_allocator,
 				index,
@@ -412,7 +330,7 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 	}
 
 	Type* element_type = type_extract_pointer_base_type(&array_type);
-	TypeLayout element_layout = _type_get_layout(type_context, element_type);
+	TypeLayout element_layout = type_get_layout(type_context, element_type);
 
 	assert(element_layout.size > 0);
 	assert(is_power_of_2(element_layout.size));
@@ -469,9 +387,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 	switch (expr->kind) {
 	case EXPR_DIRECT_FIELD_ACCESS: {
 		const Struct* compound_type = _resolve_compound_type(expr);
-
-		uint32_t id = compound_type->id;
-		const size_t* field_offsets = type_context->field_offsets[id];
+		const size_t* field_offsets = compound_type->field_offsets;
 
 		StructFieldNamespaceEntry entry =
 			compound_type->field_namespace->entries[expr->field_access.field_index];
@@ -492,9 +408,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		AddressExpr addr_expr = {};
 
 		const Struct* compound_type = _resolve_compound_type(expr);
-
-		uint32_t id = compound_type->id;
-		const size_t* field_offsets = type_context->field_offsets[id];
+		const size_t* field_offsets = compound_type->field_offsets;
 
 		StructFieldNamespaceEntry entry =
 			compound_type->field_namespace->entries[expr->field_access.field_index];
@@ -559,7 +473,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 
 		if (type.kind == TYPE_STRUCT || type.kind == TYPE_UNION) {
 			AddressExpr address_expr;
-			if (_type_get_layout(compiler->type_context, &type).size > 8) {
+			if (type_get_layout(compiler->type_context, &type).size > 8) {
 				address_expr = (AddressExpr) {
 					.base = compiler->arg_states[arg_index],
 					.offset = 0,
@@ -593,7 +507,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 	}
 	case EXPR_COMPOUND_LITERAL: {
 		Type* type = expr->compound_literal.type;
-		TypeLayout layout = _type_get_layout(compiler->type_context, type);
+		TypeLayout layout = type_get_layout(compiler->type_context, type);
 
 		InstrIndex alloc_instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* alloc_instr = instr_buffer_at(instr_buffer, alloc_instr_index);
@@ -618,7 +532,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 
 		AddressExpr address_expr = {};
 
-		size_t return_type_size = _type_get_layout(compiler->type_context, &result_type).size;
+		size_t return_type_size = type_get_layout(compiler->type_context, &result_type).size;
 
 		TypeLayout pointer_type_layout = compiler->type_context->pointer_type_layout;
 		if (return_type_size <= pointer_type_layout.size) {
@@ -732,7 +646,7 @@ static void _compile_assignment_of_compound_types(FunctionCompiler* compiler,
 	mem_copy->mem_copy_fixed.src = src_instr;
 	mem_copy->mem_copy_fixed.dst = dst_address_instr;
 	mem_copy->mem_copy_fixed.size =
-		_type_get_layout(compiler->type_context, &target_type).size;
+		type_get_layout(compiler->type_context, &target_type).size;
 	mem_copy->mem_copy_fixed.io_state = compiler->io_state;
 	
 	compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
@@ -764,7 +678,7 @@ static void _compile_assignment(FunctionCompiler* compiler,
 			mem_copy->mem_copy_fixed.src = value_instr;
 			mem_copy->mem_copy_fixed.dst = dst_address;
 			mem_copy->mem_copy_fixed.size =
-				_type_get_layout(compiler->type_context, &target_type).size;
+				type_get_layout(compiler->type_context, &target_type).size;
 			mem_copy->mem_copy_fixed.io_state = compiler->io_state;
 			
 			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
@@ -782,7 +696,7 @@ static void _compile_assignment(FunctionCompiler* compiler,
 		switch (target->unary.op) {
 		case UNARY_OP_DEREFERENCE: {
 			Type* element_type = type_extract_pointer_base_type(&operand_type);
-			TypeLayout element_layout = _type_get_layout(compiler->type_context, element_type);
+			TypeLayout element_layout = type_get_layout(compiler->type_context, element_type);
 
 			InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
 			Instr* instr = instr_buffer_at(instr_buffer, instr_index);
@@ -820,7 +734,7 @@ static void _compile_assignment(FunctionCompiler* compiler,
 		expr_get_type(target->array_index.array, &array_type);
 
 		Type* element_type = type_extract_pointer_base_type(&array_type);
-		TypeLayout element_layout = _type_get_layout(compiler->type_context, element_type);
+		TypeLayout element_layout = type_get_layout(compiler->type_context, element_type);
 
 		InstrIndex element_addr = _compile_address_of_array_element(compiler, target);
 
@@ -853,7 +767,7 @@ static void _compile_assignment(FunctionCompiler* compiler,
 		Type field_type;
 		expr_get_type(target, &field_type);
 
-		TypeLayout field_type_layout = _type_get_layout(compiler->type_context, &field_type);
+		TypeLayout field_type_layout = type_get_layout(compiler->type_context, &field_type);
 
 		InstrIndex field_address = _compile_address_expr(
 				compiler,
@@ -961,9 +875,9 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	//       encode an offset by a number of array elements and not bytes.
 	if (left_is_pointer_like && type_kind_is_int(right_type.kind)) {
 		Type* base_type = type_extract_pointer_base_type(&left_type);
-		TypeLayout value_layout = _type_get_layout(type_context, base_type);
+		TypeLayout value_layout = type_get_layout(type_context, base_type);
 
-		size_t value_size = _type_get_layout(type_context, &right_type).size;
+		size_t value_size = type_get_layout(type_context, &right_type).size;
 		if (value_layout.size != type_context->pointer_type_layout.size) {
 			value_size = type_context->pointer_type_layout.size;
 
@@ -982,9 +896,9 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 				(uint8_t)shift_count);
 	} else if (right_is_pointer_like && type_kind_is_int(left_type.kind)) {
 		Type* base_type = type_extract_pointer_base_type(&right_type);
-		TypeLayout value_layout = _type_get_layout(type_context, base_type);
+		TypeLayout value_layout = type_get_layout(type_context, base_type);
 
-		size_t value_size = _type_get_layout(type_context, &left_type).size;
+		size_t value_size = type_get_layout(type_context, &left_type).size;
 		if (value_layout.size != type_context->pointer_type_layout.size) {
 			value_size = type_context->pointer_type_layout.size;
 
@@ -1014,7 +928,7 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 	// 2 -> 32-bits
 	// 3 -> 64-bits
 	bool is_unsigned = has_flag(common_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
-	TypeLayout common_type_layout = _type_get_layout(compiler->type_context, &common_type);
+	TypeLayout common_type_layout = type_get_layout(compiler->type_context, &common_type);
 	size_t result_bit_size_index = count_trailing_zeros(common_type_layout.size);
 
 	switch (expr->binary.op) {
@@ -1120,7 +1034,7 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 	Type operand_type;
 	expr_get_type(expr->unary.operand, &operand_type);
 
-	TypeLayout operand_type_layout = _type_get_layout(compiler->type_context, &operand_type);
+	TypeLayout operand_type_layout = type_get_layout(compiler->type_context, &operand_type);
 	size_t result_bit_size_index = count_trailing_zeros(operand_type_layout.size);
 
 	UnaryOpKind op = expr->unary.op;
@@ -1144,7 +1058,7 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, instr_index);
 
-		TypeLayout layout = _type_get_layout(compiler->type_context, base_type);
+		TypeLayout layout = type_get_layout(compiler->type_context, base_type);
 		switch (layout.size) {
 		case 1:
 			instr->kind = INSTR_PTR_LOAD_8;
@@ -1205,7 +1119,7 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 	case UNARY_OP_NEGATE: {
 		InstrIndex operand_instr = _compile_expr(compiler, expr->unary.operand);
 
-		TypeLayout layout = _type_get_layout(compiler->type_context, &operand_type);
+		TypeLayout layout = type_get_layout(compiler->type_context, &operand_type);
 		assert_msg(layout.size <= 8, "Only up to 8 byte sizes are supported for dereferencing");
 
 		InstrIndex instr_index = instr_buffer_append(instr_buffer, instr_allocator);
@@ -1291,7 +1205,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 			InstrIndex arg_instr = _compile_expr(compiler, arg);
 
-			TypeLayout arg_type_layout = _type_get_layout(compiler->type_context, &arg_type);
+			TypeLayout arg_type_layout = type_get_layout(compiler->type_context, &arg_type);
 			bool is_compound_type = arg_type.kind == TYPE_STRUCT || arg_type.kind == TYPE_UNION;
 			if (is_compound_type && arg_type_layout.size <= 8) {
 				InstrIndex stack_addr_index = instr_buffer_append(instr_buffer, instr_allocator);
@@ -1425,7 +1339,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		assert(type_kind_is_int(expr->int_literal.integer_type));
 
 		Type int_type = { .kind = expr->int_literal.integer_type };
-		size_t int_size = _type_get_layout(compiler->type_context, &int_type).size;
+		size_t int_size = type_get_layout(compiler->type_context, &int_type).size;
 		
 		InstrIndex instr_index = instr_new_int_const(instr_buffer,
 				instr_allocator,
@@ -1472,7 +1386,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		expr_get_type(expr->array_index.array, &array_type);
 
 		Type* element_type = type_extract_pointer_base_type(&array_type);
-		TypeLayout element_layout = _type_get_layout(compiler->type_context, element_type);
+		TypeLayout element_layout = type_get_layout(compiler->type_context, element_type);
 
 		InstrIndex element_addr = _compile_address_of_array_element(compiler, expr);
 
@@ -1508,7 +1422,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		Type field_type;
 		expr_get_type(expr, &field_type);
 
-		TypeLayout field_type_layout = _type_get_layout(compiler->type_context, &field_type);
+		TypeLayout field_type_layout = type_get_layout(compiler->type_context, &field_type);
 
 		InstrIndex field_address = _compile_address_expr(compiler,
 				_compile_address_of(compiler, expr));
@@ -1562,7 +1476,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		Type type;
 		expr_get_type(expr->size_of_expr.expr, &type);
 
-		TypeLayout type_layout = _type_get_layout(compiler->type_context, &type);
+		TypeLayout type_layout = type_get_layout(compiler->type_context, &type);
 
 		size_t type_size = type_layout.size;
 
@@ -1580,7 +1494,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		return size_const;
 	}
 	case EXPR_SIZE_OF_TYPE: {
-		TypeLayout type_layout = _type_get_layout(compiler->type_context, expr->size_of_type.type);
+		TypeLayout type_layout = type_get_layout(compiler->type_context, expr->size_of_type.type);
 
 		InstrIndex size_const = instr_new_int_const(instr_buffer,
 				instr_allocator,
@@ -1592,7 +1506,7 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 	}
 	case EXPR_COMPOUND_LITERAL: {
 		Type* literal_type = expr->compound_literal.type;
-		TypeLayout layout = _type_get_layout(compiler->type_context, literal_type);
+		TypeLayout layout = type_get_layout(compiler->type_context, literal_type);
 
 		InstrIndex stack_alloc_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* stack_alloc = instr_buffer_at(instr_buffer, stack_alloc_index);
@@ -1642,7 +1556,7 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		instr_index = instr_new_cast(instr_buffer,
 				instr_allocator,
 				convert_index,
-				_type_get_layout(compiler->type_context, &result_type).size * 8);
+				type_get_layout(compiler->type_context, &result_type).size * 8);
 	}
 
 	profile_scope_end();
@@ -1664,7 +1578,7 @@ static InstrIndex _compile_expr_to_bool(FunctionCompiler* compiler, Expr* expr) 
 		Type result_type;
 		expr_get_type(expr, &result_type);
 
-		TypeLayout result_layout = _type_get_layout(compiler->type_context, &result_type);
+		TypeLayout result_layout = type_get_layout(compiler->type_context, &result_type);
 		size_t result_bit_size_index = count_trailing_zeros(result_layout.size);
 
 		assert_msg(type_kind_is_int(result_type.kind)
@@ -2540,7 +2454,7 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 		compiler->var_parent_scopes[var_id] = node->parent_scope;
 
 		Type variable_type = node->variable.type;
-		TypeLayout variable_type_layout = _type_get_layout(
+		TypeLayout variable_type_layout = type_get_layout(
 				compiler->type_context,
 				&variable_type);
 
@@ -3023,7 +2937,7 @@ static void _compile_single_node(FunctionCompiler* compiler,
 			InstrIndex value = _compile_expr(compiler, node->return_stmt.value);
 
 			Type return_type = compiler->function->proto.return_type;
-			TypeLayout return_type_layout = _type_get_layout(compiler->type_context,
+			TypeLayout return_type_layout = type_get_layout(compiler->type_context,
 					&return_type);
 
 			bool is_compound_type = return_type.kind == TYPE_STRUCT
@@ -3327,7 +3241,7 @@ static void _compile_argument_loads(FunctionCompiler* compiler) {
 		if (param->type.kind == TYPE_ARRAY) {
 			param_type_layout = type_context->pointer_type_layout;
 		} else {
-			param_type_layout = _type_get_layout(type_context, &param->type);
+			param_type_layout = type_get_layout(type_context, &param->type);
 		}
 
 		if (param->type.kind == TYPE_STRUCT || param->type.kind == TYPE_UNION) {
@@ -3591,67 +3505,6 @@ void compiler_collect_imported_symbols(const AST* ast, SymbolMap* imported_symbo
 	profile_scope_end();
 }
 
-void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* allocator) {
-	profile_scope_start(__func__);
-
-	TypeLayout* layouts = arena_alloc_array_zeroed(allocator,
-			TypeLayout,
-			ast->stats.compound_type_count);
-
-	size_t** field_offsets = arena_alloc_array_zeroed(allocator,
-			size_t*,
-			ast->stats.compound_type_count);
-
-	context->layouts = layouts;
-	context->field_offsets = field_offsets;
-
-	for (const Struct* compound_type = ast->first_compound_type;
-			compound_type != NULL;
-			compound_type = compound_type->next) {
-
-		uint32_t id = compound_type->id;
-		assert(layouts[id].size == 0);
-		assert(layouts[id].alignment == 0);
-		assert(field_offsets[id] == NULL);
-
-		field_offsets[id] = arena_alloc_array(allocator,
-				size_t,
-				compound_type->field_count);
-
-		TypeLayout layout = type_layout_new(0, 1);
-		for (size_t i = 0; i < compound_type->field_count; i += 1) {
-			StructField field = compound_type->fields[i];
-
-			TypeLayout field_layout = _type_get_layout(context, &field.type);
-			size_t field_offset;
-
-			assert_msg(field_layout.size != 0, "Field has no size");
-
-			if (compound_type->layout_kind == STRUCT_LAYOUT_KIND_STRUCT) {
-				layout.size = align(layout.size, field_layout.alignment);
-				field_offset = layout.size;
-
-				layout.size += field_layout.size;
-				layout.alignment = max(layout.alignment, field_layout.alignment);
-			} else if (compound_type->layout_kind == STRUCT_LAYOUT_KIND_UNION) {
-				field_offset = 0;
-
-				layout.size = max(layout.size, field_layout.size);
-				layout.alignment = max(layout.alignment, field_layout.alignment);
-			} else {
-				unreachable();
-			}
-
-			field_offsets[id][i] = field_offset;
-		}
-
-		layout.size = align(max(layout.size, 1), layout.alignment);
-		layouts[id] = layout;
-	}
-
-	profile_scope_end();
-}
-
 AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context,
 		const FunctionPrototype* proto,
 		Allocator allocator) {
@@ -3667,7 +3520,7 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 
 	bool has_return_loc = false;
 
-	size_t return_type_size = _type_get_layout(type_context, &proto->return_type).size;
+	size_t return_type_size = type_get_layout(type_context, &proto->return_type).size;
 	bool returns_compound = proto->return_type.kind == TYPE_STRUCT
 		|| proto->return_type.kind == TYPE_UNION;
 
@@ -3679,7 +3532,7 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 		sig.returns = allocator_alloc(allocator, AbiParam);
 		*sig.returns = (AbiParam) {
 			.kind = ABI_PARAM_STRUCT,
-			.struct_size = (uint32_t)_type_get_layout(type_context, &proto->return_type).size,
+			.struct_size = (uint32_t)type_get_layout(type_context, &proto->return_type).size,
 		};
 
 		has_return_loc = true;
@@ -3709,7 +3562,7 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 	for (size_t i = 0; i < proto->parameter_count; i += 1, param_index += 1) {
 		Type param_type = proto->parameters[i].type;
 
-		assert(_type_get_layout(type_context, &param_type).size > 0);
+		assert(type_get_layout(type_context, &param_type).size > 0);
 
 		AbiParam abi_param = {};
 		if (param_type.kind == TYPE_VOID) {
@@ -3719,7 +3572,7 @@ AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context
 		} else if (param_type.kind == TYPE_STRUCT || param_type.kind == TYPE_UNION) {
 			abi_param = (AbiParam) {
 				.kind = ABI_PARAM_STRUCT,
-				.struct_size = (uint32_t)_type_get_layout(type_context, &param_type).size,
+				.struct_size = (uint32_t)type_get_layout(type_context, &param_type).size,
 			};
 		} else {
 			abi_param = (AbiParam) { .kind = ABI_PARAM_NORMAL };

@@ -6,18 +6,6 @@
 #include "code_gen/code_gen.h"
 #include "code_gen/abi.h"
 
-typedef struct TypeLayout TypeLayout;
-typedef struct TypeContext TypeContext;
-
-struct TypeLayout {
-	size_t size;
-	size_t alignment;
-};
-
-inline TypeLayout type_layout_new(size_t size, size_t alignment) {
-	return (TypeLayout) { .size = size, .alignment = alignment };
-}
-
 //
 // StringStorage
 //
@@ -154,15 +142,6 @@ void compiler_resolve_default_func_refs(SymbolMap* map);
 
 void compiler_create_function_import_symbol(const Function* function, Symbol* out_symbol);
 void compiler_collect_imported_symbols(const AST* ast, SymbolMap* imported_symbols);
-
-// Stores precomputed layouts for all the compound types in the AST
-struct TypeContext {
-	TypeLayout pointer_type_layout;
-	TypeLayout* layouts;
-	size_t** field_offsets;
-};
-
-void compute_compound_type_layouts(TypeContext* context, const AST* ast, Arena* allocator);
 
 AbiSignature function_prototype_to_abi_signature(const TypeContext* type_context,
 		const FunctionPrototype* proto,

@@ -164,6 +164,7 @@ typedef struct {
 	Preprocessor* preprocessor;
 
 	IdentifierStorage* ident_storage;
+	const TypeContext* type_context;
 
 	bool inside_a_loop;
 	bool inside_a_switch;
@@ -180,6 +181,7 @@ void parser_init(Parser* parser,
 		Arena* ast_allocator,
 		Arena* temp_allocator,
 		IdentifierStorage* ident_storage,
+		const TypeContext* type_context,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics);
 

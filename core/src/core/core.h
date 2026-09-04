@@ -105,6 +105,15 @@ inline bool is_power_of_2(size_t value) {
 uint64_t hardware_timer_get_frequency();
 size_t align_to_page_size(size_t bytes);
 
+typedef struct {
+	size_t size;
+	size_t alignment;
+} TypeLayout;
+
+inline TypeLayout type_layout_new(size_t size, size_t alignment) {
+	return (TypeLayout) { .size = size, .alignment = alignment };
+}
+
 //
 // Profiler
 //

@@ -58,6 +58,7 @@ typedef struct {
 
 	Diagnostics* diagnostics;
 	SourceStorage* source_storage;
+	const TypeContext* type_context;
 
 	SymbolMap* imported_symbol_map;
 	SymbolMap* exported_symbol_map;
@@ -96,6 +97,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 			context->ast_arena,
 			context->temp_arena,
 			&ident_storage,
+			context->type_context,
 			&preprocessor,
 			context->diagnostics);
 
@@ -117,13 +119,6 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 	if (has_flag(context->flags, C_FLAG_PRINT_AST) && parsed_ast.root_nodes.first) {
 		print_parsed_node(parsed_ast.root_nodes.first);
 	}
-
-	TypeContext type_context = {};
-	type_context.pointer_type_layout = type_layout_new(8, 8);
-	compute_compound_type_layouts(
-			&type_context,
-			&parsed_ast,
-			context->temp_arena);
 
 	compiler_collect_imported_symbols(&parsed_ast, context->imported_symbol_map);
 
@@ -173,7 +168,7 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		c.temp_allocator = context->temp_arena;
 		c.str_storage = &string_storage;
 		c.symbol_map = context->imported_symbol_map;
-		c.type_context = &type_context;
+		c.type_context = context->type_context;
 
 		CompiledFunction compiled_function = function_compiler_compile(&c);
 
@@ -183,7 +178,8 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 		gen.allocator = context->arena;
 		gen.temp_allocator = context->temp_arena;
 		gen.string_consts = str_storage_to_array(c.str_storage);
-		gen.function_signature = function_prototype_to_abi_signature(&type_context,
+		gen.function_signature = function_prototype_to_abi_signature(
+				context->type_context,
 				&node->function_def->proto,
 				arena_allocator_new(context->temp_arena));
 		gen.function_call_signatures = compiled_function.function_call_signatures;
@@ -240,6 +236,9 @@ int main(int argc, char *argv[]) {
 			.source_storage = &source_storage,
 			.error_limit = 512,
 		};
+
+		TypeContext type_context = {};
+		type_context.pointer_type_layout = type_layout_new(8, 8);
 
 		// NOTE: Allocate this before the `include_dirs` array, so that they don't interfere
 		String sdk_path = path_append(install_path, sdks.values[0], &arena);
@@ -332,6 +331,7 @@ int main(int argc, char *argv[]) {
 			context.imported_symbol_map = &imported_symbol_maps[i];
 			context.diagnostics = &diagnostics;
 			context.source_storage = &source_storage;
+			context.type_context = &type_context;
 
 		 	lowered_units[i] = compile_unit(&context);
 		}

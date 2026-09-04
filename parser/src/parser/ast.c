@@ -1,5 +1,87 @@
 #include "ast.h"
 
+TypeLayout type_get_layout(const TypeContext* context, const Type* type) {
+	switch (type->kind) {
+	case TYPE_VOID:
+		return type_layout_new(0, 0);
+
+	case TYPE_CHAR:
+	case TYPE_SIGNED_CHAR:
+	case TYPE_UNSIGNED_CHAR:
+	case TYPE_INT8:
+	case TYPE_SIGNED_INT8:
+	case TYPE_UNSIGNED_INT8:
+		return type_layout_new(1, 1);
+	case TYPE_SHORT:
+	case TYPE_SIGNED_SHORT:
+	case TYPE_UNSIGNED_SHORT:
+	case TYPE_INT16:
+	case TYPE_SIGNED_INT16:
+	case TYPE_UNSIGNED_INT16:
+		return type_layout_new(2, 2);
+
+	// NOTE: Enum is implicitely castable to an int.
+	// TODO: Return the size of a corresponding int, not simply `TYPE_INT`. The enum can be larger
+	//       then `TYPE_INT`.
+	case TYPE_ENUM:
+
+	case TYPE_INT:
+	case TYPE_SIGNED_INT:
+	case TYPE_UNSIGNED_INT:
+	case TYPE_LONG:
+	case TYPE_SIGNED_LONG:
+	case TYPE_UNSIGNED_LONG:
+	case TYPE_INT32:
+	case TYPE_SIGNED_INT32:
+	case TYPE_UNSIGNED_INT32:
+		return type_layout_new(4, 4);
+	case TYPE_LONG_LONG:
+	case TYPE_SIGNED_LONG_LONG:
+	case TYPE_UNSIGNED_LONG_LONG:
+	case TYPE_INT64:
+	case TYPE_SIGNED_INT64:
+	case TYPE_UNSIGNED_INT64:
+		return type_layout_new(8, 8);
+
+	case TYPE_SIZE_T:
+		return context->pointer_type_layout;
+
+	case TYPE_FLOAT:
+		return type_layout_new(4, 4);
+	case TYPE_DOUBLE:
+	case TYPE_LONG_DOUBLE:
+		return type_layout_new(8, 8);
+
+	case TYPE_STRUCT:
+		return type->struct_def->type_layout;
+	case TYPE_UNION:
+		return type->union_def->type_layout;
+
+	case TYPE_POINTER:
+		return context->pointer_type_layout;
+	case TYPE_ARRAY: {
+		if (type->array.size) {
+			// NOTE: I think that, if the function param has a type of a sized array, that this
+			//       function should still return `context->pointer_type_layout`
+			assert(type->array.size->kind == EXPR_INTEGER_LITERAL);
+
+			TypeLayout element_type_layout = type_get_layout(context, type->array.element_type);
+			size_t size = element_type_layout.size * type->array.size->int_literal.value;
+			return type_layout_new(size, element_type_layout.alignment);
+		}
+
+		return context->pointer_type_layout;
+	}
+	case TYPE_FUNCTION:
+		return context->pointer_type_layout;
+	case TYPE_BOOL:
+		unreachable();
+	}
+
+	unreachable();
+	return (TypeLayout) {};
+}
+
 bool type_is_struct(const Type* type, const Struct* struct_def) {
 	assert(struct_def->layout_kind == STRUCT_LAYOUT_KIND_STRUCT);
 

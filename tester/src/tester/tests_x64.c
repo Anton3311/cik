@@ -53,8 +53,21 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 	IdentifierStorage ident_storage = {};
 	ident_storage_init(&ident_storage, heap_allocator_new(), &ident_arena);
 
+	TypeContext type_context = {
+		.pointer_type_layout = {
+			.size = sizeof(void*),
+			.alignment = alignof(void*)
+		}
+	};
+
 	Parser parser = {};
-	parser_init(&parser, &ast_arena, context->arena, &ident_storage, &preprocessor, &diagnostics);
+	parser_init(&parser,
+			&ast_arena,
+			context->arena,
+			&ident_storage,
+			&type_context,
+			&preprocessor,
+			&diagnostics);
 
 	AST parsed_ast = {};
 	parser_parse(&parser, &parsed_ast);
@@ -65,13 +78,6 @@ static MachineCodeBuffer _compile_with_custom_symbols(TestContext* context,
 		diagnostics_print(&diagnostics);
 		panic("Failed to parse");
 	}
-
-	TypeContext type_context = {};
-	type_context.pointer_type_layout = type_layout_new(8, 8);
-	compute_compound_type_layouts(
-			&type_context,
-			&parsed_ast,
-			context->temp_arena);
 
 	size_t function_count = 0;
 	for (const AstNode* node = parsed_ast.root_nodes.first; node != NULL; node = node->next) {

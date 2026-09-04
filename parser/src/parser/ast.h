@@ -174,6 +174,11 @@ struct Type {
 	};
 };
 
+typedef struct {
+	TypeLayout pointer_type_layout;
+} TypeContext;
+
+TypeLayout type_get_layout(const TypeContext* context, const Type* type);
 bool type_equal(const Type* a, const Type* b);
 bool type_equal_ignore_qualifiers(const Type* a, const Type* b);
 void type_array_to_pointer(const Type* type, Type* out_type);
@@ -558,13 +563,16 @@ struct Struct {
 	StructLayoutKind layout_kind;
 	uint32_t id;
 
-	bool is_forward_declared;
-
 	StructField* fields;
+	size_t* field_offsets;
 	size_t field_count;
 
 	StructFieldNamespace* field_namespace;
 	const Struct* next;
+
+	TypeLayout type_layout;
+
+	bool is_forward_declared;
 };
 
 inline const StructField* struct_find_field(const Struct* struct_def, String field_name) {

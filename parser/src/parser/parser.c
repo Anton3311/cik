@@ -723,7 +723,9 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 	String struct_name = {};
 	PackedSourceRange struct_name_range = {};
 	StructField* fields = NULL;
+	size_t* field_offsets = NULL;
 	size_t field_count = 0;
+	TypeLayout type_layout = {};
 	bool is_forward_declared = true;
 
 	Token token = preprocessor_view_next(parser->preprocessor);
@@ -737,7 +739,35 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 
 	if (token.kind == TOKEN_LEFT_BRACE) {
 		is_forward_declared = false;
-		_parser_parse_struct_fields(parser, &field_count, &fields);
+		if (_parser_parse_struct_fields(parser, &field_count, &fields)) {
+			field_offsets = arena_alloc_array(parser->ast_allocator, size_t, field_count);
+
+			type_layout.alignment = 1;
+
+			for (size_t i = 0; i < field_count; i += 1) {
+				const Type* field_type = &fields[i].type;
+				TypeLayout field_type_layout = type_get_layout(parser->type_context, field_type);
+
+				switch (layout_kind) {
+				case STRUCT_LAYOUT_KIND_STRUCT:
+					type_layout.alignment = max(field_type_layout.alignment, type_layout.alignment);
+					type_layout.size = align(type_layout.size, field_type_layout.alignment);
+
+					field_offsets[i] = type_layout.size;
+					type_layout.size += field_type_layout.size;
+					break;
+				case STRUCT_LAYOUT_KIND_UNION:
+					field_offsets[i] = 0;
+
+					type_layout.alignment = max(field_type_layout.alignment, type_layout.alignment);
+					type_layout.size = max(type_layout.size, field_type_layout.size);
+					break;
+				}
+			}
+
+			type_layout.size = max(type_layout.size, 1);
+			type_layout.size = align(type_layout.size, type_layout.alignment);
+		}
 	}
 
 	bool struct_def_initialized = false;
@@ -843,9 +873,16 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 		assert(field_count == 0);
 		assert(fields == NULL);
 	} else {
+		assert(field_offsets != NULL);
+		assert(type_layout.size > 0);
+		assert(type_layout.alignment > 0);
+		assert(type_layout.size % type_layout.alignment == 0);
+
 		struct_def->field_count = field_count;
 		struct_def->fields = fields;
 		struct_def->is_forward_declared = false;
+		struct_def->field_offsets = field_offsets;
+		struct_def->type_layout = type_layout;
 
 		_parser_initialize_struct_fields_namespace(struct_def,
 				parser->diagnostics,
@@ -4549,6 +4586,7 @@ void parser_init(Parser* parser,
 		Arena* ast_allocator,
 		Arena* temp_allocator,
 		IdentifierStorage* ident_storage,
+		const TypeContext* type_context,
 		Preprocessor* preprocessor,
 		Diagnostics* diagnostics) {
 	parser->ast_allocator = ast_allocator;
@@ -4556,6 +4594,7 @@ void parser_init(Parser* parser,
 	parser->diagnostics = diagnostics;
 	parser->preprocessor = preprocessor;
 	parser->ident_storage = ident_storage;
+	parser->type_context = type_context;
 
 	parser->dummy_node = arena_alloc_zeroed(ast_allocator, AstNode);
 }

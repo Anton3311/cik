@@ -67,8 +67,21 @@ bool _parse(GenContext* context,
 
 	ident_storage_init(out_ident_storage, heap_allocator_new(), &ident_arena);
 
+	TypeContext type_context = {
+		.pointer_type_layout = {
+			.size = sizeof(void*),
+			.alignment = alignof(void*)
+		}
+	};
+
 	Parser parser = {};
-	parser_init(&parser, &ast_arena, context->temp_allocator, out_ident_storage, &preprocessor, &diagnostics);
+	parser_init(&parser,
+			&ast_arena,
+			context->temp_allocator,
+			out_ident_storage,
+			&type_context,
+			&preprocessor,
+			&diagnostics);
 
 	// Parse
 

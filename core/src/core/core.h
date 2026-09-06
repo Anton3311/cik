@@ -515,9 +515,9 @@ inline size_t str_find_char(String str, char c) {
 	const char* position = memchr(str.v, c, str.length);
 	if (position) {
 		return (size_t)(position - str.v);
-	} else {
-		return SIZE_MAX;
 	}
+
+	return SIZE_MAX;
 }
 
 typedef enum {

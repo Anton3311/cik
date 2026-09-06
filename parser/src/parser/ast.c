@@ -788,7 +788,7 @@ bool expr_is_bool(Expr* expr) {
 	if (expr->kind == EXPR_BINARY) {
 		return bin_op_is_compare(expr->binary.op)
 			|| expr->binary.op == BIN_OP_LOGICAL_AND
-			|| expr->binary.op == BIN_OP_LOGICAL_AND;
+			|| expr->binary.op == BIN_OP_LOGICAL_OR;
 	} else if (expr->kind == EXPR_UNARY && expr->unary.op == UNARY_OP_LOGICAL_NOT) {
 		return true;
 	}

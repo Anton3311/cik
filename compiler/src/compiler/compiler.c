@@ -954,12 +954,39 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 		break;
 
 	case BIN_OP_LOGICAL_AND:
-		*instr = (Instr) { .kind = INSTR_LOGICAL_AND, .logical_and = { left, right } };
-		break;
-	case BIN_OP_LOGICAL_OR:
-		*instr = (Instr) { .kind = INSTR_LOGICAL_OR, .logical_and = { left, right } };
-		break;
+	case BIN_OP_LOGICAL_OR: {
+		InstrIndex op;
 
+		if (expr->binary.op == BIN_OP_LOGICAL_AND) {
+			op = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+				.kind = INSTR_BIN_OP_8 + result_bit_size_index,
+				.bin_op = { INSTR_BIN_AND, left, right }
+			});
+		} else if (expr->binary.op == BIN_OP_LOGICAL_OR) {
+			op = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+				.kind = INSTR_BIN_OP_8 + result_bit_size_index,
+				.bin_op = { INSTR_BIN_OR, left, right }
+			});
+		} else {
+			unreachable();
+		}
+
+		InstrIndex one_const = instr_new_int_const(instr_buffer,
+				instr_allocator,
+				1,
+				1 << result_bit_size_index);
+
+		*instr = (Instr) {
+			.kind = INSTR_COMPARE_8 + result_bit_size_index,
+			.compare = {
+				.kind = INSTR_CMP_EQUAL,
+				.left = op,
+				.right = one_const,
+			}
+		};
+
+		break;
+	}
 	case BIN_OP_LOGICAL_EQUAL:
 		instr->compare.kind = INSTR_CMP_EQUAL;
 		break;

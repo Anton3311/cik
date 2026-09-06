@@ -579,6 +579,16 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 		profile_scope_end();
 		return address_expr;
 	}
+	case EXPR_UNARY:
+		switch (expr->unary.op) {
+		case UNARY_OP_DEREFERENCE:
+			AddressExpr address = _compile_address_of(compiler, expr->unary.operand);
+			profile_scope_end();
+			return address;
+		default:
+			unreachable();
+		}
+		break;
 	default: {
 		Type expr_type;
 		expr_get_type(expr, &expr_type);

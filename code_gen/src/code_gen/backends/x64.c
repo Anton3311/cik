@@ -1877,9 +1877,13 @@ static void _lower_instr(X64CodeGenerator* gen,
 
 			_emit_mov_regs(buffer, return_value_loc.reg, X64_REG_A, 64);
 		} else if (returns->kind == ABI_PARAM_STRUCT && returns->struct_size > 8) {
-			assert(return_value_loc.kind == INSTR_STORAGE_STACK);
+			Operand src_operand;
+			if (return_value_loc.kind == INSTR_STORAGE_STACK) {
+				src_operand = operand_stack_mem((int32_t)return_value_loc.stack.offset, 64);
+			} else if (return_value_loc.kind == INSTR_STORAGE_REG) {
+				src_operand = operand_mem(return_value_loc.reg, 64);
+			}
 
-			Operand src_operand = operand_stack_mem((int32_t)return_value_loc.stack.offset, 64);
 			Operand dst_operand = operand_mem(CDECL_ARG_REGS[0], 64);
 
 			uint16_t temp_registers = _collect_available_registers(gen, instr_index);

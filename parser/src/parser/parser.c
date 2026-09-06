@@ -2160,8 +2160,10 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			CHAR_STATE_TOO_LONG,
 		} char_state = CHAR_STATE_NONE;
 
+		uint32_t char_value = 0;
 		if (char_literal.length == 1) {
 			char_state = CHAR_STATE_OK;
+			char_value = (uint32_t)token.string.v[1]; // the first char is a quote
 		} else {
 			if (char_literal.v[0] == '\\') {
 				EscapedChar escaped_char = parse_escaped_char(char_literal,
@@ -2169,6 +2171,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 						parser->diagnostics);
 
 				if (escaped_char.escape_sequence_length == char_literal.length) {
+					char_value = (uint32_t)escaped_char.char_value;
 					char_state = CHAR_STATE_OK;
 				} else if (escaped_char.escape_sequence_length <= char_literal.length) {
 					char_state = CHAR_STATE_TOO_LONG;
@@ -2185,7 +2188,7 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 			unreachable();
 		case CHAR_STATE_OK:
 			out_expr->kind = EXPR_CHAR_LITERAL;
-			out_expr->char_literal.value = (uint32_t)token.string.v[1];
+			out_expr->char_literal.value = char_value;
 			out_expr->char_literal.source_range = source_range_pack(token.source_range);
 			preprocessor_next_token(parser->preprocessor);
 			profile_scope_end();

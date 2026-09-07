@@ -2631,7 +2631,10 @@ static void _create_phis_for_switch_case(FunctionCompiler* compiler,
 		}
 
 		assert(variant_count <= max_variant_count);
-		if (variant_count > 0) {
+		if (variant_count == 1) {
+			Instr* select = instr_buffer_at(instr_buffer, phi_inputs[0]);
+			out_phis[i] = select->select.value;
+		} else if (variant_count > 0) {
 			InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
 				.kind = INSTR_PHI,
 				.phi = {

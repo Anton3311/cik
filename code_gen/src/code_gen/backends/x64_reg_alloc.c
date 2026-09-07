@@ -78,7 +78,7 @@ inline bool _instr_allowed_to_share_a_register(InstrLiveRange live_range_a,
 // Writes storage locations into `instr_storage` array.
 //
 // This array is expected to be of size `instr_buffer.count`
-static void _run_graph_coloring(const InstrBuffer* instr_buffer,
+static bool _run_graph_coloring(const InstrBuffer* instr_buffer,
 		const InstrIndexArray scheduled_instr,
 		const InstrLiveRange* live_ranges,
 		const InstrIndexArray* interference_graph,
@@ -99,6 +99,7 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			uint16_t,
 			instr_buffer->count);
 
+	bool graph_coloring_result = true;
 	for (size_t i = 0; i < scheduled_instr.count; i += 1) {
 		InstrIndex instr_index = scheduled_instr.instr[i];
 
@@ -227,8 +228,15 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 			stack_offset += instr->stack_alloc.size;
 		} else if (has_flag(INSTR_FEATURES[instr->kind], INSTR_FEATURE_REG_STORAGE)) {
 			uint16_t potential_registers = potential_instr_registers[instr_index.value];
-			assert_msg(potential_registers != 0,
-					"This instruction must be spilled, but spilling is not yet implemented");
+
+			if (potential_registers == 0) {
+				graph_coloring_result = false;
+				debug_log_error("'%u' must be spilled. Live range: [%u; %u]",
+						instr_index.value,
+						live_ranges[instr_index.value].start,
+						live_ranges[instr_index.value].end);
+				continue;
+			}
 
 			uint16_t first_potential_register = count_trailing_zeros(potential_registers);
 			assert(first_potential_register < 16);
@@ -253,6 +261,8 @@ static void _run_graph_coloring(const InstrBuffer* instr_buffer,
 
 	arena_end_temp(temp);
 	profile_scope_end();
+
+	return graph_coloring_result;
 }
 
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
@@ -292,7 +302,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 	RegisterAllocationResult result;
 	result.interference_graph = interference_graph;
 
-	_run_graph_coloring(instr_buffer,
+	bool graph_coloring_result = _run_graph_coloring(instr_buffer,
 			scheduled_instr,
 			live_ranges,
 			interference_graph,
@@ -302,6 +312,8 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			allocator,
 			temp_allocator,
 			&result);
+
+	assert(graph_coloring_result);
 
 	profile_scope_end();
 	return result;

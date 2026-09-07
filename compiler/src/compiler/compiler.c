@@ -1974,12 +1974,14 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 	const Scope* body_scope = _loop_body_scope(node);
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
+			var_phis[i] = INVALID_INSTR_INDEX;
 			// This variable hasn't been yet defined -> don't create a phi
 			continue;
 		}
 
 		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
 		if (var_parent_scope->id > body_scope->id) {
+			var_phis[i] = INVALID_INSTR_INDEX;
 			// This variable is first defined after the loop, so it's irrelevant here.
 			continue;
 		}
@@ -2181,12 +2183,14 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
 			// This variable hasn't been yet defined -> don't create a phi
+			var_phis[i] = INVALID_INSTR_INDEX;
 			continue;
 		}
 
 		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
 		if (var_parent_scope->id > body_scope->id) {
 			// This variable is first defined after the loop, so it's irrelevant here.
+			var_phis[i] = INVALID_INSTR_INDEX;
 			continue;
 		}
 
@@ -2576,7 +2580,8 @@ static void _compile_statement(FunctionCompiler* compiler, AstNode* node) {
 	profile_scope_end();
 }
 
-static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
+static void _create_phis_for_switch_case(FunctionCompiler* compiler,
+		InstrBuffer* instr_buffer,
 		Arena* instr_allocator,
 		InstrIndex initial_region_index,
 		InstrIndex alternative_region_index,
@@ -2607,7 +2612,9 @@ static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
 				value = stmt->arg_values[i];
 			}
 
-			assert(value.value != INVALID_INSTR_INDEX.value);
+			if (value.value == INVALID_INSTR_INDEX.value) {
+				continue;
+			}
 
 			InstrIndex select = instr_buffer_push(instr_buffer,
 				instr_allocator,
@@ -2624,18 +2631,20 @@ static void _create_phis_for_switch_case(InstrBuffer* instr_buffer,
 		}
 
 		assert(variant_count <= max_variant_count);
-		assert(variant_count > 0);
-		InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_PHI,
-			.phi = {
-				.variants = (InstrInputs) {
-					.start = phi_inputs_buffer.start,
-					.count = (uint16_t)variant_count,
-				},
-			}
-		});
+		if (variant_count > 0) {
+			InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+				.kind = INSTR_PHI,
+				.phi = {
+					.variants = (InstrInputs) {
+						.start = phi_inputs_buffer.start,
+						.count = (uint16_t)variant_count,
+					},
+				}
+			});
 
-		out_phis[i] = phi;
+			out_phis[i] = phi;
+		} else {
+		}
 	}
 
 	profile_scope_end();
@@ -2737,7 +2746,8 @@ static void _compile_switch(FunctionCompiler* compiler,
 			stmts = &initial_stmt;
 
 			// Setup variable and argument state.
-			_create_phis_for_switch_case(instr_buffer,
+			_create_phis_for_switch_case(compiler,
+					instr_buffer,
 					instr_allocator,
 					initial_region_index,
 					true_region_index,
@@ -2746,7 +2756,8 @@ static void _compile_switch(FunctionCompiler* compiler,
 					true,
 					var_count);
 
-			_create_phis_for_switch_case(instr_buffer,
+			_create_phis_for_switch_case(compiler,
+					instr_buffer,
 					instr_allocator,
 					initial_region_index,
 					true_region_index,
@@ -2864,7 +2875,8 @@ static void _compile_switch(FunctionCompiler* compiler,
 		initial_stmt.next = stmts;
 		stmts = &initial_stmt;
 
-		_create_phis_for_switch_case(instr_buffer,
+		_create_phis_for_switch_case(compiler,
+				instr_buffer,
 				instr_allocator,
 				initial_region_index,
 				true_region_index,
@@ -2873,7 +2885,8 @@ static void _compile_switch(FunctionCompiler* compiler,
 				true,
 				var_count);
 
-		_create_phis_for_switch_case(instr_buffer,
+		_create_phis_for_switch_case(compiler,
+				instr_buffer,
 				instr_allocator,
 				initial_region_index,
 				true_region_index,

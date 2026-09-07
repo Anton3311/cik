@@ -600,6 +600,45 @@ String instr_format_input_instrs(const InstrIndex* input_instr_buffer,
 void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena* temp_allocator);
 void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator);
 
+//
+// Dominator Tree
+//
+
+typedef struct {
+	uint16_t region_count;
+
+	// Per region `BitArray` of regions that it dominates
+	// The size of this array is equal to the total number of regions
+	//
+	// Size of each `BitArray` is also equal to the total number of regions
+	BitArray* dominates;
+
+	// An array of size eqaul to the total number of regions.
+	// Maps region id to the immediate dominator of that region.
+	//
+	// `UINT16_MAX` means the regions doesn't have an immediate dominator.
+	// Which is only true for the root region.
+	uint16_t* immediate_dominators;
+} CFGDominatorTree;
+
+CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
+		InstrIndex initial_region,
+		Arena* allocator,
+		Arena* temp_allocator);
+
+bool dom_tree_is_region_dominated_by(const CFGDominatorTree* tree,
+		uint16_t dominated_region_id,
+		uint16_t dominated_by_region_id);
+
+// Finds a region where the control flow splits and later reaches both provided regions.
+// The returned value is the region id.
+uint16_t dom_tree_find_control_flow_split(const CFGDominatorTree* tree,
+		uint16_t region_a_id,
+		uint16_t region_b_id,
+		Arena* temp_allocator);
+
+void dom_tree_print(const CFGDominatorTree* tree, const InstrBuffer* instr_buffer);
+
 #endif // CODE_GENERATION_PASS
 
 #endif

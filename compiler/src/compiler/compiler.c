@@ -2631,10 +2631,25 @@ static void _create_phis_for_switch_case(FunctionCompiler* compiler,
 		}
 
 		assert(variant_count <= max_variant_count);
-		if (variant_count == 1) {
+		if (variant_count == 0) {
+			continue;
+		}
+
+		bool all_equal = true;
+		for (size_t i = 1; i < variant_count; i += 1) {
+			const Instr* select_a = instr_buffer_at(instr_buffer, phi_inputs[0]);
+			const Instr* select_b = instr_buffer_at(instr_buffer, phi_inputs[i]);
+
+			if (select_a->select.value.value != select_b->select.value.value) {
+				all_equal = false;
+				break;
+			}
+		}
+
+		if (variant_count == 1 || all_equal) {
 			Instr* select = instr_buffer_at(instr_buffer, phi_inputs[0]);
 			out_phis[i] = select->select.value;
-		} else if (variant_count > 0) {
+		} else {
 			InstrIndex phi = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
 				.kind = INSTR_PHI,
 				.phi = {
@@ -2646,7 +2661,6 @@ static void _create_phis_for_switch_case(FunctionCompiler* compiler,
 			});
 
 			out_phis[i] = phi;
-		} else {
 		}
 	}
 

@@ -1130,7 +1130,7 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 		bool is_increment = op == UNARY_OP_PRE_INCREMENT  || op == UNARY_OP_POST_INCREMENT;
 		bool is_pre_op = op == UNARY_OP_PRE_INCREMENT || op == UNARY_OP_PRE_DECREMENT;
 
-		assert(type_kind_is_int(operand_type.kind));
+		assert(type_kind_is_int(operand_type.kind) || operand_type.kind == TYPE_POINTER);
 		assert(operand_type_layout.size <= 8);
 
 		InstrIndex one_const = instr_new_int_const(instr_buffer,

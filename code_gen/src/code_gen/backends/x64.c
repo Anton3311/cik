@@ -3178,7 +3178,6 @@ RegisterMoveArray _parallel_move_values(
 
 		while (true) {
 			assert_msg(bit_array_get(&visited, current_reg) == false, "Expected no cycles");
-			assert(bit_array_get(&resolved_slots, current_reg) == false);
 
 			bit_array_set(&visited, current_reg, true);
 			bit_array_set(&resolved_slots, current_reg, true);

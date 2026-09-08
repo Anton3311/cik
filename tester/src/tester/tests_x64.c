@@ -2165,6 +2165,36 @@ void test_parallel_moves_multiple_cycles(TestContext* context) {
 			context->temp_arena);
 }
 
+void test_parallel_move_same_value_into_multiple_locations(TestContext* context) {
+	InstrStorageLocation input_locs[] = {
+		(InstrStorageLocation) {
+			.kind = INSTR_STORAGE_REG,
+			.reg = X64_REG_C,
+		},
+		(InstrStorageLocation) {
+			.kind = INSTR_STORAGE_REG,
+			.reg = X64_REG_C,
+		},
+	};
+
+	X64Register expected_locs[] = { X64_REG_A, X64_REG_B };
+
+	RegisterMoveArray moves = _parallel_move_values(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			0,
+			context->arena,
+			context->temp_arena);
+
+	assert(moves.count == 2);
+
+	_validate_parallel_moves(input_locs,
+			expected_locs,
+			array_size(expected_locs),
+			moves,
+			context->temp_arena);
+}
+
 void test_x64_compute_frame_layout_4_normal_args_no_return(TestContext* context) {
 	AbiParam params[] = { 
 		(AbiParam) { .kind = ABI_PARAM_NORMAL },

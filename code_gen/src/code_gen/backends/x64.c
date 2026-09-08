@@ -677,19 +677,36 @@ static uint16_t _collect_available_registers(X64CodeGenerator* gen, InstrIndex i
 	allowed_temp_registers &= ~(1 << X64_REG_SI);
 	allowed_temp_registers &= ~(1 << X64_REG_DI);
 
-	InstrQueue queue;
-	instr_queue_alloc(&queue, gen->temp_allocator, gen->instr_buffer.count);
+	const Instr* instr = &gen->instr_buffer.instr[instr_index.value];
+	if (instr->kind == INSTR_PHI) {
+		InstrInputs inputs = instr->phi.variants;
+		const InstrIndex* select_indices = &gen->instr_buffer.inputs_buffer[inputs.start];
 
-	instr_enumerate_uses(&gen->instr_buffer, instr_index, &queue);
+		for (uint16_t i = 0; i < inputs.count; i += 1) {
+			const Instr* select = &gen->instr_buffer.instr[select_indices[i].value];
 
-	for (size_t i = 0; i < queue.count; i += 1) {
-		InstrStorageLocation loc = gen->instr_storage[queue.buffer[i].value];
+			InstrStorageLocation loc = gen->instr_storage[select->select.value.value];
+			if (loc.kind != INSTR_STORAGE_REG) {
+				continue;
+			}
 
-		if (loc.kind != INSTR_STORAGE_REG) {
-			continue;
+			allowed_temp_registers &= ~(1 << loc.reg);
 		}
+	} else {
+		InstrQueue queue;
+		instr_queue_alloc(&queue, gen->temp_allocator, gen->instr_buffer.count);
 
-		allowed_temp_registers &= ~(1 << loc.reg);
+		instr_enumerate_uses(&gen->instr_buffer, instr_index, &queue);
+
+		for (size_t i = 0; i < queue.count; i += 1) {
+			InstrStorageLocation loc = gen->instr_storage[queue.buffer[i].value];
+
+			if (loc.kind != INSTR_STORAGE_REG) {
+				continue;
+			}
+
+			allowed_temp_registers &= ~(1 << loc.reg);
+		}
 	}
 
 	if (gen->function_signature.returns != NULL) {

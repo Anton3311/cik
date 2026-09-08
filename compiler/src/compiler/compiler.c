@@ -1787,6 +1787,8 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 	ControlFlowStmt* control_stmts = current_loop->control_flow_stmts;
 
 	ControlFlowStmt original = {};
+	ControlFlowStmt inner = {};
+
 	original.region = pre_loop_region;
 	original.var_values = original_var_values;
 	original.arg_values = original_arg_values;
@@ -1795,7 +1797,6 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 	control_stmts = &original;
 
 	if (final_body_region.value != INVALID_INSTR_INDEX.value) {
-		ControlFlowStmt inner = {};
 		inner.region = final_body_region;
 		inner.var_values = compiler->var_values;
 		inner.arg_values = compiler->arg_states;

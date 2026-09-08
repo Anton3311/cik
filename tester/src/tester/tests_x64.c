@@ -2049,13 +2049,13 @@ static void _validate_parallel_moves(InstrStorageLocation* input_locs,
 		size_t loc_count,
 		RegisterMoveArray moves,
 		Arena* temp_allocator) {
-	uint16_t state[X64_REG_COUNT];
+	X64Register state[X64_REG_COUNT];
 	memset(state, 0xff, sizeof(state));
 
 	// Initial state
 	for (size_t i = 0; i < loc_count; i += 1) {
 		assert(input_locs[i].kind == INSTR_STORAGE_REG);
-		state[input_locs[i].reg] = (uint16_t)i;
+		state[input_locs[i].reg] = (uint16_t)input_locs[i].reg;
 	}
 
 	// Simulate the moves
@@ -2068,10 +2068,11 @@ static void _validate_parallel_moves(InstrStorageLocation* input_locs,
 	// Assert that all the inputs are in the corresponding expected location
 	bool result = true;
 	for (size_t i = 0; i < loc_count; i += 1) {
-		if (state[expected_locs[i]] != (uint16_t)i) {
-			printf("Expected input '%u' to be at location '%u'",
-					(uint32_t)i,
-					(uint32_t)expected_locs[i]);
+		if (state[expected_locs[i]] != (uint16_t)input_locs[i].reg) {
+			printf("Expected input '%u' to be at location '%u', but found '%u'\n",
+					(uint32_t)input_locs[i].reg,
+					(uint32_t)expected_locs[i],
+					(uint32_t)state[expected_locs[i]]);
 			result = false;
 		}
 	}

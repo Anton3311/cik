@@ -475,6 +475,10 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 			continue;
 		}
 
+		if (this_instr_kind == INSTR_SELECT) {
+			continue;
+		}
+
 		for (size_t i = first_dep_index; i < stack.count; i += 1) {
 			InstrIndex dep_index = stack.buffer[i];
 			if (dep_index.value >= buffer.count) {

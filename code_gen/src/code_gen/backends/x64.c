@@ -180,6 +180,8 @@ static void _format_reg_name(StringBuilder* builder, uint16_t reg_index, uint8_t
 // Code Generation
 //
 
+static uint16_t _collect_available_registers(X64CodeGenerator* gen, InstrIndex instr_index);
+
 inline void _emit_load_const_64(CodeBuffer* buffer, X64Register reg, uint64_t value) {
 	encode_2(buffer,
 			MNEMONIC_MOV,
@@ -242,10 +244,27 @@ static void _emit_add_rsp(CodeBuffer* buffer, uint32_t offset) {
 			operand_imm(offset, 32));
 }
 
-static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, CodeBuffer* code_buffer) {
+static void _x64_generate_phi_copies(X64CodeGenerator* gen,
+		uint16_t region_id,
+		CodeBuffer* code_buffer) {
+
 	profile_scope_start(__func__);
+
+	Arena* temp_allocator = gen->allocator;
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
 	const InstrIndexArray phi_variants = gen->phi_variants_per_region[region_id];
 	const InstrIndex* phi_nodes = gen->phi_node_of_variant[region_id];
+
+	size_t location_count = 0;
+	InstrStorageLocation* input_locations = arena_alloc_array(temp_allocator,
+			InstrStorageLocation,
+			phi_variants.count);
+	X64Register* target_locations = arena_alloc_array(temp_allocator,
+			X64Register,
+			phi_variants.count);
+	
+	uint16_t allowed_temp_registers = UINT16_MAX;
 
 	for (uint16_t i = 0; i < phi_variants.count; i += 1) {
 		InstrIndex variant_index = phi_variants.instr[i];
@@ -266,9 +285,31 @@ static void _x64_generate_phi_copies(X64CodeGenerator* gen, uint16_t region_id, 
 		assert(value_storage.kind == INSTR_STORAGE_REG);
 		assert(phi_storage.kind == INSTR_STORAGE_REG);
 
-		uint8_t value_bit_size = s_instr_value_bit_count[value->kind];
-		_emit_mov_regs(code_buffer, value_storage.reg, phi_storage.reg, value_bit_size);
+		if (value_storage.reg == phi_storage.reg) {
+			continue;
+		}
+
+		allowed_temp_registers &= _collect_available_registers(gen, phi_node_index);
+		// allowed_temp_registers &= ~(1 << value_storage.reg);
+
+		input_locations[location_count] = value_storage;
+		target_locations[location_count] = phi_storage.reg;
+		location_count += 1;
 	}
+
+	RegisterMoveArray moves = _parallel_move_values(input_locations,
+			target_locations,
+			location_count,
+			allowed_temp_registers,
+			gen->allocator,
+			gen->temp_allocator);
+
+	for (size_t i = 0; i < moves.count; i += 1) {
+		RegisterMove move = moves.moves[i];
+		_emit_mov_regs(code_buffer, move.src, move.dst, 64);
+	}
+
+	arena_end_temp(temp);
 
 	profile_scope_end();
 }

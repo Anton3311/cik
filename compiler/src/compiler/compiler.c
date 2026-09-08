@@ -1763,6 +1763,9 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 // * before the loop
 // * values assigned inside the loop
 // * values assigned before encountering the `break` or `continue` statements.
+//
+// NOTE: `final_body_region` can be `INVALID_INSTR_INDEX` to indicate that variants from this region
+//       must be ignored. For example, in case this region is already known to be unreachable.
 static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 		InstrIndex* var_phis,
 		InstrIndex* arg_phis,
@@ -1781,20 +1784,25 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 	// Although these are not control statements, chaining them together makes everything flow
 	// through the same path in `_fill_phi_variants`, without the need to manually add
 	// `INSTR_SELECT` for the original value and the ones produced inside the loop.
+	ControlFlowStmt* control_stmts = current_loop->control_flow_stmts;
+
 	ControlFlowStmt original = {};
 	original.region = pre_loop_region;
 	original.var_values = original_var_values;
 	original.arg_values = original_arg_values;
 
-	ControlFlowStmt inner = {};
-	inner.region = final_body_region;
-	inner.var_values = compiler->var_values;
-	inner.arg_values = compiler->arg_states;
+	original.next = control_stmts;
+	control_stmts = &original;
 
-	original.next = &inner;
-	inner.next = current_loop->control_flow_stmts;
+	if (final_body_region.value != INVALID_INSTR_INDEX.value) {
+		ControlFlowStmt inner = {};
+		inner.region = final_body_region;
+		inner.var_values = compiler->var_values;
+		inner.arg_values = compiler->arg_states;
 
-	ControlFlowStmt* control_stmts = &original;
+		inner.next = control_stmts;
+		control_stmts = &inner;
+	}
 
 	size_t control_stmt_count = 0;
 	for (ControlFlowStmt* stmt = control_stmts; stmt != NULL; stmt = stmt->next) {
@@ -2265,7 +2273,7 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 			original_var_values,
 			original_arg_values,
 			pre_loop_region,
-			body_block.final_region);
+			final_region_finished ? INVALID_INSTR_INDEX : condition_region);
 
 	array_copy(original_var_values, var_phis, compiler->var_count);
 	array_copy(original_arg_values, arg_phis, arg_count);

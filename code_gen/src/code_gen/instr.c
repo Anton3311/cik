@@ -599,8 +599,14 @@ void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator) {
 // Dominator Tree
 //
 
-CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
-		InstrIndex initial_region,
+typedef InstrIndexArray(*CFGRegionNeighborsProvider)(const InstrBuffer* instr_buffer,
+		InstrIndex region_index,
+		void* user_data);
+
+static CFGDominatorTree _dom_tree_build_with_neighbor_provider(const InstrBuffer* instr_buffer,
+		InstrIndexArray initial_regions,
+		CFGRegionNeighborsProvider provider,
+		void* provider_user_data,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
@@ -624,11 +630,12 @@ CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
 		bit_array_set(&tree.dominates[i], i, true);
 	}
 
-	// Push the initial region on the stack
-	instr_queue_push_back(&stack, initial_region);
+	// Push the initial regions on the stack
+	for (size_t i = 0; i < initial_regions.count; i += 1) {
+		InstrIndex initial_region_index = initial_regions.instr[i];
+		instr_queue_push_back(&stack, initial_region_index);
 
-	{
-		const Instr* initial = instr_buffer_at(instr_buffer, initial_region);
+		const Instr* initial = instr_buffer_at(instr_buffer, initial_region_index);
 		bit_array_set(&visited_regions, initial->region.id, true);
 
 		tree.parent[initial->region.id] = UINT16_MAX;
@@ -640,65 +647,42 @@ CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
 		const Instr* instr = instr_buffer_at(instr_buffer, region_instr_index);
 		assert(instr->kind == INSTR_REGION);
 
-		InstrIndex successors[2];
-		size_t successor_count = 0;
-
-		const Instr* last_instr = instr_buffer_at(instr_buffer, instr->region.last_instr);
-		switch (last_instr->kind) {
-		case INSTR_JUMP:
-			successors[0] = last_instr->jump.target_region;
-			successor_count = 1;
-			break;
-		case INSTR_BRANCH:
-			successors[0] = last_instr->branch.true_region;
-			successors[1] = last_instr->branch.false_region;
-			successor_count = 2;
-			break;
-		case INSTR_RET:
-		case INSTR_RETURN_VALUE:
-			break;
-		default:
-			unreachable();
-		}
+		InstrIndexArray neighbors = provider(instr_buffer, region_instr_index, provider_user_data);
 		
-		for (size_t i = 0; i < successor_count; i += 1) {
-			InstrIndex successor_index = successors[i];
-			const Instr* successor = instr_buffer_at(instr_buffer, successor_index);
-			assert(successor->kind == INSTR_REGION);
+		for (size_t i = 0; i < neighbors.count; i += 1) {
+			InstrIndex neighbor_index = neighbors.instr[i];
+			const Instr* neighbor = instr_buffer_at(instr_buffer, neighbor_index);
+			assert(neighbor->kind == INSTR_REGION);
 
 			bool changed = false;
-			if (bit_array_get(&visited_regions, successor->region.id)) {
-				// Reset bit corresponding to the current region, so it doesn't interfere with the
-				// `and` operation.
-				bit_array_set(&tree.dominates[successor->region.id], successor->region.id, false);
+			if (bit_array_get(&visited_regions, neighbor->region.id)) {
+				// Reset the bit corresponding to the current region, so it doesn't interfere with
+				// the `and` operation.
+				bit_array_set(&tree.dominates[neighbor->region.id], neighbor->region.id, false);
 
 				changed |= bit_array_and(&tree.dominates[instr->region.id],
-						&tree.dominates[successor->region.id],
-						&tree.dominates[successor->region.id]);
+						&tree.dominates[neighbor->region.id],
+						&tree.dominates[neighbor->region.id]);
 
-				bit_array_set(&tree.dominates[successor->region.id], successor->region.id, true);
+				bit_array_set(&tree.dominates[neighbor->region.id], neighbor->region.id, true);
 			} else {
 				changed |= bit_array_or(&tree.dominates[instr->region.id],
-						&tree.dominates[successor->region.id],
-						&tree.dominates[successor->region.id]);
+						&tree.dominates[neighbor->region.id],
+						&tree.dominates[neighbor->region.id]);
 
-				bit_array_set(&visited_regions, successor->region.id, true);
+				bit_array_set(&visited_regions, neighbor->region.id, true);
 			}
 
 			// If the set of regions dominated by the current one, was updated, we need to continue
-			// the traversal and propagate the updates to the successors.
+			// the traversal and propagate the updates to the neighbors.
 			if (changed) {
-				instr_queue_push_back(&stack, successor_index);
+				instr_queue_push_back(&stack, neighbor_index);
 			}
 		}
 	}
 
 	// Now determine immediate dominators.
 	for (uint16_t i = 0; i < instr_buffer->region_count; i += 1) {
-		if (i == instr_region_id(instr_buffer, initial_region)) {
-			continue;
-		}
-
 		BitArray* dominance = &tree.dominates[i];
 		assert(bit_array_get(dominance, i));
 		bit_array_set(dominance, i, false);
@@ -712,10 +696,11 @@ CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
 			if (bit_array_equal(dominance, &tree.dominates[j])) {
 				tree.parent[i] = j;
 				found = true;
-				bit_array_set(dominance, i, true);
 				break;
 			}
 		}
+
+		bit_array_set(dominance, i, true);
 
 		if (!found) {
 			// This region is unreachable
@@ -724,12 +709,63 @@ CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
 	}
 
 	// The initial region dones't have a parent
-	tree.parent[instr_region_id(instr_buffer, initial_region)] = UINT16_MAX;
+	for (size_t i = 0; i < initial_regions.count; i += 1) {
+		InstrIndex initial_region_index = initial_regions.instr[i];
+		assert(tree.parent[instr_region_id(instr_buffer, initial_region_index)] == UINT16_MAX);
+	}
 
 	arena_end_temp(temp);
 
 	profile_scope_end();
 	return tree;
+}
+
+static InstrIndexArray _region_successors_provider(const InstrBuffer* instr_buffer,
+		InstrIndex region_index,
+		void* data) {
+
+	InstrIndex* successors = (InstrIndex*)data;
+	size_t successor_count = 0;
+
+	const Instr* region_instr = instr_buffer_at(instr_buffer, region_index);
+	const Instr* last_instr = instr_buffer_at(instr_buffer, region_instr->region.last_instr);
+	switch (last_instr->kind) {
+	case INSTR_JUMP:
+		successors[0] = last_instr->jump.target_region;
+		successor_count = 1;
+		break;
+	case INSTR_BRANCH:
+		successors[0] = last_instr->branch.true_region;
+		successors[1] = last_instr->branch.false_region;
+		successor_count = 2;
+		break;
+	case INSTR_RET:
+	case INSTR_RETURN_VALUE:
+		break;
+	default:
+		unreachable();
+	}
+
+	return (InstrIndexArray) {
+		.instr = successors,
+		.count = successor_count,
+	};
+}
+
+CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
+		InstrIndex initial_region,
+		Arena* allocator,
+		Arena* temp_allocator) {
+
+	InstrIndex successor_buffer[2];
+	InstrIndexArray initial_regions = { .instr = &initial_region, .count = 1 };
+
+	return _dom_tree_build_with_neighbor_provider(instr_buffer,
+			initial_regions,
+			_region_successors_provider,
+			successor_buffer,
+			allocator,
+			temp_allocator);
 }
 
 bool dom_tree_is_region_dominated_by(const CFGDominatorTree* tree,

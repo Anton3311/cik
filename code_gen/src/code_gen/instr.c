@@ -768,6 +768,151 @@ CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
 			temp_allocator);
 }
 
+static InstrIndexArray _region_predecessors_provider(const InstrBuffer* instr_buffer,
+		InstrIndex region_index,
+		void* user_data) {
+	InstrIndexArray* predecessors = (InstrIndexArray*)user_data;
+	uint16_t region_id = instr_region_id(instr_buffer, region_index);
+	return predecessors[region_id];
+}
+
+CFGDominatorTree post_dom_tree_build(const InstrBuffer* instr_buffer,
+		InstrIndexArray regions,
+		Arena* allocator,
+		Arena* temp_allocator) {
+	profile_scope_start(__func__);
+
+	ArenaRegion temp = arena_begin_temp(temp_allocator);
+
+	uint16_t* predecessor_count = arena_alloc_array_zeroed(temp_allocator,
+			uint16_t,
+			instr_buffer->region_count);
+
+	for (size_t i = 0; i < regions.count; i += 1) {
+		const Instr* region_instr = instr_buffer_at(instr_buffer, regions.instr[i]);
+		const Instr* last_instr = instr_buffer_at(instr_buffer, region_instr->region.last_instr);
+
+		switch (last_instr->kind) {
+		case INSTR_JUMP: {
+			uint16_t target_region_id = instr_region_id(instr_buffer,
+					last_instr->jump.target_region);
+
+			predecessor_count[target_region_id] += 1;
+			break;
+		}
+		case INSTR_BRANCH: {
+			uint16_t true_region_id = instr_region_id(instr_buffer,
+					last_instr->branch.true_region);
+
+			uint16_t false_region_id = instr_region_id(instr_buffer,
+					last_instr->branch.false_region);
+
+			predecessor_count[true_region_id] += 1;
+			predecessor_count[false_region_id] += 1;
+			break;
+		}
+		case INSTR_RET:
+		case INSTR_RETURN_VALUE:
+			break;
+		default:
+			unreachable();
+		}
+	}
+
+	InstrIndexArray* predecessors = arena_alloc_array(temp_allocator,
+			InstrIndexArray,
+			instr_buffer->region_count);
+
+	for (size_t i = 0; i < regions.count; i += 1) {
+		uint16_t region_id = instr_region_id(instr_buffer, regions.instr[i]);
+
+		predecessors[region_id].count = 0;
+		predecessors[region_id].instr = arena_alloc_array(temp_allocator,
+				InstrIndex,
+				predecessor_count[region_id]);
+	}
+
+	for (size_t i = 0; i < regions.count; i += 1) {
+		InstrIndex current_region_index = regions.instr[i];
+		const Instr* region_instr = instr_buffer_at(instr_buffer, current_region_index);
+		const Instr* last_instr = instr_buffer_at(instr_buffer, region_instr->region.last_instr);
+
+		switch (last_instr->kind) {
+		case INSTR_JUMP: {
+			uint16_t target_region_id = instr_region_id(instr_buffer,
+					last_instr->jump.target_region);
+
+			size_t count = predecessors[target_region_id].count;
+			assert(count + 1 <= predecessor_count[target_region_id]);
+
+			predecessors[target_region_id].instr[count] = current_region_index;
+			predecessors[target_region_id].count += 1;
+			break;
+		}
+		case INSTR_BRANCH: {
+			uint16_t true_region_id = instr_region_id(instr_buffer,
+					last_instr->branch.true_region);
+
+			uint16_t false_region_id = instr_region_id(instr_buffer,
+					last_instr->branch.false_region);
+
+			{
+				size_t count = predecessors[true_region_id].count;
+				assert(count + 1 <= predecessor_count[true_region_id]);
+
+				predecessors[true_region_id].instr[count] = current_region_index;
+				predecessors[true_region_id].count += 1;
+			}
+
+			{
+				size_t count = predecessors[false_region_id].count;
+				assert(count + 1 <= predecessor_count[false_region_id]);
+
+				predecessors[false_region_id].instr[count] = current_region_index;
+				predecessors[false_region_id].count += 1;
+			}
+
+			break;
+		}
+		case INSTR_RET:
+		case INSTR_RETURN_VALUE:
+			break;
+		default:
+			unreachable();
+		}
+	}
+
+	// Now gather all the regions ending with a `return`. These will act as a starting point for
+	// post-dominator tree building process.
+	InstrIndexArray final_regions;
+	final_regions.count = 0;
+	final_regions.instr = arena_alloc_array(temp_allocator, InstrIndex, 0);
+
+	for (size_t i = 0; i < regions.count; i += 1) {
+		InstrIndex current_region_index = regions.instr[i];
+		const Instr* region_instr = instr_buffer_at(instr_buffer, current_region_index);
+		const Instr* last_instr = instr_buffer_at(instr_buffer, region_instr->region.last_instr);
+
+		if (last_instr->kind == INSTR_RET || last_instr->kind == INSTR_RETURN_VALUE) {
+			arena_alloc(temp_allocator, InstrIndex);
+			final_regions.instr[final_regions.count] = current_region_index;
+			final_regions.count += 1;
+		}
+	}
+
+	CFGDominatorTree tree = _dom_tree_build_with_neighbor_provider(instr_buffer,
+			final_regions,
+			_region_predecessors_provider,
+			predecessors,
+			allocator,
+			temp_allocator);
+
+	arena_end_temp(temp);
+
+	profile_scope_end();
+	return tree;
+}
+
 bool dom_tree_is_region_dominated_by(const CFGDominatorTree* tree,
 		uint16_t dominated_region_id,
 		uint16_t dominated_by_region_id) {

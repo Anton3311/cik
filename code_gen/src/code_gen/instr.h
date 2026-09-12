@@ -626,6 +626,11 @@ CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
 		Arena* allocator,
 		Arena* temp_allocator);
 
+CFGDominatorTree post_dom_tree_build(const InstrBuffer* instr_buffer,
+		InstrIndexArray regions,
+		Arena* allocator,
+		Arena* temp_allocator);
+
 bool dom_tree_is_region_dominated_by(const CFGDominatorTree* tree,
 		uint16_t dominated_region_id,
 		uint16_t dominated_by_region_id);

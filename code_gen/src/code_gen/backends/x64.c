@@ -2866,16 +2866,25 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 
 	_merge_string_consts(gen);
 
+	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
+
 	CFGDominatorTree dom_tree = dom_tree_build(&gen->instr_buffer,
 			root_region,
 			gen->allocator,
 			gen->temp_allocator);
 
+	CFGDominatorTree post_dom_tree = post_dom_tree_build(&gen->instr_buffer,
+			scheduled_regions,
+			gen->allocator,
+			gen->temp_allocator);
+
 	if (has_flag(gen->flags, X64_DEBUG_LOG)) {
+		printf("dominator tree:\n");
 		dom_tree_print(&dom_tree, &gen->instr_buffer);
+		printf("post-dominator tree:\n");
+		dom_tree_print(&post_dom_tree, &gen->instr_buffer);
 	}
 
-	InstrIndexArray scheduled_regions = _gather_scheduled_regions(gen, root_region);
 	_collect_phis(gen, gen->temp_allocator);
 
 	SchedulingResult scheduling_result = {};

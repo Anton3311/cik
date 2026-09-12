@@ -501,14 +501,20 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		}
 	}
 
-	for (size_t i = 0; i < buffer.count; i += 1) {
-		if (live_ranges[i].value == UINT32_MAX) {
-			continue;
-		}
+	for (uint16_t region_index = 0; region_index < scheduled_regions.count; region_index += 1) {
+		uint16_t region_id = instr_region_id(&buffer, scheduled_regions.instr[region_index]);
+		InstrIndexArray instr = scheduled_instr[region_id];
 
-		const Instr* instr = &buffer.instr[i];
-		if (instr->kind == INSTR_PHI) {
-			InstrLiveRange phi_live_range = live_ranges[i];
+		for (size_t i = 0; i < instr.count; i += 1) {
+			InstrIndex instr_index = instr.instr[i];
+			assert(_live_range_is_valid(live_ranges[instr_index.value]));
+
+			const Instr* instr = &buffer.instr[instr_index.value];
+			if (instr->kind != INSTR_PHI) {
+				continue;
+			}
+
+			InstrLiveRange phi_live_range = live_ranges[instr_index.value];
 
 			InstrInputs variants = instr->phi.variants;
 			for (uint16_t j = variants.start; j < variants.start + variants.count; j += 1) {
@@ -533,7 +539,7 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 				//       4. jump to A
 				//
 				//       we need to make sure that once the variant value is computed (at index 2), 
-				//       it doesn't get override by other instructions (at index 3), until it
+				//       it doesn't get overriden by other instructions (at index 3), until it
 				//       reaches a jump back to the start of the region, where the phi node is
 				//       placed.
 				*variant_live_range = _live_range_extended(
@@ -553,7 +559,7 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 						instr_global_position[region->region.last_instr.value]);
 			}
 
-			live_ranges[i] = phi_live_range;
+			live_ranges[instr_index.value] = phi_live_range;
 		}
 	}
 

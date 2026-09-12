@@ -614,11 +614,11 @@ typedef struct {
 	BitArray* dominates;
 
 	// An array of size eqaul to the total number of regions.
-	// Maps region id to the immediate dominator of that region.
+	// Maps region id to the parent of that region.
 	//
-	// `UINT16_MAX` means the regions doesn't have an immediate dominator.
-	// Which is only true for the root region.
-	uint16_t* immediate_dominators;
+	// `UINT16_MAX` means the regions doesn't have a parent.
+	// Which is true for the root region or an unreachable region.
+	uint16_t* parent;
 } CFGDominatorTree;
 
 CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,

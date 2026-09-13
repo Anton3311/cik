@@ -38,7 +38,29 @@ static void _bundle_append(Bundle* bundle, InstrIndex instr_index, Arena* alloca
 	bundle->instr_count += 1;
 }
 
-static bool _bundle_can_accept_instr(const Bundle* bundle,
+static bool _phi_has_value_as_variant(const InstrBuffer* instr_buffer,
+		const Instr* phi_instr,
+		InstrIndex value_instr) {
+	profile_scope_start(__func__);
+	assert(phi_instr->kind == INSTR_PHI);
+
+	InstrInputs variants = phi_instr->phi.variants;
+	for (uint16_t i = 0; i < variants.count; i += 1) {
+		InstrIndex select_index = instr_buffer->inputs_buffer[variants.start + i];
+		const Instr* select = instr_buffer_at(instr_buffer, select_index);
+
+		if (select->select.value.value == value_instr.value) {
+			profile_scope_end();
+			return true;
+		}
+	}
+
+	profile_scope_end();
+	return false;
+}
+
+static bool _bundle_can_accept_instr(const InstrBuffer* instr_buffer,
+		const Bundle* bundle,
 		InstrIndex instr_index,
 		const InstrLiveRange* live_ranges) {
 	profile_scope_start(__func__);
@@ -65,10 +87,34 @@ static bool _bundle_can_accept_instr(const Bundle* bundle,
 				overlap = false;
 			}
 
-			if (overlap) {
-				profile_scope_end();
-				return false;
+			if (!overlap) {
+				continue;
 			}
+
+			InstrIndex instr_index_b = chunk->buffer[i];
+
+			const Instr* instr_a = instr_buffer_at(instr_buffer, instr_index);
+			const Instr* instr_b = instr_buffer_at(instr_buffer, instr_index_b);
+
+			// Make sure that phis and their variants don't overlap.
+			if (instr_a->kind == INSTR_PHI
+					&& _phi_has_value_as_variant(instr_buffer, instr_a, instr_index_b)) {
+				debug_log_info("can overlap phi '%u' with its variant '%u'",
+						instr_index.value,
+						instr_index_b.value);
+				continue;
+			}
+
+			if (instr_b->kind == INSTR_PHI
+					&& _phi_has_value_as_variant(instr_buffer, instr_b, instr_index)) {
+				debug_log_info("can overlap phi '%u' with its variant '%u'",
+						instr_index_b.value,
+						instr_index.value);
+				continue;
+			}
+
+			profile_scope_end();
+			return false;
 		}
 	}
 
@@ -109,7 +155,10 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 
 		Bundle* selected_bundle = NULL;
 		for (Bundle* bundle = context.bundles; bundle != NULL; bundle = bundle->next) {
-			bool can_accept = _bundle_can_accept_instr(bundle, instr_index, live_ranges);
+			bool can_accept = _bundle_can_accept_instr(instr_buffer,
+					bundle,
+					instr_index,
+					live_ranges);
 
 			if (can_accept && selected_bundle) {
 				if (bundle->instr_count > selected_bundle->instr_count) {

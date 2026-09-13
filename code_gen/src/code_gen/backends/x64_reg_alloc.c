@@ -15,6 +15,7 @@ struct Bundle {
 	size_t instr_count;
 	BundleInstrChunk* chunk;
 	Bundle* next;
+	X64Register prefered_register;
 };
 
 static void _bundle_append(Bundle* bundle, InstrIndex instr_index, Arena* allocator) {
@@ -122,22 +123,52 @@ static bool _bundle_can_accept_instr(const InstrBuffer* instr_buffer,
 	return true;
 }
 
+static Bundle* _find_acceptable_bundle(const InstrBuffer* instr_buffer,
+		Bundle* bundles,
+		InstrIndex instr_index,
+		const InstrLiveRange* live_ranges) {
+	profile_scope_start(__func__);
+
+	Bundle* selected_bundle = NULL;
+	for (Bundle* bundle = bundles; bundle != NULL; bundle = bundle->next) {
+		bool can_accept = _bundle_can_accept_instr(instr_buffer,
+				bundle,
+				instr_index,
+				live_ranges);
+
+		if (can_accept && selected_bundle) {
+			if (bundle->instr_count > selected_bundle->instr_count) {
+				selected_bundle = bundle;
+			}
+		} else if (can_accept) {
+			selected_bundle = bundle;
+		}
+	}
+
+	profile_scope_end();
+	return selected_bundle;
+}
+
 typedef struct {
+	// A linked list of bundles. Each bundle is non-empty and contains at least one instruction.
 	Bundle* bundles;
 
 	const InstrLiveRange* live_ranges;
 	const InstrBuffer* instr_buffer;
+
+	// TODO: Remove if not needed
 	Bundle** assigned_bundles;
 } BundleBuildContext;
 
 static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 		const InstrLiveRange* live_ranges,
 		const InstrIndexArray scheduled_instr,
+		InstrStorageLocation* argument_locations,
 		Arena* allocator) {
 	profile_scope_start(__func__);
 
 	BundleBuildContext context = {};
-	context.bundles = arena_alloc_zeroed(allocator, Bundle);
+	context.bundles = NULL;
 	context.live_ranges = live_ranges;
 	context.instr_buffer = instr_buffer;
 	context.assigned_bundles = arena_alloc_array_zeroed(allocator, Bundle*, instr_buffer->count);
@@ -153,24 +184,31 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 			continue;
 		}
 
+		assert(!has_flag(feature_flags, INSTR_FEATURE_STACK_STORAGE));
+
 		Bundle* selected_bundle = NULL;
-		for (Bundle* bundle = context.bundles; bundle != NULL; bundle = bundle->next) {
-			bool can_accept = _bundle_can_accept_instr(instr_buffer,
-					bundle,
+
+		bool requires_dedicated_bundle = false;
+
+		X64Register prefered_register = -1;
+		if (instr->kind >= INSTR_LOAD_ARG_8 && instr->kind <= INSTR_LOAD_ARG_64) {
+			if (argument_locations[instr->load_arg.index].kind != INSTR_STORAGE_REG) {
+				requires_dedicated_bundle = true;
+			} else {
+				prefered_register = argument_locations[instr->load_arg.index].reg;
+			}
+		}
+
+		if (!requires_dedicated_bundle) {
+			selected_bundle = _find_acceptable_bundle(instr_buffer,
+					context.bundles,
 					instr_index,
 					live_ranges);
-
-			if (can_accept && selected_bundle) {
-				if (bundle->instr_count > selected_bundle->instr_count) {
-					selected_bundle = bundle;
-				}
-			} else if (can_accept) {
-				selected_bundle = bundle;
-			}
 		}
 
 		if (selected_bundle == NULL) {
 			Bundle* bundle = arena_alloc_zeroed(allocator, Bundle);
+			bundle->prefered_register = prefered_register;
 			bundle->next = context.bundles;
 			context.bundles = bundle;
 
@@ -450,6 +488,76 @@ static bool _run_graph_coloring(const InstrBuffer* instr_buffer,
 	return graph_coloring_result;
 }
 
+static void _assign_storage_location_to_bundle(InstrStorageLocation* storage_locations,
+		const Bundle* bundle,
+		InstrStorageLocation location) {
+	profile_scope_start(__func__);
+
+	for (const BundleInstrChunk* chunk = bundle->chunk; chunk != NULL; chunk = chunk->next) {
+		for (size_t i = 0; i < chunk->count; i += 1) {
+			storage_locations[chunk->buffer[i].value] = location;
+		}
+	}
+
+	profile_scope_end();
+}
+
+static bool _color_bundles(const InstrBuffer* instr_buffer,
+		InstrIndexArray scheduled_instr,
+		const Bundle* bundles,
+		uint16_t allowed_registers,
+		const InstrStorageLocation* argument_locations,
+		size_t argument_location_count,
+		Arena* allocator,
+		Arena* temp_allocator,
+		RegisterAllocationResult* out_result) {
+	profile_scope_start(__func__);
+
+	InstrStorageLocation* storage_locations = arena_alloc_array_zeroed(allocator,
+			InstrStorageLocation,
+			instr_buffer->count);
+
+	for (const Bundle* bundle = bundles; bundle != NULL; bundle = bundle->next) {
+		assert(bundle->instr_count > 0);
+
+		if (bundle->prefered_register == -1) {
+			continue;
+		}
+
+		allowed_registers &= ~(1 << bundle->prefered_register);
+
+		_assign_storage_location_to_bundle(storage_locations,
+				bundle,
+				(InstrStorageLocation) {
+					.kind = INSTR_STORAGE_REG,
+					.reg = bundle->prefered_register
+				});
+	}
+
+	for (const Bundle* bundle = bundles; bundle != NULL; bundle = bundle->next) {
+		assert(bundle->instr_count > 0);
+
+		if (bundle->prefered_register != -1) {
+			continue;
+		}
+
+		assert(allowed_registers != 0);
+
+		X64Register reg = count_trailing_zeros(allowed_registers);
+		allowed_registers &= ~(1 << reg);
+
+		_assign_storage_location_to_bundle(storage_locations,
+				bundle,
+				(InstrStorageLocation) { .kind = INSTR_STORAGE_REG, .reg = reg });
+	}
+
+	out_result->allocations = storage_locations;
+	out_result->stack_usage = 0;
+
+	profile_scope_end();
+	return true;
+}
+
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		const InstrIndexArray scheduled_instr,
 		InstrLiveRange* live_ranges,
@@ -478,7 +586,26 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		}
 	}
 
-	Bundle* bundles = _build_bundles(instr_buffer, live_ranges, scheduled_instr, temp_allocator);
+	size_t argument_location_count = 0;
+	InstrStorageLocation* argument_locations = arena_alloc_array(temp_allocator,
+			InstrStorageLocation, 0);
+
+	for (uint32_t i = 0; i < current_function_signature->param_count; i += 1) {
+		if (current_function_signature->params[i].kind == ABI_PARAM_RETURN_LOCATION) {
+			continue;
+		}
+
+		arena_alloc(temp_allocator, InstrStorageLocation);
+		argument_locations[argument_location_count] = frame_layout.locations[i];
+		argument_location_count += 1;
+	}
+
+	Bundle* bundles = _build_bundles(instr_buffer,
+			live_ranges,
+			scheduled_instr,
+			argument_locations,
+			temp_allocator);
+
 	size_t bundle_index = 0;
 	for (Bundle* bundle = bundles; bundle != NULL; bundle = bundle->next, bundle_index += 1) {
 		printf("bundle %zu:\n", bundle_index);
@@ -492,8 +619,6 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		}
 	}
 
-	arena_end_temp(temp);
-
 	InstrIndexArray* interference_graph = _build_interference_graph(instr_buffer,
 			live_ranges,
 			temp_allocator);
@@ -501,6 +626,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 	RegisterAllocationResult result;
 	result.interference_graph = interference_graph;
 
+#if 0
 	bool graph_coloring_result = _run_graph_coloring(instr_buffer,
 			scheduled_instr,
 			live_ranges,
@@ -511,8 +637,21 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			allocator,
 			temp_allocator,
 			&result);
+#else
+	bool graph_coloring_result = _color_bundles(instr_buffer,
+			scheduled_instr,
+			bundles,
+			allowed_registers,
+			argument_locations,
+			argument_location_count,
+			allocator,
+			temp_allocator,
+			&result);
+#endif
 
 	assert(graph_coloring_result);
+
+	arena_end_temp(temp);
 
 	profile_scope_end();
 	return result;

@@ -22,6 +22,7 @@ typedef struct Instr Instr;
 typedef struct InstrBuffer InstrBuffer;
 typedef union InstrLiveRange InstrLiveRange;
 typedef struct InstrQueue InstrQueue;
+typedef struct CFGDominatorTree CFGDominatorTree;
 
 typedef enum {
 	INSTR_NO_OP,
@@ -586,6 +587,7 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
 		InstrIndexArray scheduled_regions,
 		InstrIndexArray* scheduled_instr,
+		const CFGDominatorTree* dom_tree,
 		Arena* allocator,
 		Arena* temp_allocator);
 
@@ -604,7 +606,7 @@ void instr_print_all(InstrBuffer instr_buffer, Arena* temp_allocator);
 // Dominator Tree
 //
 
-typedef struct {
+struct CFGDominatorTree {
 	uint16_t region_count;
 
 	// Per region `BitArray` of regions that it dominates
@@ -619,7 +621,7 @@ typedef struct {
 	// `UINT16_MAX` means the regions doesn't have a parent.
 	// Which is true for the root region or an unreachable region.
 	uint16_t* parent;
-} CFGDominatorTree;
+};
 
 CFGDominatorTree dom_tree_build(const InstrBuffer* instr_buffer,
 		InstrIndex initial_region,

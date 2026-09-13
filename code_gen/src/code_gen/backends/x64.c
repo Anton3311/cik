@@ -2911,6 +2911,7 @@ LoweredFunction x64_generate_code(X64CodeGenerator* gen, InstrIndex root_region)
 			scheduling_result.scheduled_instr,
 			// use `temp_allocator` as a persistent, since live ranges aren't needed outside this
 			// function
+			&dom_tree,
 			gen->temp_allocator, 
 			gen->allocator);
 

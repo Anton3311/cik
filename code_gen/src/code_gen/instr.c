@@ -402,6 +402,7 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		InstrIndex root_instr,
 		InstrIndexArray scheduled_regions,
 		InstrIndexArray* scheduled_instr,
+		const CFGDominatorTree* dom_tree,
 		Arena* allocator,
 		Arena* temp_allocator) {
 	profile_scope_start(__func__);
@@ -520,6 +521,53 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		}
 	}
 
+	// Here we need to extend live ranges of phis so that they meet the next requirement.
+	//
+	// Let's say we have a region `R0`. And some phi `PHI0` which selects a value `V0` from region
+	// `R0`. `PHI0` is scheduled to execute in some other region, which is not `R0`.
+	//
+	// Whenever, the control flow reaches the end of `R0`, it will get transfered to some other
+	// region `R1`. And if the control flow from `R1` will eventually reach the region where `PHI0`
+	// is placed, we need to extend the live range of the `PHI0` to include the start of `R1`, so
+	// that there is no gap between `V0` and `PHI0` live ranges.
+	//
+	//                     V0 live range  PHI0 live range (initial)  PHI0 live range (exteded)
+	//  ...     ...              |              
+	//   |       R0 <- V0        *
+	//    \     /                
+	//     \   /                                                        
+	//       R1                                                         *
+	//       |                                                          |
+	//      ...                                                         |
+	//       |                                                          |
+	//       R2 <- PHI0                        *                        |
+	//       |                                 |                        |
+	//      ...                               ...                      ...
+	//
+	// More examples:
+	// Here the control flow from `R0` splits into two paths, both of which eventually lead to
+	// `PHI0`. In this case the extended live range of the `PHI0` convers the starts of both `R2`
+	// and `R1`.
+	// 
+	//                   V0  PHI0 (initial)  PHI0 (exteded)
+	//      ...          |              
+	//       |           |
+	//       R0 <- V0    *
+	//      /  \         
+	//     /    \
+	//    R2     R1
+	//    |      |                             *
+	//   ...    ...                            |
+	//    |      |                             |
+	//     \    /                              |
+	//      \  /                               |
+	//       R3                                |
+	//       |                                 |
+	//      ...                                |
+	//       |                                 |
+	//       R4 <- PHI0           *            |
+	//       |                    |            |
+	//      ...                  ...
 	for (uint16_t region_index = 0; region_index < scheduled_regions.count; region_index += 1) {
 		uint16_t region_id = instr_region_id(&buffer, scheduled_regions.instr[region_index]);
 		InstrIndexArray instr = scheduled_instr[region_id];
@@ -533,7 +581,7 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 				continue;
 			}
 
-			InstrLiveRange phi_live_range = live_ranges[instr_index.value];
+			uint16_t phi_region_id = region_id;
 
 			InstrInputs variants = instr->phi.variants;
 			for (uint16_t j = variants.start; j < variants.start + variants.count; j += 1) {
@@ -541,20 +589,51 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 				const Instr* select = &buffer.instr[select_index.value];
 				const Instr* region = &buffer.instr[select->select.region.value];
 
-				// FIXME: This whole algorithm might not generate a correct live range for a phi,
-				//        in case there is a loop made out of a single region, and the phi is
-				//        located in that loop. The live range will start and end at the same
-				//        program point?
+				InstrIndex paths[2];
+				size_t path_count = 0;
 
-				// Extend the live range of the phi to the end of that same region, where the
-				// variant comes from. Previously the phi was kept alive as long as all of its
-				// variants. Which lead to incresed register pressure.
-				phi_live_range = _live_range_extended(
-						phi_live_range,
-						instr_global_position[region->region.last_instr.value]);
+				const Instr* last_instr = &buffer.instr[region->region.last_instr.value];
+				switch (last_instr->kind) {
+				case INSTR_JUMP:
+					paths[0] = last_instr->jump.target_region;
+					path_count = 1;
+					break;
+				case INSTR_BRANCH:
+					paths[0] = last_instr->branch.true_region;
+					paths[1] = last_instr->branch.false_region;
+					path_count = 2;
+					break;
+				case INSTR_RET:
+				case INSTR_RETURN_VALUE:
+					break;
+				default:
+					unreachable();
+				}
+
+				bool all_paths_lead_to_phi = dom_tree_is_region_dominated_by(dom_tree,
+						region->region.id,
+						phi_region_id);
+
+				for (size_t path_index = 0; path_index < path_count; path_index++) {
+					uint16_t path_region_id = instr_region_id(&buffer, paths[path_index]);
+
+					bool path_leads_to_phi = dom_tree_is_region_dominated_by(dom_tree,
+							path_region_id,
+							phi_region_id);
+
+					if (!(path_leads_to_phi || all_paths_lead_to_phi)) {
+						// The path doesn't lead to the `phi`
+						continue;
+					}
+
+					InstrIndex first_instr_index = scheduled_instr[path_region_id].instr[0];
+					uint16_t path_region_start = instr_global_position[first_instr_index.value];
+
+					live_ranges[instr_index.value] = _live_range_extended(
+							live_ranges[instr_index.value],
+							path_region_start);
+				}
 			}
-
-			live_ranges[instr_index.value] = phi_live_range;
 		}
 	}
 

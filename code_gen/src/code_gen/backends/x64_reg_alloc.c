@@ -1,5 +1,141 @@
 #include "x64_reg_alloc.h"
 
+typedef struct Bundle Bundle;
+typedef struct BundleInstrChunk BundleInstrChunk;
+
+#define BUNDLE_INSTR_CHUNK_CAPACITY 24
+
+struct BundleInstrChunk {
+	InstrIndex buffer[BUNDLE_INSTR_CHUNK_CAPACITY];
+	size_t count;
+	BundleInstrChunk* next;
+};
+
+struct Bundle {
+	size_t instr_count;
+	BundleInstrChunk* chunk;
+	Bundle* next;
+};
+
+static void _bundle_append(Bundle* bundle, InstrIndex instr_index, Arena* allocator) {
+	if (bundle->chunk == NULL || bundle->chunk->count == BUNDLE_INSTR_CHUNK_CAPACITY) {
+		BundleInstrChunk* chunk = arena_alloc(allocator, BundleInstrChunk);
+		chunk->buffer[0] = instr_index;
+		chunk->count = 1;
+		chunk->next = bundle->chunk;
+
+		bundle->chunk = chunk;
+	} else {
+		assert(bundle->chunk);
+
+		BundleInstrChunk* chunk = bundle->chunk;
+		assert(chunk->count <= BUNDLE_INSTR_CHUNK_CAPACITY);
+
+		chunk->buffer[chunk->count] = instr_index;
+		chunk->count += 1;
+	}
+
+	bundle->instr_count += 1;
+}
+
+static bool _bundle_can_accept_instr(const Bundle* bundle,
+		InstrIndex instr_index,
+		const InstrLiveRange* live_ranges) {
+	profile_scope_start(__func__);
+
+	for (const BundleInstrChunk* chunk = bundle->chunk; chunk != NULL; chunk = chunk->next) {
+		for (size_t i = 0; i < chunk->count; i += 1) {
+			InstrLiveRange live_range_a = live_ranges[instr_index.value];
+			InstrLiveRange live_range_b = live_ranges[chunk->buffer[i].value];
+			assert(live_range_a.value != UINT32_MAX);
+			assert(live_range_b.value != UINT32_MAX);
+
+			uint16_t max_start = max(live_range_a.start, live_range_b.start);
+			uint16_t min_end = min(live_range_a.end, live_range_b.end);
+
+			// Check whether live ranges overlap.
+			bool overlap = min_end >= max_start;
+
+			// If the ranges only overlap at their ends, then don't consider them overlapping
+			if (live_range_a.end == live_range_b.start) {
+				overlap = false;
+			}
+
+			if (live_range_a.start == live_range_b.end) {
+				overlap = false;
+			}
+
+			if (overlap) {
+				profile_scope_end();
+				return false;
+			}
+		}
+	}
+
+	profile_scope_end();
+	return true;
+}
+
+typedef struct {
+	Bundle* bundles;
+
+	const InstrLiveRange* live_ranges;
+	const InstrBuffer* instr_buffer;
+	Bundle** assigned_bundles;
+} BundleBuildContext;
+
+static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
+		const InstrLiveRange* live_ranges,
+		const InstrIndexArray scheduled_instr,
+		Arena* allocator) {
+	profile_scope_start(__func__);
+
+	BundleBuildContext context = {};
+	context.bundles = arena_alloc_zeroed(allocator, Bundle);
+	context.live_ranges = live_ranges;
+	context.instr_buffer = instr_buffer;
+	context.assigned_bundles = arena_alloc_array_zeroed(allocator, Bundle*, instr_buffer->count);
+
+	for (size_t i = 0; i < scheduled_instr.count; i += 1) {
+		InstrIndex instr_index = scheduled_instr.instr[i];
+		const Instr* instr = instr_buffer_at(instr_buffer, instr_index);
+
+		InstrFeatureFlag feature_flags = INSTR_FEATURES[instr->kind];
+
+		if (!has_flag(feature_flags, INSTR_FEATURE_REG_STORAGE)
+				&& !has_flag(feature_flags, INSTR_FEATURE_STACK_STORAGE)) {
+			continue;
+		}
+
+		Bundle* selected_bundle = NULL;
+		for (Bundle* bundle = context.bundles; bundle != NULL; bundle = bundle->next) {
+			bool can_accept = _bundle_can_accept_instr(bundle, instr_index, live_ranges);
+
+			if (can_accept && selected_bundle) {
+				if (bundle->instr_count > selected_bundle->instr_count) {
+					selected_bundle = bundle;
+				}
+			} else if (can_accept) {
+				selected_bundle = bundle;
+			}
+		}
+
+		if (selected_bundle == NULL) {
+			Bundle* bundle = arena_alloc_zeroed(allocator, Bundle);
+			bundle->next = context.bundles;
+			context.bundles = bundle;
+
+			selected_bundle = bundle;
+		}
+
+		_bundle_append(selected_bundle, instr_index, allocator);
+		context.assigned_bundles[instr_index.value] = selected_bundle;
+	}
+
+	profile_scope_end();
+	return context.bundles;
+}
+
 // Returned array stores an array of edges for each instruction in `instr_with_storage_requirement`
 //
 // The array must be indexed using an element index of the `instr_with_storage_requirement`
@@ -290,6 +426,20 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 		InstrStorageLocation location = frame_layout.locations[i];
 		if (location.kind == INSTR_STORAGE_REG && param.kind == ABI_PARAM_RETURN_LOCATION) {
 			allowed_registers &= ~(1 << location.reg);
+		}
+	}
+
+	Bundle* bundles = _build_bundles(instr_buffer, live_ranges, scheduled_instr, temp_allocator);
+	size_t bundle_index = 0;
+	for (Bundle* bundle = bundles; bundle != NULL; bundle = bundle->next, bundle_index += 1) {
+		printf("bundle %zu:\n", bundle_index);
+		for (BundleInstrChunk* chunk = bundle->chunk; chunk != NULL; chunk = chunk->next) {
+			for (size_t i = 0; i < chunk->count; i += 1) {
+				printf("  instr '%%%u' [%u; %u]:\n",
+						chunk->buffer[i].value,
+						live_ranges[chunk->buffer[i].value].start,
+						live_ranges[chunk->buffer[i].value].end);
+			}
 		}
 	}
 

@@ -476,6 +476,25 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 		}
 
 		if (this_instr_kind == INSTR_SELECT) {
+			const Instr* select = &buffer.instr[instr_index.value];
+			const Instr* region = &buffer.instr[select->select.region.value];
+
+			// Keep the variant value alive until the end of the region. At the end of this region,
+			// control flow trafers to a different region, where a `phi` instruction pick ups this
+			// variant value.
+			InstrLiveRange* live_range = &live_ranges[select->select.value.value];
+			uint16_t exnteded_until = instr_global_position[region->region.last_instr.value];
+			if (_live_range_is_valid(*live_range)) {
+				*live_range = _live_range_extended(
+						*live_range,
+						exnteded_until);
+			} else if (_live_range_is_empty(*live_range)) {
+				live_range->start = exnteded_until;
+				live_range->end = exnteded_until;
+			} else {
+				panic("InstrLiveRange has invalid state");
+			}
+
 			continue;
 		}
 
@@ -520,31 +539,7 @@ InstrLiveRange* instr_compute_live_ranges(const InstrBuffer buffer,
 			for (uint16_t j = variants.start; j < variants.start + variants.count; j += 1) {
 				InstrIndex select_index = buffer.inputs_buffer[j];
 				const Instr* select = &buffer.instr[select_index.value];
-				assert(select->kind == INSTR_SELECT);
-
 				const Instr* region = &buffer.instr[select->select.region.value];
-				assert(region->kind == INSTR_REGION);
-
-				InstrLiveRange* variant_live_range = &live_ranges[select->select.value.value];
-
-				// NOTE: Extend the live range of the variant value to the end of the region, to
-				//       make sure it stays alive until the end of the region.
-				//
-				//       And in case this region is part of a loop that looks like this:
-				//       
-				//       region A:
-				//       1. phi
-				//       2. <variant value computation>
-				//       3. <other instructions>
-				//       4. jump to A
-				//
-				//       we need to make sure that once the variant value is computed (at index 2), 
-				//       it doesn't get overriden by other instructions (at index 3), until it
-				//       reaches a jump back to the start of the region, where the phi node is
-				//       placed.
-				*variant_live_range = _live_range_extended(
-						*variant_live_range,
-						instr_global_position[region->region.last_instr.value]);
 
 				// FIXME: This whole algorithm might not generate a correct live range for a phi,
 				//        in case there is a loop made out of a single region, and the phi is

@@ -155,9 +155,6 @@ typedef struct {
 
 	const InstrLiveRange* live_ranges;
 	const InstrBuffer* instr_buffer;
-
-	// TODO: Remove if not needed
-	Bundle** assigned_bundles;
 } BundleBuildContext;
 
 static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
@@ -171,7 +168,6 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 	context.bundles = NULL;
 	context.live_ranges = live_ranges;
 	context.instr_buffer = instr_buffer;
-	context.assigned_bundles = arena_alloc_array_zeroed(allocator, Bundle*, instr_buffer->count);
 
 	for (size_t i = 0; i < scheduled_instr.count; i += 1) {
 		InstrIndex instr_index = scheduled_instr.instr[i];
@@ -216,7 +212,6 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 		}
 
 		_bundle_append(selected_bundle, instr_index, allocator);
-		context.assigned_bundles[instr_index.value] = selected_bundle;
 	}
 
 	profile_scope_end();

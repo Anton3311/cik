@@ -258,12 +258,9 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 			requires_dedicated_bundle = true;
 		}
 
-		X64Register prefered_register = -1;
 		if (instr->kind >= INSTR_LOAD_ARG_8 && instr->kind <= INSTR_LOAD_ARG_64) {
 			if (argument_locations[instr->load_arg.index].kind != INSTR_STORAGE_REG) {
 				requires_dedicated_bundle = true;
-			} else {
-				prefered_register = argument_locations[instr->load_arg.index].reg;
 			}
 		}
 
@@ -281,12 +278,20 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 			context.bundles = bundle;
 
 			bundle->allocation_kind = prefered_allocation_kind;
-
-			if (prefered_allocation_kind == BUNDLE_ALLOC_REG) {
-				bundle->reg.prefered_register = prefered_register;
+			if (bundle->allocation_kind == BUNDLE_ALLOC_REG) {
+				bundle->reg.prefered_register = -1;
 			}
 
 			selected_bundle = bundle;
+		}
+
+		if (instr->kind >= INSTR_LOAD_ARG_8 && instr->kind <= INSTR_LOAD_ARG_64) {
+			InstrStorageLocation arg_location = argument_locations[instr->load_arg.index];
+			if (arg_location.kind == INSTR_STORAGE_REG) {
+				assert(selected_bundle->allocation_kind == BUNDLE_ALLOC_REG);
+				assert(selected_bundle->reg.prefered_register == -1);
+				selected_bundle->reg.prefered_register = arg_location.reg;
+			}
 		}
 
 		if (prefered_allocation_kind == BUNDLE_ALLOC_STACK) {

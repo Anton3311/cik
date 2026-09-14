@@ -1308,9 +1308,15 @@ static void _lower_instr(X64CodeGenerator* gen,
 			}
 			return;
 		case INSTR_BIN_UMUL:
-			encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_D, 64));
+			if (dst_loc.reg != X64_REG_D) {
+				encode_1(buffer, MNEMONIC_PUSH, operand_reg(X64_REG_D, 64));
+			}
+
 			_emit_mul(buffer, MNEMONIC_MUL, left_reg, right_reg, dst_loc.reg, bit_count);
-			encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_D, 64));
+
+			if (dst_loc.reg != X64_REG_D) {
+				encode_1(buffer, MNEMONIC_POP, operand_reg(X64_REG_D, 64));
+			}
 			return;
 		case INSTR_BIN_IDIV:
 			_emit_div_mod(buffer, MNEMONIC_IDIV, left_reg, right_reg, dst_loc.reg, true, bit_count);

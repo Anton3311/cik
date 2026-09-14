@@ -3185,6 +3185,16 @@ RegisterMoveArray _parallel_move_values(
 				"Input location overlaps with temporary registers");
 	}
 
+	{
+		uint16_t target_reg_mask = 0;
+		for (size_t i = 0; i < location_count; i += 1) {
+			uint16_t reg_mask = 1 << target_locations[i];
+			assert_msg((target_reg_mask & reg_mask) == 0, "Duplicate target locations");
+
+			target_reg_mask |= reg_mask;
+		}
+	}
+
 	ArenaRegion temp = arena_begin_temp(temp_allocator);
 
 	const X64Register INVALID_REGISTER = -1;

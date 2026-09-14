@@ -14,6 +14,7 @@ struct BundleInstrChunk {
 typedef enum {
 	BUNDLE_ALLOC_REG,
 	BUNDLE_ALLOC_STACK,
+	BUNDLE_ALLOC_CALL_FRAME,
 } BundleAllocationKind;
 
 struct Bundle {
@@ -27,10 +28,15 @@ struct Bundle {
 		struct {
 			X64Register prefered_register;
 		} reg;
+
 		struct {
 			uint16_t size;
 			uint16_t alignment;
 		} stack;
+
+		struct {
+			uint32_t slot;
+		} call_frame;
 	};
 };
 
@@ -113,6 +119,7 @@ static bool _bundle_can_accept_instr(const InstrBuffer* instr_buffer,
 			const Instr* instr_a = instr_buffer_at(instr_buffer, instr_index);
 			const Instr* instr_b = instr_buffer_at(instr_buffer, instr_index_b);
 
+#if 0
 			// Make sure that phis and their variants don't overlap.
 			if (instr_a->kind == INSTR_PHI
 					&& _phi_has_value_as_variant(instr_buffer, instr_a, instr_index_b)) {
@@ -129,6 +136,7 @@ static bool _bundle_can_accept_instr(const InstrBuffer* instr_buffer,
 						instr_index.value);
 				continue;
 			}
+#endif
 
 			profile_scope_end();
 			return false;
@@ -259,8 +267,13 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 		}
 
 		if (instr->kind >= INSTR_LOAD_ARG_8 && instr->kind <= INSTR_LOAD_ARG_64) {
-			if (argument_locations[instr->load_arg.index].kind != INSTR_STORAGE_REG) {
+			InstrStorageLocation arg_location = argument_locations[instr->load_arg.index];
+			if (arg_location.kind != INSTR_STORAGE_REG) {
 				requires_dedicated_bundle = true;
+			}
+
+			if (arg_location.kind == INSTR_STORAGE_CALL_FRAME) {
+				prefered_allocation_kind = BUNDLE_ALLOC_CALL_FRAME;
 			}
 		}
 
@@ -291,10 +304,18 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 				assert(selected_bundle->allocation_kind == BUNDLE_ALLOC_REG);
 				assert(selected_bundle->reg.prefered_register == -1);
 				selected_bundle->reg.prefered_register = arg_location.reg;
+			} else if (arg_location.kind == INSTR_STORAGE_CALL_FRAME) {
+				assert(selected_bundle->allocation_kind == BUNDLE_ALLOC_CALL_FRAME);
+
+				// At this point if `selected_bundle` is a dedicated, then it should be empty,
+				// since no instruction has been added yet.
+				assert_msg(selected_bundle->instr_count == 0, "Requires a dedicated bundle");
+				selected_bundle->call_frame.slot = arg_location.call_frame.slot;
 			}
 		}
 
 		if (prefered_allocation_kind == BUNDLE_ALLOC_STACK) {
+			assert(stack_slot_layout.size > 0);
 			assert(stack_slot_layout.alignment > 0);
 			assert(is_power_of_2(stack_slot_layout.alignment));
 			assert(stack_slot_layout.size % stack_slot_layout.alignment == 0);
@@ -664,6 +685,13 @@ static bool _color_bundles(const InstrBuffer* instr_buffer,
 					(InstrStorageLocation) {
 						.kind = INSTR_STORAGE_STACK,
 						.stack = { .offset = offset }
+					});
+		} else if (bundle->allocation_kind == BUNDLE_ALLOC_CALL_FRAME) {
+			_assign_storage_location_to_bundle(storage_locations,
+					bundle,
+					(InstrStorageLocation) {
+						.kind = INSTR_STORAGE_CALL_FRAME,
+						.call_frame = { .slot = bundle->call_frame.slot }
 					});
 		} else {
 			unreachable();

@@ -2038,7 +2038,7 @@ static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_
 
 		for (uint16_t i = 0; i < gen->instr_buffer.count; i += 1) {
 			if (result.allocations[i].kind == INSTR_STORAGE_REG) {
-				used_registers |= result.allocations[i].reg;
+				used_registers |= 1 << result.allocations[i].reg;
 			}
 
 			InstrIndexArray edges = result.interference_graph[i];
@@ -2069,6 +2069,10 @@ static void _run_reg_allocator(X64CodeGenerator* gen, InstrIndexArray scheduled_
 		StringBuilder builder = { .arena = gen->temp_allocator };
 
 		for (uint16_t i = 0; i < X64_REG_COUNT; i += 1) {
+			if ((used_registers & (1 << i)) == 0) {
+				continue;
+			}
+
 			_format_reg_name(&builder,
 					(X64Register)i,
 					64);

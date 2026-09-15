@@ -244,10 +244,12 @@ static Bundle* _build_bundles(const InstrBuffer* instr_buffer,
 			} else if (returns->kind == ABI_PARAM_STRUCT) {
 				assert(returns->struct_size > 8);
 
+				size_t default_alignment = 16;
+
 				prefered_allocation_kind = BUNDLE_ALLOC_STACK;
 				stack_slot_layout = (StackSlotLayout) {
-					.size = returns->struct_size,
-					.alignment = 16, // FIXME: No hardcoded alignment
+					.size = align(returns->struct_size, default_alignment),
+					.alignment = default_alignment, // FIXME: No hardcoded alignment
 				};
 			} else if (signature.returns->kind == ABI_PARAM_NORMAL) {
 				// Go through the usual allocator path

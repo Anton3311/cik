@@ -2725,11 +2725,14 @@ static void _compile_switch(FunctionCompiler* compiler,
 			InstrIndex new_true_region = instr_new_region(instr_buffer, instr_allocator);
 			InstrIndex new_false_region = instr_new_region(instr_buffer, instr_allocator);
 
-			// If the previous region has been terminated by a jump or a return yet, the fallthrough
-			// is possible
 			bool fallthrough_from_previous_possible = false;
-
-			if (true_region_index.value != false_region_index.value) {
+			if (true_region_index.value == false_region_index.value) {
+				// `true_region_index` and `false_region_index` are equal it means, this is the
+				// first switch case to be compiled and thus a fallthrough from the previous case is
+				// not possible, because there isn't one.
+			} else {
+				// If the previous region hasn't been terminated by a jump or a return, the
+				// fallthrough is possible
 				fallthrough_from_previous_possible = !instr_region_finished(
 						instr_buffer,
 						true_region_index);
@@ -2745,52 +2748,38 @@ static void _compile_switch(FunctionCompiler* compiler,
 				instr_region_set_last(instr_buffer, true_region_index, jump_to_current);
 			}
 
-			ControlFlowStmt initial_stmt = {
-				.kind = CONTROL_FLOW_BREAK,
-				.region = initial_region_index,
-				.var_values = initial_var_values,
-				.arg_values = initial_arg_values,
-			};
-
-			ControlFlowStmt previous_case_stmt = {
-				.kind = CONTROL_FLOW_BREAK,
-				.region = true_region_index,
-				.var_values = compiler->var_values,
-				.arg_values = compiler->arg_states,
-			};
-
-			ControlFlowStmt* break_stmts = compiler->loop_switch_state->control_flow_stmts;
-
-			ControlFlowStmt* stmts = break_stmts;
-
 			if (fallthrough_from_previous_possible) {
-				previous_case_stmt.next = stmts;
-				stmts = &previous_case_stmt;
+				for (size_t i = 0; i < var_count; i += 1) {
+					if (initial_var_values[i].value == compiler->var_values[i].value) {
+						continue;
+					}
+
+					InstrIndex phi_index = _create_phi_of_2_variants(compiler,
+							initial_var_values[i],
+							false_region_index,
+							compiler->var_values[i],
+							true_region_index);
+
+					compiler->var_values[i] = phi_index;
+				}
+
+				for (size_t i = 0; i < arg_count; i += 1) {
+					if (initial_arg_values[i].value == compiler->arg_states[i].value) {
+						continue;
+					}
+
+					InstrIndex phi_index = _create_phi_of_2_variants(compiler,
+							initial_arg_values[i],
+							false_region_index,
+							compiler->arg_states[i],
+							true_region_index);
+
+					compiler->arg_states[i] = phi_index;
+				}
+			} else {
+				array_copy(compiler->arg_states, initial_arg_values, arg_count);
+				array_copy(compiler->var_values, initial_var_values, var_count);
 			}
-
-			initial_stmt.next = stmts;
-			stmts = &initial_stmt;
-
-			// Setup variable and argument state.
-			_create_phis_for_switch_case(compiler,
-					instr_buffer,
-					instr_allocator,
-					initial_region_index,
-					true_region_index,
-					compiler->var_values,
-					stmts,
-					true,
-					var_count);
-
-			_create_phis_for_switch_case(compiler,
-					instr_buffer,
-					instr_allocator,
-					initial_region_index,
-					true_region_index,
-					compiler->arg_states,
-					stmts,
-					false,
-					arg_count);
 
 			bool is_default_case = child->case_stmt.value == NULL;
 			if (is_default_case) {

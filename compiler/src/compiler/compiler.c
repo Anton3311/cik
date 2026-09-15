@@ -1133,16 +1133,29 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 		assert(type_kind_is_int(operand_type.kind) || operand_type.kind == TYPE_POINTER);
 		assert(operand_type_layout.size <= 8);
 
-		InstrIndex one_const = instr_new_int_const(instr_buffer,
-				instr_allocator,
-				1,
-				operand_type_layout.size);
+		InstrIndex step_const = INVALID_INSTR_INDEX;
+
+		if (operand_type.kind == TYPE_POINTER) {
+			TypeLayout element_type_layout = type_get_layout(
+					compiler->type_context,
+					operand_type.pointer_base_type);
+
+			step_const = instr_new_int_const(instr_buffer,
+					instr_allocator,
+					element_type_layout.size,
+					operand_type_layout.size);
+		} else {
+			step_const = instr_new_int_const(instr_buffer,
+					instr_allocator,
+					1, operand_type_layout.size);
+		}
+
 
 		InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
 		bin_op->kind = INSTR_BIN_OP_8 + result_bit_size_index;
 		bin_op->bin_op.left = operand_instr;
-		bin_op->bin_op.right = one_const;
+		bin_op->bin_op.right = step_const;
 
 		if (is_increment) {
 			bin_op->bin_op.kind = INSTR_BIN_ADD;

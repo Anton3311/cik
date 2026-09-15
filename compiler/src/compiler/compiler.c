@@ -1734,6 +1734,7 @@ static void _fill_phi_variants(FunctionCompiler* compiler,
 	Arena* instr_allocator = compiler->instr_allocator;
 
 	Instr* phi = instr_buffer_at(instr_buffer, phi_index);
+	assert(phi->kind == INSTR_PHI);
 	assert(phi->phi.variants.start == UINT16_MAX);
 	assert(phi->phi.variants.count == UINT16_MAX);
 
@@ -1831,6 +1832,13 @@ static void _merge_pre_loop_and_inner_values(FunctionCompiler* compiler,
 
 		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
 		if (var_parent_scope->id > body_scope->id) {
+			continue;
+		}
+
+		TypeKind var_type_kind = compiler->vars[i]->type.kind;
+		if (var_type_kind == TYPE_STRUCT
+				|| var_type_kind == TYPE_UNION
+				|| var_type_kind == TYPE_ARRAY) {
 			continue;
 		}
 
@@ -2005,6 +2013,14 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 		if (var_parent_scope->id > body_scope->id) {
 			var_phis[i] = INVALID_INSTR_INDEX;
 			// This variable is first defined after the loop, so it's irrelevant here.
+			continue;
+		}
+
+		TypeKind var_type_kind = compiler->vars[i]->type.kind;
+		if (var_type_kind == TYPE_STRUCT
+				|| var_type_kind == TYPE_UNION
+				|| var_type_kind == TYPE_ARRAY) {
+			var_phis[i] = original_var_values[i];
 			continue;
 		}
 

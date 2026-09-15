@@ -1958,16 +1958,19 @@ static ExprParseResult _parser_try_parse_expr_operand_without_post_fix_operator(
 		bool requires_l_value = unary_op == UNARY_OP_PRE_INCREMENT
 			|| unary_op == UNARY_OP_PRE_DECREMENT;
 
-		bool requires_int_operand = unary_op == UNARY_OP_PRE_INCREMENT
+		bool requires_int_or_pointer_operand = unary_op == UNARY_OP_PRE_INCREMENT
 			|| unary_op == UNARY_OP_POST_INCREMENT
 			|| unary_op == UNARY_OP_PRE_DECREMENT
 			|| unary_op == UNARY_OP_POST_DECREMENT;
 
-		if (result == EXPR_PARSE_OK && requires_int_operand) {
+		if (result == EXPR_PARSE_OK && requires_int_or_pointer_operand) {
 			Type operand_type;
 			expr_get_type(out_expr->unary.operand, &operand_type);
 
-			if (!type_kind_is_int(operand_type.kind)) {
+			bool is_int = type_kind_is_int(operand_type.kind);
+			bool is_pointer = operand_type.kind == TYPE_POINTER;
+
+			if (!is_int && !is_pointer) {
 				StringBuilder builder = { parser->diagnostics->allocator };
 				str_builder_append(&builder, STR_LIT("Cannot apply '"));
 				str_builder_append(&builder, token.string);

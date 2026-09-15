@@ -748,6 +748,10 @@ bool _parser_parse_struct_def(Parser* parser, Struct** out_struct_def, bool is_a
 				const Type* field_type = &fields[i].type;
 				TypeLayout field_type_layout = type_get_layout(parser->type_context, field_type);
 
+				assert(field_type_layout.size > 0);
+				assert(field_type_layout.alignment > 0);
+				assert(field_type_layout.size % field_type_layout.alignment == 0);
+
 				switch (layout_kind) {
 				case STRUCT_LAYOUT_KIND_STRUCT:
 					type_layout.alignment = max(field_type_layout.alignment, type_layout.alignment);

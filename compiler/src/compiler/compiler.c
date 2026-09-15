@@ -2832,11 +2832,11 @@ static void _compile_switch(FunctionCompiler* compiler,
 						// FIXME: Don't hardcode
 						.kind = INSTR_COMPARE_64,
 						.compare = {
-						.kind = INSTR_CMP_EQUAL,
-						.left = tested_expr,
-						.right = case_value_instr,
-					}
-				});
+							.kind = INSTR_CMP_EQUAL,
+							.left = tested_expr,
+							.right = case_value_instr,
+						}
+					});
 
 				assert(compiler->io_state.value != INVALID_INSTR_INDEX.value);
 

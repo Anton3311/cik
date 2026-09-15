@@ -619,6 +619,7 @@ static bool _color_bundles(const InstrBuffer* instr_buffer,
 		uint16_t allowed_registers,
 		const InstrStorageLocation* argument_locations,
 		size_t argument_location_count,
+		const InstrLiveRange* live_ranges,
 		Arena* allocator,
 		Arena* temp_allocator,
 		RegisterAllocationResult* out_result) {
@@ -649,6 +650,8 @@ static bool _color_bundles(const InstrBuffer* instr_buffer,
 				});
 	}
 
+	bool coloring_result = true;
+
 	uint32_t stack_usage = 0;
 	for (const Bundle* bundle = bundles; bundle != NULL; bundle = bundle->next) {
 		assert(bundle->instr_count > 0);
@@ -658,7 +661,23 @@ static bool _color_bundles(const InstrBuffer* instr_buffer,
 		}
 
 		if (bundle->allocation_kind == BUNDLE_ALLOC_REG) {
-			assert(allowed_registers != 0);
+			if (allowed_registers == 0) {
+				for (const BundleInstrChunk* chunk = bundle->chunk;
+						chunk != NULL;
+						chunk = chunk->next) {
+
+					for (size_t i = 0; i < chunk->count; i += 1) {
+						InstrIndex instr_index = chunk->buffer[i];
+						debug_log_error("'%u' must be spilled. Live range: [%u; %u]",
+								instr_index.value,
+								live_ranges[instr_index.value].start,
+								live_ranges[instr_index.value].end);
+					}
+				}
+
+				coloring_result = false;
+				continue;
+			}
 
 			X64Register reg = count_trailing_zeros(allowed_registers);
 			allowed_registers &= ~(1 << reg);
@@ -702,7 +721,7 @@ static bool _color_bundles(const InstrBuffer* instr_buffer,
 	out_result->stack_usage = stack_usage;
 
 	profile_scope_end();
-	return true;
+	return coloring_result;
 }
 
 RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
@@ -758,6 +777,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			argument_locations,
 			temp_allocator);
 
+#if 0
 	size_t bundle_index = 0;
 	for (Bundle* bundle = bundles; bundle != NULL; bundle = bundle->next, bundle_index += 1) {
 		printf("bundle %zu:\n", bundle_index);
@@ -770,6 +790,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			}
 		}
 	}
+#endif
 
 	RegisterAllocationResult result;
 	result.interference_graph = interference_graph;
@@ -792,6 +813,7 @@ RegisterAllocationResult x64_alloc_regs(const InstrBuffer* instr_buffer,
 			allowed_registers,
 			argument_locations,
 			argument_location_count,
+			live_ranges,
 			allocator,
 			temp_allocator,
 			&result);

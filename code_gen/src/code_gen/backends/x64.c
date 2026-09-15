@@ -2807,12 +2807,12 @@ static void _schedule_regions(const InstrBuffer* instr_buffer,
 		break;
 	case INSTR_BRANCH:
 		_schedule_regions(instr_buffer,
-				last_instr->branch.true_region,
+				last_instr->branch.false_region,
 				allocator,
 				visited_regions,
 				out_scheduled);
 		_schedule_regions(instr_buffer,
-				last_instr->branch.false_region,
+				last_instr->branch.true_region,
 				allocator,
 				visited_regions,
 				out_scheduled);

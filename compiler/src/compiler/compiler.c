@@ -2929,7 +2929,7 @@ static void _compile_switch(FunctionCompiler* compiler,
 		} else {
 			_compile_single_node(compiler, child, &true_region_index);
 
-			if (child->kind == AST_NODE_RETURN) {
+			if (child->kind == AST_NODE_RETURN || compiler->io_state.value == INVALID_INSTR_INDEX.value) {
 				// NOTE: Return statement compilation consumes the `io_state` and leaves an invalid
 				//       one behind, however we will definitely need a valid `io_state` to finish
 				//       other switch cases and the post switch statement code. So here, we just

@@ -1482,6 +1482,34 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 		InstrIndex field_address = _compile_address_expr(compiler,
 				_compile_address_of(compiler, expr));
 
+		if (field_type.kind == TYPE_STRUCT || field_type.kind == TYPE_UNION) {
+			InstrIndex alloc_index = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+					.kind = INSTR_STACK_ALLOC,
+					.stack_alloc = {
+						.size = field_type_layout.size,
+						.alignment = field_type_layout.alignment,
+					}
+				});
+
+			InstrIndex stack_addr_index = instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+					.kind = INSTR_STACK_ADDR,
+					.stack_addr = { alloc_index },
+				});
+
+			InstrIndex mem_copy_index = instr_buffer_append(instr_buffer, instr_allocator);
+			Instr* mem_copy = instr_buffer_at(instr_buffer, mem_copy_index);
+			mem_copy->kind = INSTR_MEM_COPY_FIXED;
+			mem_copy->mem_copy_fixed.src = field_address;
+			mem_copy->mem_copy_fixed.dst = stack_addr_index;
+			mem_copy->mem_copy_fixed.size = field_type_layout.size;
+			mem_copy->mem_copy_fixed.io_state = compiler->io_state;
+
+			compiler->io_state = instr_new_io_state(instr_buffer, instr_allocator, mem_copy_index);
+
+			profile_scope_end();
+			return alloc_index;
+		}
+
 		InstrIndex load_index = instr_buffer_append(instr_buffer, instr_allocator);
 		Instr* load_instr = instr_buffer_at(instr_buffer, load_index);
 		load_instr->ptr_load.ptr = field_address;

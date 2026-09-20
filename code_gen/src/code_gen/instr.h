@@ -78,6 +78,14 @@ typedef enum {
 	INSTR_CAST_TO_32,
 	INSTR_CAST_TO_64,
 
+	INSTR_UNSIGNED_EXTEND_TO_16,
+	INSTR_UNSIGNED_EXTEND_TO_32,
+	INSTR_UNSIGNED_EXTEND_TO_64,
+
+	INSTR_SIGNED_EXTEND_TO_16,
+	INSTR_SIGNED_EXTEND_TO_32,
+	INSTR_SIGNED_EXTEND_TO_64,
+
 	INSTR_PTR_LOAD_8,
 	INSTR_PTR_LOAD_16,
 	INSTR_PTR_LOAD_32,
@@ -258,6 +266,11 @@ struct Instr {
 		struct {
 			InstrIndex value;
 		} cast;
+
+		struct {
+			InstrIndex value;
+			uint8_t value_bit_count;
+		} extend;
 
 		struct {
 			InstrIndex ptr;

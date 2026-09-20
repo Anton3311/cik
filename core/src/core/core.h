@@ -575,6 +575,7 @@ typedef struct {
 	String string;
 } StringBuilder;
 
+#ifndef COMPILER_CRANKSHAFT
 inline void str_builder_append(StringBuilder* builder, String string) {
 	char* buffer = arena_alloc_array(builder->arena, char, string.length);
 	memcpy(buffer, string.v, sizeof(char) * string.length);
@@ -601,6 +602,7 @@ inline const char* str_builder_to_cstr(StringBuilder* builder) {
 	str_builder_append(builder, (String) { .v = &terminator, .length = 1 });
 	return builder->string.v;
 }
+#endif
 
 void str_builder_append_int(StringBuilder* builder, uint64_t value);
 
@@ -704,9 +706,11 @@ inline size_t hash_string(String string) {
 	return hash_bytes(string.v, string.length);
 }
 
+#ifndef COMPILER_CRANKSHAFT
 inline size_t hash_ptr(const void* ptr) {
 	return hash_bytes(&ptr, sizeof(ptr));
 }
+#endif
 
 //
 // Bit Array
@@ -798,6 +802,7 @@ size_t path_get_file_name_start(String path);
 // Returns 0 in case of error
 uint64_t path_get_last_write_time(String path, Arena* temp_allocator);
 
+#ifndef COMPILER_CRANKSHAFT
 inline String path_trim_trailing_slash(String path) {
 	size_t trimmed_path_length = path.length;
 	for (size_t i = path.length; i > 0; i -= 1) {
@@ -812,6 +817,7 @@ inline String path_trim_trailing_slash(String path) {
 
 	return sub_str(path, 0, trimmed_path_length);
 }
+#endif
 
 inline String path_get_file_name(String path) {
 	size_t file_name_start = path_get_file_name_start(path);

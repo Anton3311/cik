@@ -166,44 +166,15 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 	Arena* instr_allocator = compiler->instr_allocator;
 
 	TypeLayout int_layout = type_get_layout(compiler->type_context, int_type);
-	TypeLayout result_layout = type_get_layout(compiler->type_context, target_type);
+	TypeLayout target_layout = type_get_layout(compiler->type_context, target_type);
 
-	if (int_layout.size == result_layout.size) {
-		assert(int_layout.alignment == result_layout.alignment);
-		return value_instr;
-	}
-
-	uint8_t value_bit_count = int_layout.size * 8;
-	uint8_t target_bit_count_index = count_trailing_zeros(result_layout.size);
-	if (int_layout.size > result_layout.size) {
-		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_REDUCE_TO_8 + target_bit_count_index,
-			.reduce = {
-				.value = value_instr,
-			}
-		});
-	}
-
-	assert(int_layout.size < result_layout.size);
-	assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
-
-	if (has_flag(int_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
-		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_UNSIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
-			.extend = {
-				.value = value_instr,
-				.value_bit_count = value_bit_count
-			}
-		});
-	} else {
-		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_SIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
-			.extend = {
-				.value = value_instr,
-				.value_bit_count = value_bit_count
-			}
-		});
-	}
+	bool is_signed = !has_flag(int_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED);
+	return instr_new_cast(instr_buffer,
+			instr_allocator,
+			value_instr,
+			int_layout.size,
+			target_layout.size,
+			is_signed);
 }
 
 static void _compile_compound_literal_init(FunctionCompiler* compiler,

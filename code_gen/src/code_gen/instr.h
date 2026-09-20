@@ -567,17 +567,39 @@ InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
 		uint8_t operand_size,
 		uint8_t shift_count);
 
-InstrIndex instr_new_signed_cast(InstrBuffer* buffer,
+// Creates an instruction to cast an int from `value_size` to `target_size`.
+//
+// Both `value_size` and `target_size` are in bytes.
+//
+// If `value_size == target_size` then just `value` is returned back, without any new instructions
+// being created.
+//
+// For casting from a smaller to a bigger int size, either `INSTR_SIGNED_EXTEND_TO_*` or
+// `INSTR_UNSIGNED_EXTEND_TO_*` are used based on `is_signed`.
+//
+// For casting from a bigger to a smaller size, `INSTR_REDUCE_TO_*` is used.
+InstrIndex instr_new_cast(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex value,
 		uint8_t value_size,
-		uint8_t target_size);
+		uint8_t target_size,
+		bool is_signed);
 
-InstrIndex instr_new_unsigned_cast(InstrBuffer* buffer,
+inline InstrIndex instr_new_signed_cast(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex value,
 		uint8_t value_size,
-		uint8_t target_size);
+		uint8_t target_size) {
+	return instr_new_cast(buffer, allocator, value, value_size, target_size, true);
+}
+
+inline InstrIndex instr_new_unsigned_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t value_size,
+		uint8_t target_size) {
+	return instr_new_cast(buffer, allocator, value, value_size, target_size, false);
+}
 
 uint16_t instr_region_id(const InstrBuffer* buffer, InstrIndex region_index);
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);

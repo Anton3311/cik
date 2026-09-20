@@ -330,7 +330,7 @@ InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
 	return shift_index;
 }
 
-static InstrIndex _instr_new_cast(InstrBuffer* buffer,
+InstrIndex instr_new_cast(InstrBuffer* buffer,
 		Arena* allocator,
 		InstrIndex value,
 		uint8_t value_size,
@@ -396,22 +396,6 @@ static InstrIndex _instr_new_cast(InstrBuffer* buffer,
 
 	unreachable();
 	return INVALID_INSTR_INDEX;
-}
-
-InstrIndex instr_new_signed_cast(InstrBuffer* buffer,
-		Arena* allocator,
-		InstrIndex value,
-		uint8_t value_size,
-		uint8_t target_size) {
-	return _instr_new_cast(buffer, allocator, value, value_size, target_size, true);
-}
-
-InstrIndex instr_new_unsigned_cast(InstrBuffer* buffer,
-		Arena* allocator,
-		InstrIndex value,
-		uint8_t value_size,
-		uint8_t target_size) {
-	return _instr_new_cast(buffer, allocator, value, value_size, target_size, false);
 }
 
 uint16_t instr_region_id(const InstrBuffer* buffer, InstrIndex region_index) {

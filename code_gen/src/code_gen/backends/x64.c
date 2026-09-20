@@ -657,7 +657,6 @@ static void _emit_mem_copy_fixed(CodeBuffer* buffer,
 
 	profile_scope_start(__func__);
 
-	assert(temp_registers != 0);
 	assert(src_operand.kind == OP_MEM);
 	assert(dst_operand.kind == OP_MEM);
 
@@ -666,7 +665,31 @@ static void _emit_mem_copy_fixed(CodeBuffer* buffer,
 		return;
 	}
 
-	X64Register temp_register = count_trailing_zeros(temp_registers);
+	X64Register spill_victim = -1;
+	X64Register temp_register = -1;
+	if (temp_registers != 0) {
+		temp_register = count_trailing_zeros(temp_registers);
+	} else {
+		uint16_t allowed_registers = UINT16_MAX;
+		allowed_registers &= ~(1 << X64_REG_SP);
+		allowed_registers &= ~(1 << X64_REG_BP);
+		allowed_registers &= ~(1 << X64_REG_SI);
+		allowed_registers &= ~(1 << X64_REG_DI);
+
+		allowed_registers &= ~(1 << src_operand.mem.base_reg);
+		allowed_registers &= ~(1 << dst_operand.mem.base_reg);
+
+		spill_victim = count_trailing_zeros(allowed_registers);
+		temp_register = spill_victim;
+	}
+
+	assert(temp_registers != -1);
+
+	// NOTE: Spill the vicitim register on the stack, without moving the stack pointer. The spilled
+	//       register is stored outside of the call frame at `rsp - 0x8`
+	if (spill_victim != -1) {
+		encode_2(buffer, MNEMONIC_MOV, operand_stack_mem(-8, 64), operand_reg(spill_victim, 64));
+	}
 
 	uint16_t sizes[] = { 8, 4, 2, 1 };
 	uint16_t bit_counts[] = { 64, 32, 16, 8 };
@@ -696,6 +719,10 @@ static void _emit_mem_copy_fixed(CodeBuffer* buffer,
 
 			bytes_left -= sizes[size_index];
 		}
+	}
+
+	if (spill_victim != -1) {
+		encode_2(buffer, MNEMONIC_MOV, operand_reg(spill_victim, 64), operand_stack_mem(-8, 64));
 	}
 
 	profile_scope_end();
@@ -1285,9 +1312,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 	}
 
 	case INSTR_MEM_COPY_FIXED: {
-		uint16_t temp_registers = _collect_available_registers(gen, instr_index);
-		assert(temp_registers != 0);
-
 		const InstrStorageLocation src_loc = gen->instr_storage[instr->mem_copy_fixed.src.value];
 		const InstrStorageLocation dst_loc = gen->instr_storage[instr->mem_copy_fixed.dst.value];
 
@@ -1305,6 +1329,7 @@ static void _lower_instr(X64CodeGenerator* gen,
 			dst_operand = operand_stack_mem((int32_t)dst_loc.stack.offset, 64);
 		}
 
+		uint16_t temp_registers = _collect_available_registers(gen, instr_index);
 		_emit_mem_copy_fixed(buffer,
 				src_operand,
 				dst_operand,
@@ -1625,8 +1650,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 			Operand dst_operand = operand_mem(CDECL_ARG_REGS[0], 64);
 
 			uint16_t temp_registers = _collect_available_registers(gen, instr_index);
-			assert(temp_registers != 0);
-
 			_emit_mem_copy_fixed(buffer,
 					src_operand,
 					dst_operand,

@@ -38,10 +38,6 @@ String instr_name(InstrKind variant) {
     case INSTR_COMPARE_32: return STR_LIT("compare_32");
     case INSTR_COMPARE_64: return STR_LIT("compare_64");
     case INSTR_BOOL_TO_INT: return STR_LIT("bool_to_int");
-    case INSTR_CAST_TO_8: return STR_LIT("cast_to_8");
-    case INSTR_CAST_TO_16: return STR_LIT("cast_to_16");
-    case INSTR_CAST_TO_32: return STR_LIT("cast_to_32");
-    case INSTR_CAST_TO_64: return STR_LIT("cast_to_64");
     case INSTR_UNSIGNED_EXTEND_TO_16: return STR_LIT("unsigned_extend_to_16");
     case INSTR_UNSIGNED_EXTEND_TO_32: return STR_LIT("unsigned_extend_to_32");
     case INSTR_UNSIGNED_EXTEND_TO_64: return STR_LIT("unsigned_extend_to_64");
@@ -210,18 +206,6 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         break;
     case INSTR_BOOL_TO_INT:
         instr_queue_push_back(out_dependencies, instr->bool_to_int.operand);
-        break;
-    case INSTR_CAST_TO_8:
-        instr_queue_push_back(out_dependencies, instr->cast.value);
-        break;
-    case INSTR_CAST_TO_16:
-        instr_queue_push_back(out_dependencies, instr->cast.value);
-        break;
-    case INSTR_CAST_TO_32:
-        instr_queue_push_back(out_dependencies, instr->cast.value);
-        break;
-    case INSTR_CAST_TO_64:
-        instr_queue_push_back(out_dependencies, instr->cast.value);
         break;
     case INSTR_UNSIGNED_EXTEND_TO_16:
         instr_queue_push_back(out_dependencies, instr->extend.value);
@@ -449,18 +433,6 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_BOOL_TO_INT:
         printf("operand: \033[33;1m%%%u\033[0m ", (uint32_t)instr->bool_to_int.operand.value);
-        break;
-    case INSTR_CAST_TO_8:
-        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
-        break;
-    case INSTR_CAST_TO_16:
-        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
-        break;
-    case INSTR_CAST_TO_32:
-        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
-        break;
-    case INSTR_CAST_TO_64:
-        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->cast.value.value);
         break;
     case INSTR_UNSIGNED_EXTEND_TO_16:
         printf("value: \033[33;1m%%%u\033[0m value_bit_count: %u ", (uint32_t)instr->extend.value.value, (uint32_t)instr->extend.value_bit_count);

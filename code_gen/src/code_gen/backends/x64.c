@@ -43,11 +43,6 @@ static uint8_t s_instr_value_bit_count[INSTR_COUNT] = {
 	[INSTR_NEGATE_32]              = 32,
 	[INSTR_NEGATE_64]              = 64,
 
-	[INSTR_CAST_TO_8]              = 8,
-	[INSTR_CAST_TO_16]             = 16,
-	[INSTR_CAST_TO_32]             = 32,
-	[INSTR_CAST_TO_64]             = 64,
-
 	[INSTR_UNSIGNED_EXTEND_TO_16]  = 16,
 	[INSTR_UNSIGNED_EXTEND_TO_32]  = 32,
 	[INSTR_UNSIGNED_EXTEND_TO_64]  = 64,
@@ -1649,57 +1644,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 		return;
 	}
 	
-	case INSTR_CAST_TO_8:
-	case INSTR_CAST_TO_16:
-	case INSTR_CAST_TO_32:
-	case INSTR_CAST_TO_64: {
-		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
-		const InstrStorageLocation src_loc = gen->instr_storage[instr->cast.value.value];
-
-		InstrBuffer* instr_buffer = &gen->instr_buffer;
-		Instr* value = instr_buffer_at(instr_buffer, instr->cast.value);
-
-		uint8_t operand_size = _get_instr_value_size(gen, instr->cast.value);
-		uint8_t output_size = 8 << (instr->kind - INSTR_CAST_TO_8);
-
-		assert(dst_loc.kind == INSTR_STORAGE_REG);
-		assert(src_loc.kind == INSTR_STORAGE_REG);
-
-		if (operand_size == output_size) {
-			_emit_mov_regs(buffer, src_loc.reg, dst_loc.reg, operand_size);
-			return;
-		}
-
-		if (output_size < operand_size) {
-			// NOTE: When casting to a smaller bit count, just copy the corresponding
-			//       lower half of an input register
-			encode_2(buffer,
-					MNEMONIC_MOV,
-					operand_reg(dst_loc.reg, output_size),
-					operand_reg(src_loc.reg, output_size));
-			return;
-		}
-
-		if (operand_size == 8 || operand_size == 16) {
-			encode_2(buffer,
-					MNEMONIC_MOVZX,
-					operand_reg(dst_loc.reg, output_size),
-					operand_reg(src_loc.reg, operand_size));
-		} else if (operand_size == 32) {
-			// NOTE: Moving (writing) to a 32-bit register zeros out the upper half of the
-			//       corresponding 64-bit regiters.
-			//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
-
-			encode_2(buffer,
-					MNEMONIC_MOV,
-					operand_reg(dst_loc.reg, operand_size),
-					operand_reg(src_loc.reg, operand_size));
-		} else {
-			panic("Not implemented for this operand size");
-		}
-		return;
-	}
-	
 	case INSTR_UNSIGNED_EXTEND_TO_16:
 	case INSTR_UNSIGNED_EXTEND_TO_32:
 	case INSTR_UNSIGNED_EXTEND_TO_64:
@@ -2595,12 +2539,6 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_BITWISE_NOT_32:
 	case INSTR_BITWISE_NOT_64:
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->bitwise_not.operand);
-		break;
-	case INSTR_CAST_TO_8:
-	case INSTR_CAST_TO_16:
-	case INSTR_CAST_TO_32:
-	case INSTR_CAST_TO_64:
-		_try_enqueue_for_scheduling(queue, context, current_position, instr->cast.value);
 		break;
 	case INSTR_SIGNED_EXTEND_TO_16:
 	case INSTR_SIGNED_EXTEND_TO_32:

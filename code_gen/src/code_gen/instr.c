@@ -96,11 +96,6 @@ InstrFeatureFlag INSTR_FEATURES[INSTR_COUNT] = {
 
 	[INSTR_BOOL_TO_INT] = INSTR_FEATURE_REG_STORAGE,
 
-	[INSTR_CAST_TO_8] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_CAST_TO_16] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_CAST_TO_32] = INSTR_FEATURE_REG_STORAGE,
-	[INSTR_CAST_TO_64] = INSTR_FEATURE_REG_STORAGE,
-
 	[INSTR_UNSIGNED_EXTEND_TO_16] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_UNSIGNED_EXTEND_TO_32] = INSTR_FEATURE_REG_STORAGE,
 	[INSTR_UNSIGNED_EXTEND_TO_64] = INSTR_FEATURE_REG_STORAGE,
@@ -333,23 +328,6 @@ InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
 	}
 
 	return shift_index;
-}
-
-InstrIndex instr_new_cast(InstrBuffer* buffer,
-		Arena* allocator,
-		InstrIndex value,
-		uint8_t target_bit_count) {
-	assert(is_power_of_2(target_bit_count));
-	assert(target_bit_count >= 8);
-	assert(target_bit_count <= 64);
-
-	uint8_t sub_kind_index = count_trailing_zeros(target_bit_count >> 3);
-
-	InstrIndex i = instr_buffer_append(buffer, allocator);
-	Instr* instr = instr_buffer_at(buffer, i);
-	instr->kind = INSTR_CAST_TO_8 + sub_kind_index;
-	instr->cast.value = value;
-	return i;
 }
 
 static InstrIndex _instr_new_cast(InstrBuffer* buffer,

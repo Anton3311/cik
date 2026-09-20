@@ -73,11 +73,6 @@ typedef enum {
 
 	INSTR_BOOL_TO_INT,
 
-	INSTR_CAST_TO_8,
-	INSTR_CAST_TO_16,
-	INSTR_CAST_TO_32,
-	INSTR_CAST_TO_64,
-
 	INSTR_UNSIGNED_EXTEND_TO_16,
 	INSTR_UNSIGNED_EXTEND_TO_32,
 	INSTR_UNSIGNED_EXTEND_TO_64,
@@ -266,10 +261,6 @@ struct Instr {
 		struct {
 			InstrIndex operand;
 		} bool_to_int;
-
-		struct {
-			InstrIndex value;
-		} cast;
 
 		struct {
 			InstrIndex value;
@@ -575,12 +566,6 @@ InstrIndex instr_new_logical_shift_left_by(InstrBuffer* buffer,
 		InstrIndex operand,
 		uint8_t operand_size,
 		uint8_t shift_count);
-
-// Creates a INSTR_CAST_<target_bit_count>
-InstrIndex instr_new_cast(InstrBuffer* buffer,
-		Arena* allocator,
-		InstrIndex value,
-		uint8_t target_bit_count);
 
 InstrIndex instr_new_signed_cast(InstrBuffer* buffer,
 		Arena* allocator,

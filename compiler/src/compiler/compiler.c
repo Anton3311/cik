@@ -187,7 +187,7 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 	assert(int_layout.size < result_layout.size);
 	assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
 
-	if (has_flag(int_type->kind, TYPE_FLAG_UNSIGNED)) {
+	if (has_flag(int_type->kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
 		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
 			.kind = INSTR_UNSIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
 			.extend = {

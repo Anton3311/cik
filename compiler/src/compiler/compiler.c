@@ -3669,6 +3669,15 @@ void compiler_resolve_default_func_refs(SymbolMap* map) {
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("fseek"), fseek);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("malloc"), malloc);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("free"), free);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("exit"), exit);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("strlen"), strlen);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("strncmp"), strncmp);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("memcpy"), memcpy);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("memset"), memset);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("memcmp"), memcmp);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("memchr"), memchr);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("tolower"), tolower);
+	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("isspace"), isspace);
 
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("VirtualAlloc"), VirtualAlloc);
 	symbol_map_insert_dynamically_linked_impl(map, STR_LIT("VirtualFree"), VirtualFree);

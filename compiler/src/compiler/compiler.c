@@ -131,8 +131,7 @@ static void _compile_single_node(FunctionCompiler* compiler,
 		AstNode* node,
 		InstrIndex* region_instr_index);
 
-static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
-		AstNode* first_node);
+static CompiledBlockRegions _compile_scope(FunctionCompiler* compiler, Scope* scope);
 
 static void _compile_statement(FunctionCompiler* compiler, AstNode* node);
 
@@ -1768,7 +1767,7 @@ static InstrIndex _create_phi_of_2_variants(FunctionCompiler* compiler,
 	return phi_index;
 }
 
-static const Scope* _loop_body_scope(const AstNode* loop) {
+static Scope* _loop_body_scope(AstNode* loop) {
 	if (loop->kind == AST_NODE_FOR_LOOP) {
 		return loop->for_loop.body_scope;
 	} else if (loop->kind == AST_NODE_WHILE_LOOP) {
@@ -1957,24 +1956,6 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 	profile_scope_end();
 }
 
-static void _reset_variables_in_scope(FunctionCompiler* compiler, const Scope* scope) {
-	for (size_t i = 0; i < compiler->var_count; i += 1) {
-		if (compiler->vars[i] == NULL) {
-			continue;
-		}
-
-		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
-		assert(var_parent_scope);
-		// assert(compiler->var_values[i].value != INVALID_INSTR_INDEX.value);
-
-		if (var_parent_scope->id >= scope->id) {
-			compiler->vars[i] = NULL;
-			compiler->var_parent_scopes[i] = NULL;
-			compiler->var_values[i] = INVALID_INSTR_INDEX;
-		}
-	}
-}
-
 // Compiles a while or a for loop.
 //
 // A loop in compiled form looks like this:
@@ -2079,7 +2060,7 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 			arg_count);
 
 	// Replace current variables and arguments with phis
-	const Scope* body_scope = _loop_body_scope(node);
+	Scope* body_scope = _loop_body_scope(node);
 	for (size_t i = 0; i < compiler->var_count; i += 1) {
 		if (compiler->vars[i] == NULL) {
 			var_phis[i] = INVALID_INSTR_INDEX;
@@ -2162,7 +2143,7 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 	}
 
 	// Compile the body
-	CompiledBlockRegions body_block = _compile_block_to_region(compiler, body);
+	CompiledBlockRegions body_block = _compile_scope(compiler, body_scope);
 
 	// Compile `advance_expr` right at the end of the body.
 	if (!instr_region_finished(instr_buffer, body_block.final_region)) {
@@ -2224,8 +2205,6 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;
-
-	_reset_variables_in_scope(compiler, body_scope);
 
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
@@ -2334,8 +2313,7 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	compiler->arg_states = arg_values_for_body;
 
 	// 5. Compile the body
-	AstNode* body = node->while_loop.body;
-	CompiledBlockRegions body_block = _compile_block_to_region(compiler, body);
+	CompiledBlockRegions body_block = _compile_scope(compiler, node->while_loop.body_scope);
 
 	// 6. Link the `jump_to_first_iteration`
 
@@ -2390,8 +2368,6 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;
-
-	_reset_variables_in_scope(compiler, body_scope);
 
 	// 9. post loop region
 
@@ -2502,8 +2478,7 @@ static InstrIndex _compile_if_statement(FunctionCompiler* compiler,
 		compiler->var_values = var_values_for_true_path;
 		compiler->arg_states = arg_values_for_true_path;
 
-		true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
-		_reset_variables_in_scope(compiler, node->if_stmt.true_scope);
+		true_block = _compile_scope(compiler, node->if_stmt.true_scope);
 
 		if (!instr_region_finished(instr_buffer, true_block.final_region)) {
 			Instr* true_region = instr_buffer_at(instr_buffer, true_block.final_region);
@@ -2519,8 +2494,7 @@ static InstrIndex _compile_if_statement(FunctionCompiler* compiler,
 		compiler->arg_states = arg_values_for_false_path;
 
 		if (node->if_stmt.false_node) {
-			false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
-			_reset_variables_in_scope(compiler, node->if_stmt.false_scope);
+			false_block = _compile_scope(compiler, node->if_stmt.false_scope);
 		} else {
 			InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);
 			false_block.initial_region = false_region_index;
@@ -3087,10 +3061,7 @@ static void _compile_single_node(FunctionCompiler* compiler,
 				INVALID_INSTR_INDEX,
 				&compiler->io_state);
 
-		CompiledBlockRegions inner_block = _compile_block_to_region(compiler,
-				node->block.nodes.first);
-
-		_reset_variables_in_scope(compiler, &node->block);
+		CompiledBlockRegions inner_block = _compile_scope(compiler, &node->block);
 
 		Instr* jump_to_inner = instr_buffer_at(instr_buffer, jump_to_inner_region);
 		jump_to_inner->jump.target_region = inner_block.initial_region;
@@ -3250,9 +3221,25 @@ static void _compile_single_node(FunctionCompiler* compiler,
 	profile_scope_end();
 }
 
-static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
-		AstNode* first_node) {
+static void _reset_variables_in_scope(FunctionCompiler* compiler, const Scope* scope) {
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		if (compiler->vars[i] == NULL) {
+			continue;
+		}
 
+		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+		assert(var_parent_scope);
+		// assert(compiler->var_values[i].value != INVALID_INSTR_INDEX.value);
+
+		if (var_parent_scope->id >= scope->id) {
+			compiler->vars[i] = NULL;
+			compiler->var_parent_scopes[i] = NULL;
+			compiler->var_values[i] = INVALID_INSTR_INDEX;
+		}
+	}
+}
+
+static CompiledBlockRegions _compile_scope(FunctionCompiler* compiler, Scope* scope) {
 	profile_scope_start(__func__);
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
@@ -3261,6 +3248,7 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 	InstrIndex initial_region = instr_new_region(instr_buffer, instr_allocator);
 	InstrIndex region_instr_index = initial_region;
 
+	AstNode* first_node = scope->nodes.first;
 	for (AstNode* node = first_node; node != NULL; node = node->next) {
 		if (instr_region_finished(instr_buffer, region_instr_index)) {
 			break;
@@ -3268,6 +3256,8 @@ static CompiledBlockRegions _compile_block_to_region(FunctionCompiler* compiler,
 
 		_compile_single_node(compiler, node, &region_instr_index);
 	}
+
+	_reset_variables_in_scope(compiler, scope);
 
 	CompiledBlockRegions regions;
 	regions.initial_region = initial_region;
@@ -3552,8 +3542,7 @@ CompiledFunction function_compiler_compile(FunctionCompiler* compiler) {
 	//       might use memory loads that requires a valid `io_state`.
 	_compile_argument_loads(compiler);
 
-	CompiledBlockRegions body_block = _compile_block_to_region(compiler,
-			compiler->function->body->nodes.first);
+	CompiledBlockRegions body_block = _compile_scope(compiler, compiler->function->body);
 
 	assert(compiler->loop_switch_state == NULL);
 

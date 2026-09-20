@@ -728,6 +728,7 @@ typedef enum {
 struct WhileLoop {
 	WhileLoopConditionKind condition_kind;
 	Expr condition;
+	// TODO: Remove this in favor of `body_scope`?
 	Scope* loop_scope;
 	AstNode* body;
 	Scope* body_scope;

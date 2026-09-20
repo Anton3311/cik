@@ -72,7 +72,7 @@ struct LoopSwitchState {
 };
 
 typedef struct {
-	const Function* function;
+	Function* function;
 
 	Arena* allocator;
 

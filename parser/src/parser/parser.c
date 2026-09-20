@@ -3934,6 +3934,8 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 		true_node = _parser_parse_single_node(parser, true_node_token);
 		if (true_node) {
 			true_node->parent_scope = true_node_scope;
+			true_node_scope->nodes.first = true_node;
+			true_node_scope->nodes.last = true_node;
 		}
 
 		ident_storage_end_scope(parser->ident_storage);
@@ -3963,6 +3965,8 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 			false_node = _parser_parse_single_node(parser, false_node_token);
 			if (false_node) {
 				false_node->parent_scope = false_node_scope;
+				false_node_scope->nodes.first = false_node;
+				false_node_scope->nodes.last = false_node;
 			}
 
 			ident_storage_end_scope(parser->ident_storage);
@@ -4011,6 +4015,8 @@ static LoopBody _parser_parse_loop_body(Parser* parser) {
 
 	if (body) {
 		body->parent_scope = scope;
+		scope->nodes.first = body;
+		scope->nodes.last = body;
 	}
 
 	LoopBody result = {};
@@ -4219,6 +4225,8 @@ static AstNode* _parser_parse_for_loop(Parser* parser) {
 
 	if (init_stmt) {
 		init_stmt->parent_scope = scope;
+		scope->nodes.first = init_stmt;
+		scope->nodes.last = init_stmt;
 	}
 
 	AstNode* loop = arena_alloc_zeroed(parser->ast_allocator, AstNode);

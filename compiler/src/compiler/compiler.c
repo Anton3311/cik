@@ -1278,9 +1278,19 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 
 	InstrBuffer* instr_buffer = &compiler->instr_buffer;
 	Arena* instr_allocator = compiler->instr_allocator;
+	const TypeContext* type_context = compiler->type_context;
+
 	switch (expr->kind) {
 	case EXPR_CALL: {
 		assert(expr->call.args.count <= UINT16_MAX);
+
+		Expr* callable = expr->call.callable;
+
+		Type callable_type;
+		expr_get_type(callable, &callable_type);
+
+		assert(callable_type.kind == TYPE_POINTER);
+		assert(callable_type.pointer_base_type->kind == TYPE_FUNCTION);
 
 		InstrInputs arg_inputs = instr_allocate_inputs_array(instr_buffer, expr->call.args.count);
 		for (uint16_t i = 0; i < arg_inputs.count; i += 1) {
@@ -1310,15 +1320,33 @@ static InstrIndex _compile_expr_without_implicit_casts(FunctionCompiler* compile
 						load_index);
 
 				arg_instr = load_index;
+			} else if (type_kind_is_int(arg_type.kind)) {
+				const FunctionPrototype* proto = callable_type.pointer_base_type->function;
+				if (i >= proto->parameter_count) {
+					assert(proto->has_va_args);
+					if (has_flag(arg_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED)) {
+						arg_instr = instr_new_unsigned_cast(instr_buffer,
+								instr_allocator,
+								arg_instr,
+								arg_type_layout.size,
+								type_context->pointer_type_layout.size);
+					} else {
+						arg_instr = instr_new_signed_cast(instr_buffer,
+								instr_allocator,
+								arg_instr,
+								arg_type_layout.size,
+								type_context->pointer_type_layout.size);
+					}
+				} else {
+					arg_instr = _compile_int_cast(compiler,
+							&arg_type,
+							&proto->parameters[i].type,
+							arg_instr);
+				}
 			}
 
 			instr_buffer->inputs_buffer[arg_inputs.start + i] = arg_instr;
 		}
-
-		Expr* callable = expr->call.callable;
-
-		Type callable_type;
-		expr_get_type(callable, &callable_type);
 
 		// Save the call, to later create the corresponding `AbiSignature`
 		assert(compiler->function_call_count <= UINT16_MAX);

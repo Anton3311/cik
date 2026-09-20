@@ -1614,7 +1614,7 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 					: STR_LIT("post"));
 
 		printer_field(printer, "body");
-		print_single_node(printer, node->while_loop.body);
+		print_scope(printer, node->while_loop.body_scope);
 
 		printer_end_struct(printer);
 		break;
@@ -1636,9 +1636,9 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 			print_expr(printer, node->for_loop.advance_expr);
 		}
 
-		if (node->for_loop.body) {
+		if (node->for_loop.body_scope) {
 			printer_field(printer, "body");
-			print_single_node(printer, node->for_loop.body);
+			print_scope(printer, node->for_loop.body_scope);
 		}
 
 		printer_end_struct(printer);

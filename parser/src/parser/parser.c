@@ -4041,15 +4041,11 @@ static AstNode* _parser_parse_while_loop(Parser* parser) {
 		return NULL;
 	}
 
-	Scope* loop_scope = NULL;
 	Expr condition = {};
 	LoopBody body;
 
 	{
 		ident_storage_begin_scope(parser->ident_storage);
-
-		loop_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
-		loop_scope->id = parser->ident_storage->current_scope->id;
 
 		if (_parser_try_parse_expr(parser, &condition) != EXPR_PARSE_OK) {
 			return NULL;
@@ -4074,8 +4070,6 @@ static AstNode* _parser_parse_while_loop(Parser* parser) {
 	loop->kind = AST_NODE_WHILE_LOOP;
 	loop->while_loop.condition = condition;
 	loop->while_loop.condition_kind = WHILE_LOOP_PRE_CONDITION;
-	loop->while_loop.body = body.node;
-	loop->while_loop.loop_scope = loop_scope;
 	loop->while_loop.body_scope = body.scope;
 	return loop;
 }
@@ -4087,15 +4081,11 @@ static AstNode* _parser_parse_do_while_loop(Parser* parser) {
 	assert(do_token.kind == TOKEN_KEYWORD_DO);;
 
 	// Parse body
-	Scope* loop_scope = NULL;
 	LoopBody body;
 	Expr condition = {};
 
 	{
 		ident_storage_begin_scope(parser->ident_storage);
-
-		loop_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
-		loop_scope->id = parser->ident_storage->current_scope->id;
 
 		Token body_token = preprocessor_view_next(parser->preprocessor);
 
@@ -4152,8 +4142,6 @@ static AstNode* _parser_parse_do_while_loop(Parser* parser) {
 	loop->kind = AST_NODE_WHILE_LOOP;
 	loop->while_loop.condition = condition;
 	loop->while_loop.condition_kind = WHILE_LOOP_POST_CONDITION;
-	loop->while_loop.body = body.node;
-	loop->while_loop.loop_scope = loop_scope;
 	loop->while_loop.body_scope = body.scope;
 	return loop;
 }
@@ -4244,8 +4232,6 @@ static AstNode* _parser_parse_for_loop(Parser* parser) {
 		loop->for_loop.advance_expr = arena_alloc(parser->ast_allocator, Expr);
 		*loop->for_loop.advance_expr = advance_expr;
 	}
-
-	loop->for_loop.body = body.node;
 
 	profile_scope_end();
 	return loop;

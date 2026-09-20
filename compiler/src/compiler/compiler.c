@@ -1994,12 +1994,13 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 // * `body`           - loop body
 // * `advance_expr`   - an expression, that advances the state forward after each iteration
 //                      (relevant only for `for loop`s)
+//
+// FIXME: For `for` loops should reset variables defined in the `loop scope` (by the init statement)
 static InstrIndex _compile_loop(FunctionCompiler* compiler,
 		InstrIndex current_region,
 		AstNode* node,
 		AstNode* init_stmt,
 		Expr* condition_expr,
-		AstNode* body,
 		Expr* advance_expr) {
 	profile_scope_start(__func__);
 
@@ -3145,7 +3146,6 @@ static void _compile_single_node(FunctionCompiler* compiler,
 					node,
 					NULL,
 					&node->while_loop.condition,
-					node->while_loop.body,
 					NULL);
 		} else  if (node->while_loop.condition_kind == WHILE_LOOP_POST_CONDITION) {
 			*region_instr_index = _compile_do_while_loop(compiler, *region_instr_index, node);
@@ -3159,7 +3159,6 @@ static void _compile_single_node(FunctionCompiler* compiler,
 				node,
 				node->for_loop.init_stmt,
 				node->for_loop.condition,
-				node->for_loop.body,
 				node->for_loop.advance_expr);
 		break;
 	}

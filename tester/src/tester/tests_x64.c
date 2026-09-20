@@ -1032,7 +1032,7 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	InstrIndex left_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex right_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
-	InstrIndex cast_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex extend_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex io_state_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex return_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex region_index = instr_new_region(instr_buffer, instr_allocator);
@@ -1040,6 +1040,8 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	Instr* left_operand = instr_buffer_at(instr_buffer, left_operand_index);
 	Instr* right_operand = instr_buffer_at(instr_buffer, right_operand_index);
 	Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
+	Instr* extend = instr_buffer_at(instr_buffer, extend_index);
+	Instr* ret = instr_buffer_at(instr_buffer, return_index);
 
 	{
 		bin_op->bin_op.kind = INSTR_BIN_IMUL;
@@ -1048,9 +1050,8 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	}
 
 	{
-		Instr* cast = instr_buffer_at(instr_buffer, cast_index);
-		cast->kind = INSTR_CAST_TO_64;
-		cast->cast.value = bin_op_index;
+		extend->kind = INSTR_UNSIGNED_EXTEND_TO_64;
+		extend->extend.value = bin_op_index;
 	}
 
 	{
@@ -1060,9 +1061,8 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 	}
 
 	{
-		Instr* ret = instr_buffer_at(instr_buffer, return_index);
 		ret->kind = INSTR_RETURN_VALUE;
-		ret->return_value.value = cast_index;
+		ret->return_value.value = extend_index;
 		ret->return_value.io_state = io_state_index;
 	}
 
@@ -1113,6 +1113,10 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 		right_operand->kind = INSTR_CONST_8 + bit_count_index;
 		bin_op->kind = INSTR_BIN_OP_8 + bit_count_index;
 
+		extend->kind = INSTR_UNSIGNED_EXTEND_TO_64;
+		extend->extend.value_bit_count = 8 << bit_count_index;
+		ret->return_value.value = extend_index;
+
 		switch (bit_count_index) {
 		case 0:
 			left_operand->const_8.u = 16;
@@ -1129,6 +1133,9 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 		case 3:
 			left_operand->const_64.u = 16;
 			right_operand->const_64.u = 9;
+
+			extend->kind = INSTR_NO_OP;
+			ret->return_value.value = bin_op_index;
 			break;
 		}
 
@@ -1161,8 +1168,8 @@ void test_imul_8_instr_code_gen_for_different_reg_configurations(TestContext* co
 				instr_storage[bin_op_index.value].kind = INSTR_STORAGE_REG;
 				instr_storage[bin_op_index.value].reg = reg_configurations[i][2];
 
-				instr_storage[cast_index.value].kind = INSTR_STORAGE_REG;
-				instr_storage[cast_index.value].reg = reg_configurations[i][3];
+				instr_storage[extend_index.value].kind = INSTR_STORAGE_REG;
+				instr_storage[extend_index.value].reg = reg_configurations[i][3];
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
@@ -1192,7 +1199,7 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	InstrIndex left_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex right_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
-	InstrIndex cast_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex extend_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex io_state_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex return_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex region_index = instr_new_region(instr_buffer, instr_allocator);
@@ -1200,14 +1207,16 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	Instr* left_operand = instr_buffer_at(instr_buffer, left_operand_index);
 	Instr* right_operand = instr_buffer_at(instr_buffer, right_operand_index);
 	Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
+	Instr* extend = instr_buffer_at(instr_buffer, extend_index);
+	Instr* ret = instr_buffer_at(instr_buffer, return_index);
+
 	bin_op->bin_op.kind = INSTR_BIN_IDIV;
 	bin_op->bin_op.left = left_operand_index;
 	bin_op->bin_op.right = right_operand_index;
 
 	{
-		Instr* cast = instr_buffer_at(instr_buffer, cast_index);
-		cast->kind = INSTR_CAST_TO_64;
-		cast->cast.value = bin_op_index;
+		extend->kind = INSTR_UNSIGNED_EXTEND_TO_64;
+		extend->extend.value = bin_op_index;
 	}
 
 	{
@@ -1219,7 +1228,7 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	{
 		Instr* ret = instr_buffer_at(instr_buffer, return_index);
 		ret->kind = INSTR_RETURN_VALUE;
-		ret->return_value.value = cast_index;
+		ret->return_value.value = extend_index;
 		ret->return_value.io_state = io_state_index;
 	}
 
@@ -1266,6 +1275,10 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		right_operand->kind = INSTR_CONST_8 + bit_count_index;
 		bin_op->kind = INSTR_BIN_OP_8 + bit_count_index;
 
+		extend->kind = INSTR_UNSIGNED_EXTEND_TO_64;
+		extend->extend.value_bit_count = 8 << bit_count_index;
+		ret->return_value.value = extend_index;
+
 		switch (bit_count_index) {
 		case 0:
 			left_operand->const_8.u = 16;
@@ -1282,6 +1295,9 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		case 3:
 			left_operand->const_64.u = 16;
 			right_operand->const_64.u = 3;
+
+			extend->kind = INSTR_NO_OP;
+			ret->return_value.value = bin_op_index;
 			break;
 		}
 		
@@ -1316,8 +1332,8 @@ void test_div_instr_code_gen_for_different_reg_configurations(TestContext* conte
 				instr_storage[bin_op_index.value].kind = INSTR_STORAGE_REG;
 				instr_storage[bin_op_index.value].reg = reg_configurations[i][2];
 
-				instr_storage[cast_index.value].kind = INSTR_STORAGE_REG;
-				instr_storage[cast_index.value].reg = reg_configurations[i][3];
+				instr_storage[extend_index.value].kind = INSTR_STORAGE_REG;
+				instr_storage[extend_index.value].reg = reg_configurations[i][3];
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);
@@ -1347,7 +1363,7 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	InstrIndex left_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex right_operand_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex bin_op_index = instr_buffer_append(instr_buffer, instr_allocator);
-	InstrIndex cast_index = instr_buffer_append(instr_buffer, instr_allocator);
+	InstrIndex extend_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex io_state_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex return_index = instr_buffer_append(instr_buffer, instr_allocator);
 	InstrIndex region_index = instr_new_region(instr_buffer, instr_allocator);
@@ -1355,14 +1371,16 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	Instr* left_operand = instr_buffer_at(instr_buffer, left_operand_index);
 	Instr* right_operand = instr_buffer_at(instr_buffer, right_operand_index);
 	Instr* bin_op = instr_buffer_at(instr_buffer, bin_op_index);
+	Instr* extend = instr_buffer_at(instr_buffer, extend_index);
+	Instr* ret = instr_buffer_at(instr_buffer, return_index);
+
 	bin_op->bin_op.kind = INSTR_BIN_IMOD;
 	bin_op->bin_op.left = left_operand_index;
 	bin_op->bin_op.right = right_operand_index;
 
 	{
-		Instr* cast = instr_buffer_at(instr_buffer, cast_index);
-		cast->kind = INSTR_CAST_TO_64;
-		cast->cast.value = bin_op_index;
+		extend->kind = INSTR_UNSIGNED_EXTEND_TO_64;
+		extend->extend.value = bin_op_index;
 	}
 
 	{
@@ -1372,9 +1390,8 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 	}
 
 	{
-		Instr* ret = instr_buffer_at(instr_buffer, return_index);
 		ret->kind = INSTR_RETURN_VALUE;
-		ret->return_value.value = cast_index;
+		ret->return_value.value = extend_index;
 		ret->return_value.io_state = io_state_index;
 	}
 
@@ -1422,6 +1439,10 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		right_operand->kind = INSTR_CONST_8 + bit_count_index;
 		bin_op->kind = INSTR_BIN_OP_8 + bit_count_index;
 
+		extend->kind = INSTR_UNSIGNED_EXTEND_TO_64;
+		extend->extend.value_bit_count = 8 << bit_count_index;
+		ret->return_value.value = extend_index;
+
 		switch (bit_count_index) {
 		case 0:
 			left_operand->const_8.u = 16;
@@ -1438,6 +1459,9 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 		case 3:
 			left_operand->const_64.u = 16;
 			right_operand->const_64.u = 3;
+
+			extend->kind = INSTR_NO_OP;
+			ret->return_value.value = bin_op_index;
 			break;
 		}
 		
@@ -1472,8 +1496,8 @@ void test_mod_instr_code_gen_for_different_reg_configurations(TestContext* conte
 				instr_storage[bin_op_index.value].kind = INSTR_STORAGE_REG;
 				instr_storage[bin_op_index.value].reg = reg_configurations[i][2];
 
-				instr_storage[cast_index.value].kind = INSTR_STORAGE_REG;
-				instr_storage[cast_index.value].reg = reg_configurations[i][3];
+				instr_storage[extend_index.value].kind = INSTR_STORAGE_REG;
+				instr_storage[extend_index.value].reg = reg_configurations[i][3];
 			}
 
 			LoweredFunction lowered_function = x64_generate_code(&gen, region_index);

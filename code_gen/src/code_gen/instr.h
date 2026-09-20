@@ -582,6 +582,18 @@ InstrIndex instr_new_cast(InstrBuffer* buffer,
 		InstrIndex value,
 		uint8_t target_bit_count);
 
+InstrIndex instr_new_signed_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t value_size,
+		uint8_t target_size);
+
+InstrIndex instr_new_unsigned_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t value_size,
+		uint8_t target_size);
+
 uint16_t instr_region_id(const InstrBuffer* buffer, InstrIndex region_index);
 bool instr_region_finished(const InstrBuffer* buffer, InstrIndex region_index);
 

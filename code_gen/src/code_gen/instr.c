@@ -352,6 +352,90 @@ InstrIndex instr_new_cast(InstrBuffer* buffer,
 	return i;
 }
 
+static InstrIndex _instr_new_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t value_size,
+		uint8_t target_size,
+		bool is_signed) {
+	if (value_size == target_size) {
+		return value;
+	}
+
+	if (value_size < target_size) {
+		InstrKind kind = INSTR_NO_OP;
+		switch (target_size) {
+		case 1:
+			panic("Cannot extend to an 8-bit interger");
+		case 2:
+			kind = is_signed ? INSTR_SIGNED_EXTEND_TO_16 : INSTR_UNSIGNED_EXTEND_TO_16;
+			break;
+		case 4:
+			kind = is_signed ? INSTR_SIGNED_EXTEND_TO_32 : INSTR_UNSIGNED_EXTEND_TO_32;
+			break;
+		case 8:
+			kind = is_signed ? INSTR_SIGNED_EXTEND_TO_64 : INSTR_UNSIGNED_EXTEND_TO_64;
+			break;
+		default:
+			panic("Unsupported target size");
+		}
+
+		assert(kind != INSTR_NO_OP);
+		return instr_buffer_push(buffer, allocator, (Instr) {
+			.kind = kind,
+			.extend = {
+				.value = value,
+				.value_bit_count = value_size * 8,
+			}
+		});
+	} else {
+		InstrKind kind = INSTR_NO_OP;
+		switch (target_size) {
+		case 1:
+			kind = INSTR_REDUCE_TO_8;
+			break;
+		case 2:
+			kind = INSTR_REDUCE_TO_16;
+			break;
+		case 4:
+			kind = INSTR_REDUCE_TO_32;
+			break;
+		case 8:
+			panic("Cannot reduce down to a 64-bit interger");
+		default:
+			panic("Unsupported target size");
+		}
+
+		assert(kind != INSTR_NO_OP);
+		return instr_buffer_push(buffer, allocator, (Instr) {
+			.kind = kind,
+			.extend = {
+				.value = value,
+				.value_bit_count = value_size * 8,
+			}
+		});
+	}
+
+	unreachable();
+	return INVALID_INSTR_INDEX;
+}
+
+InstrIndex instr_new_signed_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t value_size,
+		uint8_t target_size) {
+	return _instr_new_cast(buffer, allocator, value, value_size, target_size, true);
+}
+
+InstrIndex instr_new_unsigned_cast(InstrBuffer* buffer,
+		Arena* allocator,
+		InstrIndex value,
+		uint8_t value_size,
+		uint8_t target_size) {
+	return _instr_new_cast(buffer, allocator, value, value_size, target_size, false);
+}
+
 uint16_t instr_region_id(const InstrBuffer* buffer, InstrIndex region_index) {
 	const Instr* instr = &buffer->instr[region_index.value];
 	assert(instr->kind == INSTR_REGION);

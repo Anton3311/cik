@@ -349,10 +349,11 @@ static InstrIndex _compile_address_of_array_element(FunctionCompiler* compiler, 
 
 	const TypeContext* type_context = compiler->type_context;
 	if (type_get_layout(type_context, &index_type).size != type_context->pointer_type_layout.size) {
-		index = instr_new_cast(instr_buffer,
+		index = instr_new_unsigned_cast(instr_buffer,
 				instr_allocator,
 				index,
-				type_context->pointer_type_layout.size * 8);
+				type_get_layout(type_context, &index_type).size,
+				type_context->pointer_type_layout.size);
 	}
 
 	Type* element_type = type_extract_pointer_base_type(&array_type);
@@ -915,13 +916,15 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		size_t value_size = type_get_layout(type_context, &right_type).size;
 		if (value_layout.size != type_context->pointer_type_layout.size) {
-			value_size = type_context->pointer_type_layout.size;
 
 			// promote the right operand to match the pointer size
-			right = instr_new_cast(instr_buffer,
+			right = instr_new_unsigned_cast(instr_buffer,
 					instr_allocator,
 					right,
-					value_size * 8);
+					value_size,
+					type_context->pointer_type_layout.size);
+
+			value_size = type_context->pointer_type_layout.size;
 		}
 
 		size_t shift_count = count_trailing_zeros(value_layout.size);
@@ -936,13 +939,15 @@ static InstrIndex _compile_bin_expr(FunctionCompiler* compiler, Expr* expr) {
 
 		size_t value_size = type_get_layout(type_context, &left_type).size;
 		if (value_layout.size != type_context->pointer_type_layout.size) {
-			value_size = type_context->pointer_type_layout.size;
 
 			// promote the left operand to match the pointer size
-			left = instr_new_cast(instr_buffer,
+			left = instr_new_unsigned_cast(instr_buffer,
 					instr_allocator,
 					left,
-					value_size * 8);
+					value_size,
+					type_context->pointer_type_layout.size);
+
+			value_size = type_context->pointer_type_layout.size;
 		}
 
 		size_t shift_count = count_trailing_zeros(value_layout.size);
@@ -1694,10 +1699,11 @@ static InstrIndex _compile_expr(FunctionCompiler* compiler, Expr* expr) {
 		convert->kind = INSTR_BOOL_TO_INT;
 		convert->bool_to_int.operand = instr_index;
 
-		instr_index = instr_new_cast(instr_buffer,
+		instr_index = instr_new_unsigned_cast(instr_buffer,
 				instr_allocator,
 				convert_index,
-				type_get_layout(compiler->type_context, &result_type).size * 8);
+				sizeof(char), // FIXME: Don't hardcode?
+				type_get_layout(compiler->type_context, &result_type).size);
 	}
 
 	profile_scope_end();

@@ -3735,9 +3735,11 @@ static bool _parser_parse_declarator(Parser* parser,
 	return result;
 }
 
+// `inline_keyword_token` - is inline keyword token in present or `NULL` otherwise.
 AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 		DeclSpec* decl_spec,
-		StorageSpecifier storage_specifier) {
+		StorageSpecifier storage_specifier,
+		Token* inline_keyword_token) {
 
 	bool has_type = false;
 	Type type = {};
@@ -3763,7 +3765,17 @@ AstNode* _parser_parse_variable_or_function_def(Parser* parser,
 			return NULL;
 		}
 
-		return _parser_parse_type_declaration(parser, &declarator, decl_spec, storage_specifier);
+		AstNode* node = _parser_parse_type_declaration(parser,
+				&declarator,
+				decl_spec,
+				storage_specifier);
+
+		if (inline_keyword_token) {
+			assert(node->kind == AST_NODE_FUNCTION_DEF || node->kind == AST_NODE_FUNCTION_DECL);
+			node->function_def->is_inline = true;
+		}
+
+		return node;
 	} else {
 		if (decl_spec) {
 			debug_log_info("__declspec ignore before expression");
@@ -4510,15 +4522,18 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 	case TOKEN_KEYWORD_DEFAULT:
 		return _parser_parse_default_case(parser);
 	default: {
-		// TODO: Actually use the inline information
+		bool has_inline = false;
 		Token maybe_inline = preprocessor_view_next(parser->preprocessor);
 		if (maybe_inline.kind == TOKEN_KEYWORD_INLINE) {
 			preprocessor_next_token(parser->preprocessor);
+			has_inline = true;
 		} else if (maybe_inline.kind == TOKEN_IDENT) {
 			if (str_equal(maybe_inline.string, STR_LIT("__inline"))) {
 				preprocessor_next_token(parser->preprocessor);
+				has_inline = true;
 			} else if (str_equal(maybe_inline.string, STR_LIT("__forceinline"))) {
 				preprocessor_next_token(parser->preprocessor);
+				has_inline = true;
 			}
 		}
 
@@ -4534,7 +4549,10 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 			storage_specifier = STORAGE_SPEC_EXTERNAL;
 		}
 
-		return _parser_parse_variable_or_function_def(parser, decl_spec, storage_specifier);
+		return _parser_parse_variable_or_function_def(parser,
+				decl_spec,
+				storage_specifier,
+				has_inline ? &maybe_inline : NULL);
 	}
 	}
 

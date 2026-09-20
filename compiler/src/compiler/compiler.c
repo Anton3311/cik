@@ -3677,7 +3677,10 @@ void compiler_resolve_default_func_refs(SymbolMap* map) {
 void compiler_create_function_import_symbol(const Function* function, Symbol* out_symbol) {
 	out_symbol->name = function->proto.name;
 
-	if (function->storage_specifier == STORAGE_SPEC_STATIC) {
+	if (function->is_inline) {
+		assert(function->decl_spec == NULL);
+		out_symbol->linkage = SYMBOL_LINKAGE_INTERNAL;
+	} else if (function->storage_specifier == STORAGE_SPEC_STATIC) {
 		out_symbol->linkage = SYMBOL_LINKAGE_INTERNAL;
 	} else if (function->decl_spec && function->decl_spec->kind == DECL_SPEC_DLL_IMPORT) {
 		out_symbol->linkage = SYMBOL_LINKAGE_EXTERNAL_DYNAMIC;

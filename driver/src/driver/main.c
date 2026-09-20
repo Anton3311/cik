@@ -147,10 +147,15 @@ static LoweredUnit compile_unit(CompilationUnitContext* context) {
 			memset(&symbol, 0xff, sizeof(symbol));
 
 			symbol.name = func->proto.name;
-			symbol.linkage = func->storage_specifier == STORAGE_SPEC_STATIC
-				? SYMBOL_LINKAGE_INTERNAL
-				: SYMBOL_LINKAGE_EXTERNAL_STATIC;
 			symbol.data.func_index = func->id;
+
+			if (func->is_inline) {
+				symbol.linkage = SYMBOL_LINKAGE_INTERNAL;
+			} else if (func->storage_specifier == STORAGE_SPEC_STATIC) {
+				symbol.linkage = SYMBOL_LINKAGE_INTERNAL;
+			} else {
+				symbol.linkage = SYMBOL_LINKAGE_EXTERNAL_STATIC;
+			}
 
 			if (symbol.linkage == SYMBOL_LINKAGE_INTERNAL) {
 				symbol.linkage_data.internal.compilation_unit_index = context->unit_index;

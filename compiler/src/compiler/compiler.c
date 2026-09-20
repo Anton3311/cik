@@ -520,6 +520,7 @@ static AddressExpr _compile_address_of(FunctionCompiler* compiler, Expr* expr) {
 
 		_compile_compound_literal_init(compiler, &expr->compound_literal, stack_addr_index);
 
+		profile_scope_end();
 		return (AddressExpr) { .base = stack_addr_index, .offset = 0 };
 	}
 	case EXPR_CALL: {
@@ -1168,8 +1169,10 @@ static InstrIndex _compile_unary_expr(FunctionCompiler* compiler, Expr* expr) {
 		_compile_assignment(compiler, expr->unary.operand, bin_op_index);
 
 		if (is_pre_op) {
+			profile_scope_end();
 			return bin_op_index;
 		} else {
+			profile_scope_end();
 			return operand_instr;
 		}
 	}

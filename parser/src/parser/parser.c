@@ -3920,12 +3920,15 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 	AstNode* true_node = NULL;
 	AstNode* false_node = NULL;
 
+	Scope* true_node_scope = NULL;
+	Scope* false_node_scope = NULL;
+
 	Token true_node_token = preprocessor_view_next(parser->preprocessor);
 
 	{
 		ident_storage_begin_scope(parser->ident_storage);
 
-		Scope* true_node_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+		true_node_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
 		true_node_scope->id = parser->ident_storage->current_scope->id;
 
 		true_node = _parser_parse_single_node(parser, true_node_token);
@@ -3954,7 +3957,7 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 		{
 			ident_storage_begin_scope(parser->ident_storage);
 
-			Scope* false_node_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
+			false_node_scope = arena_alloc_zeroed(parser->ast_allocator, Scope);
 			false_node_scope->id = parser->ident_storage->current_scope->id;
 
 			false_node = _parser_parse_single_node(parser, false_node_token);
@@ -3978,7 +3981,9 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 	AstNode* if_stmt_node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
 	if_stmt_node->kind = AST_NODE_IF;
 	if_stmt_node->if_stmt.condition = condition;
+	if_stmt_node->if_stmt.true_scope = true_node_scope;
 	if_stmt_node->if_stmt.true_node = true_node;
+	if_stmt_node->if_stmt.false_scope = false_node_scope;
 	if_stmt_node->if_stmt.false_node = false_node;
 	profile_scope_end();
 	return if_stmt_node;

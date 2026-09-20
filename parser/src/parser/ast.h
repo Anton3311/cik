@@ -708,9 +708,11 @@ struct ReturnStmt {
 
 struct IfStmt {
 	Expr condition;
+	Scope* true_scope;
 	AstNode* true_node;
 
 	// This one is optional
+	Scope* false_scope;
 	AstNode* false_node;
 };
 

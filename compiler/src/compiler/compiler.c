@@ -1957,6 +1957,24 @@ static void _fix_loop_control_jumps(InstrBuffer* instr_buffer,
 	profile_scope_end();
 }
 
+static void _reset_variables_in_scope(FunctionCompiler* compiler, const Scope* scope) {
+	for (size_t i = 0; i < compiler->var_count; i += 1) {
+		if (compiler->vars[i] == NULL) {
+			continue;
+		}
+
+		const Scope* var_parent_scope = compiler->var_parent_scopes[i];
+		assert(var_parent_scope);
+		// assert(compiler->var_values[i].value != INVALID_INSTR_INDEX.value);
+
+		if (var_parent_scope->id >= scope->id) {
+			compiler->vars[i] = NULL;
+			compiler->var_parent_scopes[i] = NULL;
+			compiler->var_values[i] = INVALID_INSTR_INDEX;
+		}
+	}
+}
+
 // Compiles a while or a for loop.
 //
 // A loop in compiled form looks like this:
@@ -2207,6 +2225,8 @@ static InstrIndex _compile_loop(FunctionCompiler* compiler,
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;
 
+	_reset_variables_in_scope(compiler, body_scope);
+
 	// Now fix the jumps inserted by `break` and `continue` statements.
 	_fix_loop_control_jumps(instr_buffer,
 			compiler->loop_switch_state->control_flow_stmts,
@@ -2371,6 +2391,8 @@ static InstrIndex _compile_do_while_loop(FunctionCompiler* compiler,
 	compiler->var_values = original_var_values;
 	compiler->arg_states = original_arg_values;
 
+	_reset_variables_in_scope(compiler, body_scope);
+
 	// 9. post loop region
 
 	InstrIndex post_loop_region = instr_new_region(instr_buffer, instr_allocator);
@@ -2481,6 +2503,7 @@ static InstrIndex _compile_if_statement(FunctionCompiler* compiler,
 		compiler->arg_states = arg_values_for_true_path;
 
 		true_block = _compile_block_to_region(compiler, node->if_stmt.true_node);
+		_reset_variables_in_scope(compiler, node->if_stmt.true_scope);
 
 		if (!instr_region_finished(instr_buffer, true_block.final_region)) {
 			Instr* true_region = instr_buffer_at(instr_buffer, true_block.final_region);
@@ -2497,6 +2520,7 @@ static InstrIndex _compile_if_statement(FunctionCompiler* compiler,
 
 		if (node->if_stmt.false_node) {
 			false_block = _compile_block_to_region(compiler, node->if_stmt.false_node);
+			_reset_variables_in_scope(compiler, node->if_stmt.false_scope);
 		} else {
 			InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);
 			false_block.initial_region = false_region_index;
@@ -3065,6 +3089,8 @@ static void _compile_single_node(FunctionCompiler* compiler,
 
 		CompiledBlockRegions inner_block = _compile_block_to_region(compiler,
 				node->block.nodes.first);
+
+		_reset_variables_in_scope(compiler, &node->block);
 
 		Instr* jump_to_inner = instr_buffer_at(instr_buffer, jump_to_inner_region);
 		jump_to_inner->jump.target_region = inner_block.initial_region;

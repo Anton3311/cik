@@ -56,6 +56,10 @@ static uint8_t s_instr_value_bit_count[INSTR_COUNT] = {
 	[INSTR_SIGNED_EXTEND_TO_32]    = 32,
 	[INSTR_SIGNED_EXTEND_TO_64]    = 64,
 
+	[INSTR_REDUCE_TO_8]            = 8,
+	[INSTR_REDUCE_TO_16]           = 16,
+	[INSTR_REDUCE_TO_32]           = 32,
+
 	[INSTR_PTR_LOAD_8]             = 8,
 	[INSTR_PTR_LOAD_16]            = 16,
 	[INSTR_PTR_LOAD_32]            = 32,
@@ -1708,9 +1712,6 @@ static void _lower_instr(X64CodeGenerator* gen,
 		assert(dst_loc.kind == INSTR_STORAGE_REG);
 		assert(src_loc.kind == INSTR_STORAGE_REG);
 
-		InstrBuffer* instr_buffer = &gen->instr_buffer;
-		Instr* value = instr_buffer_at(instr_buffer, instr->extend.value);
-
 		uint8_t value_bit_count = instr->extend.value_bit_count;
 
 		if (instr->kind >= INSTR_UNSIGNED_EXTEND_TO_16
@@ -1746,6 +1747,24 @@ static void _lower_instr(X64CodeGenerator* gen,
 					operand_reg(src_loc.reg, value_bit_count));
 		}
 
+		return;
+	}
+
+
+	case INSTR_REDUCE_TO_8:
+	case INSTR_REDUCE_TO_16:
+	case INSTR_REDUCE_TO_32: {
+		const InstrStorageLocation dst_loc = gen->instr_storage[instr_index.value];
+		const InstrStorageLocation src_loc = gen->instr_storage[instr->reduce.value.value];
+		assert(dst_loc.kind == INSTR_STORAGE_REG);
+		assert(src_loc.kind == INSTR_STORAGE_REG);
+
+		uint8_t output_bit_count = 8 << (instr->kind - INSTR_REDUCE_TO_8);
+
+		encode_2(buffer,
+				MNEMONIC_MOV,
+				operand_reg(dst_loc.reg, output_bit_count),
+				operand_reg(src_loc.reg, output_bit_count));
 		return;
 	}
 
@@ -2579,6 +2598,11 @@ static void _enqueue_inputs_for_scheduling(InstrQueue* queue,
 	case INSTR_UNSIGNED_EXTEND_TO_32:
 	case INSTR_UNSIGNED_EXTEND_TO_64:
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->extend.value);
+		break;
+	case INSTR_REDUCE_TO_8:
+	case INSTR_REDUCE_TO_16:
+	case INSTR_REDUCE_TO_32:
+		_try_enqueue_for_scheduling(queue, context, current_position, instr->reduce.value);
 		break;
 	case INSTR_BRANCH:
 		_try_enqueue_for_scheduling(queue, context, current_position, instr->branch.io_state);

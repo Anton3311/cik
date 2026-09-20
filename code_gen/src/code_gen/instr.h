@@ -86,6 +86,10 @@ typedef enum {
 	INSTR_SIGNED_EXTEND_TO_32,
 	INSTR_SIGNED_EXTEND_TO_64,
 
+	INSTR_REDUCE_TO_8,
+	INSTR_REDUCE_TO_16,
+	INSTR_REDUCE_TO_32,
+
 	INSTR_PTR_LOAD_8,
 	INSTR_PTR_LOAD_16,
 	INSTR_PTR_LOAD_32,
@@ -271,6 +275,10 @@ struct Instr {
 			InstrIndex value;
 			uint8_t value_bit_count;
 		} extend;
+
+		struct {
+			InstrIndex value;
+		} reduce;
 
 		struct {
 			InstrIndex ptr;

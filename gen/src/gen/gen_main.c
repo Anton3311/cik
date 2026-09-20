@@ -198,6 +198,8 @@ static String _instr_kind_to_corresponding_instr_field(const Enum* enum_def,
 	} else if (str_starts_with(variant_name, STR_LIT("INSTR_SIGNED_EXTEND_TO_"))
 			|| str_starts_with(variant_name, STR_LIT("INSTR_UNSIGNED_EXTEND_TO_"))) {
 		return STR_LIT("extend");
+	} else if (str_starts_with(variant_name, STR_LIT("INSTR_REDUCE_TO_"))) {
+		return STR_LIT("reduce");
 	}
 
 	return str_to_lower(

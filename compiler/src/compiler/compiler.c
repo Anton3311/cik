@@ -173,36 +173,40 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		return value_instr;
 	}
 
-	if (has_flag(int_type->kind, TYPE_FLAG_SIGNED)) {
-		if (int_layout.size < result_layout.size) {
-			uint8_t value_bit_count = int_layout.size * 8;
-			uint8_t target_bit_count_index = count_trailing_zeros(result_layout.size);
-			assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
+	uint8_t value_bit_count = int_layout.size * 8;
+	uint8_t target_bit_count_index = count_trailing_zeros(result_layout.size);
+	if (int_layout.size > result_layout.size) {
+		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_REDUCE_TO_8 + target_bit_count_index,
+			.reduce = {
+				.value = value_instr,
+			}
+		});
+	}
 
-			return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-				.kind = INSTR_SIGNED_EXTEND_TO_16 + target_bit_count_index,
-				.extend = {
-					.value = value_instr,
-					.value_bit_count = value_bit_count
-				}
-			});
-		}
+	if (has_flag(int_type->kind, TYPE_FLAG_SIGNED)) {
+		assert(int_layout.size < result_layout.size);
+		assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
+
+		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_SIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
+			.extend = {
+				.value = value_instr,
+				.value_bit_count = value_bit_count
+			}
+		});
 	}
 
 	if (has_flag(int_type->kind, TYPE_FLAG_UNSIGNED)) {
-		if (int_layout.size < result_layout.size) {
-			uint8_t value_bit_count = int_layout.size * 8;
-			uint8_t target_bit_count_index = count_trailing_zeros(result_layout.size);
-			assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
-
-			return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-				.kind = INSTR_UNSIGNED_EXTEND_TO_16 + target_bit_count_index,
-				.extend = {
-					.value = value_instr,
-					.value_bit_count = value_bit_count
-				}
-			});
-		}
+		assert(int_layout.size < result_layout.size);
+		assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
+		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_UNSIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
+			.extend = {
+				.value = value_instr,
+				.value_bit_count = value_bit_count
+			}
+		});
 	}
 
 	return instr_new_cast(instr_buffer,

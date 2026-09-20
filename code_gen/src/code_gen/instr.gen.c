@@ -48,6 +48,9 @@ String instr_name(InstrKind variant) {
     case INSTR_SIGNED_EXTEND_TO_16: return STR_LIT("signed_extend_to_16");
     case INSTR_SIGNED_EXTEND_TO_32: return STR_LIT("signed_extend_to_32");
     case INSTR_SIGNED_EXTEND_TO_64: return STR_LIT("signed_extend_to_64");
+    case INSTR_REDUCE_TO_8: return STR_LIT("reduce_to_8");
+    case INSTR_REDUCE_TO_16: return STR_LIT("reduce_to_16");
+    case INSTR_REDUCE_TO_32: return STR_LIT("reduce_to_32");
     case INSTR_PTR_LOAD_8: return STR_LIT("ptr_load_8");
     case INSTR_PTR_LOAD_16: return STR_LIT("ptr_load_16");
     case INSTR_PTR_LOAD_32: return STR_LIT("ptr_load_32");
@@ -237,6 +240,15 @@ void instr_enumerate_uses(const InstrBuffer* buffer,
         break;
     case INSTR_SIGNED_EXTEND_TO_64:
         instr_queue_push_back(out_dependencies, instr->extend.value);
+        break;
+    case INSTR_REDUCE_TO_8:
+        instr_queue_push_back(out_dependencies, instr->reduce.value);
+        break;
+    case INSTR_REDUCE_TO_16:
+        instr_queue_push_back(out_dependencies, instr->reduce.value);
+        break;
+    case INSTR_REDUCE_TO_32:
+        instr_queue_push_back(out_dependencies, instr->reduce.value);
         break;
     case INSTR_PTR_LOAD_8:
         instr_queue_push_back(out_dependencies, instr->ptr_load.ptr);
@@ -467,6 +479,15 @@ void instr_print(const Instr* instr, const InstrIndex* input_instr_buffer, Arena
         break;
     case INSTR_SIGNED_EXTEND_TO_64:
         printf("value: \033[33;1m%%%u\033[0m value_bit_count: %u ", (uint32_t)instr->extend.value.value, (uint32_t)instr->extend.value_bit_count);
+        break;
+    case INSTR_REDUCE_TO_8:
+        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->reduce.value.value);
+        break;
+    case INSTR_REDUCE_TO_16:
+        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->reduce.value.value);
+        break;
+    case INSTR_REDUCE_TO_32:
+        printf("value: \033[33;1m%%%u\033[0m ", (uint32_t)instr->reduce.value.value);
         break;
     case INSTR_PTR_LOAD_8:
         printf("ptr: \033[33;1m%%%u\033[0m io_state: \033[33;1m%%%u\033[0m ", (uint32_t)instr->ptr_load.ptr.value, (uint32_t)instr->ptr_load.io_state.value);

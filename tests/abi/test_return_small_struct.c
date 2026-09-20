@@ -9,16 +9,16 @@ typedef struct {
 } RegisterSized;
 
 typedef struct {
-	char a;
+	unsigned char a;
 } Bytes1;
 
 typedef struct {
-	short a;
+	unsigned short a;
 } Bytes2;
 
 typedef struct {
-	short a;
-	char b;
+	unsigned short a;
+	unsigned char b;
 } Bytes3;
 
 RegisterSized new_register_sized() {
@@ -49,7 +49,6 @@ int main(int argc, char *argv[]) {
 	printf("#2\n");
 
 	Bytes2 bytes2 = new_bytes_2();
-	printf("%u", (unsigned int)bytes2.a);
 	assert(bytes2.a == 0xbeefui16);
 
 	printf("#3\n");

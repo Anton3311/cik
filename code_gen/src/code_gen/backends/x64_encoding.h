@@ -94,6 +94,7 @@ typedef enum {
 
 	MNEMONIC_MOVZX,
 	MNEMONIC_MOVSX,
+	MNEMONIC_MOVSXD,
 
 	// Copy sign bit of `AX` into every bit of `DX`
 	MNEMONIC_CWD,

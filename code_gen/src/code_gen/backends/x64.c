@@ -1726,6 +1726,8 @@ static void _lower_instr(X64CodeGenerator* gen,
 						operand_reg(dst_loc.reg, output_bit_count),
 						operand_reg(src_loc.reg, value_bit_count));
 			} else {
+				assert(value_bit_count == 32);
+				assert(output_bit_count == 64);
 				// NOTE: Moving (writing) to a 32-bit register zeros out the upper half of the
 				//       corresponding 64-bit regiter.
 				//       There is no `movzx` for zero extending 32-bit value to a 64-bit one.
@@ -1741,10 +1743,19 @@ static void _lower_instr(X64CodeGenerator* gen,
 			uint8_t output_bit_count = 8 << (instr->kind - INSTR_SIGNED_EXTEND_TO_16 + 1);
 			assert(value_bit_count < output_bit_count);
 
-			encode_2(buffer,
-					MNEMONIC_MOVSX,
-					operand_reg(dst_loc.reg, output_bit_count),
-					operand_reg(src_loc.reg, value_bit_count));
+			if (value_bit_count == 8 || value_bit_count == 16) {
+				encode_2(buffer,
+						MNEMONIC_MOVSX,
+						operand_reg(dst_loc.reg, output_bit_count),
+						operand_reg(src_loc.reg, value_bit_count));
+			} else {
+				assert(value_bit_count == 32);
+				assert(output_bit_count == 64);
+				encode_2(buffer,
+						MNEMONIC_MOVSXD,
+						operand_reg(dst_loc.reg, output_bit_count),
+						operand_reg(src_loc.reg, value_bit_count));
+			}
 		}
 
 		return;

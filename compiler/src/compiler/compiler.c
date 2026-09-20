@@ -184,10 +184,18 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 		});
 	}
 
-	if (has_flag(int_type->kind, TYPE_FLAG_SIGNED)) {
-		assert(int_layout.size < result_layout.size);
-		assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
+	assert(int_layout.size < result_layout.size);
+	assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
 
+	if (has_flag(int_type->kind, TYPE_FLAG_UNSIGNED)) {
+		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
+			.kind = INSTR_UNSIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
+			.extend = {
+				.value = value_instr,
+				.value_bit_count = value_bit_count
+			}
+		});
+	} else {
 		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
 			.kind = INSTR_SIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
 			.extend = {
@@ -196,23 +204,6 @@ static InstrIndex _compile_int_cast(FunctionCompiler* compiler,
 			}
 		});
 	}
-
-	if (has_flag(int_type->kind, TYPE_FLAG_UNSIGNED)) {
-		assert(int_layout.size < result_layout.size);
-		assert(target_bit_count_index >= 1 && target_bit_count_index <= 3);
-		return instr_buffer_push(instr_buffer, instr_allocator, (Instr) {
-			.kind = INSTR_UNSIGNED_EXTEND_TO_16 + target_bit_count_index - 1,
-			.extend = {
-				.value = value_instr,
-				.value_bit_count = value_bit_count
-			}
-		});
-	}
-
-	return instr_new_cast(instr_buffer,
-			instr_allocator,
-			value_instr,
-			result_layout.size * 8);
 }
 
 static void _compile_compound_literal_init(FunctionCompiler* compiler,

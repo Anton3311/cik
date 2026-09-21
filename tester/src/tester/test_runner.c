@@ -24,6 +24,7 @@ typedef TestResult (*TestRunner)(TestRunnerContext* context);
 
 typedef struct {
 	String name;
+	String path;
 	TestRunner runner;
 } TestDescriptor;
 
@@ -253,6 +254,34 @@ TestResult test_run_linker_test(TestRunnerContext* context) {
 	};
 }
 
+TestResult test_run_self_hosted_tokenizer_test(TestRunnerContext* context) {
+	String path = context->storage->suites[context->suite_index].tests.tests[context->test_index].path;
+
+	StringBuilder builder = { .arena = context->temp_allocator };
+	str_builder_append(&builder, STR_LIT(TESTER_EXE_NAME));
+	str_builder_append_char(&builder, ' ');
+	str_builder_append_int(&builder, TEST_CMD_RUN_SELF_HOSTED_TOKENIZER_TEST);
+	str_builder_append_char(&builder, ' ');
+	str_builder_append(&builder, path);
+
+	String test_output = {};
+	int32_t exit_code = 0;
+	ProcessRunResult process_result = process_capture_stdout(
+			STR_LIT(TESTER_EXE_PATH),
+			STR_LIT("."),
+			builder.string,
+			&exit_code,
+			&test_output,
+			context->allocator,
+			context->temp_allocator);
+
+	return (TestResult) {
+		.output = test_output,
+		.process_run_result = process_result,
+		.exit_code = exit_code,
+	};
+}
+
 //
 // Test Extraction
 // 
@@ -426,6 +455,69 @@ bool extract_test_suites(TestStorage* storage, Arena* suites_allocator, Arena* t
 			TestDescriptor* test = &suite->tests.tests[i];
 			test->name = paths.values[i];
 			test->runner = test_run_linker_test;
+		}
+	}
+
+	// Extract self-hosted tokenizer tests
+	{
+		String paths[] = {
+			STR_LIT("builder/src/builder/builder_core.h"),
+			STR_LIT("builder/src/builder/builder_core.c"),
+			STR_LIT("builder/src/builder/builder_main.c"),
+
+			STR_LIT("core/src/core/core.h"),
+			STR_LIT("core/src/core/core.c"),
+
+			STR_LIT("code_gen/src/code_gen/abi.h"),
+			STR_LIT("code_gen/src/code_gen/code_gen.h"),
+			STR_LIT("code_gen/src/code_gen/code_gen.c"),
+			STR_LIT("code_gen/src/code_gen/instr.h"),
+			STR_LIT("code_gen/src/code_gen/instr.c"),
+			STR_LIT("code_gen/src/code_gen/instr.gen.c"),
+			STR_LIT("code_gen/src/code_gen/backends/x64.h"),
+			STR_LIT("code_gen/src/code_gen/backends/x64.c"),
+			STR_LIT("code_gen/src/code_gen/backends/x64_encoding.h"),
+			STR_LIT("code_gen/src/code_gen/backends/x64_encoding.c"),
+			STR_LIT("code_gen/src/code_gen/backends/x64_linker.h"),
+			STR_LIT("code_gen/src/code_gen/backends/x64_linker.c"),
+			STR_LIT("code_gen/src/code_gen/backends/x64_reg_alloc.h"),
+			STR_LIT("code_gen/src/code_gen/backends/x64_reg_alloc.c"),
+
+			STR_LIT("compiler/src/compiler/compiler.h"),
+			STR_LIT("compiler/src/compiler/compiler.c"),
+
+			STR_LIT("driver/src/driver/main.c"),
+
+			STR_LIT("gen/src/gen/gen_main.c"),
+
+			STR_LIT("parser/src/parser/ast.h"),
+			STR_LIT("parser/src/parser/ast.c"),
+			STR_LIT("parser/src/parser/diagnostics.h"),
+			STR_LIT("parser/src/parser/diagnostics.c"),
+			STR_LIT("parser/src/parser/parse_tools.h"),
+			STR_LIT("parser/src/parser/parse_tools.c"),
+			STR_LIT("parser/src/parser/parser.h"),
+			STR_LIT("parser/src/parser/parser.c"),
+			STR_LIT("parser/src/parser/preprocessor.h"),
+			STR_LIT("parser/src/parser/preprocessor.c"),
+			STR_LIT("parser/src/parser/source_info.h"),
+			STR_LIT("parser/src/parser/source_info.c"),
+			STR_LIT("parser/src/parser/tokenizer.h"),
+			STR_LIT("parser/src/parser/tokenizer.c"),
+		};
+
+		TestSuiteDescriptor* suite = arena_alloc(suites_allocator, TestSuiteDescriptor);
+		suite->name = STR_LIT("self-hosted-tokenizer");
+		suite->tests.tests = arena_alloc_array(tests_allocator, TestDescriptor, array_size(paths));
+		suite->tests.count = array_size(paths);
+
+		storage->suite_count += 1;
+
+		for (size_t i = 0; i < array_size(paths); i += 1) {
+			TestDescriptor* test = &suite->tests.tests[i];
+			test->name = path_get_file_name(paths[i]);
+			test->path = paths[i];
+			test->runner = test_run_self_hosted_tokenizer_test;
 		}
 	}
 

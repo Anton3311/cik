@@ -7,6 +7,7 @@
 #include "tester/tests.h"
 #include "tester/tests_x64.h"
 #include "tester/tests_compiler.h"
+#include "tester/tests_self_hosting.h"
 
 #include "parser/preprocessor.h"
 
@@ -394,6 +395,26 @@ int main(int argc, char* argv[]) {
 			Arena arena = { .capacity = 128 * 4096 };
 			Arena temp_arena = { .capacity = 128 * 4096 };
 			run_preprocessor_test(test_file_path, &arena, &temp_arena);
+
+			arena_release(&temp_arena);
+			arena_release(&arena);
+			return 0;
+		}
+		case TEST_CMD_RUN_SELF_HOSTED_TOKENIZER_TEST: {
+			const char* input_promt = "args: <test_file_path>";
+			
+			if (argc != 3) {
+				fprintf(stderr, "%s", input_promt);
+				return EXIT_FAILURE;
+			}
+
+			const char* test_file_path = argv[2];
+
+			Arena arena = { .capacity = 128 * 4096 };
+			Arena temp_arena = { .capacity = 128 * 4096 };
+
+			TestContext context = { .arena = &arena, .temp_arena = &temp_arena };
+			test_self_hosted_tokenizer(&context, str_from_cstr(test_file_path));
 
 			arena_release(&temp_arena);
 			arena_release(&arena);

@@ -216,6 +216,8 @@ int main(int argc, char *argv[]) {
 	Arena temp_arena = {};
 	temp_arena.capacity = align_to_page_size(MiB(4));
 
+	bool report_exit_code = true;
+
 	String install_path = {};
 	if (!win_sdk_get_install_path(&arena, &install_path)) {
 		fprintf(stderr, "Failed to read Windows SDK install path");
@@ -284,6 +286,8 @@ int main(int argc, char *argv[]) {
 				backend_flags |= X64_PRINT_ASSIGNED_STORAGE_LOC;
 			} else if (str_equal(arg, STR_LIT("--"))) {
 				break;
+			} else if (str_equal(arg, STR_LIT("--no-report-exit-code"))) {
+				report_exit_code = false;
 			} else {
 				fprintf(stderr, "Unknown argument '%s'", argv[i]);
 				return EXIT_FAILURE;
@@ -392,7 +396,9 @@ int main(int argc, char *argv[]) {
 
 		free_executable(machine_code.code, machine_code.size_in_bytes);
 
-		printf("%llu\n", result);
+		if (report_exit_code) {
+			printf("%llu\n", result);
+		}
 
 		symbol_map_release(&dynamically_linked_symbols);
 

@@ -683,8 +683,6 @@ static void _emit_mem_copy_fixed(CodeBuffer* buffer,
 		temp_register = spill_victim;
 	}
 
-	assert(temp_registers != -1);
-
 	// NOTE: Spill the vicitim register on the stack, without moving the stack pointer. The spilled
 	//       register is stored outside of the call frame at `rsp - 0x8`
 	if (spill_victim != -1) {

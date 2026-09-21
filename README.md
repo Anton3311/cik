@@ -12,20 +12,25 @@
 
 This is a compiler for a subset of C99, written fully in C.
 
-It implements a preprocessor, a parser, a compiler and a x64 code generation backend.
+It implements a preprocessor, a parser, a compiler, a sea of nodes backend with a custom linker and it outputs x64 machine.
 
 > [!IMPORTANT]
-> Not standard complient
+> Not fully standard complient
 
 > [!NOTE]
 > Doesn't produce an executable (yet), rather it runs the program in the same process as the compiler.
 
-Although the compiler doesn't yet support a lot of C features, it is already capable of compiling not just simple programs like `printf("hello world");`, but also some more complex ones:
+---
 
+Although the compiler doesn't yet support a lot of C features, it is already in state, where it is capable of compiling the whole tokenizer (`parser/src/parser/tokenizer.c`), see the test `tester/src/tester/self_hosting/self_hosted_tokenizer_driver.c`.
+
+Examples of other programs:
 1. bubble sort (an example can be found in the test suite, [here](tests/compiler/test_for_loop_bubble_sort.c))
 2. a dynamic `int` array [examples/int_array.c](examples/int_array.c)
-3. quick sort [examples/quick_sort.c](examples/quick_sort.c)
+3. quick sort [quick_sort.c](tests/compiler/examples/quick_sort.c)
 4. [arena allocator](tests/compiler/test_arena.c) which is used through out the whole codebase.
+
+---
 
 Features and limitations:
 
@@ -33,7 +38,7 @@ Features and limitations:
 2. `cdecl` calling convention
 3. Support for using structs as function return types.
 4. Calling of external functions. These are provided inernally as function pointers by the compiler.
-5. A custom [linker](code_gen/src/code_gen/x64_linker.c) that enables compilation of multiple functions and source files into a single program.
+5. A custom [linker](code_gen/src/code_gen/backends/x64_linker.c) that enables compilation of multiple functions and source files into a single program.
 5. `char`, `int`, `short`, `long`, `long long` and their signed/unsigned variats with support for all binary and unary operators.
 6. Integer and pointer arithmetics.
 7. Pointer dereferencing and assignment.

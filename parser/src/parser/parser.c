@@ -3365,21 +3365,11 @@ static AstNode* _parser_parse_function_declaration(Parser* parser,
 	return node;
 }
 
-static AstNode* _parser_parse_type_declaration(Parser* parser,
+static AstNode* _parser_parse_variable_declaration(Parser* parser,
 		Declarator* declarator,
 		DeclSpec* decl_spec,
 		StorageSpecifier storage_specifier) {
 	profile_func_colored(PROFILE_COLOR);
-
-	if (declarator->type.kind == TYPE_FUNCTION) {
-		AstNode* node = _parser_parse_function_declaration(parser,
-				decl_spec,
-				storage_specifier,
-				declarator);
-
-		profile_scope_end();
-		return node;
-	}
 
 	Token token = preprocessor_view_next(parser->preprocessor);
 	if (token.kind == TOKEN_EQUAL) {
@@ -3735,77 +3725,6 @@ static bool _parser_parse_declarator(Parser* parser,
 	return result;
 }
 
-// `inline_keyword_token` - is inline keyword token in present or `NULL` otherwise.
-AstNode* _parser_parse_variable_or_function_def(Parser* parser,
-		DeclSpec* decl_spec,
-		StorageSpecifier storage_specifier,
-		Token* inline_keyword_token) {
-
-	bool has_type = false;
-	Type type = {};
-
-	switch (_parser_try_parse_type(parser, &type, true)) {
-	case PARSE_TYPE_PARSED:
-		has_type = true;
-		break;
-	case PARSE_TYPE_NOT_PARSED:
-		has_type = false;
-		break;
-	case PARSE_TYPE_ERROR:
-		return NULL;
-	}
-
-	if (has_type) {
-		Declarator declarator = {};
-		if (!_parser_parse_declarator(parser, &type, &declarator, false)) {
-			return NULL;
-		}
-
-		if (declarator.name.length == 0) {
-			return NULL;
-		}
-
-		AstNode* node = _parser_parse_type_declaration(parser,
-				&declarator,
-				decl_spec,
-				storage_specifier);
-
-		if (inline_keyword_token) {
-			assert(node->kind == AST_NODE_FUNCTION_DEF || node->kind == AST_NODE_FUNCTION_DECL);
-			node->function_def->is_inline = true;
-		}
-
-		return node;
-	} else {
-		if (decl_spec) {
-			debug_log_info("__declspec ignore before expression");
-		}
-
-		if (storage_specifier != STORAGE_SPEC_NONE) {
-			debug_log_info("storage specifier skipped before expression");
-		}
-
-		Expr expr;
-		ExprParseResult result = _parser_try_parse_expr(parser, &expr);
-		if (result == EXPR_PARSE_OK) {
-			if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
-				return NULL;
-			}
-
-			AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
-			node->kind = AST_NODE_EXPR;
-			node->expr = expr;
-
-			return node;
-		} else {
-			return NULL;
-		}
-	}
-
-	unreachable();
-	return NULL;
-}
-
 static DeclSpec* _parser_parse_decl_spec(Parser* parser) {
 	Token decl_spec_token = preprocessor_view_next(parser->preprocessor);
 	if (decl_spec_token.kind != TOKEN_DECLSPEC) {
@@ -3893,6 +3812,112 @@ static DeclSpec* _parser_parse_decl_spec(Parser* parser) {
 	}
 
 	return decl_spec;
+}
+
+AstNode* _parser_parse_declaration_or_expr(Parser* parser) {
+	bool has_inline = false;
+
+	{
+		Token maybe_inline = preprocessor_view_next(parser->preprocessor);
+		if (maybe_inline.kind == TOKEN_KEYWORD_INLINE) {
+			preprocessor_next_token(parser->preprocessor);
+			has_inline = true;
+		} else if (maybe_inline.kind == TOKEN_IDENT) {
+			if (str_equal(maybe_inline.string, STR_LIT("__inline"))) {
+				preprocessor_next_token(parser->preprocessor);
+				has_inline = true;
+			} else if (str_equal(maybe_inline.string, STR_LIT("__forceinline"))) {
+				preprocessor_next_token(parser->preprocessor);
+				has_inline = true;
+			}
+		}
+	}
+
+	DeclSpec* decl_spec = _parser_parse_decl_spec(parser);
+	StorageSpecifier storage_specifier = STORAGE_SPEC_NONE;
+
+	{
+		Token maybe_storage_specifier = preprocessor_view_next(parser->preprocessor);
+		if (maybe_storage_specifier.kind == TOKEN_KEYWORD_STATIC) {
+			preprocessor_next_token(parser->preprocessor);
+			storage_specifier = STORAGE_SPEC_STATIC;
+		} else if (maybe_storage_specifier.kind == TOKEN_KEYWORD_EXTERN) {
+			preprocessor_next_token(parser->preprocessor);
+			storage_specifier = STORAGE_SPEC_EXTERNAL;
+		}
+	}
+
+	bool has_type = false;
+	Type type = {};
+
+	switch (_parser_try_parse_type(parser, &type, true)) {
+	case PARSE_TYPE_PARSED:
+		has_type = true;
+		break;
+	case PARSE_TYPE_NOT_PARSED:
+		has_type = false;
+		break;
+	case PARSE_TYPE_ERROR:
+		return NULL;
+	}
+
+	if (has_type) {
+		Declarator declarator = {};
+		if (!_parser_parse_declarator(parser, &type, &declarator, false)) {
+			return NULL;
+		}
+
+		if (declarator.name.length == 0) {
+			return NULL;
+		}
+
+		if (declarator.type.kind == TYPE_FUNCTION) {
+			AstNode* node = _parser_parse_function_declaration(parser,
+					decl_spec,
+					storage_specifier,
+					&declarator);
+
+			if (has_inline) {
+				assert(node->kind == AST_NODE_FUNCTION_DEF || node->kind == AST_NODE_FUNCTION_DECL);
+				node->function_def->is_inline = true;
+			}
+
+			return node;
+		} else {
+			AstNode* node = _parser_parse_variable_declaration(parser,
+					&declarator,
+					decl_spec,
+					storage_specifier);
+
+			return node;
+		}
+	} else {
+		if (decl_spec) {
+			debug_log_info("__declspec ignore before expression");
+		}
+
+		if (storage_specifier != STORAGE_SPEC_NONE) {
+			debug_log_info("storage specifier skipped before expression");
+		}
+
+		Expr expr;
+		ExprParseResult result = _parser_try_parse_expr(parser, &expr);
+		if (result == EXPR_PARSE_OK) {
+			if (!_parser_expect_semicolon(parser, STR_LIT("Expected ';' after an expression"))) {
+				return NULL;
+			}
+
+			AstNode* node = arena_alloc_zeroed(parser->ast_allocator, AstNode);
+			node->kind = AST_NODE_EXPR;
+			node->expr = expr;
+			return node;
+		} else {
+			return NULL;
+		}
+	}
+
+	unreachable();
+	return NULL;
 }
 
 static AstNode* _parser_parse_if_stmt(Parser* parser) {
@@ -4521,39 +4546,8 @@ AstNode* _parser_parse_single_node(Parser* parser, Token initial_token) {
 		return _parser_parse_case(parser);
 	case TOKEN_KEYWORD_DEFAULT:
 		return _parser_parse_default_case(parser);
-	default: {
-		bool has_inline = false;
-		Token maybe_inline = preprocessor_view_next(parser->preprocessor);
-		if (maybe_inline.kind == TOKEN_KEYWORD_INLINE) {
-			preprocessor_next_token(parser->preprocessor);
-			has_inline = true;
-		} else if (maybe_inline.kind == TOKEN_IDENT) {
-			if (str_equal(maybe_inline.string, STR_LIT("__inline"))) {
-				preprocessor_next_token(parser->preprocessor);
-				has_inline = true;
-			} else if (str_equal(maybe_inline.string, STR_LIT("__forceinline"))) {
-				preprocessor_next_token(parser->preprocessor);
-				has_inline = true;
-			}
-		}
-
-		DeclSpec* decl_spec = _parser_parse_decl_spec(parser);
-		StorageSpecifier storage_specifier = STORAGE_SPEC_NONE;
-
-		Token maybe_storage_specifier = preprocessor_view_next(parser->preprocessor);
-		if (maybe_storage_specifier.kind == TOKEN_KEYWORD_STATIC) {
-			preprocessor_next_token(parser->preprocessor);
-			storage_specifier = STORAGE_SPEC_STATIC;
-		} else if (maybe_storage_specifier.kind == TOKEN_KEYWORD_EXTERN) {
-			preprocessor_next_token(parser->preprocessor);
-			storage_specifier = STORAGE_SPEC_EXTERNAL;
-		}
-
-		return _parser_parse_variable_or_function_def(parser,
-				decl_spec,
-				storage_specifier,
-				has_inline ? &maybe_inline : NULL);
-	}
+	default:
+		return _parser_parse_declaration_or_expr(parser);
 	}
 
 	unreachable();

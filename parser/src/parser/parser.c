@@ -4023,9 +4023,7 @@ static AstNode* _parser_parse_if_stmt(Parser* parser) {
 	if_stmt_node->kind = AST_NODE_IF;
 	if_stmt_node->if_stmt.condition = condition;
 	if_stmt_node->if_stmt.true_scope = true_node_scope;
-	if_stmt_node->if_stmt.true_node = true_node;
 	if_stmt_node->if_stmt.false_scope = false_node_scope;
-	if_stmt_node->if_stmt.false_node = false_node;
 	profile_scope_end();
 	return if_stmt_node;
 }

@@ -1480,9 +1480,9 @@ void test_allow_variable_shadowing_in_if_statements(TestContext* context) {
 
 	AstNode* if_stmt_node = node->next;
 	assert(if_stmt_node->kind == AST_NODE_IF);
-	assert(if_stmt_node->if_stmt.true_node != NULL);
+	assert(if_stmt_node->if_stmt.true_scope != NULL);
 
-	AstNode* var2_node = if_stmt_node->if_stmt.true_node;
+	AstNode* var2_node = if_stmt_node->if_stmt.true_scope->nodes.first;
 	assert(var2_node->kind == AST_NODE_VARIABLE);
 
 	Variable* var2 = &var2_node->variable;
@@ -1516,9 +1516,10 @@ void test_allow_variable_shadowing_in_else_branch_if_statements(TestContext* con
 
 	AstNode* if_stmt_node = node->next;
 	assert(if_stmt_node->kind == AST_NODE_IF);
-	assert(if_stmt_node->if_stmt.true_node != NULL);
+	assert(if_stmt_node->if_stmt.true_scope != NULL);
+	assert(if_stmt_node->if_stmt.false_scope != NULL);
 
-	AstNode* var2_node = if_stmt_node->if_stmt.false_node;
+	AstNode* var2_node = if_stmt_node->if_stmt.false_scope->nodes.first;
 	assert(var2_node->kind == AST_NODE_VARIABLE);
 
 	Variable* var2 = &var2_node->variable;

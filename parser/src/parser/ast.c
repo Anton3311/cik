@@ -1591,12 +1591,12 @@ void print_single_node(PrinterState* printer, const AstNode* node) {
 		printer_field(printer, "condition");
 		print_expr(printer, &node->if_stmt.condition);
 
-		printer_field(printer, "true_node");
-		print_single_node(printer, node->if_stmt.true_node);
+		printer_field(printer, "true_scope");
+		print_scope(printer, node->if_stmt.true_scope);
 
-		if (node->if_stmt.false_node) {
-			printer_field(printer, "false_node");
-			print_single_node(printer, node->if_stmt.false_node);
+		if (node->if_stmt.false_scope) {
+			printer_field(printer, "false_scope");
+			print_scope(printer, node->if_stmt.false_scope);
 		}
 
 		printer_end_struct(printer);

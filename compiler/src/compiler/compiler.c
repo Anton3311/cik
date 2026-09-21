@@ -2531,7 +2531,7 @@ static InstrIndex _compile_if_statement(FunctionCompiler* compiler,
 		compiler->var_values = var_values_for_false_path;
 		compiler->arg_states = arg_values_for_false_path;
 
-		if (node->if_stmt.false_node) {
+		if (node->if_stmt.false_scope) {
 			false_block = _compile_scope(compiler, node->if_stmt.false_scope);
 		} else {
 			InstrIndex false_region_index = instr_new_region(instr_buffer, instr_allocator);

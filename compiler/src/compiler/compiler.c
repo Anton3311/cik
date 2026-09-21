@@ -2810,6 +2810,9 @@ static void _compile_switch(FunctionCompiler* compiler,
 	profile_scope_start(__func__);
 	assert(stmt->kind == AST_NODE_SWITCH);
 
+	InstrBuffer* instr_buffer = &compiler->instr_buffer;
+	Arena* instr_allocator = compiler->instr_allocator;
+
 	LoopSwitchState current_loop_switch_state = (LoopSwitchState) {
 		.parent = compiler->loop_switch_state,
 		.control_flow_stmts = NULL,
@@ -2818,10 +2821,22 @@ static void _compile_switch(FunctionCompiler* compiler,
 
 	compiler->loop_switch_state = &current_loop_switch_state;
 
+	Type tested_expr_type;
+	expr_get_type(stmt->switch_stmt.expr, &tested_expr_type);
+
 	InstrIndex tested_expr = _compile_expr(compiler, stmt->switch_stmt.expr);
 
-	InstrBuffer* instr_buffer = &compiler->instr_buffer;
-	Arena* instr_allocator = compiler->instr_allocator;
+	if (type_kind_is_int(tested_expr_type.kind)) {
+		TypeLayout layout = type_get_layout(compiler->type_context, &tested_expr_type);
+
+		bool is_unsigned = has_flag(tested_expr_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
+		tested_expr = instr_new_cast(instr_buffer,
+				instr_allocator,
+				tested_expr,
+				layout.size,
+				compiler->type_context->pointer_type_layout.size,
+				!is_unsigned);
+	}
 
 	ArenaRegion temp = arena_begin_temp(compiler->temp_allocator);
 
@@ -2922,12 +2937,26 @@ static void _compile_switch(FunctionCompiler* compiler,
 				assert(!instr_region_finished(instr_buffer, false_region_index));
 				instr_region_set_last(instr_buffer, false_region_index, threaded_jump);
 			} else {
+				Type case_value_type;
+				expr_get_type(child->case_stmt.value, &case_value_type);
+
 				InstrIndex case_value_instr = _compile_expr(compiler, child->case_stmt.value);
+
+				if (type_kind_is_int(case_value_type.kind)) {
+					TypeLayout layout = type_get_layout(compiler->type_context, &case_value_type);
+
+					bool is_unsigned = has_flag(case_value_type.kind, (TypeKind)TYPE_FLAG_UNSIGNED);
+					case_value_instr = instr_new_cast(instr_buffer,
+							instr_allocator,
+							case_value_instr,
+							layout.size,
+							compiler->type_context->pointer_type_layout.size,
+							!is_unsigned);
+				}
 
 				InstrIndex compare_index = instr_buffer_push(instr_buffer,
 					instr_allocator,
 					(Instr) {
-						// FIXME: Don't hardcode
 						.kind = INSTR_COMPARE_64,
 						.compare = {
 							.kind = INSTR_CMP_EQUAL,

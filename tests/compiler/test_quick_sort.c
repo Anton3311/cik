@@ -7,30 +7,19 @@
 
 __declspec(dllimport) void assert(unsigned long long);
 
-size_t move_left_pointer(int* array, size_t left, int pivot) {
-	while (array[left] < pivot) {
-		left += 1;
-	}
-
-	return left;
-}
-
-size_t move_right_pointer(int* array, size_t right, int pivot) {
-	while (array[right] > pivot) {
-		right -= 1;
-	}
-
-	return right;
-}
-
 size_t partition(int* array, size_t left, size_t right) {
 	assert(left < right);
 
 	int pivot = array[(left + right) / 2];
 
 	while (1) {
-		left = move_left_pointer(array, left, pivot);
-		right = move_right_pointer(array, right, pivot);
+		while (array[left] < pivot) {
+			left += 1;
+		}
+
+		while (array[right] > pivot) {
+			right -= 1;
+		}
 
 		if (left >= right) {
 			return right;
